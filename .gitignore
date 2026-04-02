@@ -1,0 +1,60 @@
+# ===========================
+# Asset Vault (external asset packs — large binaries, not tracked)
+# ===========================
+SlimeJumping_AssetVault/
+
+# ===========================
+# Unity generated
+# ===========================
+SlimeJumping_v2/Library/
+SlimeJumping_v2/Temp/
+SlimeJumping_v2/Obj/
+SlimeJumping_v2/Build/
+SlimeJumping_v2/Builds/
+SlimeJumping_v2/Logs/
+SlimeJumping_v2/UserSettings/
+SlimeJumping_v2/MemoryCaptures/
+SlimeJumping_v2/Recordings/
+
+# ===========================
+# Unity auto-generated solution/project files
+# ===========================
+SlimeJumping_v2/*.csproj
+SlimeJumping_v2/*.sln
+SlimeJumping_v2/*.slnx
+
+# ===========================
+# OS generated
+# ===========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===========================
+# IDE
+# ===========================
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userprefs
+
+# ===========================
+# Crash reports
+# ===========================
+crashlytics-build.properties
+sysinfo.txt
+
+# ===========================
+# Other work (reference projects with their own git repos)
+# ===========================
+other_work/
+
+# ===========================
+# Builds
+# ===========================
+*.apk
+*.aab
+*.unitypackage
+*.app
