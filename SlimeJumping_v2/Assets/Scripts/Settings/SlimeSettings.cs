@@ -5,8 +5,13 @@ namespace SlimeJumping.Settings
     [CreateAssetMenu(fileName = "SlimeSettings", menuName = "SlimeJumping/Slime Settings")]
     public class SlimeSettings : ScriptableObject
     {
-        [Header("Ground Movement")]
-        public float groundMoveSpeed = 5f;
+        [Header("Surface Movement")]
+        public float crawlSpeed = 5f;
+        public float crawlAcceleration = 50f;
+        public float crawlDeceleration = 30f;
+        public float slideGravityScale = 1f;
+        public float slideThreshold = 1f;
+        public float slideResistance = 2f;
 
         [Header("Charge Circle")]
         public float chargeRadius = 1.5f;
@@ -20,7 +25,7 @@ namespace SlimeJumping.Settings
         [Header("Physics")]
         public float gravity = -20f;
         public float slimeRadius = 0.4f;
-        public float groundCheckDistance = 0.1f;
+        public float surfaceCheckDistance = 0.05f;
         public LayerMask groundLayer;
         public float postLaunchIgnoreTime = 0.05f;
         public float launchClearanceThreshold = 0.05f;

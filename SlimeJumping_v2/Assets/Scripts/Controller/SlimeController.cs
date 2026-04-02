@@ -14,11 +14,11 @@ namespace SlimeJumping.Controller
         private Rigidbody2D rb;
         private CircleCollider2D circleCollider;
 
-        private enum SlimeState { Grounded, Charging, Airborne }
-        private SlimeState currentState;
+        private enum SlimeState { Attached, Charging, Airborne }
+        private SlimeState currentState = SlimeState.Airborne;
 
-        // Judgment circle charge state
-        private Vector2 aimPoint;
+        // Judgment circle charge state (aimOffset = relative to slime center)
+        private Vector2 aimOffset;
         private Vector2 driftDirection;
 
         // Post-launch input ignore
@@ -28,12 +28,17 @@ namespace SlimeJumping.Controller
         private Collider2D ignoredCollider;
         private float ignoreTimer;
 
-        // Manual velocity (no Rigidbody gravity)
+        // Manual velocity
         private Vector2 velocity;
 
-        // Cached ground info
-        private Vector2 groundNormal = Vector2.up;
-        private bool isGrounded;
+        // Persistent crawl speed (accel/decel model)
+        private float crawlVelocity;
+
+        // Surface contact info
+        private Vector2 surfaceNormal;
+        private Vector2 surfaceTangent;
+        private Collider2D surfaceCollider;
+        private bool isTouchingSurface;
 
         private Transform visualTransform;
 
@@ -101,15 +106,16 @@ namespace SlimeJumping.Controller
             float dt = Time.fixedDeltaTime;
 
             UpdateIgnoredCollider(dt);
-            isGrounded = CheckGround(out groundNormal);
+            isTouchingSurface = CheckSurface(out surfaceNormal, out surfaceCollider);
+            surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
 
             switch (currentState)
             {
-                case SlimeState.Grounded:
-                    FixedUpdateGrounded();
+                case SlimeState.Attached:
+                    FixedUpdateAttached(dt);
                     break;
                 case SlimeState.Charging:
-                    FixedUpdateCharging();
+                    FixedUpdateCharging(dt);
                     break;
                 case SlimeState.Airborne:
                     FixedUpdateAirborne(dt);
@@ -119,70 +125,137 @@ namespace SlimeJumping.Controller
             rb.linearVelocity = velocity;
         }
 
-        // --- State: Grounded ---
+        // --- State: Attached (any surface) ---
 
-        private void FixedUpdateGrounded()
+        private void FixedUpdateAttached(float dt)
         {
-            if (!isGrounded)
+            if (!isTouchingSurface)
             {
+                crawlVelocity = 0f;
                 currentState = SlimeState.Airborne;
                 return;
             }
 
-            float moveX = inputReader.MoveInput.x;
-            velocity = new Vector2(moveX * settings.groundMoveSpeed, 0f);
+            // 1. Slide: fresh each frame, no accumulation
+            Vector2 gravityVec = new Vector2(0f, settings.gravity);
+            float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
+            if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
+                gravAlongTangent = 0f;
+            float slideSpeed = gravAlongTangent * settings.slideGravityScale;
+
+            // Apply resistance to slideSpeed (not gravAlongTangent — crawl still fights full gravity)
+            if (Mathf.Abs(slideSpeed) > 0.001f)
+            {
+                float sign = Mathf.Sign(slideSpeed);
+                slideSpeed -= sign * settings.slideResistance;
+                if (Mathf.Sign(slideSpeed) != sign)
+                    slideSpeed = 0f;
+            }
+
+            // 2. Crawl: accel/decel model
+            float inputX = inputReader.MoveInput.x;
+            float targetSpeed = -inputX * settings.crawlSpeed;
+            if (Mathf.Abs(targetSpeed) > Mathf.Abs(crawlVelocity)
+                || (targetSpeed != 0f && Mathf.Sign(targetSpeed) != Mathf.Sign(crawlVelocity)))
+                crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlAcceleration * dt);
+            else
+                crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlDeceleration * dt);
+
+            // 3. Final tangent velocity
+            float finalTangent = slideSpeed + crawlVelocity;
+            velocity = surfaceTangent * finalTangent;
+
+            // Cancel velocity into surface
+            float normalVel = Vector2.Dot(velocity, surfaceNormal);
+            if (normalVel < 0f)
+                velocity -= surfaceNormal * normalVel;
+
+            SnapToSurface();
         }
 
-        // --- State: Charging (Judgment Circle) ---
+        // --- State: Charging ---
 
         private void UpdateCharging()
         {
             float dt = Time.deltaTime;
             Vector2 center = (Vector2)transform.position;
 
-            // Auto-drift: aim point moves toward surface (opposite of normal)
-            aimPoint += driftDirection * settings.autoDriftSpeed * dt;
+            // Auto-drift: push outward along current aim direction (angle fixed, length grows)
+            if (aimOffset.sqrMagnitude > 0.0001f)
+                aimOffset += aimOffset.normalized * settings.autoDriftSpeed * dt;
+            else
+                aimOffset += driftDirection * settings.autoDriftSpeed * dt;
 
-            // WASD: 2D acceleration on aim point
+            // WASD: 2D acceleration on aim offset
             Vector2 input = inputReader.MoveInput;
-            aimPoint += input * settings.inputAcceleration * dt;
+            aimOffset += input * settings.inputAcceleration * dt;
 
-            // Check if aim point reached circle edge → auto-launch
-            Vector2 offset = aimPoint - center;
-            if (offset.magnitude >= settings.chargeRadius)
+            // Auto-launch at circle edge
+            if (aimOffset.magnitude >= settings.chargeRadius)
             {
-                // Clamp to edge before launching
-                aimPoint = center + offset.normalized * settings.chargeRadius;
+                aimOffset = aimOffset.normalized * settings.chargeRadius;
                 Launch();
                 return;
             }
 
             if (chargeVisual != null)
-                chargeVisual.UpdateVisual(center, aimPoint, settings.chargeRadius);
+                chargeVisual.UpdateVisual(center, center + aimOffset, settings.chargeRadius);
         }
 
-        private void FixedUpdateCharging()
+        private void FixedUpdateCharging(float dt)
         {
-            velocity = Vector2.zero;
-
-            if (!isGrounded)
+            if (!isTouchingSurface)
             {
+                crawlVelocity = 0f;
                 currentState = SlimeState.Airborne;
                 if (chargeVisual != null) chargeVisual.Hide();
+                return;
             }
+
+            // Slime still slides on walls during charging (same physics as Attached, no crawl input)
+            Vector2 gravityVec = new Vector2(0f, settings.gravity);
+            float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
+            if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
+                gravAlongTangent = 0f;
+            float slideSpeed = gravAlongTangent * settings.slideGravityScale;
+
+            if (Mathf.Abs(slideSpeed) > 0.001f)
+            {
+                float sign = Mathf.Sign(slideSpeed);
+                slideSpeed -= sign * settings.slideResistance;
+                if (Mathf.Sign(slideSpeed) != sign)
+                    slideSpeed = 0f;
+            }
+
+            crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, settings.crawlDeceleration * dt);
+
+            float finalTangent = slideSpeed + crawlVelocity;
+            velocity = surfaceTangent * finalTangent;
+
+            float normalVel = Vector2.Dot(velocity, surfaceNormal);
+            if (normalVel < 0f)
+                velocity -= surfaceNormal * normalVel;
+
+            SnapToSurface();
         }
 
         // --- State: Airborne ---
 
         private void FixedUpdateAirborne(float dt)
         {
-            // Manual gravity
+            // Gravity always applied
             velocity.y += settings.gravity * dt;
 
-            if (isGrounded)
+            // Land on any surface
+            if (isTouchingSurface)
             {
-                if (velocity.y < 0f) velocity.y = 0f;
-                currentState = SlimeState.Grounded;
+                // Cancel velocity into surface
+                float normalVel = Vector2.Dot(velocity, surfaceNormal);
+                if (normalVel < 0f)
+                    velocity -= surfaceNormal * normalVel;
+
+                currentState = SlimeState.Attached;
+                SnapToSurface();
                 return;
             }
 
@@ -202,12 +275,11 @@ namespace SlimeJumping.Controller
 
         private void HandleJumpPressed()
         {
-            if (currentState != SlimeState.Grounded || postLaunchTimer > 0f) return;
+            if (currentState != SlimeState.Attached || postLaunchTimer > 0f) return;
 
             currentState = SlimeState.Charging;
-            aimPoint = (Vector2)transform.position;
-            driftDirection = -groundNormal; // drift toward surface
-
+            aimOffset = Vector2.zero;
+            driftDirection = -surfaceNormal;
             velocity = Vector2.zero;
 
             if (chargeVisual != null) chargeVisual.Show();
@@ -223,23 +295,13 @@ namespace SlimeJumping.Controller
 
         private void Launch()
         {
-            // Record the surface collider to ignore until cleared
-            RaycastHit2D hit = Physics2D.CircleCast(
-                (Vector2)transform.position,
-                settings.slimeRadius * 0.8f,
-                Vector2.down,
-                settings.groundCheckDistance,
-                settings.groundLayer
-            );
-            ignoredCollider = hit.collider;
+            crawlVelocity = 0f;
+            ignoredCollider = surfaceCollider;
             ignoreTimer = settings.maxIgnoreTime;
 
-            // Judgment circle launch: direction = opposite of offset, power = proportional to distance
-            Vector2 center = (Vector2)transform.position;
-            Vector2 offset = aimPoint - center;
-            float ratio = offset.magnitude / settings.chargeRadius;
+            float ratio = aimOffset.magnitude / settings.chargeRadius;
             float power = ratio * settings.baseLaunchPower;
-            Vector2 dir = offset.sqrMagnitude > 0.0001f ? -offset.normalized : Vector2.up;
+            Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : surfaceNormal;
             velocity = dir * power;
 
             currentState = SlimeState.Airborne;
@@ -261,34 +323,58 @@ namespace SlimeJumping.Controller
                 ignoredCollider = null;
         }
 
-        // --- Ground Detection ---
+        // --- Surface Detection (any angle) ---
 
-        private bool CheckGround(out Vector2 normal)
+        private bool CheckSurface(out Vector2 normal, out Collider2D col)
         {
             float radius = settings != null ? settings.slimeRadius : 0.4f;
-            float distance = settings != null ? settings.groundCheckDistance : 0.1f;
+            float dist = settings != null ? settings.surfaceCheckDistance : 0.05f;
             LayerMask mask = settings != null ? settings.groundLayer : (LayerMask)(1 << 7);
 
-            RaycastHit2D[] hits = Physics2D.CircleCastAll(
-                (Vector2)transform.position,
-                radius * 0.8f,
-                Vector2.down,
-                distance,
-                mask
-            );
+            Vector2 pos = (Vector2)transform.position;
+            Vector2[] directions = {
+                Vector2.down, Vector2.up, Vector2.left, Vector2.right,
+                new Vector2(-0.707f, -0.707f), new Vector2(0.707f, -0.707f),
+                new Vector2(-0.707f, 0.707f), new Vector2(0.707f, 0.707f)
+            };
 
-            foreach (var h in hits)
+            float bestDist = float.MaxValue;
+            normal = Vector2.up;
+            col = null;
+
+            foreach (var d in directions)
             {
-                if (h.collider == ignoredCollider) continue;
-                if (h.normal.y > 0.7f)
+                RaycastHit2D[] hits = Physics2D.CircleCastAll(pos, radius * 0.9f, d, dist, mask);
+                foreach (var h in hits)
                 {
-                    normal = h.normal;
-                    return true;
+                    if (h.collider == ignoredCollider) continue;
+                    if (h.distance < bestDist)
+                    {
+                        bestDist = h.distance;
+                        normal = h.normal;
+                        col = h.collider;
+                    }
                 }
             }
 
-            normal = Vector2.up;
-            return false;
+            return col != null;
+        }
+
+        private void SnapToSurface()
+        {
+            if (surfaceCollider == null) return;
+
+            Vector2 pos = (Vector2)transform.position;
+            Vector2 closest = surfaceCollider.ClosestPoint(pos);
+            float currentDist = Vector2.Distance(pos, closest);
+            float targetDist = settings.slimeRadius;
+
+            if (currentDist < targetDist)
+            {
+                Vector2 pushDir = (pos - closest).normalized;
+                if (pushDir.sqrMagnitude < 0.001f) pushDir = surfaceNormal;
+                transform.position = (Vector3)(closest + pushDir * targetDist);
+            }
         }
     }
 }
