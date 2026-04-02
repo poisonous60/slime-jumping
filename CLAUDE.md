@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Before We Start
 - Use only English if user asks you in Korean. Korean is 7 times expensive than english.
+- Don't use agent if you can do it yourself ability. Agent is expensive. 
 
 
 ## Project Overview
