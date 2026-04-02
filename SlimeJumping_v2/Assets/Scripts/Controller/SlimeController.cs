@@ -363,16 +363,25 @@ namespace SlimeJumping.Controller
                 return;
             }
 
-            // Air control: rotate velocity direction, preserve speed
+            // Air control: horizontal acceleration with speed cap
             float inputX = inputReader.MoveInput.x;
-            float speed = velocity.magnitude;
-            if (speed > 0.01f && Mathf.Abs(inputX) > 0.01f)
+            if (Mathf.Abs(inputX) > 0.01f)
             {
-                float angle = Mathf.Atan2(velocity.y, velocity.x);
-                float maxDelta = settings.airControlAngularSpeed * Mathf.Deg2Rad * dt / speed;
-                maxDelta = Mathf.Min(maxDelta, settings.maxAirControlDelta * Mathf.Deg2Rad);
-                angle += inputX * maxDelta;
-                velocity = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
+                float targetVx = inputX * settings.airMaxHorizontalSpeed;
+                float accel = (inputX * velocity.x >= 0f)
+                    ? settings.airAcceleration
+                    : settings.airDeceleration;
+
+                if (Mathf.Abs(velocity.x) > settings.airMaxHorizontalSpeed)
+                {
+                    // Already faster than cap (from launch) — only allow braking
+                    if (inputX * velocity.x < 0)
+                        velocity.x = Mathf.MoveTowards(velocity.x, targetVx, settings.airAcceleration * dt);
+                }
+                else
+                {
+                    velocity.x = Mathf.MoveTowards(velocity.x, targetVx, accel * dt);
+                }
             }
         }
 

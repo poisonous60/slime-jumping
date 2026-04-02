@@ -31,8 +31,9 @@ namespace SlimeJumping.Settings
         public float ceilingThreshold = -0.3f; // surfaceUp below this = ceiling, can't attach
 
         [Header("Air Control")]
-        public float airControlAngularSpeed = 200f;
-        public float maxAirControlDelta = 45f;
+        public float airMaxHorizontalSpeed = 5f;
+        public float airAcceleration = 20f;
+        public float airDeceleration = 15f;
 
         [Header("Physics")]
         public float gravity = -20f;
