@@ -34,19 +34,29 @@ namespace SlimeJumping.Controller
         // Persistent crawl speed (accel/decel model)
         private float crawlVelocity;
 
+        // Energy conversion state
+        private bool isEnergyConversion;
+        private bool wasOutsideCircle;
+
+        // Stick timer (delay before slide starts)
+        private float stickTimer;
+
+        // Airborne duration (to distinguish corner flicker from real flight)
+        private float airborneTimer;
+
         // Surface contact info
         private Vector2 surfaceNormal;
         private Vector2 surfaceTangent;
         private Collider2D surfaceCollider;
         private bool isTouchingSurface;
 
-        private Transform visualTransform;
+        private SpriteRenderer spriteRenderer;
 
         private void Awake()
         {
             rb = GetComponent<Rigidbody2D>();
             circleCollider = GetComponent<CircleCollider2D>();
-            visualTransform = transform.Find("SlimeVisual");
+            spriteRenderer = GetComponent<SpriteRenderer>();
 
             rb.gravityScale = 0f;
             rb.constraints = RigidbodyConstraints2D.FreezeRotation;
@@ -66,14 +76,20 @@ namespace SlimeJumping.Controller
         {
             if (settings == null) return;
 
-            if (circleCollider == null) circleCollider = GetComponent<CircleCollider2D>();
-            if (circleCollider != null) circleCollider.radius = settings.slimeRadius;
-
-            if (visualTransform == null) visualTransform = transform.Find("SlimeVisual");
-            if (visualTransform != null)
+            if (spriteRenderer == null) spriteRenderer = GetComponent<SpriteRenderer>();
+            if (spriteRenderer != null && spriteRenderer.sprite != null)
             {
-                float d = settings.slimeRadius * 2f;
-                visualTransform.localScale = new Vector3(d, d, d);
+                spriteRenderer.drawMode = SpriteDrawMode.Simple;
+                float nativeDiameter = spriteRenderer.sprite.bounds.size.x;
+                float scale = (settings.slimeRadius * 2f) / nativeDiameter;
+                transform.localScale = new Vector3(scale, scale, scale);
+            }
+
+            if (circleCollider == null) circleCollider = GetComponent<CircleCollider2D>();
+            if (circleCollider != null)
+            {
+                float s = transform.localScale.x;
+                circleCollider.radius = s > 0.001f ? settings.slimeRadius / s : settings.slimeRadius;
             }
         }
 
@@ -107,6 +123,18 @@ namespace SlimeJumping.Controller
 
             UpdateIgnoredCollider(dt);
             isTouchingSurface = CheckSurface(out surfaceNormal, out surfaceCollider);
+
+            // Correct normal if slime is on the underside of a surface
+            if (isTouchingSurface && surfaceCollider != null)
+            {
+                Vector2 pos = (Vector2)transform.position;
+                Vector2 closest = surfaceCollider.ClosestPoint(pos);
+                Vector2 toSlime = pos - closest;
+                // If normal points away from slime, flip it
+                if (Vector2.Dot(toSlime, surfaceNormal) < 0f)
+                    surfaceNormal = -surfaceNormal;
+            }
+
             surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
 
             switch (currentState)
@@ -129,10 +157,20 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateAttached(float dt)
         {
-            if (!isTouchingSurface)
+            if (!isTouchingSurface || Vector2.Dot(surfaceNormal, Vector2.up) < settings.ceilingThreshold)
             {
                 crawlVelocity = 0f;
+                airborneTimer = 0f;
                 currentState = SlimeState.Airborne;
+                return;
+            }
+
+            // Stick: delay before slide starts
+            if (stickTimer > 0f)
+            {
+                stickTimer -= dt;
+                velocity = Vector2.zero;
+                SnapToSurface();
                 return;
             }
 
@@ -180,23 +218,35 @@ namespace SlimeJumping.Controller
             float dt = Time.deltaTime;
             Vector2 center = (Vector2)transform.position;
 
-            // Auto-drift: push outward along current aim direction (angle fixed, length grows)
-            if (aimOffset.sqrMagnitude > 0.0001f)
-                aimOffset += aimOffset.normalized * settings.autoDriftSpeed * dt;
+            bool currentlyOutside = aimOffset.magnitude > settings.chargeRadius;
+
+            if (currentlyOutside)
+            {
+                // Outside circle: shrink toward center
+                aimOffset = Vector2.MoveTowards(aimOffset, Vector2.zero, settings.shrinkSpeed * dt);
+            }
             else
-                aimOffset += driftDirection * settings.autoDriftSpeed * dt;
+            {
+                // Inside circle: normal auto-drift outward
+                if (aimOffset.sqrMagnitude > 0.0001f)
+                    aimOffset += aimOffset.normalized * settings.autoDriftSpeed * dt;
+                else
+                    aimOffset += driftDirection * settings.autoDriftSpeed * dt;
+            }
 
             // WASD: 2D acceleration on aim offset
             Vector2 input = inputReader.MoveInput;
             aimOffset += input * settings.inputAcceleration * dt;
 
-            // Auto-launch at circle edge
-            if (aimOffset.magnitude >= settings.chargeRadius)
+            // Auto-launch: only inside→outside crossing
+            if (!wasOutsideCircle && aimOffset.magnitude >= settings.chargeRadius)
             {
                 aimOffset = aimOffset.normalized * settings.chargeRadius;
                 Launch();
                 return;
             }
+
+            wasOutsideCircle = aimOffset.magnitude > settings.chargeRadius;
 
             if (chargeVisual != null)
                 chargeVisual.UpdateVisual(center, center + aimOffset, settings.chargeRadius);
@@ -204,39 +254,50 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateCharging(float dt)
         {
-            if (!isTouchingSurface)
+            if (!isTouchingSurface || Vector2.Dot(surfaceNormal, Vector2.up) < settings.ceilingThreshold)
             {
                 crawlVelocity = 0f;
+                airborneTimer = 0f;
                 currentState = SlimeState.Airborne;
                 if (chargeVisual != null) chargeVisual.Hide();
                 return;
             }
 
-            // Slime still slides on walls during charging (same physics as Attached, no crawl input)
-            Vector2 gravityVec = new Vector2(0f, settings.gravity);
-            float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
-            if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
-                gravAlongTangent = 0f;
-            float slideSpeed = gravAlongTangent * settings.slideGravityScale;
-
-            if (Mathf.Abs(slideSpeed) > 0.001f)
+            // Stick: delay before slide starts (aiming still runs via UpdateCharging)
+            if (stickTimer > 0f)
             {
-                float sign = Mathf.Sign(slideSpeed);
-                slideSpeed -= sign * settings.slideResistance;
-                if (Mathf.Sign(slideSpeed) != sign)
-                    slideSpeed = 0f;
+                stickTimer -= dt;
+                velocity = Vector2.zero;
+                SnapToSurface();
             }
+            else
+            {
+                // Slime still slides on walls during charging (same physics as Attached, no crawl input)
+                Vector2 gravityVec = new Vector2(0f, settings.gravity);
+                float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
+                if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
+                    gravAlongTangent = 0f;
+                float slideSpeed = gravAlongTangent * settings.slideGravityScale;
 
-            crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, settings.crawlDeceleration * dt);
+                if (Mathf.Abs(slideSpeed) > 0.001f)
+                {
+                    float sign = Mathf.Sign(slideSpeed);
+                    slideSpeed -= sign * settings.slideResistance;
+                    if (Mathf.Sign(slideSpeed) != sign)
+                        slideSpeed = 0f;
+                }
 
-            float finalTangent = slideSpeed + crawlVelocity;
-            velocity = surfaceTangent * finalTangent;
+                crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, settings.crawlDeceleration * dt);
 
-            float normalVel = Vector2.Dot(velocity, surfaceNormal);
-            if (normalVel < 0f)
-                velocity -= surfaceNormal * normalVel;
+                float finalTangent = slideSpeed + crawlVelocity;
+                velocity = surfaceTangent * finalTangent;
 
-            SnapToSurface();
+                float normalVel = Vector2.Dot(velocity, surfaceNormal);
+                if (normalVel < 0f)
+                    velocity -= surfaceNormal * normalVel;
+
+                SnapToSurface();
+            }
         }
 
         // --- State: Airborne ---
@@ -245,17 +306,84 @@ namespace SlimeJumping.Controller
         {
             // Gravity always applied
             velocity.y += settings.gravity * dt;
+            airborneTimer += dt;
 
             // Land on any surface
             if (isTouchingSurface)
             {
-                // Cancel velocity into surface
-                float normalVel = Vector2.Dot(velocity, surfaceNormal);
-                if (normalVel < 0f)
-                    velocity -= surfaceNormal * normalVel;
+                float surfaceUp = Vector2.Dot(surfaceNormal, Vector2.up);
 
-                currentState = SlimeState.Attached;
-                SnapToSurface();
+                // Ceiling: don't attach, just cancel normal velocity and stay airborne
+                if (surfaceUp < settings.ceilingThreshold)
+                {
+                    float normalVel = Vector2.Dot(velocity, surfaceNormal);
+                    if (normalVel < 0f)
+                        velocity -= surfaceNormal * normalVel;
+                    return;
+                }
+
+                bool isRealFlight = airborneTimer > 0.1f;
+
+                if (isRealFlight && inputReader.IsJumpHeld)
+                {
+                    // Energy conversion: momentum → aim point
+                    float impactSpeed = velocity.magnitude;
+                    float spawnDistance = impactSpeed * settings.conversionRate;
+                    Vector2 aimDir = impactSpeed > 0.01f ? velocity.normalized : surfaceNormal;
+
+                    velocity = Vector2.zero;
+                    crawlVelocity = 0f;
+
+                    if (surfaceUp >= settings.stickSlopeThreshold)
+                        stickTimer = 0f;
+                    else
+                        stickTimer = settings.chargingStickDuration;
+
+                    if (spawnDistance > settings.chargeRadius)
+                    {
+                        // Strong impact: outside circle
+                        spawnDistance = Mathf.Max(spawnDistance, settings.chargeRadius + settings.minOutsideDistance);
+                        aimOffset = aimDir * spawnDistance;
+                        isEnergyConversion = true;
+                        wasOutsideCircle = true;
+                    }
+                    else
+                    {
+                        // Weak impact: normal charging from center
+                        aimOffset = Vector2.zero;
+                        isEnergyConversion = false;
+                        wasOutsideCircle = false;
+                    }
+
+                    driftDirection = -surfaceNormal;
+                    currentState = SlimeState.Charging;
+                    SnapToSurface();
+                    if (chargeVisual != null) chargeVisual.Show();
+                }
+                else if (isRealFlight)
+                {
+                    // Real landing without Space: sticky landing, energy lost
+                    velocity = Vector2.zero;
+                    crawlVelocity = 0f;
+
+                    if (surfaceUp >= settings.stickSlopeThreshold)
+                        stickTimer = 0f;
+                    else
+                        stickTimer = settings.attachedStickDuration;
+
+                    currentState = SlimeState.Attached;
+                    SnapToSurface();
+                }
+                else
+                {
+                    // Corner flicker: preserve tangent velocity (old behavior)
+                    float normalVel = Vector2.Dot(velocity, surfaceNormal);
+                    if (normalVel < 0f)
+                        velocity -= surfaceNormal * normalVel;
+
+                    currentState = SlimeState.Attached;
+                    SnapToSurface();
+                }
                 return;
             }
 
@@ -281,6 +409,9 @@ namespace SlimeJumping.Controller
             aimOffset = Vector2.zero;
             driftDirection = -surfaceNormal;
             velocity = Vector2.zero;
+            stickTimer = 0f;
+            isEnergyConversion = false;
+            wasOutsideCircle = false;
 
             if (chargeVisual != null) chargeVisual.Show();
         }
@@ -305,6 +436,7 @@ namespace SlimeJumping.Controller
             velocity = dir * power;
 
             currentState = SlimeState.Airborne;
+            airborneTimer = 0f;
             postLaunchTimer = settings.postLaunchIgnoreTime;
 
             if (chargeVisual != null) chargeVisual.Hide();
@@ -338,9 +470,12 @@ namespace SlimeJumping.Controller
                 new Vector2(-0.707f, 0.707f), new Vector2(0.707f, 0.707f)
             };
 
-            float bestDist = float.MaxValue;
             normal = Vector2.up;
             col = null;
+            float bestDist = float.MaxValue;
+            float bestScore = -10f;
+            float distTolerance = dist * 0.5f;
+            float inputX = inputReader.MoveInput.x;
 
             foreach (var d in directions)
             {
@@ -348,9 +483,30 @@ namespace SlimeJumping.Controller
                 foreach (var h in hits)
                 {
                     if (h.collider == ignoredCollider) continue;
-                    if (h.distance < bestDist)
+
+                    // How far below the slime is this contact point
+                    Vector2 toHit = h.point - pos;
+                    float below = toHit.sqrMagnitude > 0.0001f
+                        ? Vector2.Dot(toHit.normalized, Vector2.down)
+                        : 0f;
+
+                    // Input alignment: crawling in input dir goes uphill on this surface
+                    // tangent.y = normal.x, score = -tangent.y * inputX = -normal.x * inputX
+                    float inputAlign = Mathf.Abs(inputX) > 0.01f ? -h.normal.x * inputX : 0f;
+
+                    float score = below + inputAlign * 0.5f;
+
+                    if (col == null || h.distance < bestDist - distTolerance)
                     {
                         bestDist = h.distance;
+                        bestScore = score;
+                        normal = h.normal;
+                        col = h.collider;
+                    }
+                    else if (h.distance < bestDist + distTolerance && score > bestScore)
+                    {
+                        bestDist = h.distance;
+                        bestScore = score;
                         normal = h.normal;
                         col = h.collider;
                     }

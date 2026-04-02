@@ -75,7 +75,7 @@ namespace SlimeJumping.Debugging
 
             // Aim line (stretched Image from center to aim point)
             Vector2 offset = worldAimPoint - worldCenter;
-            float ratio = Mathf.Clamp01(offset.magnitude / chargeRadius);
+            float ratio = Mathf.Clamp(offset.magnitude / chargeRadius, 0f, 2f);
 
             if (aimLineImage != null)
             {

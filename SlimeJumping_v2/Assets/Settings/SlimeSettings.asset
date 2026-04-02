@@ -12,15 +12,27 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 60f3adbcd38b21a4ca86bdc61ae75dba, type: 3}
   m_Name: SlimeSettings
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSettings
-  groundMoveSpeed: 3
+  crawlSpeed: 3
+  crawlAcceleration: 10
+  crawlDeceleration: 8
+  slideGravityScale: 0.3
+  slideThreshold: 7
+  slideResistance: 1.5
   chargeRadius: 1.5
   autoDriftSpeed: 1.5
   inputAcceleration: 3
   baseLaunchPower: 8
+  conversionRate: 0.15
+  shrinkSpeed: 2
+  minOutsideDistance: 0.75
+  attachedStickDuration: 0.1
+  chargingStickDuration: 0.2
+  stickSlopeThreshold: 0.7
+  ceilingThreshold: -0.3
   airControlAngularSpeed: 200
   gravity: -15
   slimeRadius: 0.2
-  groundCheckDistance: 0.1
+  surfaceCheckDistance: 0.05
   groundLayer:
     serializedVersion: 2
     m_Bits: 128

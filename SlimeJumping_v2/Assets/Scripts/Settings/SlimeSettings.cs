@@ -19,6 +19,17 @@ namespace SlimeJumping.Settings
         public float inputAcceleration = 3.0f;
         public float baseLaunchPower = 15f;
 
+        [Header("Energy Conversion")]
+        public float conversionRate = 0.15f;
+        public float shrinkSpeed = 2.0f;
+        public float minOutsideDistance = 0.75f;
+
+        [Header("Stick")]
+        public float attachedStickDuration = 0.3f;
+        public float chargingStickDuration = 0.2f;
+        public float stickSlopeThreshold = 0.7f; // surfaceUp above this = floor-like, no stick
+        public float ceilingThreshold = -0.3f; // surfaceUp below this = ceiling, can't attach
+
         [Header("Air Control")]
         public float airControlAngularSpeed = 200f;
 
