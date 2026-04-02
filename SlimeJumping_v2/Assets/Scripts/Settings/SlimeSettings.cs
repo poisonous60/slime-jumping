@@ -22,8 +22,7 @@ namespace SlimeJumping.Settings
 
         [Header("Energy Conversion")]
         public float conversionRate = 0.15f;
-        public float shrinkSpeed = 2.0f;
-        public float minOutsideDistance = 0.75f;
+        public float driftCompensation = 0.7f;
 
         [Header("Stick")]
         public float attachedStickDuration = 0.3f;

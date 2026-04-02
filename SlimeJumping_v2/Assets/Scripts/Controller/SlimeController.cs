@@ -34,9 +34,8 @@ namespace SlimeJumping.Controller
         // Persistent crawl speed (accel/decel model)
         private float crawlVelocity;
 
-        // Energy conversion state
-        private bool isEnergyConversion;
-        private bool wasOutsideCircle;
+        // Active charge radius (expanded on energy conversion)
+        private float activeChargeRadius;
 
         // Stick timer (delay before slide starts)
         private float stickTimer;
@@ -218,38 +217,29 @@ namespace SlimeJumping.Controller
             float dt = Time.deltaTime;
             Vector2 center = (Vector2)transform.position;
 
-            bool currentlyOutside = aimOffset.magnitude > settings.chargeRadius;
+            // Auto-drift outward (compensated for expanded radius)
+            float radiusRatio = activeChargeRadius / settings.chargeRadius;
+            float activeDriftSpeed = settings.autoDriftSpeed * Mathf.Lerp(1f, radiusRatio, settings.driftCompensation);
 
-            if (currentlyOutside)
-            {
-                // Outside circle: shrink toward center
-                aimOffset = Vector2.MoveTowards(aimOffset, Vector2.zero, settings.shrinkSpeed * dt);
-            }
+            if (aimOffset.sqrMagnitude > 0.0001f)
+                aimOffset += aimOffset.normalized * activeDriftSpeed * dt;
             else
-            {
-                // Inside circle: normal auto-drift outward
-                if (aimOffset.sqrMagnitude > 0.0001f)
-                    aimOffset += aimOffset.normalized * settings.autoDriftSpeed * dt;
-                else
-                    aimOffset += driftDirection * settings.autoDriftSpeed * dt;
-            }
+                aimOffset += driftDirection * activeDriftSpeed * dt;
 
             // WASD: 2D acceleration on aim offset
             Vector2 input = inputReader.MoveInput;
             aimOffset += input * settings.inputAcceleration * dt;
 
-            // Auto-launch: only inside→outside crossing
-            if (!wasOutsideCircle && aimOffset.magnitude >= settings.chargeRadius)
+            // Auto-launch when reaching edge
+            if (aimOffset.magnitude >= activeChargeRadius)
             {
-                aimOffset = aimOffset.normalized * settings.chargeRadius;
+                aimOffset = aimOffset.normalized * activeChargeRadius;
                 Launch();
                 return;
             }
 
-            wasOutsideCircle = aimOffset.magnitude > settings.chargeRadius;
-
             if (chargeVisual != null)
-                chargeVisual.UpdateVisual(center, center + aimOffset, settings.chargeRadius);
+                chargeVisual.UpdateVisual(center, center + aimOffset, activeChargeRadius);
         }
 
         private void FixedUpdateCharging(float dt)
@@ -326,10 +316,9 @@ namespace SlimeJumping.Controller
 
                 if (isRealFlight && inputReader.IsJumpHeld)
                 {
-                    // Energy conversion: momentum → aim point
+                    // Energy conversion: momentum → expanded charge circle
                     float impactSpeed = velocity.magnitude;
                     float spawnDistance = impactSpeed * settings.conversionRate;
-                    Vector2 aimDir = impactSpeed > 0.01f ? velocity.normalized : surfaceNormal;
 
                     velocity = Vector2.zero;
                     crawlVelocity = 0f;
@@ -339,21 +328,8 @@ namespace SlimeJumping.Controller
                     else
                         stickTimer = settings.chargingStickDuration;
 
-                    if (spawnDistance > settings.chargeRadius)
-                    {
-                        // Strong impact: outside circle
-                        spawnDistance = Mathf.Max(spawnDistance, settings.chargeRadius + settings.minOutsideDistance);
-                        aimOffset = aimDir * spawnDistance;
-                        isEnergyConversion = true;
-                        wasOutsideCircle = true;
-                    }
-                    else
-                    {
-                        // Weak impact: normal charging from center
-                        aimOffset = Vector2.zero;
-                        isEnergyConversion = false;
-                        wasOutsideCircle = false;
-                    }
+                    activeChargeRadius = Mathf.Max(spawnDistance, settings.chargeRadius);
+                    aimOffset = Vector2.zero;
 
                     driftDirection = -surfaceNormal;
                     currentState = SlimeState.Charging;
@@ -411,8 +387,7 @@ namespace SlimeJumping.Controller
             driftDirection = -surfaceNormal;
             velocity = Vector2.zero;
             stickTimer = 0f;
-            isEnergyConversion = false;
-            wasOutsideCircle = false;
+            activeChargeRadius = settings.chargeRadius;
 
             if (chargeVisual != null) chargeVisual.Show();
         }
