@@ -20,14 +20,6 @@ SlimeJumping_v2 is a **2.5D platformer** built in **Unity 6** (6000.3.11f1) wher
 - `docs/` — Design documents (in Korean). The primary design reference is `SlimeJumping_메커닉_설계_v3.md`.
 - `SlimeJumping_AssetVault/` — External asset packs stored outside the Unity project.
 
-## Unity Project Configuration
-
-- **Unity version**: 6000.3.11f1
-- **Render pipeline**: URP 17.3.0 with separate PC and Mobile renderer/quality assets in `Assets/Settings/`
-- **Input**: New Input System 1.19.0 (action map at `Assets/InputSystem_Actions.inputactions`)
-- **Key packages**: AI Navigation 2.0.11, Timeline 1.8.11, Visual Scripting 1.9.10
-- **CLI connector**: `com.youngwoocho02.unity-cli-connector` — an editor HTTP server that lets external tools (like Claude Code) execute C# in the editor, run tests, take screenshots, and manage the editor. Registered via git URL in `Packages/manifest.json`.
-
 
 ## Development Commands
 

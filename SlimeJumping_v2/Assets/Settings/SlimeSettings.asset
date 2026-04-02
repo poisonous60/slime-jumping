@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 60f3adbcd38b21a4ca86bdc61ae75dba, type: 3}
+  m_Name: SlimeSettings
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSettings
+  groundMoveSpeed: 5
+  baseLaunchPower: 15
+  fullChargeTime: 1
+  baseRotationSpeed: 180
+  aimResistFactor: 0.85
+  maxAimAngle: 85
+  airControlAccel: 8
+  slimeRadius: 0.4
+  groundCheckDistance: 0.1
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 128
+  postLaunchIgnoreTime: 0.05
