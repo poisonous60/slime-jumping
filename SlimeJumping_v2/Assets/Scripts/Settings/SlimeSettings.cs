@@ -8,17 +8,14 @@ namespace SlimeJumping.Settings
         [Header("Ground Movement")]
         public float groundMoveSpeed = 5f;
 
-        [Header("Charge Jump")]
+        [Header("Charge Circle")]
+        public float chargeRadius = 1.5f;
+        public float autoDriftSpeed = 1.5f;
+        public float inputAcceleration = 3.0f;
         public float baseLaunchPower = 15f;
-        public float fullChargeTime = 1f;
-
-        [Header("Aim Control")]
-        public float baseRotationSpeed = 180f;
-        [Range(0f, 1f)] public float aimResistFactor = 0.85f;
-        public float maxAimAngle = 85f;
 
         [Header("Air Control")]
-        public float airControlAccel = 8f;
+        public float airControlAngularSpeed = 200f;
 
         [Header("Physics")]
         public float gravity = -20f;

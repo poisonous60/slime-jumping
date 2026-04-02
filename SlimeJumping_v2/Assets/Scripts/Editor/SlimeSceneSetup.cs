@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEditor;
 using SlimeJumping.Settings;
 using SlimeJumping.Input;
@@ -24,7 +25,6 @@ namespace SlimeJumping.Editor
             }
 
             var settings = ScriptableObject.CreateInstance<SlimeSettings>();
-            // Set default ground layer to Environment (layer 7)
             var serialized = new SerializedObject(settings);
             var layerProp = serialized.FindProperty("groundLayer");
             layerProp.intValue = 1 << 7;
@@ -47,21 +47,24 @@ namespace SlimeJumping.Editor
                 slimeGo.transform.position = new Vector3(0f, 1f, 0f);
             }
 
-            // Clean missing scripts from Slime and children
             CleanMissingScripts(slimeGo);
 
-            // Remove SlimeVisual child if it exists (no longer needed)
-            var visual = slimeGo.transform.Find("SlimeVisual");
-            if (visual != null)
+            // Remove old children (SlimeVisual, AimLine, CircleOutline)
+            string[] oldChildren = { "SlimeVisual", "AimLine", "CircleOutline" };
+            foreach (var name in oldChildren)
             {
-                CleanMissingScripts(visual.gameObject);
-                Object.DestroyImmediate(visual.gameObject);
+                var t = slimeGo.transform.Find(name);
+                if (t != null)
+                {
+                    CleanMissingScripts(t.gameObject);
+                    Object.DestroyImmediate(t.gameObject);
+                }
             }
 
             // --- Rigidbody2D ---
             var rb = slimeGo.GetComponent<Rigidbody2D>();
             if (rb == null) rb = slimeGo.AddComponent<Rigidbody2D>();
-            rb.gravityScale = 1f;
+            rb.gravityScale = 0f;
             rb.constraints = RigidbodyConstraints2D.FreezeRotation;
             rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
@@ -70,18 +73,15 @@ namespace SlimeJumping.Editor
             var col = slimeGo.GetComponent<CircleCollider2D>();
             if (col == null) col = slimeGo.AddComponent<CircleCollider2D>();
             col.radius = 0.4f;
+            var phyMat = new PhysicsMaterial2D("SlimeFrictionless") { friction = 0f, bounciness = 0f };
+            col.sharedMaterial = phyMat;
 
-            // Zero-friction physics material
-            var mat = new PhysicsMaterial2D("SlimeFrictionless") { friction = 0f, bounciness = 0f };
-            col.sharedMaterial = mat;
-
-            // --- SpriteRenderer (green circle) ---
+            // --- SpriteRenderer ---
             var sr = slimeGo.GetComponent<SpriteRenderer>();
             if (sr == null) sr = slimeGo.AddComponent<SpriteRenderer>();
             sr.sprite = MakeCircleSprite();
             sr.color = new Color(0.2f, 0.9f, 0.3f, 0.9f);
             sr.sortingOrder = 1;
-            // Scale sprite to match collider radius (sprite is 1x1 unit, radius 0.4 -> diameter 0.8)
             slimeGo.transform.localScale = new Vector3(0.8f, 0.8f, 1f);
 
             // --- SlimeInputReader ---
@@ -95,35 +95,60 @@ namespace SlimeJumping.Editor
                 soInput.FindProperty("inputActionAsset").objectReferenceValue = inputAsset;
                 soInput.ApplyModifiedProperties();
             }
-            else
-            {
-                Debug.LogWarning("InputActionAsset not found at " + InputActionsPath);
-            }
 
-            // --- SlimeChargeVisual ---
+            // --- Charge Visual Canvas (Screen Space Overlay) ---
             var chargeVis = slimeGo.GetComponent<SlimeChargeVisual>();
             if (chargeVis == null) chargeVis = slimeGo.AddComponent<SlimeChargeVisual>();
 
-            // Create or find AimLine child
-            var aimLineTransform = slimeGo.transform.Find("AimLine");
-            if (aimLineTransform == null)
+            // Remove old LineRenderer components if any
+            foreach (var lr in slimeGo.GetComponentsInChildren<LineRenderer>())
+                Object.DestroyImmediate(lr.gameObject == slimeGo ? (Object)lr : lr.gameObject);
+
+            // Find or create Canvas
+            var canvasGo = GameObject.Find("ChargeVisualCanvas");
+            if (canvasGo == null)
             {
-                var aimLineGo = new GameObject("AimLine");
-                aimLineGo.transform.SetParent(slimeGo.transform, false);
-                aimLineTransform = aimLineGo.transform;
+                canvasGo = new GameObject("ChargeVisualCanvas");
+                var canvas = canvasGo.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvas.sortingOrder = 100;
+                canvasGo.AddComponent<CanvasScaler>();
             }
+            var canvasComp = canvasGo.GetComponent<Canvas>();
 
-            var lineRenderer = aimLineTransform.GetComponent<LineRenderer>();
-            if (lineRenderer == null) lineRenderer = aimLineTransform.gameObject.AddComponent<LineRenderer>();
-            lineRenderer.positionCount = 2;
-            lineRenderer.startWidth = 0.05f;
-            lineRenderer.endWidth = 0.05f;
-            lineRenderer.useWorldSpace = true;
-            lineRenderer.material = new Material(Shader.Find("Sprites/Default"));
-            lineRenderer.sortingOrder = 2;
+            // Circle outline (ring image)
+            var circleRT = FindOrCreateUI(canvasGo.transform, "ChargeCircle");
+            var circleImg = circleRT.GetComponent<Image>();
+            circleImg.sprite = MakeRingSprite();
+            circleImg.color = new Color(1f, 1f, 1f, 0.4f);
+            circleImg.raycastTarget = false;
+            circleRT.sizeDelta = new Vector2(300f, 300f);
+            circleRT.gameObject.SetActive(false);
 
+            // Aim dot
+            var aimDotRT = FindOrCreateUI(canvasGo.transform, "AimDot");
+            var aimDotImg = aimDotRT.GetComponent<Image>();
+            aimDotImg.sprite = MakeCircleSpriteUI();
+            aimDotImg.color = Color.white;
+            aimDotImg.raycastTarget = false;
+            aimDotRT.sizeDelta = new Vector2(10f, 10f);
+            aimDotRT.gameObject.SetActive(false);
+
+            // Aim line (stretched rect)
+            var aimLineRT = FindOrCreateUI(canvasGo.transform, "AimLine");
+            var aimLineImg = aimLineRT.GetComponent<Image>();
+            aimLineImg.color = Color.green;
+            aimLineImg.raycastTarget = false;
+            aimLineRT.pivot = new Vector2(0f, 0.5f);
+            aimLineRT.sizeDelta = new Vector2(0f, 3f);
+            aimLineRT.gameObject.SetActive(false);
+
+            // Wire references
             var soVis = new SerializedObject(chargeVis);
-            soVis.FindProperty("aimLine").objectReferenceValue = lineRenderer;
+            soVis.FindProperty("canvas").objectReferenceValue = canvasComp;
+            soVis.FindProperty("circleImage").objectReferenceValue = circleRT;
+            soVis.FindProperty("aimDotImage").objectReferenceValue = aimDotRT;
+            soVis.FindProperty("aimLineImage").objectReferenceValue = aimLineImg;
             soVis.ApplyModifiedProperties();
 
             // --- SlimeController ---
@@ -132,9 +157,7 @@ namespace SlimeJumping.Editor
 
             var slimeSettings = AssetDatabase.LoadAssetAtPath<SlimeSettings>(SettingsPath);
             if (slimeSettings == null)
-            {
                 Debug.LogWarning("SlimeSettings not found. Run 'SlimeJumping/Create Slime Settings' first.");
-            }
 
             var soCtrl = new SerializedObject(controller);
             soCtrl.FindProperty("inputReader").objectReferenceValue = inputReader;
@@ -142,13 +165,25 @@ namespace SlimeJumping.Editor
             soCtrl.FindProperty("chargeVisual").objectReferenceValue = chargeVis;
             soCtrl.ApplyModifiedProperties();
 
-            // Mark scene dirty
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
                 UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene()
             );
 
             Debug.Log("Simple Slime setup complete!");
             Selection.activeGameObject = slimeGo;
+        }
+
+        private static RectTransform FindOrCreateUI(Transform parent, string name)
+        {
+            var t = parent.Find(name);
+            if (t != null) return t.GetComponent<RectTransform>();
+
+            var go = new GameObject(name, typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            return rt;
         }
 
         private static void CleanMissingScripts(GameObject go)
@@ -160,21 +195,46 @@ namespace SlimeJumping.Editor
 
         private static Sprite MakeCircleSprite()
         {
-            // Try to use Unity's built-in Knob sprite
             var knob = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
             if (knob != null) return knob;
 
-            // Fallback: create a simple white circle texture
             int size = 64;
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
             float center = size / 2f;
             float radius = center - 1f;
             for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                    tex.SetPixel(x, y, Vector2.Distance(new Vector2(x, y), new Vector2(center, center)) <= radius ? Color.white : Color.clear);
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
+        }
+
+        private static Sprite MakeCircleSpriteUI()
+        {
+            int size = 32;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            float center = size / 2f;
+            float radius = center - 1f;
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                    tex.SetPixel(x, y, Vector2.Distance(new Vector2(x, y), new Vector2(center, center)) <= radius ? Color.white : Color.clear);
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
+        }
+
+        private static Sprite MakeRingSprite()
+        {
+            int size = 128;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            float center = size / 2f;
+            float outerR = center - 1f;
+            float innerR = outerR - 3f;
+            for (int y = 0; y < size; y++)
             {
                 for (int x = 0; x < size; x++)
                 {
                     float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
-                    tex.SetPixel(x, y, dist <= radius ? Color.white : Color.clear);
+                    tex.SetPixel(x, y, dist >= innerR && dist <= outerR ? Color.white : Color.clear);
                 }
             }
             tex.Apply();

@@ -12,16 +12,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 60f3adbcd38b21a4ca86bdc61ae75dba, type: 3}
   m_Name: SlimeSettings
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSettings
-  groundMoveSpeed: 5
-  baseLaunchPower: 15
-  fullChargeTime: 1
-  baseRotationSpeed: 180
-  aimResistFactor: 0.85
-  maxAimAngle: 85
-  airControlAccel: 8
-  slimeRadius: 0.4
+  groundMoveSpeed: 3
+  chargeRadius: 1.5
+  autoDriftSpeed: 1.5
+  inputAcceleration: 3
+  baseLaunchPower: 8
+  airControlAngularSpeed: 200
+  gravity: -15
+  slimeRadius: 0.2
   groundCheckDistance: 0.1
   groundLayer:
     serializedVersion: 2
     m_Bits: 128
   postLaunchIgnoreTime: 0.05
+  launchClearanceThreshold: 0.05
+  maxIgnoreTime: 0.15

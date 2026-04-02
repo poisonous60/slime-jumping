@@ -17,12 +17,9 @@ namespace SlimeJumping.Controller
         private enum SlimeState { Grounded, Charging, Airborne }
         private SlimeState currentState;
 
-        // Charge state
-        private float chargeTimer;
-        private float chargeRatio;
-        private float initialAimAngle;
-        private float currentAimOffset;
-        private float aimAngle;
+        // Judgment circle charge state
+        private Vector2 aimPoint;
+        private Vector2 driftDirection;
 
         // Post-launch input ignore
         private float postLaunchTimer;
@@ -46,7 +43,7 @@ namespace SlimeJumping.Controller
             circleCollider = GetComponent<CircleCollider2D>();
             visualTransform = transform.Find("SlimeVisual");
 
-            rb.gravityScale = 0f; // Manual gravity
+            rb.gravityScale = 0f;
             rb.constraints = RigidbodyConstraints2D.FreezeRotation;
             rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
@@ -96,9 +93,7 @@ namespace SlimeJumping.Controller
             }
 
             if (currentState == SlimeState.Charging)
-            {
                 UpdateCharging();
-            }
         }
 
         private void FixedUpdate()
@@ -138,33 +133,38 @@ namespace SlimeJumping.Controller
             velocity = new Vector2(moveX * settings.groundMoveSpeed, 0f);
         }
 
-        // --- State: Charging ---
+        // --- State: Charging (Judgment Circle) ---
 
         private void UpdateCharging()
         {
-            chargeTimer += Time.deltaTime;
-            float t = Mathf.Clamp01(chargeTimer / settings.fullChargeTime);
-            chargeRatio = t;
+            float dt = Time.deltaTime;
+            Vector2 center = (Vector2)transform.position;
 
-            // Aim rotation with inertia
-            float rotSpeed = settings.baseRotationSpeed * (1f - chargeRatio * settings.aimResistFactor);
-            currentAimOffset -= inputReader.MoveInput.x * rotSpeed * Time.deltaTime;
-            currentAimOffset = Mathf.Clamp(currentAimOffset, -settings.maxAimAngle, settings.maxAimAngle);
-            aimAngle = initialAimAngle + currentAimOffset;
+            // Auto-drift: aim point moves toward surface (opposite of normal)
+            aimPoint += driftDirection * settings.autoDriftSpeed * dt;
+
+            // WASD: 2D acceleration on aim point
+            Vector2 input = inputReader.MoveInput;
+            aimPoint += input * settings.inputAcceleration * dt;
+
+            // Check if aim point reached circle edge → auto-launch
+            Vector2 offset = aimPoint - center;
+            if (offset.magnitude >= settings.chargeRadius)
+            {
+                // Clamp to edge before launching
+                aimPoint = center + offset.normalized * settings.chargeRadius;
+                Launch();
+                return;
+            }
 
             if (chargeVisual != null)
-                chargeVisual.UpdateVisual(chargeRatio, aimAngle, transform.position);
-
-            // Auto-launch at full charge
-            if (chargeTimer >= settings.fullChargeTime)
-                Launch();
+                chargeVisual.UpdateVisual(center, aimPoint, settings.chargeRadius);
         }
 
         private void FixedUpdateCharging()
         {
             velocity = Vector2.zero;
 
-            // Cancel charge if ground is lost
             if (!isGrounded)
             {
                 currentState = SlimeState.Airborne;
@@ -181,17 +181,20 @@ namespace SlimeJumping.Controller
 
             if (isGrounded)
             {
-                // Zero out downward velocity on landing
                 if (velocity.y < 0f) velocity.y = 0f;
                 currentState = SlimeState.Grounded;
                 return;
             }
 
-            // Air control: weak horizontal steering
+            // Air control: rotate velocity direction, preserve speed
             float inputX = inputReader.MoveInput.x;
-            if (Mathf.Abs(inputX) > 0.01f)
+            float speed = velocity.magnitude;
+            if (speed > 0.01f && Mathf.Abs(inputX) > 0.01f)
             {
-                velocity.x += inputX * settings.airControlAccel * dt;
+                float angle = Mathf.Atan2(velocity.y, velocity.x);
+                float maxDelta = settings.airControlAngularSpeed * Mathf.Deg2Rad * dt / speed;
+                angle += inputX * maxDelta;
+                velocity = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
             }
         }
 
@@ -202,13 +205,8 @@ namespace SlimeJumping.Controller
             if (currentState != SlimeState.Grounded || postLaunchTimer > 0f) return;
 
             currentState = SlimeState.Charging;
-            chargeTimer = 0f;
-            chargeRatio = 0f;
-            currentAimOffset = 0f;
-
-            // Initial aim = surface normal angle (straight up on flat ground)
-            initialAimAngle = Mathf.Atan2(groundNormal.y, groundNormal.x) * Mathf.Rad2Deg;
-            aimAngle = initialAimAngle;
+            aimPoint = (Vector2)transform.position;
+            driftDirection = -groundNormal; // drift toward surface
 
             velocity = Vector2.zero;
 
@@ -236,9 +234,13 @@ namespace SlimeJumping.Controller
             ignoredCollider = hit.collider;
             ignoreTimer = settings.maxIgnoreTime;
 
-            float launchSpeed = settings.baseLaunchPower * chargeRatio;
-            Vector2 dir = AngleToVector2(aimAngle);
-            velocity = dir * launchSpeed;
+            // Judgment circle launch: direction = opposite of offset, power = proportional to distance
+            Vector2 center = (Vector2)transform.position;
+            Vector2 offset = aimPoint - center;
+            float ratio = offset.magnitude / settings.chargeRadius;
+            float power = ratio * settings.baseLaunchPower;
+            Vector2 dir = offset.sqrMagnitude > 0.0001f ? -offset.normalized : Vector2.up;
+            velocity = dir * power;
 
             currentState = SlimeState.Airborne;
             postLaunchTimer = settings.postLaunchIgnoreTime;
@@ -275,26 +277,18 @@ namespace SlimeJumping.Controller
                 mask
             );
 
-            foreach (var hit in hits)
+            foreach (var h in hits)
             {
-                if (hit.collider == ignoredCollider) continue;
-                if (hit.normal.y > 0.7f)
+                if (h.collider == ignoredCollider) continue;
+                if (h.normal.y > 0.7f)
                 {
-                    normal = hit.normal;
+                    normal = h.normal;
                     return true;
                 }
             }
 
             normal = Vector2.up;
             return false;
-        }
-
-        // --- Helpers ---
-
-        private static Vector2 AngleToVector2(float degrees)
-        {
-            float rad = degrees * Mathf.Deg2Rad;
-            return new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
         }
     }
 }
