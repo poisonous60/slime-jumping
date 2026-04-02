@@ -20,16 +20,18 @@ MonoBehaviour:
   slideResistance: 1.5
   chargeRadius: 1.5
   autoDriftSpeed: 1.5
-  inputAcceleration: 3
+  inputAcceleration: 1
   baseLaunchPower: 8
-  conversionRate: 0.15
-  shrinkSpeed: 2
-  minOutsideDistance: 0.75
+  minLaunchRatio: 0.05
+  heightRestorationRatio: 0.9
+  driftCompensation: 0.9
   attachedStickDuration: 0.1
   chargingStickDuration: 0.2
   stickSlopeThreshold: 0.7
   ceilingThreshold: -0.3
-  airControlAngularSpeed: 200
+  airMaxHorizontalSpeed: 5
+  airAcceleration: 0
+  airDeceleration: 0
   gravity: -15
   slimeRadius: 0.2
   surfaceCheckDistance: 0.05

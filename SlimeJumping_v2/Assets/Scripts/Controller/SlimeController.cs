@@ -228,7 +228,22 @@ namespace SlimeJumping.Controller
 
             // WASD: 2D acceleration on aim offset
             Vector2 input = inputReader.MoveInput;
+            Vector2 prevAim = aimOffset;
             aimOffset += input * settings.inputAcceleration * dt;
+
+            // Clamp angular speed
+            if (prevAim.sqrMagnitude > 0.0001f && aimOffset.sqrMagnitude > 0.0001f)
+            {
+                float prevAngle = Mathf.Atan2(prevAim.y, prevAim.x) * Mathf.Rad2Deg;
+                float newAngle = Mathf.Atan2(aimOffset.y, aimOffset.x) * Mathf.Rad2Deg;
+                float delta = Mathf.DeltaAngle(prevAngle, newAngle);
+                float maxDelta = settings.maxAimAngularSpeed * dt;
+                delta = Mathf.Clamp(delta, -maxDelta, maxDelta);
+
+                float clampedAngle = (prevAngle + delta) * Mathf.Deg2Rad;
+                float radius = aimOffset.magnitude;
+                aimOffset = new Vector2(Mathf.Cos(clampedAngle), Mathf.Sin(clampedAngle)) * radius;
+            }
 
             // Auto-launch when reaching edge
             if (aimOffset.magnitude >= activeChargeRadius)
@@ -318,7 +333,9 @@ namespace SlimeJumping.Controller
                 {
                     // Energy conversion: momentum → expanded charge circle
                     float impactSpeed = velocity.magnitude;
-                    float spawnDistance = impactSpeed * settings.conversionRate;
+                    float speedRatio = Mathf.Sqrt(settings.heightRestorationRatio);
+                    float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
+                    float spawnDistance = impactSpeed * effectiveRate;
 
                     velocity = Vector2.zero;
                     crawlVelocity = 0f;
