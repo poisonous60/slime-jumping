@@ -18,6 +18,7 @@ namespace SlimeJumping.Settings
         public float autoDriftSpeed = 1.5f;
         public float inputAcceleration = 3.0f;
         public float baseLaunchPower = 15f;
+        public float minLaunchRatio = 0.05f;
 
         [Header("Energy Conversion")]
         public float conversionRate = 0.15f;
@@ -32,6 +33,7 @@ namespace SlimeJumping.Settings
 
         [Header("Air Control")]
         public float airControlAngularSpeed = 200f;
+        public float maxAirControlDelta = 45f;
 
         [Header("Physics")]
         public float gravity = -20f;

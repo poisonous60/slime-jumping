@@ -394,6 +394,7 @@ namespace SlimeJumping.Controller
             {
                 float angle = Mathf.Atan2(velocity.y, velocity.x);
                 float maxDelta = settings.airControlAngularSpeed * Mathf.Deg2Rad * dt / speed;
+                maxDelta = Mathf.Min(maxDelta, settings.maxAirControlDelta * Mathf.Deg2Rad);
                 angle += inputX * maxDelta;
                 velocity = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
             }
@@ -419,6 +420,16 @@ namespace SlimeJumping.Controller
         private void HandleJumpReleased()
         {
             if (currentState != SlimeState.Charging) return;
+
+            float ratio = aimOffset.magnitude / settings.chargeRadius;
+            if (ratio < settings.minLaunchRatio)
+            {
+                Vector2 dir = aimOffset.sqrMagnitude > 0.0001f
+                    ? aimOffset.normalized
+                    : driftDirection;
+                aimOffset = dir * settings.chargeRadius * settings.minLaunchRatio;
+            }
+
             Launch();
         }
 
@@ -445,6 +456,12 @@ namespace SlimeJumping.Controller
         private void UpdateIgnoredCollider(float dt)
         {
             if (ignoredCollider == null) return;
+
+            if (!ignoredCollider.enabled || !ignoredCollider.gameObject.activeInHierarchy)
+            {
+                ignoredCollider = null;
+                return;
+            }
 
             ignoreTimer -= dt;
 
