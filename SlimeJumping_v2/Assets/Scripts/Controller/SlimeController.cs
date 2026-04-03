@@ -314,8 +314,8 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateAirborne(float dt)
         {
-            // Gravity with W/S modifier
-            float inputY = inputReader.MoveInput.y;
+            // Gravity with W/S modifier (last-input-wins for air control)
+            float inputY = inputReader.LastInputMove.y;
             float gravityScale = 1f;
             if (inputY > 0.1f) gravityScale = settings.floatGravityScale;
             else if (inputY < -0.1f) gravityScale = settings.diveGravityScale;
@@ -393,8 +393,8 @@ namespace SlimeJumping.Controller
                 return;
             }
 
-            // Air control: horizontal acceleration with speed cap
-            float inputX = inputReader.MoveInput.x;
+            // Air control: horizontal acceleration with speed cap (last-input-wins)
+            float inputX = inputReader.LastInputMove.x;
             if (Mathf.Abs(inputX) > 0.01f)
             {
                 float targetVx = inputX * settings.airMaxHorizontalSpeed;

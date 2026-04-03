@@ -9,6 +9,8 @@ namespace SlimeJumping.Input
         [SerializeField] private InputActionAsset inputActionAsset;
 
         public Vector2 MoveInput { get; private set; }
+        /// <summary>Last-input-wins variant. Use for air control so charging→airborne transitions feel responsive.</summary>
+        public Vector2 LastInputMove { get; private set; }
         public bool IsJumpHeld { get; private set; }
 
         public event Action OnJumpPressed;
@@ -16,6 +18,10 @@ namespace SlimeJumping.Input
 
         private InputAction moveAction;
         private InputAction jumpAction;
+
+        // Last-input-wins tracking
+        private bool prevLeft, prevRight, prevUp, prevDown;
+        private float lastHDir, lastVDir;
 
         private void OnEnable()
         {
@@ -40,6 +46,23 @@ namespace SlimeJumping.Input
         private void Update()
         {
             MoveInput = moveAction.ReadValue<Vector2>();
+
+            var kb = Keyboard.current;
+            if (kb == null) { LastInputMove = MoveInput; return; }
+
+            bool left = kb.aKey.isPressed, right = kb.dKey.isPressed;
+            bool up = kb.wKey.isPressed, down = kb.sKey.isPressed;
+
+            if (left && !prevLeft) lastHDir = -1f;
+            if (right && !prevRight) lastHDir = 1f;
+            if (down && !prevDown) lastVDir = -1f;
+            if (up && !prevUp) lastVDir = 1f;
+
+            float hx = (left && right) ? lastHDir : left ? -1f : right ? 1f : 0f;
+            float vy = (down && up) ? lastVDir : down ? -1f : up ? 1f : 0f;
+            LastInputMove = new Vector2(hx, vy);
+
+            prevLeft = left; prevRight = right; prevUp = up; prevDown = down;
         }
 
         private void HandleJumpStarted(InputAction.CallbackContext ctx)
