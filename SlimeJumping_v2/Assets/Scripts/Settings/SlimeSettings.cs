@@ -20,6 +20,8 @@ namespace SlimeJumping.Settings
         public float baseLaunchPower = 15f;
         public float minLaunchRatio = 0.05f;
         public float maxAimAngularSpeed = 180f;
+        public float chargingCoyoteTime = 0.2f;
+        public float coyoteGraceTime = 0.1f;
 
         [Header("Energy Conversion")]
         public float heightRestorationRatio = 2.25f;

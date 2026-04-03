@@ -47,6 +47,11 @@ namespace SlimeJumping.Controller
         private float launchSpeed;
         private float launchHeight;
 
+        // Charging coyote time (grace period after leaving surface)
+        private float coyoteTimer;
+        private Vector2 lastSurfaceNormal;
+        private Collider2D lastSurfaceCollider;
+
         // Surface contact info
         private Vector2 surfaceNormal;
         private Vector2 surfaceTangent;
@@ -264,49 +269,69 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateCharging(float dt)
         {
-            if (!isTouchingSurface || Vector2.Dot(surfaceNormal, Vector2.up) < settings.ceilingThreshold)
+            bool onValidSurface = isTouchingSurface
+                && Vector2.Dot(surfaceNormal, Vector2.up) >= settings.ceilingThreshold;
+
+            if (onValidSurface)
             {
+                // On surface: reset coyote, remember surface for grace period
+                coyoteTimer = settings.chargingCoyoteTime;
+                lastSurfaceNormal = surfaceNormal;
+                lastSurfaceCollider = surfaceCollider;
+
+                // Stick: delay before slide starts (aiming still runs via UpdateCharging)
+                if (stickTimer > 0f)
+                {
+                    stickTimer -= dt;
+                    velocity = Vector2.zero;
+                    SnapToSurface();
+                }
+                else
+                {
+                    // Slime still slides on walls during charging (same physics as Attached, no crawl input)
+                    Vector2 gravityVec = new Vector2(0f, settings.gravity);
+                    float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
+                    if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
+                        gravAlongTangent = 0f;
+                    float slideSpeed = gravAlongTangent * settings.slideGravityScale;
+
+                    if (Mathf.Abs(slideSpeed) > 0.001f)
+                    {
+                        float sign = Mathf.Sign(slideSpeed);
+                        slideSpeed -= sign * settings.slideResistance;
+                        if (Mathf.Sign(slideSpeed) != sign)
+                            slideSpeed = 0f;
+                    }
+
+                    crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, settings.crawlDeceleration * dt);
+
+                    float finalTangent = slideSpeed + crawlVelocity;
+                    velocity = surfaceTangent * finalTangent;
+
+                    float normalVel = Vector2.Dot(velocity, surfaceNormal);
+                    if (normalVel < 0f)
+                        velocity -= surfaceNormal * normalVel;
+
+                    SnapToSurface();
+                }
+            }
+            else if (coyoteTimer > 0f)
+            {
+                // Coyote: off surface but still charging
+                coyoteTimer -= dt;
+                float elapsed = settings.chargingCoyoteTime - coyoteTimer;
+                if (elapsed > settings.coyoteGraceTime)
+                    velocity.y += settings.gravity * dt;
+                else
+                    velocity = Vector2.zero; // Grace: freeze at edge
+            }
+            else
+            {
+                // Coyote expired: cancel to Airborne
                 crawlVelocity = 0f;
                 airborneTimer = 0f;
                 currentState = SlimeState.Airborne;
                 if (chargeVisual != null) chargeVisual.Hide();
-                return;
-            }
-
-            // Stick: delay before slide starts (aiming still runs via UpdateCharging)
-            if (stickTimer > 0f)
-            {
-                stickTimer -= dt;
-                velocity = Vector2.zero;
-                SnapToSurface();
-            }
-            else
-            {
-                // Slime still slides on walls during charging (same physics as Attached, no crawl input)
-                Vector2 gravityVec = new Vector2(0f, settings.gravity);
-                float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
-                if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
-                    gravAlongTangent = 0f;
-                float slideSpeed = gravAlongTangent * settings.slideGravityScale;
-
-                if (Mathf.Abs(slideSpeed) > 0.001f)
-                {
-                    float sign = Mathf.Sign(slideSpeed);
-                    slideSpeed -= sign * settings.slideResistance;
-                    if (Mathf.Sign(slideSpeed) != sign)
-                        slideSpeed = 0f;
-                }
-
-                crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, settings.crawlDeceleration * dt);
-
-                float finalTangent = slideSpeed + crawlVelocity;
-                velocity = surfaceTangent * finalTangent;
-
-                float normalVel = Vector2.Dot(velocity, surfaceNormal);
-                if (normalVel < 0f)
-                    velocity -= surfaceNormal * normalVel;
-
-                SnapToSurface();
             }
         }
 
@@ -452,7 +477,7 @@ namespace SlimeJumping.Controller
         private void Launch()
         {
             crawlVelocity = 0f;
-            ignoredCollider = surfaceCollider;
+            ignoredCollider = isTouchingSurface ? surfaceCollider : lastSurfaceCollider;
             ignoreTimer = settings.maxIgnoreTime;
 
             float ratio = aimOffset.magnitude / settings.chargeRadius;
