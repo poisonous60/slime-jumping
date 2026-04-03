@@ -35,6 +35,8 @@ namespace SlimeJumping.Settings
         public float airMaxHorizontalSpeed = 5f;
         public float airAcceleration = 20f;
         public float airDeceleration = 15f;
+        public float floatGravityScale = 0.5f;
+        public float diveGravityScale = 2.0f;
 
         [Header("Physics")]
         public float gravity = -20f;

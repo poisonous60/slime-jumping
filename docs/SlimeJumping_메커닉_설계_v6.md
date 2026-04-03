@@ -1,4 +1,4 @@
-# SlimeJumping — 핵심 메커닉 설계 v3
+# SlimeJumping — 핵심 메커닉 설계 v6
 
 ## 컨셉
 
@@ -194,11 +194,16 @@ direction = -aimOffset.normalized    // 압축 반대 방향
 ### 충돌 처리
 
 ```
-impactSpeed = velocity.magnitude          // 전체 속도 벡터 사용
-spawnDistance = impactSpeed * conversionRate
-activeChargeRadius = max(spawnDistance, chargeRadius)   // 확장 또는 기본
-aimOffset = Vector2.zero                  // 항상 중심에서 시작
-velocity = Vector2.zero                   // 운동량 전량 전환 (포고스틱 모델)
+// 에너지 보존 공식으로 기본 중력 기준 속도 계산 (W/S 중력 조절 영향 제거)
+heightDelta = launchHeight - currentHeight              // 떨어졌으면 양수
+shadowSpeedSq = launchSpeed² + 2 * |gravity| * heightDelta
+impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
+
+effectiveRate = sqrt(heightRestorationRatio) * (chargeRadius / baseLaunchPower)
+spawnDistance = impactSpeed * effectiveRate
+activeChargeRadius = max(spawnDistance, chargeRadius)    // 확장 또는 기본
+aimOffset = Vector2.zero                                // 항상 중심에서 시작
+velocity = Vector2.zero                                 // 운동량 전량 전환 (포고스틱 모델)
 crawlVelocity = 0
 ```
 
@@ -239,20 +244,43 @@ activeDriftSpeed = autoDriftSpeed * lerp(1, radiusRatio, driftCompensation)
 
 키네마틱 방식. 매 프레임 `velocity.y += gravity * dt`. 대칭 — 상승/하강 동일.
 
-### 에어 컨트롤
+### 에어 컨트롤 — A/D 수평 가감속
 
-A/D로 속도 벡터의 **방향만 회전**. 총 속력 완전 보존.
+A/D로 수평 속도를 가감속. 발사 속도가 상한보다 빠르면 감속(반대 방향)만 허용.
 
 ```
-originalSpeed = velocity.magnitude
-currentAngle = atan2(velocity.y, velocity.x)
-maxDelta = min(airControlAngularSpeed * Deg2Rad * dt / originalSpeed, PI * 0.25)
-currentAngle += input.x * maxDelta
-velocity = angleToVector(currentAngle) * originalSpeed
+targetVx = inputX * airMaxHorizontalSpeed
+if (이미 상한 초과) → 반대 방향 입력만 적용
+else → MoveTowards(velocity.x, targetVx, accel/decel * dt)
 ```
 
-- 완전한 U턴 불가. 완만한 곡선 보정만 가능.
-- 저속 폭발 방지: maxDelta에 PI * 0.25(45°/step) 상한.
+### 에어 컨트롤 — W/S 중력 조절
+
+W/S로 비행 중 체감 중력을 조절하여 궤적 형태를 변경.
+
+```
+W 홀드: gravityScale = floatGravityScale (기본 0.5)  → 넓고 평평한 궤적
+S 홀드: gravityScale = diveGravityScale (기본 2.0)  → 빠르게 꽂히는 궤적
+미입력:  gravityScale = 1.0                          → 기본 포물선
+
+실제 적용 중력: gravity * gravityScale
+```
+
+- 플레이어 본인이 조작하므로 예측 가능성 유지.
+- S로 빠르게 꽂으면 에어 컨트롤 시간 감소, W로 길게 뜨면 착지점 세밀 조절 가능. 속도 vs 정밀도 트레이드오프.
+
+### 에너지 전환 보정 (에너지 보존 공식)
+
+W/S 중력 조절이 에너지 전환을 왜곡하지 않도록, 착지 시 에너지 보존 공식으로 "기본 중력이었으면 이 속도" 계산:
+
+```
+heightDelta = launchHeight - currentHeight        // 떨어졌으면 양수
+shadowSpeedSq = launchSpeed² + 2 * |gravity| * heightDelta
+impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
+```
+
+- 에어 컨트롤은 속력을 보존하므로 에너지에 영향 없음. 유일한 변수는 높이 차이.
+- W로 정상 중력에서 도달 불가능한 높이에 도착 → shadowSpeedSq < 0 → 에너지 전환 0.
 
 ### 착지 분기
 
@@ -321,7 +349,7 @@ velocity = angleToVector(currentAngle) * originalSpeed
 
 | 파라미터 | 기본값 | 설명 |
 |---------|--------|------|
-| conversionRate | 0.15 | 충돌 속도 → 판정원 확장 비율 |
+| heightRestorationRatio | 2.25 | 에너지 전환 복원 비율 (effectiveRate = sqrt(ratio) * chargeRadius / baseLaunchPower) |
 | driftCompensation | 0.7 | 확장 시 드리프트 보상 (1.0=시간 동일, 0.0=시간 비례 증가) |
 
 ### Stick
@@ -337,7 +365,11 @@ velocity = angleToVector(currentAngle) * originalSpeed
 
 | 파라미터 | 기본값 | 설명 |
 |---------|--------|------|
-| airControlAngularSpeed | 200 | 속도 벡터 방향 회전 각속도 (°/s) |
+| airMaxHorizontalSpeed | 5 | A/D 수평 최대 속도 |
+| airAcceleration | 20 | 수평 가속 |
+| airDeceleration | 15 | 수평 감속 |
+| floatGravityScale | 0.5 | W 홀드 시 중력 배율 |
+| diveGravityScale | 2.0 | S 홀드 시 중력 배율 |
 
 ### Physics
 
@@ -373,7 +405,8 @@ velocity = angleToVector(currentAngle) * originalSpeed
 
 | 입력 | 동작 |
 |------|------|
-| A / D | 궤도 방향 회전 (속력 보존) |
+| A / D | 수평 가감속 |
+| W / S | 중력 조절 (W=float, S=dive) |
 | Space 홀드 | 표면 충돌 시 에너지 전환 준비 |
 
 ### 표면 충돌
@@ -395,6 +428,6 @@ velocity = angleToVector(currentAngle) * originalSpeed
 5. **차징은 커밋**: 캔슬 불가. WASD로 발사까지 능동적 조절.
 6. **사전 커밋 보상**: 에너지 전환은 부딪히기 전에 Space를 미리 누른 플레이어가 보상받음.
 7. **조준 관성은 기하학적**: 가장자리에서 방향 전환이 어려움. 파라미터 불필요.
-8. **대칭 중력**: 포물선 예측 가능. 키네마틱.
+8. **플레이어 조절 중력**: W/S로 중력 스케일 조절. 에너지 전환은 에너지 보존 공식으로 정규화.
 9. **마찰 해체**: 이동 속도, 관성, 미끄러짐을 독립 파라미터로 분리.
 10. **시스템 분리**: 중력 → 접선 분해. 에어 컨트롤 → 방향 회전. 차징 → 판정원 내부. 드리프트 → 표면 법선. 각각 독립.

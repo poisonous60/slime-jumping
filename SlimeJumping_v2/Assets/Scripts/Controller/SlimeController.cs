@@ -43,6 +43,10 @@ namespace SlimeJumping.Controller
         // Airborne duration (to distinguish corner flicker from real flight)
         private float airborneTimer;
 
+        // Energy-based conversion normalization (stored at launch)
+        private float launchSpeed;
+        private float launchHeight;
+
         // Surface contact info
         private Vector2 surfaceNormal;
         private Vector2 surfaceTangent;
@@ -63,6 +67,7 @@ namespace SlimeJumping.Controller
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
 
             SyncRadius();
+            launchHeight = transform.position.y;
         }
 
         private void OnValidate()
@@ -309,8 +314,12 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateAirborne(float dt)
         {
-            // Gravity always applied
-            velocity.y += settings.gravity * dt;
+            // Gravity with W/S modifier
+            float inputY = inputReader.MoveInput.y;
+            float gravityScale = 1f;
+            if (inputY > 0.1f) gravityScale = settings.floatGravityScale;
+            else if (inputY < -0.1f) gravityScale = settings.diveGravityScale;
+            velocity.y += settings.gravity * gravityScale * dt;
             airborneTimer += dt;
 
             // Land on any surface
@@ -331,8 +340,12 @@ namespace SlimeJumping.Controller
 
                 if (isRealFlight && inputReader.IsJumpHeld)
                 {
-                    // Energy conversion: momentum → expanded charge circle
-                    float impactSpeed = velocity.magnitude;
+                    // Energy conversion: use energy conservation (v² = v₀² + 2gh)
+                    // so W/S gravity control doesn't inflate/deflate conversion
+                    float heightDelta = launchHeight - transform.position.y;
+                    float shadowSpeedSq = launchSpeed * launchSpeed
+                        + 2f * Mathf.Abs(settings.gravity) * heightDelta;
+                    float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
                     float speedRatio = Mathf.Sqrt(settings.heightRestorationRatio);
                     float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
                     float spawnDistance = impactSpeed * effectiveRate;
@@ -446,6 +459,8 @@ namespace SlimeJumping.Controller
             float power = ratio * settings.baseLaunchPower;
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : surfaceNormal;
             velocity = dir * power;
+            launchSpeed = velocity.magnitude;
+            launchHeight = transform.position.y;
 
             currentState = SlimeState.Airborne;
             airborneTimer = 0f;
