@@ -32,6 +32,7 @@ namespace SlimeJumping.Controller
         private Vector2 velocity;
         private Vector2 impactVelocity;
         private float stickDeccelTimer;
+        private Vector2 prevSurfaceNormal;
 
         // Persistent crawl speed (accel/decel model)
         private float crawlVelocity;
@@ -170,6 +171,7 @@ namespace SlimeJumping.Controller
         {
             if (!isTouchingSurface || Vector2.Dot(surfaceNormal, Vector2.up) < settings.ceilingThreshold)
             {
+                Debug.Log($"[Attached] lost surface, isTouching={isTouchingSurface}");
                 crawlVelocity = 0f;
                 airborneTimer = 0f;
                 currentState = SlimeState.Airborne;
@@ -184,12 +186,10 @@ namespace SlimeJumping.Controller
                 {
                     stickDeccelTimer += dt;
                     float t = stickDeccelTimer / settings.stickDecelerationTime;
-                    velocity = Vector2.Lerp(impactVelocity, Vector2.zero, t);
+                    Vector2 frameVel = Vector2.Lerp(impactVelocity, Vector2.zero, t);
+                    transform.position += (Vector3)(frameVel * dt);
                 }
-                else
-                {
-                    velocity = Vector2.zero;
-                }
+                velocity = Vector2.zero;
                 SnapToSurface();
                 return;
             }
@@ -285,6 +285,27 @@ namespace SlimeJumping.Controller
 
             if (onValidSurface)
             {
+                // Rotate aim offset to follow surface normal change on curved surfaces
+                float prevAngle = Mathf.Atan2(prevSurfaceNormal.y, prevSurfaceNormal.x);
+                float currAngle = Mathf.Atan2(surfaceNormal.y, surfaceNormal.x);
+                float deltaAngle = currAngle - prevAngle;
+                if (deltaAngle > Mathf.PI) deltaAngle -= 2f * Mathf.PI;
+                else if (deltaAngle < -Mathf.PI) deltaAngle += 2f * Mathf.PI;
+                if (Mathf.Abs(deltaAngle) > 0.0001f)
+                {
+                    float cos = Mathf.Cos(deltaAngle);
+                    float sin = Mathf.Sin(deltaAngle);
+                    aimOffset = new Vector2(
+                        aimOffset.x * cos - aimOffset.y * sin,
+                        aimOffset.x * sin + aimOffset.y * cos
+                    );
+                    driftDirection = new Vector2(
+                        driftDirection.x * cos - driftDirection.y * sin,
+                        driftDirection.x * sin + driftDirection.y * cos
+                    );
+                }
+                prevSurfaceNormal = surfaceNormal;
+
                 // On surface: reset coyote, remember surface for grace period
                 coyoteTimer = settings.chargingCoyoteTime;
                 lastSurfaceNormal = surfaceNormal;
@@ -294,6 +315,13 @@ namespace SlimeJumping.Controller
                 if (stickTimer > 0f)
                 {
                     stickTimer -= dt;
+                    if (settings.stickDecelerationTime > 0f && stickDeccelTimer < settings.stickDecelerationTime)
+                    {
+                        stickDeccelTimer += dt;
+                        float t = stickDeccelTimer / settings.stickDecelerationTime;
+                        Vector2 frameVel = Vector2.Lerp(impactVelocity, Vector2.zero, t);
+                        transform.position += (Vector3)(frameVel * dt);
+                    }
                     velocity = Vector2.zero;
                     SnapToSurface();
                 }
@@ -328,6 +356,7 @@ namespace SlimeJumping.Controller
             }
             else if (coyoteTimer > 0f)
             {
+                Debug.Log($"[Charging] coyote, isTouching={isTouchingSurface}, timer={coyoteTimer:F3}");
                 // Coyote: off surface but still charging
                 coyoteTimer -= dt;
                 float elapsed = settings.chargingCoyoteTime - coyoteTimer;
@@ -387,6 +416,9 @@ namespace SlimeJumping.Controller
                     float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
                     float spawnDistance = impactSpeed * effectiveRate;
 
+                    float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
+                    impactVelocity = surfaceTangent * tangentSpeed;
+                    stickDeccelTimer = 0f;
                     velocity = Vector2.zero;
                     crawlVelocity = 0f;
 
@@ -399,6 +431,7 @@ namespace SlimeJumping.Controller
                     aimOffset = Vector2.zero;
 
                     driftDirection = -surfaceNormal;
+                    prevSurfaceNormal = surfaceNormal;
                     currentState = SlimeState.Charging;
                     SnapToSurface();
                     if (chargeVisual != null) chargeVisual.Show();
@@ -406,7 +439,8 @@ namespace SlimeJumping.Controller
                 else if (isRealFlight)
                 {
                     // Real landing without Space: sticky landing, energy lost
-                    impactVelocity = velocity;
+                    float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
+                    impactVelocity = surfaceTangent * tangentSpeed;
                     stickDeccelTimer = 0f;
                     velocity = Vector2.zero;
                     crawlVelocity = 0f;
@@ -463,9 +497,20 @@ namespace SlimeJumping.Controller
             currentState = SlimeState.Charging;
             aimOffset = Vector2.zero;
             driftDirection = -surfaceNormal;
+            prevSurfaceNormal = surfaceNormal;
+            float tangentSpd = Vector2.Dot(velocity, surfaceTangent);
+            impactVelocity = surfaceTangent * tangentSpd;
+            stickDeccelTimer = 0f;
             velocity = Vector2.zero;
-            stickTimer = 0f;
+            float surfaceUp = Vector2.Dot(surfaceNormal, Vector2.up);
+            stickTimer = surfaceUp >= settings.stickSlopeThreshold
+                ? 0f : settings.chargingStickDuration;
             activeChargeRadius = settings.chargeRadius;
+
+            SnapToSurface();
+            coyoteTimer = settings.chargingCoyoteTime;
+            lastSurfaceNormal = surfaceNormal;
+            lastSurfaceCollider = surfaceCollider;
 
             if (chargeVisual != null) chargeVisual.Show();
         }
