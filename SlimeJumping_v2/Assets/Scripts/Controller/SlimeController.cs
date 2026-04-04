@@ -185,10 +185,12 @@ namespace SlimeJumping.Controller
                 {
                     stickDeccelTimer += dt;
                     float t = stickDeccelTimer / settings.stickDecelerationTime;
-                    Vector2 frameVel = Vector2.Lerp(impactVelocity, Vector2.zero, t);
-                    transform.position += (Vector3)(frameVel * dt);
+                    velocity = Vector2.Lerp(impactVelocity, Vector2.zero, t);
                 }
-                velocity = Vector2.zero;
+                else
+                {
+                    velocity = Vector2.zero;
+                }
                 SnapToSurface();
                 return;
             }
@@ -318,10 +320,12 @@ namespace SlimeJumping.Controller
                     {
                         stickDeccelTimer += dt;
                         float t = stickDeccelTimer / settings.stickDecelerationTime;
-                        Vector2 frameVel = Vector2.Lerp(impactVelocity, Vector2.zero, t);
-                        transform.position += (Vector3)(frameVel * dt);
+                        velocity = Vector2.Lerp(impactVelocity, Vector2.zero, t);
                     }
-                    velocity = Vector2.zero;
+                    else
+                    {
+                        velocity = Vector2.zero;
+                    }
                     SnapToSurface();
                 }
                 else
