@@ -3,6 +3,7 @@ using UnityEngine;
 using SlimeJumping.Settings;
 using SlimeJumping.Input;
 using SlimeJumping.Debugging;
+using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Controller
 {
@@ -11,6 +12,7 @@ namespace SlimeJumping.Controller
         [SerializeField] private SlimeInputReader inputReader;
         [SerializeField] private SlimeSettings settings;
         [SerializeField] private SlimeChargeVisual chargeVisual;
+        [SerializeField] private PlatformCarrier carrier;
 
         private Rigidbody2D rb;
         private CircleCollider2D circleCollider;
@@ -161,7 +163,9 @@ namespace SlimeJumping.Controller
                     break;
             }
 
-            rb.linearVelocity = velocity;
+            Vector2 platformVel = (carrier != null && carrier.IsOnPlatform)
+                ? carrier.GetEffectiveVelocity() : Vector2.zero;
+            rb.linearVelocity = velocity + platformVel;
         }
 
         // --- State: Attached (any surface) ---
@@ -173,6 +177,7 @@ namespace SlimeJumping.Controller
                 crawlVelocity = 0f;
                 launchSpeed = 0f;
                 launchHeight = rb.position.y;
+                if (carrier != null) carrier.Detach();
                 currentState = SlimeState.Airborne;
                 return;
             }
@@ -372,6 +377,7 @@ namespace SlimeJumping.Controller
                 crawlVelocity = 0f;
                 launchSpeed = 0f;
                 launchHeight = rb.position.y;
+                if (carrier != null) carrier.Detach();
                 currentState = SlimeState.Airborne;
                 if (chargeVisual != null) chargeVisual.Hide();
             }
@@ -403,6 +409,10 @@ namespace SlimeJumping.Controller
                     return;
                 }
 
+                // Get landing platform velocity before attaching (carrier is detached while airborne)
+                PlatformMotor landingMotor = surfaceCollider.GetComponentInParent<PlatformMotor>();
+                Vector2 landingPlatformVel = landingMotor != null ? landingMotor.Velocity : Vector2.zero;
+
                 if (inputReader.IsJumpHeld)
                 {
                     // Energy conversion: use energy conservation (v² = v₀² + 2gh)
@@ -431,6 +441,7 @@ namespace SlimeJumping.Controller
 
                     driftDirection = -surfaceNormal;
                     prevSurfaceNormal = surfaceNormal;
+                    if (carrier != null) carrier.Attach(surfaceCollider);
                     currentState = SlimeState.Charging;
                     SnapToSurface();
                     if (chargeVisual != null) chargeVisual.Show();
@@ -438,7 +449,7 @@ namespace SlimeJumping.Controller
                 else
                 {
                     // Landing without Space: sticky landing, energy lost
-                    float landingSpeed = velocity.magnitude;
+                    float landingSpeed = (velocity - landingPlatformVel).magnitude;
                     float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
                     impactVelocity = surfaceTangent * tangentSpeed;
                     stickDeccelTimer = 0f;
@@ -450,6 +461,7 @@ namespace SlimeJumping.Controller
                     else
                         stickTimer = CalculateStickDuration(landingSpeed);
 
+                    if (carrier != null) carrier.Attach(surfaceCollider);
                     currentState = SlimeState.Attached;
                     SnapToSurface();
                 }
@@ -497,6 +509,7 @@ namespace SlimeJumping.Controller
             SnapToSurface();
             coyoteTimer = settings.chargingCoyoteTime;
             lastSurfaceNormal = surfaceNormal;
+            if (carrier != null) carrier.Attach(surfaceCollider);
 
             if (chargeVisual != null) chargeVisual.Show();
         }
@@ -535,6 +548,11 @@ namespace SlimeJumping.Controller
             float power = settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
             velocity = dir * power;
+            if (carrier != null)
+            {
+                velocity += carrier.GetEffectiveVelocity();
+                carrier.Detach();
+            }
             launchSpeed = velocity.magnitude;
             launchHeight = rb.position.y;
 
