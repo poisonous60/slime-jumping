@@ -29,9 +29,10 @@ namespace SlimeJumping.Settings
         public float driftCompensation = 0.7f;
 
         [Header("Stick")]
-        public float attachedStickDuration = 0.3f;
+        public float minStickDuration = 0.3f;
+        public float maxStickDuration = 0.6f;
+        public float stickSpeedScale = 0.1f;
         public float stickDecelerationTime = 0.05f;
-        public float chargingStickDuration = 0.2f;
         public float stickSlopeThreshold = 0.7f; // surfaceUp above this = floor-like, no stick
         public float ceilingThreshold = -0.3f; // surfaceUp below this = ceiling, can't attach
 

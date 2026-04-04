@@ -90,15 +90,21 @@ slideSpeed = gravAlongTangent * slideGravityScale
 
 ### 스틱 타이머 (착지 후 표면 고정)
 
-벽/급경사에 착지 시 일정 시간 슬라이드 없이 고정. 점성 슬라임이 철퍼덕 붙는 느낌.
+벽/급경사에 **공중에서 착지**할 때 충돌 속도에 비례한 시간 동안 슬라이드 없이 고정. 점성 슬라임이 철퍼덕 붙는 느낌.
+
+**적용 시점**: Airborne → Attached 착지, Airborne → Charging 에너지 전환 착지. 두 경로만 해당.
+**미적용**: 이미 부착된 상태에서 Space 눌러 Charging 진입 시 — 충돌이 아니므로 스틱 불필요. 기존 stickTimer 값이 그대로 이어짐.
 
 ```
-if (surfaceUp > slopeThreshold)
-    stickTimer = 0                                    // 바닥: 고정 없음
+if (surfaceUp >= slopeThreshold)
+    stickTimer = 0                                           // 바닥: 고정 없음
 else
-    stickTimer = stickDuration * (1 - surfaceUp) / (1 - slopeThreshold)   // 비례
+    t = 1 - 1 / (1 + impactSpeed * stickSpeedScale)         // 수렴 커브 (0~1)
+    stickTimer = Lerp(minStickDuration, maxStickDuration, t) // 충돌 속도 비례
 ```
 
+- 수렴 커브: `impactSpeed`가 아무리 커져도 `t`는 1.0에 수렴 → `maxStickDuration`을 절대 초과하지 않음.
+- `stickSpeedScale`: 커브 기울기 조절. 값이 크면 적은 속도에서도 빨리 max에 도달.
 - Attached: 고정 중 입력 차단.
 - Charging: 고정 중에도 판정원 조준은 동작 — 슬라이드만 멈춤.
 
@@ -298,19 +304,19 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 ### 바닥 (surfaceUp > slopeThreshold)
 
 - 슬라이드 없음. 안정적. 여유롭게 차징 가능.
-- 스틱 타이머 없음.
+- 스틱 타이머 없음 (surfaceUp >= slopeThreshold).
 
 ### 벽 (surfaceUp ≈ 0)
 
 - 중력으로 아래로 슬라이드. 빨리 쏘면 높은 위치, 늦으면 낮아짐.
 - 크롤링으로 위아래 이동 가능 (중력보다 느린 속도).
-- 스틱 타이머: 풀 duration.
+- 스틱 타이머: 충돌 속도 비례 (minStickDuration ~ maxStickDuration).
 
 ### 급경사 (slopeThreshold 이하, ceilingThreshold 이상)
 
 - 기울기에 비례한 슬라이드.
 - 차징 중에도 미끄러짐.
-- 스틱 타이머: 기울기에 비례.
+- 스틱 타이머: 충돌 속도 비례 (수렴 커브).
 
 ### 천장 (surfaceUp < ceilingThreshold)
 
@@ -356,8 +362,10 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 
 | 파라미터 | 기본값 | 설명 |
 |---------|--------|------|
-| attachedStickDuration | 0.3 | Attached 착지 시 슬라이드 지연 (초) |
-| chargingStickDuration | 0.2 | 에너지 전환 Charging 진입 시 슬라이드 지연 (초) |
+| minStickDuration | 0.3 | 최소 스틱 시간 — 낮은 충돌 속도 (초) |
+| maxStickDuration | 0.6 | 최대 스틱 시간 — 높은 충돌 속도 (초) |
+| stickSpeedScale | 0.1 | 수렴 커브 기울기. 클수록 적은 속도에서 max 도달 |
+| stickDecelerationTime | 0.05 | 스틱 시작 시 착지 관성 감속 시간 (초) |
 | slopeThreshold | 0.7 | 이 이상 surfaceUp = 바닥 (스틱/슬라이드 없음). 약 45° |
 | ceilingThreshold | -0.3 | 이 미만 surfaceUp = 천장 (부착 불가). 약 107° |
 

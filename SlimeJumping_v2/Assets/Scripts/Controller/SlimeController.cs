@@ -171,7 +171,6 @@ namespace SlimeJumping.Controller
         {
             if (!isTouchingSurface || Vector2.Dot(surfaceNormal, Vector2.up) < settings.ceilingThreshold)
             {
-                Debug.Log($"[Attached] lost surface, isTouching={isTouchingSurface}");
                 crawlVelocity = 0f;
                 airborneTimer = 0f;
                 currentState = SlimeState.Airborne;
@@ -356,7 +355,6 @@ namespace SlimeJumping.Controller
             }
             else if (coyoteTimer > 0f)
             {
-                Debug.Log($"[Charging] coyote, isTouching={isTouchingSurface}, timer={coyoteTimer:F3}");
                 // Coyote: off surface but still charging
                 coyoteTimer -= dt;
                 float elapsed = settings.chargingCoyoteTime - coyoteTimer;
@@ -425,7 +423,7 @@ namespace SlimeJumping.Controller
                     if (surfaceUp >= settings.stickSlopeThreshold)
                         stickTimer = 0f;
                     else
-                        stickTimer = settings.chargingStickDuration;
+                        stickTimer = CalculateStickDuration(impactSpeed);
 
                     activeChargeRadius = Mathf.Max(spawnDistance, settings.chargeRadius);
                     aimOffset = Vector2.zero;
@@ -439,6 +437,7 @@ namespace SlimeJumping.Controller
                 else if (isRealFlight)
                 {
                     // Real landing without Space: sticky landing, energy lost
+                    float landingSpeed = velocity.magnitude;
                     float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
                     impactVelocity = surfaceTangent * tangentSpeed;
                     stickDeccelTimer = 0f;
@@ -448,7 +447,7 @@ namespace SlimeJumping.Controller
                     if (surfaceUp >= settings.stickSlopeThreshold)
                         stickTimer = 0f;
                     else
-                        stickTimer = settings.attachedStickDuration;
+                        stickTimer = CalculateStickDuration(landingSpeed);
 
                     currentState = SlimeState.Attached;
                     SnapToSurface();
@@ -502,9 +501,6 @@ namespace SlimeJumping.Controller
             impactVelocity = surfaceTangent * tangentSpd;
             stickDeccelTimer = 0f;
             velocity = Vector2.zero;
-            float surfaceUp = Vector2.Dot(surfaceNormal, Vector2.up);
-            stickTimer = surfaceUp >= settings.stickSlopeThreshold
-                ? 0f : settings.chargingStickDuration;
             activeChargeRadius = settings.chargeRadius;
 
             SnapToSurface();
@@ -519,6 +515,12 @@ namespace SlimeJumping.Controller
         {
             if (currentState != SlimeState.Charging) return;
             Launch();
+        }
+
+        private float CalculateStickDuration(float impactSpeed)
+        {
+            float t = 1f - 1f / (1f + impactSpeed * settings.stickSpeedScale);
+            return Mathf.Lerp(settings.minStickDuration, settings.maxStickDuration, t);
         }
 
         // --- Launch ---
