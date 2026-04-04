@@ -18,7 +18,8 @@ namespace SlimeJumping.Settings
         public float autoDriftSpeed = 1.5f;
         public float inputAcceleration = 3.0f;
         public float baseLaunchPower = 15f;
-        public float minLaunchRatio = 0.05f;
+        public float minLaunchPower = 3f;
+        public float chargeCurveExponent = 1f;
         public float maxAimAngularSpeed = 180f;
         public float chargingCoyoteTime = 0.2f;
         public float coyoteGraceTime = 0.1f;
@@ -29,6 +30,7 @@ namespace SlimeJumping.Settings
 
         [Header("Stick")]
         public float attachedStickDuration = 0.3f;
+        public float stickDecelerationTime = 0.05f;
         public float chargingStickDuration = 0.2f;
         public float stickSlopeThreshold = 0.7f; // surfaceUp above this = floor-like, no stick
         public float ceilingThreshold = -0.3f; // surfaceUp below this = ceiling, can't attach
@@ -39,6 +41,8 @@ namespace SlimeJumping.Settings
         public float airDeceleration = 15f;
         public float floatGravityScale = 0.5f;
         public float diveGravityScale = 2.0f;
+        public float risingGravityScale = 1f;
+        public float fallingGravityScale = 1f;
 
         [Header("Physics")]
         public float gravity = -20f;

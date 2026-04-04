@@ -30,6 +30,8 @@ namespace SlimeJumping.Controller
 
         // Manual velocity
         private Vector2 velocity;
+        private Vector2 impactVelocity;
+        private float stickDeccelTimer;
 
         // Persistent crawl speed (accel/decel model)
         private float crawlVelocity;
@@ -174,11 +176,20 @@ namespace SlimeJumping.Controller
                 return;
             }
 
-            // Stick: delay before slide starts
+            // Stick: delay before slide starts, with optional deceleration
             if (stickTimer > 0f)
             {
                 stickTimer -= dt;
-                velocity = Vector2.zero;
+                if (settings.stickDecelerationTime > 0f && stickDeccelTimer < settings.stickDecelerationTime)
+                {
+                    stickDeccelTimer += dt;
+                    float t = stickDeccelTimer / settings.stickDecelerationTime;
+                    velocity = Vector2.Lerp(impactVelocity, Vector2.zero, t);
+                }
+                else
+                {
+                    velocity = Vector2.zero;
+                }
                 SnapToSurface();
                 return;
             }
@@ -344,7 +355,8 @@ namespace SlimeJumping.Controller
             float gravityScale = 1f;
             if (inputY > 0.1f) gravityScale = settings.floatGravityScale;
             else if (inputY < -0.1f) gravityScale = settings.diveGravityScale;
-            velocity.y += settings.gravity * gravityScale * dt;
+            float asymScale = velocity.y > 0f ? settings.risingGravityScale : settings.fallingGravityScale;
+            velocity.y += settings.gravity * gravityScale * asymScale * dt;
             airborneTimer += dt;
 
             // Land on any surface
@@ -394,6 +406,8 @@ namespace SlimeJumping.Controller
                 else if (isRealFlight)
                 {
                     // Real landing without Space: sticky landing, energy lost
+                    impactVelocity = velocity;
+                    stickDeccelTimer = 0f;
                     velocity = Vector2.zero;
                     crawlVelocity = 0f;
 
@@ -459,16 +473,6 @@ namespace SlimeJumping.Controller
         private void HandleJumpReleased()
         {
             if (currentState != SlimeState.Charging) return;
-
-            float ratio = aimOffset.magnitude / settings.chargeRadius;
-            if (ratio < settings.minLaunchRatio)
-            {
-                Vector2 dir = aimOffset.sqrMagnitude > 0.0001f
-                    ? aimOffset.normalized
-                    : driftDirection;
-                aimOffset = dir * settings.chargeRadius * settings.minLaunchRatio;
-            }
-
             Launch();
         }
 
@@ -481,7 +485,8 @@ namespace SlimeJumping.Controller
             ignoreTimer = settings.maxIgnoreTime;
 
             float ratio = aimOffset.magnitude / settings.chargeRadius;
-            float power = ratio * settings.baseLaunchPower;
+            float curvedRatio = Mathf.Pow(ratio, settings.chargeCurveExponent);
+            float power = settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : surfaceNormal;
             velocity = dir * power;
             launchSpeed = velocity.magnitude;

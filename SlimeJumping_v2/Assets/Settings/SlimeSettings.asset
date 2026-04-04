@@ -13,26 +13,35 @@ MonoBehaviour:
   m_Name: SlimeSettings
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSettings
   crawlSpeed: 3
-  crawlAcceleration: 10
+  crawlAcceleration: 4
   crawlDeceleration: 8
   slideGravityScale: 0.3
   slideThreshold: 7
-  slideResistance: 1.5
+  slideResistance: 3
   chargeRadius: 1.5
   autoDriftSpeed: 1.5
   inputAcceleration: 1
-  baseLaunchPower: 8
-  minLaunchRatio: 0.05
+  baseLaunchPower: 10
+  minLaunchPower: 3
+  chargeCurveExponent: 1
+  maxAimAngularSpeed: 100
+  chargingCoyoteTime: 0.2
+  coyoteGraceTime: 0.1
   heightRestorationRatio: 0.9
   driftCompensation: 0.9
   attachedStickDuration: 0.1
-  chargingStickDuration: 0.2
+  stickDecelerationTime: 0.05
+  chargingStickDuration: 0.4
   stickSlopeThreshold: 0.7
   ceilingThreshold: -0.3
-  airMaxHorizontalSpeed: 5
-  airAcceleration: 0
-  airDeceleration: 0
-  gravity: -15
+  airMaxHorizontalSpeed: 1.5
+  airAcceleration: 2
+  airDeceleration: 2
+  floatGravityScale: 0.9
+  diveGravityScale: 1.1
+  risingGravityScale: 1
+  fallingGravityScale: 1
+  gravity: -20
   slimeRadius: 0.2
   surfaceCheckDistance: 0.05
   groundLayer:
