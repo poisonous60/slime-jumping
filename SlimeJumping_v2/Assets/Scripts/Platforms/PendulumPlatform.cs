@@ -9,6 +9,7 @@ namespace SlimeJumping.Platforms
         [SerializeField] float gravity = 10f;
         [SerializeField] float damping = 0.02f;
         [SerializeField] float startAngleDeg = 30f;
+        [SerializeField] float swayRatio = 0.3f;
 
         [Header("Rider Tilt")]
         [SerializeField] float maxTiltAngle = 15f;
@@ -28,14 +29,15 @@ namespace SlimeJumping.Platforms
             base.Awake();
             angle = startAngleDeg * Mathf.Deg2Rad;
             angularVel = 0f;
-            halfWidth = GetComponentInChildren<Collider2D>().bounds.extents.x;
+            var box = GetComponentInChildren<BoxCollider2D>();
+            halfWidth = box.size.x * box.transform.lossyScale.x * 0.5f;
         }
 
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass)
         {
             float localX = transform.InverseTransformPoint(riderWorldPos).x;
             float ratio = Mathf.Clamp(localX / halfWidth, -1f, 1f);
-            targetTilt = -ratio * maxTiltAngle * mass;
+            targetTilt = Mathf.Clamp(-ratio * maxTiltAngle * mass, -maxTiltAngle, maxTiltAngle);
         }
 
         public override void RemoveRider()
@@ -61,7 +63,7 @@ namespace SlimeJumping.Platforms
             float dampingForce = -tiltVelocity * tiltDamping;
             tiltVelocity += (springForce + dampingForce) * dt;
             currentTilt += tiltVelocity * dt;
-            float rotDeg = angle * Mathf.Rad2Deg * 0.3f + currentTilt;
+            float rotDeg = angle * Mathf.Rad2Deg * swayRatio + currentTilt;
 
             return (pivotPos + offset, rotDeg);
         }

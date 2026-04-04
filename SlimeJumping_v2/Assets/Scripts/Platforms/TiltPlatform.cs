@@ -8,6 +8,7 @@ namespace SlimeJumping.Platforms
         [SerializeField] float stiffness = 20f;
         [SerializeField] float tiltDamping = 5f;
 
+        Vector2 basePosition;
         float baseRotation;
         float currentTilt;
         float targetTilt;
@@ -17,15 +18,17 @@ namespace SlimeJumping.Platforms
         protected override void Awake()
         {
             base.Awake();
+            basePosition = rb.position;
             baseRotation = rb.rotation;
-            halfWidth = GetComponentInChildren<Collider2D>().bounds.extents.x;
+            var box = GetComponentInChildren<BoxCollider2D>();
+            halfWidth = box.size.x * box.transform.lossyScale.x * 0.5f;
         }
 
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass)
         {
             float localX = transform.InverseTransformPoint(riderWorldPos).x;
             float ratio = Mathf.Clamp(localX / halfWidth, -1f, 1f);
-            targetTilt = -ratio * maxTiltAngle * mass;
+            targetTilt = Mathf.Clamp(-ratio * maxTiltAngle * mass, -maxTiltAngle, maxTiltAngle);
         }
 
         public override void RemoveRider()
@@ -39,7 +42,7 @@ namespace SlimeJumping.Platforms
             float dampingForce = -tiltVelocity * tiltDamping;
             tiltVelocity += (springForce + dampingForce) * dt;
             currentTilt += tiltVelocity * dt;
-            return (rb.position, baseRotation + currentTilt);
+            return (basePosition, baseRotation + currentTilt);
         }
     }
 }

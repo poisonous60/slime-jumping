@@ -34,8 +34,8 @@ namespace SlimeJumping.Platforms
 
         void FixedUpdate()
         {
-            if (currentPlatform != null)
-                currentPlatform.ApplyRiderInfluence(rb.position, slimeMass);
+            if (currentPlatform == null) { currentPlatform = null; return; }
+            currentPlatform.ApplyRiderInfluence(rb.position, slimeMass);
         }
 
         /// <summary>
