@@ -447,9 +447,7 @@ namespace SlimeJumping.Controller
                     if (carrier != null) carrier.Attach(surfaceCollider);
                     UpdateSurfaceModifiers(surfaceCollider);
 
-                    float redirectSign = Mathf.Abs(tangentSpeed) > 0.1f
-                        ? Mathf.Sign(tangentSpeed)
-                        : Mathf.Sign(Vector2.Dot(Vector2.up, surfaceTangent));
+                    float redirectSign = Mathf.Sign(Vector2.Dot(Vector2.up, surfaceTangent));
                     float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, Vector2.up));
                     float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect * redirectSign * redirectScale;
                     crawlVelocity = effectiveTangent * surfaceMod.landingVelocityRetention;
@@ -482,9 +480,7 @@ namespace SlimeJumping.Controller
                     if (carrier != null) carrier.Attach(surfaceCollider);
                     UpdateSurfaceModifiers(surfaceCollider);
 
-                    float redirectSign = Mathf.Abs(tangentSpeed) > 0.1f
-                        ? Mathf.Sign(tangentSpeed)
-                        : Mathf.Sign(Vector2.Dot(Vector2.up, surfaceTangent));
+                    float redirectSign = Mathf.Sign(Vector2.Dot(Vector2.up, surfaceTangent));
                     float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, Vector2.up));
                     float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect * redirectSign * redirectScale;
                     crawlVelocity = effectiveTangent * surfaceMod.landingVelocityRetention;
