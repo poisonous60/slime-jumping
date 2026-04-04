@@ -24,14 +24,15 @@ MonoBehaviour:
   baseLaunchPower: 10
   minLaunchPower: 3
   chargeCurveExponent: 1
-  maxAimAngularSpeed: 100
+  maxAimAngularSpeed: 40
   chargingCoyoteTime: 0.2
   coyoteGraceTime: 0.1
   heightRestorationRatio: 0.9
   driftCompensation: 0.9
-  attachedStickDuration: 0.1
-  stickDecelerationTime: 0.05
-  chargingStickDuration: 0.4
+  minStickDuration: 0.3
+  maxStickDuration: 0.6
+  stickSpeedScale: 0.1
+  stickDecelerationTime: 0.5
   stickSlopeThreshold: 0.7
   ceilingThreshold: -0.3
   airMaxHorizontalSpeed: 1.5

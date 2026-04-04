@@ -49,6 +49,8 @@ namespace SlimeJumping.Settings
         public float gravity = -20f;
         public float slimeRadius = 0.4f;
         public float surfaceCheckDistance = 0.05f;
+        public float attachedCheckMultiplier = 3f;
+        public float airborneCheckMultiplier = 1f;
         public LayerMask groundLayer;
         public float postLaunchIgnoreTime = 0.05f;
         public float launchClearanceThreshold = 0.05f;

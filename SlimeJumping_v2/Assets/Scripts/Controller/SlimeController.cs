@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using SlimeJumping.Settings;
 using SlimeJumping.Input;
@@ -25,8 +26,8 @@ namespace SlimeJumping.Controller
         private float postLaunchTimer;
 
         // Launch surface ignore
-        private Collider2D ignoredCollider;
-        private float ignoreTimer;
+        private readonly List<Collider2D> ignoredColliders = new();
+        private readonly List<float> ignoreTimers = new();
 
         // Manual velocity
         private Vector2 velocity;
@@ -43,9 +44,6 @@ namespace SlimeJumping.Controller
         // Stick timer (delay before slide starts)
         private float stickTimer;
 
-        // Airborne duration (to distinguish corner flicker from real flight)
-        private float airborneTimer;
-
         // Energy-based conversion normalization (stored at launch)
         private float launchSpeed;
         private float launchHeight;
@@ -53,7 +51,6 @@ namespace SlimeJumping.Controller
         // Charging coyote time (grace period after leaving surface)
         private float coyoteTimer;
         private Vector2 lastSurfaceNormal;
-        private Collider2D lastSurfaceCollider;
 
         // Surface contact info
         private Vector2 surfaceNormal;
@@ -75,7 +72,7 @@ namespace SlimeJumping.Controller
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
 
             SyncRadius();
-            launchHeight = transform.position.y;
+            launchHeight = rb.position.y;
         }
 
         private void OnValidate()
@@ -133,8 +130,10 @@ namespace SlimeJumping.Controller
         {
             float dt = Time.fixedDeltaTime;
 
-            UpdateIgnoredCollider(dt);
-            isTouchingSurface = CheckSurface(out surfaceNormal, out surfaceCollider);
+            UpdateIgnoredColliders(dt);
+            float surfaceMultiplier = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
+                ? settings.attachedCheckMultiplier : settings.airborneCheckMultiplier;
+            isTouchingSurface = CheckSurface(out surfaceNormal, out surfaceCollider, surfaceMultiplier);
 
             // Correct normal if slime is on the underside of a surface
             if (isTouchingSurface && surfaceCollider != null)
@@ -172,7 +171,8 @@ namespace SlimeJumping.Controller
             if (!isTouchingSurface || Vector2.Dot(surfaceNormal, Vector2.up) < settings.ceilingThreshold)
             {
                 crawlVelocity = 0f;
-                airborneTimer = 0f;
+                launchSpeed = 0f;
+                launchHeight = rb.position.y;
                 currentState = SlimeState.Airborne;
                 return;
             }
@@ -310,7 +310,6 @@ namespace SlimeJumping.Controller
                 // On surface: reset coyote, remember surface for grace period
                 coyoteTimer = settings.chargingCoyoteTime;
                 lastSurfaceNormal = surfaceNormal;
-                lastSurfaceCollider = surfaceCollider;
 
                 // Stick: delay before slide starts (aiming still runs via UpdateCharging)
                 if (stickTimer > 0f)
@@ -371,7 +370,8 @@ namespace SlimeJumping.Controller
             {
                 // Coyote expired: cancel to Airborne
                 crawlVelocity = 0f;
-                airborneTimer = 0f;
+                launchSpeed = 0f;
+                launchHeight = rb.position.y;
                 currentState = SlimeState.Airborne;
                 if (chargeVisual != null) chargeVisual.Hide();
             }
@@ -388,7 +388,6 @@ namespace SlimeJumping.Controller
             else if (inputY < -0.1f) gravityScale = settings.diveGravityScale;
             float asymScale = velocity.y > 0f ? settings.risingGravityScale : settings.fallingGravityScale;
             velocity.y += settings.gravity * gravityScale * asymScale * dt;
-            airborneTimer += dt;
 
             // Land on any surface
             if (isTouchingSurface)
@@ -404,13 +403,11 @@ namespace SlimeJumping.Controller
                     return;
                 }
 
-                bool isRealFlight = airborneTimer > 0.1f;
-
-                if (isRealFlight && inputReader.IsJumpHeld)
+                if (inputReader.IsJumpHeld)
                 {
                     // Energy conversion: use energy conservation (v² = v₀² + 2gh)
                     // so W/S gravity control doesn't inflate/deflate conversion
-                    float heightDelta = launchHeight - transform.position.y;
+                    float heightDelta = launchHeight - rb.position.y;
                     float shadowSpeedSq = launchSpeed * launchSpeed
                         + 2f * Mathf.Abs(settings.gravity) * heightDelta;
                     float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
@@ -438,9 +435,9 @@ namespace SlimeJumping.Controller
                     SnapToSurface();
                     if (chargeVisual != null) chargeVisual.Show();
                 }
-                else if (isRealFlight)
+                else
                 {
-                    // Real landing without Space: sticky landing, energy lost
+                    // Landing without Space: sticky landing, energy lost
                     float landingSpeed = velocity.magnitude;
                     float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
                     impactVelocity = surfaceTangent * tangentSpeed;
@@ -452,16 +449,6 @@ namespace SlimeJumping.Controller
                         stickTimer = 0f;
                     else
                         stickTimer = CalculateStickDuration(landingSpeed);
-
-                    currentState = SlimeState.Attached;
-                    SnapToSurface();
-                }
-                else
-                {
-                    // Corner flicker: preserve tangent velocity (old behavior)
-                    float normalVel = Vector2.Dot(velocity, surfaceNormal);
-                    if (normalVel < 0f)
-                        velocity -= surfaceNormal * normalVel;
 
                     currentState = SlimeState.Attached;
                     SnapToSurface();
@@ -510,7 +497,6 @@ namespace SlimeJumping.Controller
             SnapToSurface();
             coyoteTimer = settings.chargingCoyoteTime;
             lastSurfaceNormal = surfaceNormal;
-            lastSurfaceCollider = surfaceCollider;
 
             if (chargeVisual != null) chargeVisual.Show();
         }
@@ -532,49 +518,59 @@ namespace SlimeJumping.Controller
         private void Launch()
         {
             crawlVelocity = 0f;
-            ignoredCollider = isTouchingSurface ? surfaceCollider : lastSurfaceCollider;
-            ignoreTimer = settings.maxIgnoreTime;
+            ignoredColliders.Clear();
+            ignoreTimers.Clear();
+            Collider2D[] overlaps = Physics2D.OverlapCircleAll(
+                rb.position,
+                settings.slimeRadius + settings.launchClearanceThreshold,
+                settings.groundLayer);
+            foreach (var c in overlaps)
+            {
+                ignoredColliders.Add(c);
+                ignoreTimers.Add(settings.maxIgnoreTime);
+            }
 
             float ratio = aimOffset.magnitude / settings.chargeRadius;
             float curvedRatio = Mathf.Pow(ratio, settings.chargeCurveExponent);
             float power = settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
-            Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : surfaceNormal;
+            Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
             velocity = dir * power;
             launchSpeed = velocity.magnitude;
-            launchHeight = transform.position.y;
+            launchHeight = rb.position.y;
 
             currentState = SlimeState.Airborne;
-            airborneTimer = 0f;
             postLaunchTimer = settings.postLaunchIgnoreTime;
 
             if (chargeVisual != null) chargeVisual.Hide();
         }
 
-        private void UpdateIgnoredCollider(float dt)
+        private void UpdateIgnoredColliders(float dt)
         {
-            if (ignoredCollider == null) return;
-
-            if (!ignoredCollider.enabled || !ignoredCollider.gameObject.activeInHierarchy)
+            for (int i = ignoredColliders.Count - 1; i >= 0; i--)
             {
-                ignoredCollider = null;
-                return;
+                ignoreTimers[i] -= dt;
+                var c = ignoredColliders[i];
+                if (c == null || !c.enabled || !c.gameObject.activeInHierarchy)
+                {
+                    ignoredColliders.RemoveAt(i);
+                    ignoreTimers.RemoveAt(i);
+                    continue;
+                }
+                float dist = Vector2.Distance(rb.position, c.ClosestPoint(rb.position));
+                if (dist > settings.slimeRadius + settings.launchClearanceThreshold || ignoreTimers[i] <= 0f)
+                {
+                    ignoredColliders.RemoveAt(i);
+                    ignoreTimers.RemoveAt(i);
+                }
             }
-
-            ignoreTimer -= dt;
-
-            Vector2 closest = ignoredCollider.ClosestPoint(transform.position);
-            float dist = Vector2.Distance((Vector2)transform.position, closest);
-
-            if (dist > settings.slimeRadius + settings.launchClearanceThreshold || ignoreTimer <= 0f)
-                ignoredCollider = null;
         }
 
         // --- Surface Detection (any angle) ---
 
-        private bool CheckSurface(out Vector2 normal, out Collider2D col)
+        private bool CheckSurface(out Vector2 normal, out Collider2D col, float distMultiplier = 1f)
         {
             float radius = settings != null ? settings.slimeRadius : 0.4f;
-            float dist = settings != null ? settings.surfaceCheckDistance : 0.05f;
+            float dist = (settings != null ? settings.surfaceCheckDistance : 0.05f) * distMultiplier;
             LayerMask mask = settings != null ? settings.groundLayer : (LayerMask)(1 << 7);
 
             Vector2 pos = (Vector2)transform.position;
@@ -596,7 +592,7 @@ namespace SlimeJumping.Controller
                 RaycastHit2D[] hits = Physics2D.CircleCastAll(pos, radius * 0.9f, d, dist, mask);
                 foreach (var h in hits)
                 {
-                    if (h.collider == ignoredCollider) continue;
+                    if (ignoredColliders.Contains(h.collider)) continue;
 
                     // How far below the slime is this contact point
                     Vector2 toHit = h.point - pos;
@@ -643,7 +639,7 @@ namespace SlimeJumping.Controller
             {
                 Vector2 pushDir = (pos - closest).normalized;
                 if (pushDir.sqrMagnitude < 0.001f) pushDir = surfaceNormal;
-                transform.position = (Vector3)(closest + pushDir * targetDist);
+                rb.position = closest + pushDir * targetDist;
             }
         }
     }
