@@ -26,6 +26,19 @@ namespace SlimeJumping.Physics
         [Tooltip("0 = absorb normal impact (default), 0.5 = redirect 50% of normal speed to tangent")]
         public float impactRedirectRatio = 0f;
 
+        private void OnValidate()
+        {
+            carrierFriction = Mathf.Clamp01(carrierFriction);
+            crawlSpeedMultiplier = Mathf.Max(0f, crawlSpeedMultiplier);
+            crawlAccelerationMultiplier = Mathf.Max(0f, crawlAccelerationMultiplier);
+            crawlDecelerationMultiplier = Mathf.Max(0f, crawlDecelerationMultiplier);
+            slideResistanceMultiplier = Mathf.Max(0f, slideResistanceMultiplier);
+            slideGravityMultiplier = Mathf.Max(0f, slideGravityMultiplier);
+            landingVelocityRetention = Mathf.Clamp01(landingVelocityRetention);
+            stickDurationMultiplier = Mathf.Max(0f, stickDurationMultiplier);
+            impactRedirectRatio = Mathf.Max(0f, impactRedirectRatio);
+        }
+
         public SurfaceModifiers ToModifiers() => new SurfaceModifiers
         {
             crawlSpeed = crawlSpeedMultiplier,

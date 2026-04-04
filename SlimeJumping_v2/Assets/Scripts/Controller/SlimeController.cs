@@ -59,6 +59,7 @@ namespace SlimeJumping.Controller
         private Vector2 surfaceNormal;
         private Vector2 surfaceTangent;
         private Collider2D surfaceCollider;
+        private Collider2D prevSurfaceCollider;
         private bool isTouchingSurface;
 
         private SurfaceModifiers surfaceMod = SurfaceModifiers.Default;
@@ -152,6 +153,14 @@ namespace SlimeJumping.Controller
             }
 
             surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
+
+            if (isTouchingSurface && surfaceCollider != prevSurfaceCollider
+                && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
+            {
+                if (carrier != null) carrier.Attach(surfaceCollider);
+                UpdateSurfaceModifiers(surfaceCollider);
+            }
+            prevSurfaceCollider = surfaceCollider;
 
             switch (currentState)
             {
@@ -414,9 +423,8 @@ namespace SlimeJumping.Controller
                     return;
                 }
 
-                // Get landing platform velocity before attaching (carrier is detached while airborne)
-                PlatformMotor landingMotor = surfaceCollider.GetComponentInParent<PlatformMotor>();
-                Vector2 landingPlatformVel = landingMotor != null ? landingMotor.Velocity : Vector2.zero;
+                // Get landing platform velocity (including angular contribution) before attaching
+                Vector2 landingPlatformVel = GetSurfaceVelocity(surfaceCollider);
 
                 if (inputReader.IsJumpHeld)
                 {
@@ -430,8 +438,9 @@ namespace SlimeJumping.Controller
                     float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
                     float spawnDistance = impactSpeed * effectiveRate;
 
-                    float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
-                    float normalSpeed = Mathf.Abs(Vector2.Dot(velocity, surfaceNormal));
+                    Vector2 relativeVel = velocity - landingPlatformVel;
+                    float tangentSpeed = Vector2.Dot(relativeVel, surfaceTangent);
+                    float normalSpeed = Mathf.Abs(Vector2.Dot(relativeVel, surfaceNormal));
                     impactVelocity = surfaceTangent * tangentSpeed;
                     stickDeccelTimer = 0f;
 
@@ -463,9 +472,10 @@ namespace SlimeJumping.Controller
                 else
                 {
                     // Landing without Space: sticky landing, energy lost
-                    float landingSpeed = (velocity - landingPlatformVel).magnitude;
-                    float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
-                    float normalSpeed = Mathf.Abs(Vector2.Dot(velocity, surfaceNormal));
+                    Vector2 relativeVel = velocity - landingPlatformVel;
+                    float landingSpeed = relativeVel.magnitude;
+                    float tangentSpeed = Vector2.Dot(relativeVel, surfaceTangent);
+                    float normalSpeed = Mathf.Abs(Vector2.Dot(relativeVel, surfaceNormal));
                     impactVelocity = surfaceTangent * tangentSpeed;
                     stickDeccelTimer = 0f;
 
@@ -614,6 +624,21 @@ namespace SlimeJumping.Controller
         {
             var tag = col != null ? col.GetComponentInParent<SurfaceTag>() : null;
             surfaceMod = tag != null ? tag.GetModifiers() : SurfaceModifiers.Default;
+        }
+
+        private Vector2 GetSurfaceVelocity(Collider2D col)
+        {
+            var motor = col != null ? col.GetComponentInParent<PlatformMotor>() : null;
+            if (motor == null) return Vector2.zero;
+
+            Vector2 vel = motor.Velocity;
+            if (Mathf.Abs(motor.AngularVelocity) > 0.001f)
+            {
+                float radPerSec = motor.AngularVelocity * Mathf.Deg2Rad;
+                Vector2 arm = rb.position - (Vector2)motor.transform.position;
+                vel += new Vector2(-arm.y, arm.x) * radPerSec;
+            }
+            return vel;
         }
 
         // --- Surface Detection (any angle) ---

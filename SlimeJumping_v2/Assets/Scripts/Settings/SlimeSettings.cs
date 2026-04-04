@@ -14,10 +14,10 @@ namespace SlimeJumping.Settings
         public float slideResistance = 2f;
 
         [Header("Charge Circle")]
-        public float chargeRadius = 1.5f;
+        [Min(0.01f)] public float chargeRadius = 1.5f;
         public float autoDriftSpeed = 1.5f;
         public float inputAcceleration = 3.0f;
-        public float baseLaunchPower = 15f;
+        [Min(0.01f)] public float baseLaunchPower = 15f;
         public float minLaunchPower = 3f;
         public float chargeCurveExponent = 1f;
         public float maxAimAngularSpeed = 180f;
@@ -25,7 +25,7 @@ namespace SlimeJumping.Settings
         public float coyoteGraceTime = 0.1f;
 
         [Header("Energy Conversion")]
-        public float heightRestorationRatio = 2.25f;
+        [Min(0f)] public float heightRestorationRatio = 2.25f;
         public float driftCompensation = 0.7f;
 
         [Header("Stick")]
