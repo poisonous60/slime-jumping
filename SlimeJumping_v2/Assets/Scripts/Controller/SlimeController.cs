@@ -128,8 +128,8 @@ namespace SlimeJumping.Controller
                 return;
             }
 
-            if (currentState == SlimeState.Charging)
-                UpdateCharging();
+            if (currentState == SlimeState.Charging && chargeVisual != null)
+                chargeVisual.UpdateVisual(rb.position, rb.position + aimOffset, activeChargeRadius);
         }
 
         private void FixedUpdate()
@@ -252,10 +252,9 @@ namespace SlimeJumping.Controller
 
         // --- State: Charging ---
 
-        private void UpdateCharging()
+        private void FixedUpdateCharging(float dt)
         {
-            float dt = Time.deltaTime;
-            Vector2 center = rb.position;
+            // Aim logic (drift, WASD, angular clamp, auto-launch) — runs on fixed timestep for framerate independence
 
             // Auto-drift outward (compensated for expanded radius)
             float radiusRatio = activeChargeRadius / settings.chargeRadius;
@@ -293,12 +292,7 @@ namespace SlimeJumping.Controller
                 return;
             }
 
-            if (chargeVisual != null)
-                chargeVisual.UpdateVisual(center, center + aimOffset, activeChargeRadius);
-        }
-
-        private void FixedUpdateCharging(float dt)
-        {
+            // Surface/coyote physics
             bool onValidSurface = isTouchingSurface
                 && Vector2.Dot(surfaceNormal, Vector2.up) >= settings.ceilingThreshold;
 

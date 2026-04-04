@@ -18,9 +18,17 @@ namespace SlimeJumping.Platforms
         protected override void Awake()
         {
             base.Awake();
+
+            var box = GetComponentInChildren<BoxCollider2D>();
+            if (box == null)
+            {
+                Debug.LogError($"[TiltPlatform] No BoxCollider2D found in children of {name}. Disabling.", this);
+                enabled = false;
+                return;
+            }
+
             basePosition = rb.position;
             baseRotation = rb.rotation;
-            var box = GetComponentInChildren<BoxCollider2D>();
             halfWidth = box.size.x * box.transform.lossyScale.x * 0.5f;
         }
 

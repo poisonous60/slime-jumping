@@ -19,6 +19,14 @@ namespace SlimeJumping.Platforms
         protected override void Awake()
         {
             base.Awake();
+
+            if (localWaypoints == null || localWaypoints.Length < 2)
+            {
+                Debug.LogError($"[WaypointPlatform] localWaypoints needs at least 2 entries on {name}. Disabling.", this);
+                enabled = false;
+                return;
+            }
+
             worldWaypoints = new Vector2[localWaypoints.Length];
             for (int i = 0; i < localWaypoints.Length; i++)
                 worldWaypoints[i] = rb.position + localWaypoints[i];
@@ -66,18 +74,19 @@ namespace SlimeJumping.Platforms
         {
             if (localWaypoints == null || localWaypoints.Length == 0) return;
             Gizmos.color = Color.cyan;
+            Vector2 origin = rb != null ? rb.position : (Vector2)transform.position;
 
             for (int i = 0; i < localWaypoints.Length; i++)
             {
-                Vector2 wp = Application.isPlaying
+                Vector2 wp = Application.isPlaying && worldWaypoints != null
                     ? worldWaypoints[i]
-                    : rb.position + localWaypoints[i];
+                    : origin + localWaypoints[i];
                 Gizmos.DrawSphere(wp, 0.15f);
                 if (i > 0)
                 {
-                    Vector2 prev = Application.isPlaying
+                    Vector2 prev = Application.isPlaying && worldWaypoints != null
                         ? worldWaypoints[i - 1]
-                        : rb.position + localWaypoints[i - 1];
+                        : origin + localWaypoints[i - 1];
                     Gizmos.DrawLine(prev, wp);
                 }
             }
