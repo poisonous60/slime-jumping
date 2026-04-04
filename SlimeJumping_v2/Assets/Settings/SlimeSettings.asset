@@ -45,6 +45,8 @@ MonoBehaviour:
   gravity: -20
   slimeRadius: 0.2
   surfaceCheckDistance: 0.05
+  attachedCheckMultiplier: 3
+  airborneCheckMultiplier: 1
   groundLayer:
     serializedVersion: 2
     m_Bits: 128
