@@ -10,14 +10,37 @@ namespace SlimeJumping.Platforms
         [SerializeField] float damping = 0.02f;
         [SerializeField] float startAngleDeg = 30f;
 
+        [Header("Rider Tilt")]
+        [SerializeField] float maxTiltAngle = 15f;
+        [SerializeField] float tiltStiffness = 20f;
+        [SerializeField] float tiltDamping = 5f;
+
         float angle;
         float angularVel;
+
+        float halfWidth;
+        float currentTilt;
+        float targetTilt;
+        float tiltVelocity;
 
         protected override void Awake()
         {
             base.Awake();
             angle = startAngleDeg * Mathf.Deg2Rad;
             angularVel = 0f;
+            halfWidth = GetComponentInChildren<Collider2D>().bounds.extents.x;
+        }
+
+        public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass)
+        {
+            float localX = transform.InverseTransformPoint(riderWorldPos).x;
+            float ratio = Mathf.Clamp(localX / halfWidth, -1f, 1f);
+            targetTilt = -ratio * maxTiltAngle * mass;
+        }
+
+        public override void RemoveRider()
+        {
+            targetTilt = 0f;
         }
 
         protected override (Vector2, float) ComputeMotion(float dt)
@@ -34,7 +57,11 @@ namespace SlimeJumping.Platforms
                 -Mathf.Cos(angle) * ropeLength
             );
 
-            float rotDeg = angle * Mathf.Rad2Deg * 0.3f;
+            float springForce = (targetTilt - currentTilt) * tiltStiffness;
+            float dampingForce = -tiltVelocity * tiltDamping;
+            tiltVelocity += (springForce + dampingForce) * dt;
+            currentTilt += tiltVelocity * dt;
+            float rotDeg = angle * Mathf.Rad2Deg * 0.3f + currentTilt;
 
             return (pivotPos + offset, rotDeg);
         }

@@ -8,18 +8,35 @@ namespace SlimeJumping.Platforms
         Rigidbody2D rb;
         PlatformMotor currentPlatform;
 
+        [SerializeField] float slimeMass = 1f;
+
         public bool IsOnPlatform => currentPlatform != null;
 
         void Awake() => rb = GetComponent<Rigidbody2D>();
 
         public void Attach(Collider2D surfaceCollider)
         {
-            currentPlatform = surfaceCollider != null
+            if (currentPlatform != null) currentPlatform.RemoveRider();
+
+            currentPlatform = surfaceCollider
                 ? surfaceCollider.GetComponentInParent<PlatformMotor>()
                 : null;
+
+            if (currentPlatform != null)
+                currentPlatform.ApplyRiderInfluence(rb.position, slimeMass);
         }
 
-        public void Detach() => currentPlatform = null;
+        public void Detach()
+        {
+            if (currentPlatform != null) currentPlatform.RemoveRider();
+            currentPlatform = null;
+        }
+
+        void FixedUpdate()
+        {
+            if (currentPlatform != null)
+                currentPlatform.ApplyRiderInfluence(rb.position, slimeMass);
+        }
 
         /// <summary>
         /// Platform velocity including rotational tangential contribution.

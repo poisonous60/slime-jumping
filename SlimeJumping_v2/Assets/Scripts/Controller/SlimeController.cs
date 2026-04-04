@@ -706,12 +706,12 @@ namespace SlimeJumping.Controller
         {
             if (surfaceCollider == null) return;
 
-            Vector2 pos = (Vector2)transform.position;
+            Vector2 pos = rb.position;
             Vector2 closest = surfaceCollider.ClosestPoint(pos);
             float currentDist = Vector2.Distance(pos, closest);
             float targetDist = settings.slimeRadius;
 
-            if (currentDist < targetDist)
+            if (Mathf.Abs(currentDist - targetDist) > 0.001f)
             {
                 Vector2 pushDir = (pos - closest).normalized;
                 if (pushDir.sqrMagnitude < 0.001f) pushDir = surfaceNormal;
