@@ -75,7 +75,7 @@ namespace SlimeJumping.Platforms
             Vector2 pivotPos = pivot.position;
             Vector2 platformPos = Application.isPlaying
                 ? rb.position
-                : (Vector2)transform.position;
+                : rb.position;
             Gizmos.DrawLine(pivotPos, platformPos);
             Gizmos.DrawSphere(pivotPos, 0.1f);
         }

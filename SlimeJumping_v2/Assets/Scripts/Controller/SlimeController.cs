@@ -144,7 +144,7 @@ namespace SlimeJumping.Controller
             // Correct normal if slime is on the underside of a surface
             if (isTouchingSurface && surfaceCollider != null)
             {
-                Vector2 pos = (Vector2)transform.position;
+                Vector2 pos = rb.position;
                 Vector2 closest = surfaceCollider.ClosestPoint(pos);
                 Vector2 toSlime = pos - closest;
                 // If normal points away from slime, flip it
@@ -255,7 +255,7 @@ namespace SlimeJumping.Controller
         private void UpdateCharging()
         {
             float dt = Time.deltaTime;
-            Vector2 center = (Vector2)transform.position;
+            Vector2 center = rb.position;
 
             // Auto-drift outward (compensated for expanded radius)
             float radiusRatio = activeChargeRadius / settings.chargeRadius;
@@ -645,7 +645,7 @@ namespace SlimeJumping.Controller
             float dist = (settings != null ? settings.surfaceCheckDistance : 0.05f) * distMultiplier;
             LayerMask mask = settings != null ? settings.groundLayer : (LayerMask)(1 << 7);
 
-            Vector2 pos = (Vector2)transform.position;
+            Vector2 pos = rb.position;
             Vector2[] directions = {
                 Vector2.down, Vector2.up, Vector2.left, Vector2.right,
                 new Vector2(-0.707f, -0.707f), new Vector2(0.707f, -0.707f),

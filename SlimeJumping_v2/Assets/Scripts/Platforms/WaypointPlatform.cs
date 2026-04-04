@@ -21,7 +21,7 @@ namespace SlimeJumping.Platforms
             base.Awake();
             worldWaypoints = new Vector2[localWaypoints.Length];
             for (int i = 0; i < localWaypoints.Length; i++)
-                worldWaypoints[i] = (Vector2)transform.position + localWaypoints[i];
+                worldWaypoints[i] = rb.position + localWaypoints[i];
         }
 
         protected override (Vector2, float) ComputeMotion(float dt)
@@ -71,13 +71,13 @@ namespace SlimeJumping.Platforms
             {
                 Vector2 wp = Application.isPlaying
                     ? worldWaypoints[i]
-                    : (Vector2)transform.position + localWaypoints[i];
+                    : rb.position + localWaypoints[i];
                 Gizmos.DrawSphere(wp, 0.15f);
                 if (i > 0)
                 {
                     Vector2 prev = Application.isPlaying
                         ? worldWaypoints[i - 1]
-                        : (Vector2)transform.position + localWaypoints[i - 1];
+                        : rb.position + localWaypoints[i - 1];
                     Gizmos.DrawLine(prev, wp);
                 }
             }
