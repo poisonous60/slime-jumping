@@ -48,7 +48,10 @@ Attached ──Space──▶ Charging
 ### 부착 판정
 
 - 원형 콜라이더가 표면에 접촉하면 Attached 진입.
-- **천장 불가**: `surfaceUp(= dot(normal, up)) < ceilingThreshold`이면 부착 안 됨. 법선 속도만 상쇄, Airborne 유지.
+- **천장 불가 (히스테리시스)**: 탈출과 진입에 다른 임계값 사용.
+  - **탈출** (Attached/Charging → Airborne): `surfaceUp < ceilingThreshold`(-0.3)이면 떨어짐.
+  - **진입** (Airborne → Attached/Charging): `surfaceUp >= ceilingReattachThreshold`(-0.2)이어야 부착.
+  - 사이 구간(-0.3 ~ -0.2)에서는 현재 상태 유지 → 구체 표면 크롤링 시 상태 떨림 방지.
 - 착지 시 `velocity = 0` (점성 슬라임 — 모든 운동량 흡수).
 
 ### 표면 감지
@@ -248,7 +251,13 @@ activeDriftSpeed = autoDriftSpeed * lerp(1, radiusRatio, driftCompensation)
 
 ### 중력
 
-키네마틱 방식. 매 프레임 `velocity.y += gravity * dt`. 대칭 — 상승/하강 동일.
+키네마틱 방식. 매 프레임 `velocity.y += gravity * dt`.
+
+상승/하강 비대칭 중력: 상승 시 `risingGravityScale`, 하강 시 `fallingGravityScale` 곱셈 적용. 기본값 둘 다 1.0 (대칭).
+
+### 에어 컨트롤 활성 조건
+
+**`velocity.y <= apexThreshold`**(기본 0)일 때만 에어 컨트롤 활성. 상승 중에는 W/S 중력 조절과 A/D 수평 조작이 모두 비활성.
 
 ### 에어 컨트롤 — A/D 수평 가감속
 
@@ -292,7 +301,7 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 
 | 조건 | 결과 |
 |------|------|
-| 천장 (surfaceUp < ceilingThreshold) | 부착 안 함. 법선 속도 상쇄, Airborne 유지 |
+| 천장 (surfaceUp < ceilingReattachThreshold) | 부착 안 함. 법선 속도 상쇄, Airborne 유지 |
 | Space 홀드 + 실제 비행 (체공 > 0.1초) | 에너지 전환 → Charging 직행 |
 | Space 미홀드 + 실제 비행 | velocity = 0, Attached 전환, 스틱 타이머 적용 |
 | 코너 튕김 (체공 < 0.1초) | 법선 속도만 상쇄, Attached 전환 |
@@ -368,6 +377,7 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | stickDecelerationTime | 0.05 | 스틱 시작 시 착지 관성 감속 시간 (초) |
 | slopeThreshold | 0.7 | 이 이상 surfaceUp = 바닥 (스틱/슬라이드 없음). 약 45° |
 | ceilingThreshold | -0.3 | 이 미만 surfaceUp = 천장 (부착 불가). 약 107° |
+| ceilingReattachThreshold | -0.2 | Airborne에서 이 이상이어야 재부착. 히스테리시스 |
 
 ### Air Control
 
@@ -378,6 +388,9 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | airDeceleration | 15 | 수평 감속 |
 | floatGravityScale | 0.5 | W 홀드 시 중력 배율 |
 | diveGravityScale | 2.0 | S 홀드 시 중력 배율 |
+| risingGravityScale | 1 | 상승 중 중력 배율 |
+| fallingGravityScale | 1 | 하강 중 중력 배율 |
+| apexThreshold | 0 | 이 이하 velocity.y에서만 에어 컨트롤 활성 |
 
 ### Physics
 
@@ -386,6 +399,8 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | gravity | -20 | 키네마틱 중력 |
 | slimeRadius | 0.4 | CircleCollider2D 반지름 |
 | surfaceCheckDistance | 0.05 | 표면 감지 캐스트 거리 |
+| attachedCheckMultiplier | 3 | Attached/Charging 표면 감지 거리 배율 |
+| airborneCheckMultiplier | 1 | Airborne 표면 감지 거리 배율 |
 | postLaunchIgnoreTime | 0.05 | 발사 후 입력 무시 |
 | launchClearanceThreshold | 0.05 | 발사 표면 무시 해제 거리 |
 | maxIgnoreTime | 0.15 | 발사 표면 무시 최대 시간 |
@@ -413,8 +428,8 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 
 | 입력 | 동작 |
 |------|------|
-| A / D | 수평 가감속 |
-| W / S | 중력 조절 (W=float, S=dive) |
+| A / D | 수평 가감속 (하강 시에만) |
+| W / S | 중력 조절 (W=float, S=dive, 하강 시에만) |
 | Space 홀드 | 표면 충돌 시 에너지 전환 준비 |
 
 ### 표면 충돌

@@ -35,13 +35,15 @@ MonoBehaviour:
   stickDecelerationTime: 0.5
   stickSlopeThreshold: 0.7
   ceilingThreshold: -0.3
-  airMaxHorizontalSpeed: 1.5
-  airAcceleration: 2
-  airDeceleration: 2
-  floatGravityScale: 0.9
-  diveGravityScale: 1.1
+  ceilingReattachThreshold: -0.2
+  airMaxHorizontalSpeed: 10
+  airAcceleration: 3
+  airDeceleration: 5
+  floatGravityScale: 0.7
+  diveGravityScale: 1.3
   risingGravityScale: 1
   fallingGravityScale: 1
+  apexThreshold: 0
   gravity: -20
   slimeRadius: 0.2
   surfaceCheckDistance: 0.05

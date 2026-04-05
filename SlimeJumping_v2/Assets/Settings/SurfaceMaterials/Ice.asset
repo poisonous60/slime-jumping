@@ -38,8 +38,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   slideGravityMultiplier:
-    baseValue: 1.5
-    fullValue: 1.5
+    baseValue: 1.3
+    fullValue: 1.3
     angleMin: 0
     angleMax: 90
   slideRampUpTime:
@@ -58,8 +58,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   impactRedirectRatio:
-    baseValue: 1.2
-    fullValue: 1.2
+    baseValue: 0.8
+    fullValue: 0.8
     angleMin: 0
     angleMax: 90
   wallAttachSpeedDampen:
