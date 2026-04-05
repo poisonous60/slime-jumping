@@ -1,22 +1,34 @@
+using UnityEngine;
+
 namespace SlimeJumping.Physics
 {
     public struct SurfaceModifiers
     {
-        public float crawlSpeed;
-        public float crawlAccel;
-        public float crawlDecel;
-        public float slideResistance;
-        public float slideGravity;
-        public float carrierFriction;
-        public float landingVelocityRetention;
-        public float stickDuration;
-        public float impactRedirect;
+        public AngleScaledValue crawlSpeed;
+        public AngleScaledValue crawlAccel;
+        public AngleScaledValue crawlDecel;
+        public AngleScaledValue slideResistance;
+        public AngleScaledValue slideGravity;
+        public AngleScaledValue slideRampUp;
+        public AngleScaledValue carrierFriction;
+        public AngleScaledValue landingVelocityRetention;
+        public AngleScaledValue stickDuration;
+        public AngleScaledValue impactRedirect;
+        public AngleScaledValue wallAttachDampen;
 
         public static readonly SurfaceModifiers Default = new()
         {
-            crawlSpeed = 1f, crawlAccel = 1f, crawlDecel = 1f,
-            slideResistance = 1f, slideGravity = 1f, carrierFriction = 1f,
-            landingVelocityRetention = 0f, stickDuration = 1f, impactRedirect = 0f
+            crawlSpeed = AngleScaledValue.Constant(1f),
+            crawlAccel = AngleScaledValue.Constant(1f),
+            crawlDecel = AngleScaledValue.Constant(1f),
+            slideResistance = AngleScaledValue.Constant(1f),
+            slideGravity = AngleScaledValue.Constant(1f),
+            slideRampUp = AngleScaledValue.Constant(0f),
+            carrierFriction = AngleScaledValue.Constant(1f),
+            landingVelocityRetention = AngleScaledValue.Constant(0f),
+            stickDuration = AngleScaledValue.Constant(1f),
+            impactRedirect = AngleScaledValue.Constant(0f),
+            wallAttachDampen = AngleScaledValue.Constant(1f)
         };
     }
 }

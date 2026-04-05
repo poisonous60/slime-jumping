@@ -48,6 +48,9 @@ namespace SlimeJumping.Controller
         // Stick timer (delay before slide starts)
         private float stickTimer;
 
+        // Slide ramp-up timer (gradual slide acceleration after landing)
+        private float slideRampTimer;
+
         // Energy-based conversion normalization (stored at launch)
         private float launchSpeed;
         private float launchHeight;
@@ -179,7 +182,8 @@ namespace SlimeJumping.Controller
 
             Vector2 platformVel = (carrier != null && carrier.IsOnPlatform)
                 ? carrier.GetEffectiveVelocity() : Vector2.zero;
-            rb.linearVelocity = velocity + platformVel * surfaceMod.carrierFriction;
+            float frictionAngle = isTouchingSurface ? GetSurfaceAngle() : 0f;
+            rb.linearVelocity = velocity + platformVel * surfaceMod.carrierFriction.Evaluate(frictionAngle);
         }
 
         // --- State: Attached (any surface) ---
@@ -216,29 +220,36 @@ namespace SlimeJumping.Controller
             }
 
             // 1. Slide: fresh each frame, no accumulation
+            float angle = GetSurfaceAngle();
             Vector2 gravityVec = new Vector2(0f, settings.gravity);
             float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
             if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
                 gravAlongTangent = 0f;
-            float slideSpeed = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity;
+            float slideSpeed = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
 
             // Apply resistance to slideSpeed (not gravAlongTangent — crawl still fights full gravity)
             if (Mathf.Abs(slideSpeed) > 0.001f)
             {
                 float sign = Mathf.Sign(slideSpeed);
-                slideSpeed -= sign * settings.slideResistance * surfaceMod.slideResistance;
+                slideSpeed -= sign * settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
                 if (Mathf.Sign(slideSpeed) != sign)
                     slideSpeed = 0f;
             }
 
+            // Slide ramp-up: gradual acceleration after landing
+            slideRampTimer += dt;
+            float rampUpTime = surfaceMod.slideRampUp.Evaluate(angle);
+            float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
+            slideSpeed *= rampT;
+
             // 2. Crawl: accel/decel model
             float inputX = inputReader.MoveInput.x;
-            float targetSpeed = -inputX * settings.crawlSpeed * surfaceMod.crawlSpeed;
+            float targetSpeed = -inputX * settings.crawlSpeed * surfaceMod.crawlSpeed.Evaluate(angle);
             if (Mathf.Abs(targetSpeed) > Mathf.Abs(crawlVelocity)
                 || (targetSpeed != 0f && Mathf.Sign(targetSpeed) != Mathf.Sign(crawlVelocity)))
-                crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlAcceleration * surfaceMod.crawlAccel * dt);
+                crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlAcceleration * surfaceMod.crawlAccel.Evaluate(angle) * dt);
             else
-                crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlDeceleration * surfaceMod.crawlDecel * dt);
+                crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle) * dt);
 
             // 3. Final tangent velocity
             float finalTangent = slideSpeed + crawlVelocity;
@@ -344,21 +355,28 @@ namespace SlimeJumping.Controller
                 else
                 {
                     // Slime still slides on walls during charging (same physics as Attached, no crawl input)
+                    float angle = GetSurfaceAngle();
                     Vector2 gravityVec = new Vector2(0f, settings.gravity);
                     float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
                     if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
                         gravAlongTangent = 0f;
-                    float slideSpeed = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity;
+                    float slideSpeed = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
 
                     if (Mathf.Abs(slideSpeed) > 0.001f)
                     {
                         float sign = Mathf.Sign(slideSpeed);
-                        slideSpeed -= sign * settings.slideResistance * surfaceMod.slideResistance;
+                        slideSpeed -= sign * settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
                         if (Mathf.Sign(slideSpeed) != sign)
                             slideSpeed = 0f;
                     }
 
-                    crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, settings.crawlDeceleration * surfaceMod.crawlDecel * dt);
+                    // Slide ramp-up: gradual acceleration after landing
+                    slideRampTimer += dt;
+                    float rampUpTime = surfaceMod.slideRampUp.Evaluate(angle);
+                    float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
+                    slideSpeed *= rampT;
+
+                    crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle) * dt);
 
                     float finalTangent = slideSpeed + crawlVelocity;
                     velocity = surfaceTangent * finalTangent;
@@ -453,20 +471,23 @@ namespace SlimeJumping.Controller
                     if (carrier != null) carrier.Attach(surfaceCollider);
                     UpdateSurfaceModifiers(surfaceCollider);
 
+                    float landingAngle = GetSurfaceAngle();
+                    tangentSpeed *= surfaceMod.wallAttachDampen.Evaluate(landingAngle);
                     float redirectSign = Mathf.Sign(Vector2.Dot(Vector2.up, surfaceTangent));
                     float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, Vector2.up));
-                    float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect * redirectSign * redirectScale;
-                    crawlVelocity = effectiveTangent * surfaceMod.landingVelocityRetention;
+                    float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect.Evaluate(landingAngle) * redirectSign * redirectScale;
+                    crawlVelocity = effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
                     velocity = Vector2.zero;
 
                     if (surfaceUp >= settings.stickSlopeThreshold)
                         stickTimer = 0f;
                     else
-                        stickTimer = CalculateStickDuration(impactSpeed) * surfaceMod.stickDuration;
+                        stickTimer = CalculateStickDuration(impactSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
 
                     activeChargeRadius = Mathf.Max(spawnDistance, settings.chargeRadius);
                     aimOffset = Vector2.zero;
 
+                    slideRampTimer = 0f;
                     driftDirection = -surfaceNormal;
                     prevSurfaceNormal = surfaceNormal;
                     currentState = SlimeState.Charging;
@@ -486,17 +507,20 @@ namespace SlimeJumping.Controller
                     if (carrier != null) carrier.Attach(surfaceCollider);
                     UpdateSurfaceModifiers(surfaceCollider);
 
+                    float landingAngle = GetSurfaceAngle();
+                    tangentSpeed *= surfaceMod.wallAttachDampen.Evaluate(landingAngle);
                     float redirectSign = Mathf.Sign(Vector2.Dot(Vector2.up, surfaceTangent));
                     float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, Vector2.up));
-                    float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect * redirectSign * redirectScale;
-                    crawlVelocity = effectiveTangent * surfaceMod.landingVelocityRetention;
+                    float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect.Evaluate(landingAngle) * redirectSign * redirectScale;
+                    crawlVelocity = effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
                     velocity = Vector2.zero;
 
                     if (surfaceUp >= settings.stickSlopeThreshold)
                         stickTimer = 0f;
                     else
-                        stickTimer = CalculateStickDuration(landingSpeed) * surfaceMod.stickDuration;
+                        stickTimer = CalculateStickDuration(landingSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
 
+                    slideRampTimer = 0f;
                     currentState = SlimeState.Attached;
                     SnapToSurface();
                 }
@@ -589,7 +613,7 @@ namespace SlimeJumping.Controller
             velocity = dir * power;
             if (carrier != null)
             {
-                velocity += carrier.GetEffectiveVelocity() * surfaceMod.carrierFriction;
+                velocity += carrier.GetEffectiveVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
                 carrier.Detach();
             }
             surfaceMod = SurfaceModifiers.Default;
@@ -629,6 +653,11 @@ namespace SlimeJumping.Controller
         {
             var tag = col != null ? col.GetComponentInParent<SurfaceTag>() : null;
             surfaceMod = tag != null ? tag.GetModifiers() : SurfaceModifiers.Default;
+        }
+
+        private float GetSurfaceAngle()
+        {
+            return Mathf.Acos(Mathf.Abs(Vector2.Dot(surfaceNormal, Vector2.up))) * Mathf.Rad2Deg;
         }
 
         private Vector2 GetSurfaceVelocity(Collider2D col)

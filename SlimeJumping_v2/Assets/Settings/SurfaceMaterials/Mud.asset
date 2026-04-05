@@ -12,9 +12,58 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2236ec45af50b3347b7f485493f44e06, type: 3}
   m_Name: Mud
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceMaterial
-  carrierFriction: 1
-  crawlSpeedMultiplier: 0.5
-  crawlAccelerationMultiplier: 0.5
-  crawlDecelerationMultiplier: 2
-  slideResistanceMultiplier: 3
-  slideGravityMultiplier: 0.5
+  carrierFriction:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  crawlSpeedMultiplier:
+    baseValue: 0.5
+    fullValue: 0.5
+    angleMin: 0
+    angleMax: 90
+  crawlAccelerationMultiplier:
+    baseValue: 0.5
+    fullValue: 0.5
+    angleMin: 0
+    angleMax: 90
+  crawlDecelerationMultiplier:
+    baseValue: 2
+    fullValue: 2
+    angleMin: 0
+    angleMax: 90
+  slideResistanceMultiplier:
+    baseValue: 3
+    fullValue: 3
+    angleMin: 0
+    angleMax: 90
+  slideGravityMultiplier:
+    baseValue: 0.5
+    fullValue: 0.5
+    angleMin: 0
+    angleMax: 90
+  slideRampUpTime:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  landingVelocityRetention:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  stickDurationMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  impactRedirectRatio:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  wallAttachSpeedDampen:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90

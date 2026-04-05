@@ -63,6 +63,8 @@ namespace SlimeJumping.Platforms
                     if (loop) currentIndex = 0;
                     else direction *= -1;
                 }
+
+                return (to, rb.rotation);
             }
 
             float easedT = easeCurve.Evaluate(journeyProgress);

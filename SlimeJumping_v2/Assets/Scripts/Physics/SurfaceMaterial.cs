@@ -7,37 +7,30 @@ namespace SlimeJumping.Physics
     {
         [Header("Carrier — moving platform friction")]
         [Tooltip("0 = ice (platform moves, slime stays), 1 = full follow")]
-        public float carrierFriction = 1f;
+        public AngleScaledValue carrierFriction = AngleScaledValue.Constant(1f);
 
         [Header("Crawl")]
-        public float crawlSpeedMultiplier = 1f;
-        public float crawlAccelerationMultiplier = 1f;
-        public float crawlDecelerationMultiplier = 1f;
+        public AngleScaledValue crawlSpeedMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue crawlAccelerationMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue crawlDecelerationMultiplier = AngleScaledValue.Constant(1f);
 
         [Header("Slide")]
         [Tooltip("0 = ice (no resistance), 2+ = mud (high resistance)")]
-        public float slideResistanceMultiplier = 1f;
-        public float slideGravityMultiplier = 1f;
+        public AngleScaledValue slideResistanceMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue slideGravityMultiplier = AngleScaledValue.Constant(1f);
+        [Tooltip("Time (seconds) for slide to ramp from 0 to full after landing. 0 = instant.")]
+        public AngleScaledValue slideRampUpTime = AngleScaledValue.Constant(0f);
 
         [Header("Landing")]
         [Tooltip("0 = instant stop (default), 1 = full tangent velocity preserved")]
-        public float landingVelocityRetention = 0f;
-        public float stickDurationMultiplier = 1f;
+        public AngleScaledValue landingVelocityRetention = AngleScaledValue.Constant(0f);
+        public AngleScaledValue stickDurationMultiplier = AngleScaledValue.Constant(1f);
         [Tooltip("0 = absorb normal impact (default), 0.5 = redirect 50% of normal speed to tangent")]
-        public float impactRedirectRatio = 0f;
+        public AngleScaledValue impactRedirectRatio = AngleScaledValue.Constant(0f);
 
-        private void OnValidate()
-        {
-            carrierFriction = Mathf.Clamp01(carrierFriction);
-            crawlSpeedMultiplier = Mathf.Max(0f, crawlSpeedMultiplier);
-            crawlAccelerationMultiplier = Mathf.Max(0f, crawlAccelerationMultiplier);
-            crawlDecelerationMultiplier = Mathf.Max(0f, crawlDecelerationMultiplier);
-            slideResistanceMultiplier = Mathf.Max(0f, slideResistanceMultiplier);
-            slideGravityMultiplier = Mathf.Max(0f, slideGravityMultiplier);
-            landingVelocityRetention = Mathf.Clamp01(landingVelocityRetention);
-            stickDurationMultiplier = Mathf.Max(0f, stickDurationMultiplier);
-            impactRedirectRatio = Mathf.Max(0f, impactRedirectRatio);
-        }
+        [Header("Wall Attach")]
+        [Tooltip("Speed multiplier when attaching to surface. 1 = no dampen, 0.5 = half speed")]
+        public AngleScaledValue wallAttachSpeedDampen = AngleScaledValue.Constant(1f);
 
         public SurfaceModifiers ToModifiers() => new SurfaceModifiers
         {
@@ -46,10 +39,12 @@ namespace SlimeJumping.Physics
             crawlDecel = crawlDecelerationMultiplier,
             slideResistance = slideResistanceMultiplier,
             slideGravity = slideGravityMultiplier,
+            slideRampUp = slideRampUpTime,
             carrierFriction = carrierFriction,
             landingVelocityRetention = landingVelocityRetention,
             stickDuration = stickDurationMultiplier,
-            impactRedirect = impactRedirectRatio
+            impactRedirect = impactRedirectRatio,
+            wallAttachDampen = wallAttachSpeedDampen
         };
     }
 }

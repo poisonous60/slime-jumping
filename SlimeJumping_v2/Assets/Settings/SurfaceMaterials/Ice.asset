@@ -12,12 +12,58 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2236ec45af50b3347b7f485493f44e06, type: 3}
   m_Name: Ice
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceMaterial
-  carrierFriction: 1
-  crawlSpeedMultiplier: 1
-  crawlAccelerationMultiplier: 1
-  crawlDecelerationMultiplier: 1
-  slideResistanceMultiplier: 1
-  slideGravityMultiplier: 1.5
-  landingVelocityRetention: 0.8
-  stickDurationMultiplier: 0
-  impactRedirectRatio: 1.2
+  carrierFriction:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  crawlSpeedMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  crawlAccelerationMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  crawlDecelerationMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  slideResistanceMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  slideGravityMultiplier:
+    baseValue: 1.5
+    fullValue: 1.5
+    angleMin: 0
+    angleMax: 90
+  slideRampUpTime:
+    baseValue: 0
+    fullValue: 0.3
+    angleMin: 15
+    angleMax: 80
+  landingVelocityRetention:
+    baseValue: 0.8
+    fullValue: 0.8
+    angleMin: 0
+    angleMax: 90
+  stickDurationMultiplier:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  impactRedirectRatio:
+    baseValue: 1.2
+    fullValue: 1.2
+    angleMin: 0
+    angleMax: 90
+  wallAttachSpeedDampen:
+    baseValue: 1
+    fullValue: 0.5
+    angleMin: 15
+    angleMax: 80
