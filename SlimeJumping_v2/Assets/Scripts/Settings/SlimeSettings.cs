@@ -35,6 +35,7 @@ namespace SlimeJumping.Settings
         public float stickDecelerationTime = 0.05f;
         public float stickSlopeThreshold = 0.7f; // surfaceUp above this = floor-like, no stick
         public float ceilingThreshold = -0.3f; // surfaceUp below this = ceiling, can't attach
+        public float ceilingReattachThreshold = -0.2f; // surfaceUp must exceed this to re-attach from Airborne
 
         [Header("Air Control")]
         public float airMaxHorizontalSpeed = 5f;

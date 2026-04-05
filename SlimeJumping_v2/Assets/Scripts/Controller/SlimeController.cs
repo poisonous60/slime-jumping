@@ -439,7 +439,7 @@ namespace SlimeJumping.Controller
                 float surfaceUp = Vector2.Dot(surfaceNormal, Vector2.up);
 
                 // Ceiling: don't attach, just cancel normal velocity and stay airborne
-                if (surfaceUp < settings.ceilingThreshold)
+                if (surfaceUp < settings.ceilingReattachThreshold)
                 {
                     float normalVel = Vector2.Dot(velocity, surfaceNormal);
                     if (normalVel < 0f)
