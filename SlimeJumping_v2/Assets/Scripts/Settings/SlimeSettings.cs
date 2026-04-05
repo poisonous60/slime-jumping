@@ -44,6 +44,7 @@ namespace SlimeJumping.Settings
         public float diveGravityScale = 2.0f;
         public float risingGravityScale = 1f;
         public float fallingGravityScale = 1f;
+        public float apexThreshold = 0f;
 
         [Header("Physics")]
         public float gravity = -20f;

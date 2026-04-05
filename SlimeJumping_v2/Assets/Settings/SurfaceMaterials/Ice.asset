@@ -12,12 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2236ec45af50b3347b7f485493f44e06, type: 3}
   m_Name: Ice
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceMaterial
-  carrierFriction: 0.2
+  carrierFriction: 1
   crawlSpeedMultiplier: 1
   crawlAccelerationMultiplier: 1
-  crawlDecelerationMultiplier: 0.3
-  slideResistanceMultiplier: 0.1
+  crawlDecelerationMultiplier: 1
+  slideResistanceMultiplier: 1
   slideGravityMultiplier: 1.5
   landingVelocityRetention: 0.8
   stickDurationMultiplier: 0
-  impactRedirectRatio: 0.5
+  impactRedirectRatio: 1.2

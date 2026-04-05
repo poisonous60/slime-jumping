@@ -395,12 +395,22 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateAirborne(float dt)
         {
-            // Gravity with W/S modifier (last-input-wins for air control)
-            float inputY = inputReader.LastInputMove.y;
+            bool airControlActive = velocity.y <= settings.apexThreshold;
+
+            // Gravity
             float gravityScale = 1f;
-            if (inputY > 0.1f) gravityScale = settings.floatGravityScale;
-            else if (inputY < -0.1f) gravityScale = settings.diveGravityScale;
-            float asymScale = velocity.y > 0f ? settings.risingGravityScale : settings.fallingGravityScale;
+            float asymScale;
+            if (airControlActive)
+            {
+                float inputY = inputReader.LastInputMove.y;
+                if (inputY > 0.1f) gravityScale = settings.floatGravityScale;
+                else if (inputY < -0.1f) gravityScale = settings.diveGravityScale;
+                asymScale = settings.fallingGravityScale;
+            }
+            else
+            {
+                asymScale = settings.risingGravityScale;
+            }
             velocity.y += settings.gravity * gravityScale * asymScale * dt;
 
             // Land on any surface
@@ -492,23 +502,26 @@ namespace SlimeJumping.Controller
             }
 
             // Air control: horizontal acceleration with speed cap (last-input-wins)
-            float inputX = inputReader.LastInputMove.x;
-            if (Mathf.Abs(inputX) > 0.01f)
+            if (airControlActive)
             {
-                float targetVx = inputX * settings.airMaxHorizontalSpeed;
-                float accel = (inputX * velocity.x >= 0f)
-                    ? settings.airAcceleration
-                    : settings.airDeceleration;
+                float inputX = inputReader.LastInputMove.x;
+                if (Mathf.Abs(inputX) > 0.01f)
+                {
+                    float targetVx = inputX * settings.airMaxHorizontalSpeed;
+                    float accel = (inputX * velocity.x >= 0f)
+                        ? settings.airAcceleration
+                        : settings.airDeceleration;
 
-                if (Mathf.Abs(velocity.x) > settings.airMaxHorizontalSpeed)
-                {
-                    // Already faster than cap (from launch) — only allow braking
-                    if (inputX * velocity.x < 0)
-                        velocity.x = Mathf.MoveTowards(velocity.x, targetVx, settings.airAcceleration * dt);
-                }
-                else
-                {
-                    velocity.x = Mathf.MoveTowards(velocity.x, targetVx, accel * dt);
+                    if (Mathf.Abs(velocity.x) > settings.airMaxHorizontalSpeed)
+                    {
+                        // Already faster than cap (from launch) — only allow braking
+                        if (inputX * velocity.x < 0)
+                            velocity.x = Mathf.MoveTowards(velocity.x, targetVx, settings.airAcceleration * dt);
+                    }
+                    else
+                    {
+                        velocity.x = Mathf.MoveTowards(velocity.x, targetVx, accel * dt);
+                    }
                 }
             }
         }
