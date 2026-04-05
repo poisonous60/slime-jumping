@@ -1,0 +1,98 @@
+using UnityEngine;
+using SlimeJumping.Controller;
+
+namespace SlimeJumping.Debugging
+{
+    public class SlimeStateDebugUI : MonoBehaviour
+    {
+        [SerializeField] private SlimeController slimeController;
+
+        [Header("Position")]
+        [SerializeField] private Vector2 screenOffset = new Vector2(20f, 20f);
+        [SerializeField] private float circleSize = 40f;
+        [SerializeField] private float spacing = 56f;
+        [SerializeField] private int fontSize = 14;
+
+        [Header("Colors")]
+        [SerializeField] private Color attachedColor = Color.green;
+        [SerializeField] private Color chargingColor = Color.yellow;
+        [SerializeField] private Color airborneColor = Color.cyan;
+        [SerializeField] private Color offColor = new Color(0.2f, 0.2f, 0.2f, 0.5f);
+
+        private Texture2D circleTex;
+        private GUIStyle labelStyle;
+
+        private void Awake()
+        {
+            circleTex = CreateCircleTexture(64);
+        }
+
+        private void OnDestroy()
+        {
+            if (circleTex != null)
+                Destroy(circleTex);
+        }
+
+        private void OnGUI()
+        {
+            if (slimeController == null) return;
+
+            if (labelStyle == null)
+            {
+                labelStyle = new GUIStyle(GUI.skin.label)
+                {
+                    fontStyle = FontStyle.Bold,
+                    alignment = TextAnchor.MiddleCenter
+                };
+            }
+            labelStyle.fontSize = fontSize;
+
+            var state = slimeController.CurrentState;
+
+            DrawIndicator(0, "ATT", SlimeController.SlimeState.Attached, state, attachedColor);
+            DrawIndicator(1, "CHG", SlimeController.SlimeState.Charging, state, chargingColor);
+            DrawIndicator(2, "AIR", SlimeController.SlimeState.Airborne, state, airborneColor);
+        }
+
+        private void DrawIndicator(int index, string label,
+            SlimeController.SlimeState targetState, SlimeController.SlimeState currentState,
+            Color activeColor)
+        {
+            float x = screenOffset.x + index * spacing;
+            float y = screenOffset.y;
+
+            bool isActive = currentState == targetState;
+            Color color = isActive ? activeColor : offColor;
+
+            Color prev = GUI.color;
+            GUI.color = color;
+            GUI.DrawTexture(new Rect(x, y, circleSize, circleSize), circleTex);
+            GUI.color = prev;
+
+            labelStyle.normal.textColor = isActive ? Color.white : new Color(1f, 1f, 1f, 0.4f);
+            GUI.Label(new Rect(x, y + circleSize + 2f, circleSize, 16f), label, labelStyle);
+        }
+
+        private static Texture2D CreateCircleTexture(int size)
+        {
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            float center = size * 0.5f;
+            float radius = center - 1f;
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+                    if (dist <= radius)
+                        tex.SetPixel(x, y, Color.white);
+                    else
+                        tex.SetPixel(x, y, Color.clear);
+                }
+            }
+
+            tex.Apply();
+            return tex;
+        }
+    }
+}

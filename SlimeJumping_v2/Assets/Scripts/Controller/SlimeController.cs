@@ -18,8 +18,9 @@ namespace SlimeJumping.Controller
         private Rigidbody2D rb;
         private CircleCollider2D circleCollider;
 
-        private enum SlimeState { Attached, Charging, Airborne }
+        public enum SlimeState { Attached, Charging, Airborne }
         private SlimeState currentState = SlimeState.Airborne;
+        public SlimeState CurrentState => currentState;
 
         // Judgment circle charge state (aimOffset = relative to slime center)
         private Vector2 aimOffset;
@@ -130,6 +131,7 @@ namespace SlimeJumping.Controller
 
             if (currentState == SlimeState.Charging && chargeVisual != null)
                 chargeVisual.UpdateVisual(rb.position, rb.position + aimOffset, activeChargeRadius);
+
         }
 
         private void FixedUpdate()
