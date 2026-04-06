@@ -50,6 +50,10 @@ namespace SlimeJumping.Controller
         // Stick timer (delay before slide starts)
         private float stickTimer;
 
+        // Hop (W impulse boost)
+        private float hopCooldownTimer;
+        private float hopBufferTimer;
+
         // Slide ramp-up timer (gradual slide acceleration after landing)
         private float slideRampTimer;
         private int conversionCount;
@@ -119,12 +123,14 @@ namespace SlimeJumping.Controller
         {
             inputReader.OnJumpPressed += HandleJumpPressed;
             inputReader.OnJumpReleased += HandleJumpReleased;
+            inputReader.OnHopPressed += HandleHopPressed;
         }
 
         private void OnDisable()
         {
             inputReader.OnJumpPressed -= HandleJumpPressed;
             inputReader.OnJumpReleased -= HandleJumpReleased;
+            inputReader.OnHopPressed -= HandleHopPressed;
         }
 
         private void Update()
@@ -258,7 +264,23 @@ namespace SlimeJumping.Controller
             else
                 crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle) * dt);
 
-            // 3. Final tangent velocity
+            // 3. Hop: W impulse with input buffer
+            hopCooldownTimer = Mathf.Max(0f, hopCooldownTimer - dt);
+            hopBufferTimer -= dt;
+
+            if (hopBufferTimer > 0f && Mathf.Abs(inputX) > 0.01f && hopCooldownTimer <= 0f)
+            {
+                float hopAngleScale = 1f - Mathf.InverseLerp(settings.hopAngleMin, settings.hopAngleMax, angle);
+                float hopStrength = settings.hopImpulse * hopAngleScale * surfaceMod.hopScale.Evaluate(angle);
+                if (hopStrength > 0f)
+                {
+                    crawlVelocity += -Mathf.Sign(inputX) * hopStrength;
+                    hopCooldownTimer = settings.hopCooldown;
+                    hopBufferTimer = 0f;
+                }
+            }
+
+            // 4. Final tangent velocity
             float finalTangent = slideSpeed + crawlVelocity;
             velocity = surfaceTangent * finalTangent;
 
@@ -569,6 +591,7 @@ namespace SlimeJumping.Controller
                     }
                 }
             }
+
         }
 
         // --- Input Callbacks ---
@@ -601,6 +624,11 @@ namespace SlimeJumping.Controller
         {
             if (currentState != SlimeState.Charging) return;
             Launch();
+        }
+
+        private void HandleHopPressed()
+        {
+            hopBufferTimer = settings.hopInputBuffer;
         }
 
         private float CalculateStickDuration(float impactSpeed)

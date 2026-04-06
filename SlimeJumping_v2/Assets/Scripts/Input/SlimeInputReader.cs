@@ -15,9 +15,11 @@ namespace SlimeJumping.Input
 
         public event Action OnJumpPressed;
         public event Action OnJumpReleased;
+        public event Action OnHopPressed;
 
         private InputAction moveAction;
         private InputAction jumpAction;
+        private InputAction hopAction;
 
         // Last-input-wins tracking
         private bool prevLeft, prevRight, prevUp, prevDown;
@@ -28,9 +30,11 @@ namespace SlimeJumping.Input
             var playerMap = inputActionAsset.FindActionMap("Player");
             moveAction = playerMap.FindAction("Move");
             jumpAction = playerMap.FindAction("Jump");
+            hopAction = playerMap.FindAction("Hop");
 
             jumpAction.started += HandleJumpStarted;
             jumpAction.canceled += HandleJumpCanceled;
+            hopAction.started += HandleHopStarted;
 
             playerMap.Enable();
         }
@@ -39,6 +43,7 @@ namespace SlimeJumping.Input
         {
             jumpAction.started -= HandleJumpStarted;
             jumpAction.canceled -= HandleJumpCanceled;
+            hopAction.started -= HandleHopStarted;
 
             inputActionAsset.FindActionMap("Player").Disable();
         }
@@ -75,6 +80,11 @@ namespace SlimeJumping.Input
         {
             IsJumpHeld = false;
             OnJumpReleased?.Invoke();
+        }
+
+        private void HandleHopStarted(InputAction.CallbackContext ctx)
+        {
+            OnHopPressed?.Invoke();
         }
     }
 }

@@ -15,6 +15,7 @@ namespace SlimeJumping.Physics
         public AngleScaledValue stickDuration;
         public AngleScaledValue impactRedirect;
         public AngleScaledValue wallAttachDampen;
+        public AngleScaledValue hopScale;
 
         public static readonly SurfaceModifiers Default = new()
         {
@@ -28,7 +29,8 @@ namespace SlimeJumping.Physics
             landingVelocityRetention = AngleScaledValue.Constant(0f),
             stickDuration = AngleScaledValue.Constant(1f),
             impactRedirect = AngleScaledValue.Constant(0f),
-            wallAttachDampen = AngleScaledValue.Constant(1f)
+            wallAttachDampen = AngleScaledValue.Constant(1f),
+            hopScale = AngleScaledValue.Constant(1f)
         };
     }
 }

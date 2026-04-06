@@ -14,6 +14,13 @@ namespace SlimeJumping.Settings
         public float slideResistance = 2f;
         public float baseSlideRampUpTime = 0.2f;
 
+        [Header("Hop")]
+        public float hopImpulse = 8f;
+        public float hopCooldown = 0.3f;
+        public float hopInputBuffer = 0.1f;
+        public float hopAngleMin = 30f;
+        public float hopAngleMax = 60f;
+
         [Header("Charge Circle")]
         [Min(0.01f)] public float chargeRadius = 1.5f;
         public float autoDriftSpeed = 1.5f;
