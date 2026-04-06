@@ -18,6 +18,7 @@ MonoBehaviour:
   slideGravityScale: 0.3
   slideThreshold: 7
   slideResistance: 3
+  baseSlideRampUpTime: 0.2
   chargeRadius: 1.5
   autoDriftSpeed: 1.5
   inputAcceleration: 1
@@ -27,7 +28,9 @@ MonoBehaviour:
   maxAimAngularSpeed: 40
   chargingCoyoteTime: 0.2
   coyoteGraceTime: 0.1
-  initialConversionRate: 0.9
+  initialConversionRate: 1
+  subsequentConversionRate: 0.9
+  notJumpConversionBonus: 1.05
   driftCompensation: 0.9
   minStickDuration: 0.3
   maxStickDuration: 0.6
@@ -35,8 +38,8 @@ MonoBehaviour:
   stickDecelerationTime: 0.4
   stickSlopeThreshold: 0.7
   stickCrawlMultiplier: 0.2
-  ceilingThreshold: -0.3
-  ceilingReattachThreshold: -0.2
+  ceilingAngle: 107
+  ceilingReattachAngle: 101
   airMaxHorizontalSpeed: 10
   airAcceleration: 3
   airDeceleration: 5

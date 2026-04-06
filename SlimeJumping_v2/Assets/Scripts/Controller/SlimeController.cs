@@ -492,10 +492,7 @@ namespace SlimeJumping.Controller
                     velocity = Vector2.zero;
 
                     if (surfaceUp >= settings.stickSlopeThreshold)
-                    {
                         stickTimer = 0f;
-                        conversionCount = 0;
-                    }
                     else
                         stickTimer = CalculateStickDuration(impactSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
 
