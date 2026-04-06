@@ -21,6 +21,8 @@ namespace SlimeJumping.Controller
         public enum SlimeState { Attached, Charging, Airborne }
         private SlimeState currentState = SlimeState.Airborne;
         public SlimeState CurrentState => currentState;
+        public bool IsTouchingSurface => isTouchingSurface;
+        public Vector2 SurfaceNormal => surfaceNormal;
 
         // Judgment circle charge state (aimOffset = relative to slime center)
         private Vector2 aimOffset;
@@ -322,6 +324,8 @@ namespace SlimeJumping.Controller
                 float deltaAngle = currAngle - prevAngle;
                 if (deltaAngle > Mathf.PI) deltaAngle -= 2f * Mathf.PI;
                 else if (deltaAngle < -Mathf.PI) deltaAngle += 2f * Mathf.PI;
+                float maxRotation = settings.chargeNormalFollowSpeed * dt;
+                deltaAngle = Mathf.Clamp(deltaAngle, -maxRotation, maxRotation);
                 if (Mathf.Abs(deltaAngle) > 0.0001f)
                 {
                     float cos = Mathf.Cos(deltaAngle);
@@ -715,7 +719,7 @@ namespace SlimeJumping.Controller
             float bestDist = float.MaxValue;
             float bestScore = -10f;
             float distTolerance = dist * 0.5f;
-            float inputX = inputReader.MoveInput.x;
+            float inputX = (currentState == SlimeState.Charging) ? 0f : inputReader.MoveInput.x;
 
             foreach (var d in directions)
             {

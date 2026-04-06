@@ -52,6 +52,16 @@ namespace SlimeJumping.Debugging
             DrawIndicator(0, "ATT", SlimeController.SlimeState.Attached, state, attachedColor);
             DrawIndicator(1, "CHG", SlimeController.SlimeState.Charging, state, chargingColor);
             DrawIndicator(2, "AIR", SlimeController.SlimeState.Airborne, state, airborneColor);
+
+            if (slimeController.IsTouchingSurface)
+            {
+                float angle = Mathf.Acos(Mathf.Abs(Vector2.Dot(slimeController.SurfaceNormal, Vector2.up))) * Mathf.Rad2Deg;
+                labelStyle.normal.textColor = Color.white;
+                labelStyle.alignment = TextAnchor.MiddleLeft;
+                float labelY = screenOffset.y + circleSize + 22f;
+                GUI.Label(new Rect(screenOffset.x, labelY, 200f, 20f), $"Surface: {angle:F1}°", labelStyle);
+                labelStyle.alignment = TextAnchor.MiddleCenter;
+            }
         }
 
         private void DrawIndicator(int index, string label,

@@ -22,6 +22,7 @@ namespace SlimeJumping.Settings
         public float minLaunchPower = 3f;
         public float chargeCurveExponent = 1f;
         public float maxAimAngularSpeed = 180f;
+        public float chargeNormalFollowSpeed = 5f;
         public float chargingCoyoteTime = 0.2f;
         public float coyoteGraceTime = 0.1f;
 
