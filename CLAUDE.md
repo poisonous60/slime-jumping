@@ -26,6 +26,7 @@ SlimeJumping_v2 is a **2.5D platformer** built in **Unity 6** (6000.3.11f1) wher
 Use `unity-cli` command to interact with the Unity Editor.
 Available commands: `list`, `exec`, `run_tests`, `console`, `screenshot`, `refresh_unity`, `manage_editor`, `execute_menu_item`, `reserialize_assets`.
 Don't use Comment when using `exec` commands. It returns error.
+`unity-cli exec` requires a return statement (e.g. `return 1;`). Expressions like `Debug.Log(...)` alone will fail.
 
 
 ### Coding Convention

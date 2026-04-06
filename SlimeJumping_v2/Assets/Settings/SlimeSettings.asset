@@ -21,7 +21,7 @@ MonoBehaviour:
   chargeRadius: 1.5
   autoDriftSpeed: 1.5
   inputAcceleration: 1
-  baseLaunchPower: 10
+  baseLaunchPower: 9
   minLaunchPower: 3
   chargeCurveExponent: 1
   maxAimAngularSpeed: 40
@@ -32,8 +32,9 @@ MonoBehaviour:
   minStickDuration: 0.3
   maxStickDuration: 0.6
   stickSpeedScale: 0.1
-  stickDecelerationTime: 0.5
+  stickDecelerationTime: 0.4
   stickSlopeThreshold: 0.7
+  stickCrawlMultiplier: 0.2
   ceilingThreshold: -0.3
   ceilingReattachThreshold: -0.2
   airMaxHorizontalSpeed: 10
