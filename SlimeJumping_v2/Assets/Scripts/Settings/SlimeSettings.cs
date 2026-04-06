@@ -12,6 +12,7 @@ namespace SlimeJumping.Settings
         public float slideGravityScale = 1f;
         public float slideThreshold = 1f;
         public float slideResistance = 2f;
+        public float baseSlideRampUpTime = 0.2f;
 
         [Header("Charge Circle")]
         [Min(0.01f)] public float chargeRadius = 1.5f;
@@ -25,7 +26,10 @@ namespace SlimeJumping.Settings
         public float coyoteGraceTime = 0.1f;
 
         [Header("Energy Conversion")]
-        [Min(0f)] public float heightRestorationRatio = 2.25f;
+        [Min(0f)] public float initialConversionRate = 2.25f;
+        [Range(0f, 1f)]
+        public float subsequentConversionRate = 0.9f;
+        public float notJumpConversionBonus = 1.3f;
         public float driftCompensation = 0.7f;
 
         [Header("Stick")]
@@ -36,8 +40,12 @@ namespace SlimeJumping.Settings
         public float stickSlopeThreshold = 0.7f; // surfaceUp above this = floor-like, no stick
         [Range(0f, 1f)]
         public float stickCrawlMultiplier = 0.2f; // 0 = blocked, 1 = full crawl
-        public float ceilingThreshold = -0.3f; // surfaceUp below this = ceiling, can't attach
-        public float ceilingReattachThreshold = -0.2f; // surfaceUp must exceed this to re-attach from Airborne
+        [Range(90f, 180f)]
+        public float ceilingAngle = 107f;
+        [Range(90f, 180f)]
+        public float ceilingReattachAngle = 101f;
+        public float ceilingThreshold => Mathf.Cos(ceilingAngle * Mathf.Deg2Rad);
+        public float ceilingReattachThreshold => Mathf.Cos(ceilingReattachAngle * Mathf.Deg2Rad);
 
         [Header("Air Control")]
         public float airMaxHorizontalSpeed = 5f;

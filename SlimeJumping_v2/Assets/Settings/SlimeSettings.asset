@@ -27,7 +27,7 @@ MonoBehaviour:
   maxAimAngularSpeed: 40
   chargingCoyoteTime: 0.2
   coyoteGraceTime: 0.1
-  heightRestorationRatio: 0.9
+  initialConversionRate: 0.9
   driftCompensation: 0.9
   minStickDuration: 0.3
   maxStickDuration: 0.6

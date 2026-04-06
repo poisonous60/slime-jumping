@@ -50,6 +50,7 @@ namespace SlimeJumping.Controller
 
         // Slide ramp-up timer (gradual slide acceleration after landing)
         private float slideRampTimer;
+        private int conversionCount;
 
         // Energy-based conversion normalization (stored at launch)
         private float launchSpeed;
@@ -195,6 +196,8 @@ namespace SlimeJumping.Controller
                 crawlVelocity = 0f;
                 launchSpeed = 0f;
                 launchHeight = rb.position.y;
+                slideRampTimer = 0f;
+                conversionCount = 0;
                 if (carrier != null) carrier.Detach();
                 surfaceMod = SurfaceModifiers.Default;
                 currentState = SlimeState.Airborne;
@@ -237,7 +240,8 @@ namespace SlimeJumping.Controller
 
                 // Slide ramp-up: gradual acceleration after landing
                 slideRampTimer += dt;
-                float rampUpTime = surfaceMod.slideRampUp.Evaluate(angle);
+                float surfaceRamp = surfaceMod.slideRampUp.Evaluate(angle);
+                float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.baseSlideRampUpTime;
                 float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
                 slideSpeed *= rampT;
             }
@@ -373,7 +377,8 @@ namespace SlimeJumping.Controller
 
                     // Slide ramp-up: gradual acceleration after landing
                     slideRampTimer += dt;
-                    float rampUpTime = surfaceMod.slideRampUp.Evaluate(angle);
+                    float surfaceRamp = surfaceMod.slideRampUp.Evaluate(angle);
+                    float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.baseSlideRampUpTime;
                     float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
                     slideSpeed *= rampT;
 
@@ -405,6 +410,8 @@ namespace SlimeJumping.Controller
                 crawlVelocity = 0f;
                 launchSpeed = 0f;
                 launchHeight = rb.position.y;
+                slideRampTimer = 0f;
+                conversionCount = 0;
                 if (carrier != null) carrier.Detach();
                 surfaceMod = SurfaceModifiers.Default;
                 currentState = SlimeState.Airborne;
@@ -459,9 +466,13 @@ namespace SlimeJumping.Controller
                     float shadowSpeedSq = launchSpeed * launchSpeed
                         + 2f * Mathf.Abs(settings.gravity) * heightDelta;
                     float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
-                    float speedRatio = Mathf.Sqrt(settings.heightRestorationRatio);
+                    float speedRatio = Mathf.Sqrt(settings.initialConversionRate);
                     float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
                     float spawnDistance = impactSpeed * effectiveRate;
+                    float conversionScale = (conversionCount == 0) ? 1f : settings.subsequentConversionRate;
+                    spawnDistance *= conversionScale;
+                    if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
+                    conversionCount++;
 
                     Vector2 relativeVel = velocity - landingPlatformVel;
                     float tangentSpeed = Vector2.Dot(relativeVel, surfaceTangent);
@@ -481,7 +492,10 @@ namespace SlimeJumping.Controller
                     velocity = Vector2.zero;
 
                     if (surfaceUp >= settings.stickSlopeThreshold)
+                    {
                         stickTimer = 0f;
+                        conversionCount = 0;
+                    }
                     else
                         stickTimer = CalculateStickDuration(impactSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
 
@@ -517,7 +531,10 @@ namespace SlimeJumping.Controller
                     velocity = Vector2.zero;
 
                     if (surfaceUp >= settings.stickSlopeThreshold)
+                    {
                         stickTimer = 0f;
+                        conversionCount = 0;
+                    }
                     else
                         stickTimer = CalculateStickDuration(landingSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
 
@@ -566,6 +583,7 @@ namespace SlimeJumping.Controller
             float tangentSpd = Vector2.Dot(velocity, surfaceTangent);
             impactVelocity = surfaceTangent * tangentSpd;
             stickDeccelTimer = 0f;
+            slideRampTimer = 0f;
             velocity = Vector2.zero;
             activeChargeRadius = settings.chargeRadius;
 
@@ -607,9 +625,13 @@ namespace SlimeJumping.Controller
                 ignoreTimers.Add(settings.maxIgnoreTime);
             }
 
+            bool isEnergyConversion = activeChargeRadius > settings.chargeRadius;
+            activeChargeRadius = settings.chargeRadius;
             float ratio = aimOffset.magnitude / settings.chargeRadius;
             float curvedRatio = Mathf.Pow(ratio, settings.chargeCurveExponent);
-            float power = settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
+            float power = isEnergyConversion
+                ? curvedRatio * settings.baseLaunchPower
+                : settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
             velocity = dir * power;
             if (carrier != null)
