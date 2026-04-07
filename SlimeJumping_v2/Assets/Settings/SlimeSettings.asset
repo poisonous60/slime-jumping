@@ -12,13 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 60f3adbcd38b21a4ca86bdc61ae75dba, type: 3}
   m_Name: SlimeSettings
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSettings
-  crawlSpeed: 3
-  crawlAcceleration: 4
+  crawlSpeed: 4
+  crawlAcceleration: 5
   crawlDeceleration: 8
-  slideGravityScale: 0.3
+  slideGravityScale: 0.4
   slideThreshold: 7
   slideResistance: 3
-  stickSlideTransitionRampTime: 0.2
   groundDashImpulse: 3
   groundDashCooldown: 0.34
   groundDashInputBuffer: 0.1
@@ -31,6 +30,7 @@ MonoBehaviour:
   hopBufferDuration: 0.1
   hopLandingRetention: 1
   tangentInheritanceFactor: 1
+  hyperDashDeduction: 5
   chargeRadius: 1.5
   autoDriftSpeed: 1.5
   inputAcceleration: 1
@@ -51,6 +51,7 @@ MonoBehaviour:
   stickDecelerationTime: 0.4
   stickSlopeThreshold: 0.7
   stickCrawlMultiplier: 0.2
+  stickSlideTransitionRampTime: 0.6
   ceilingAngle: 107
   ceilingReattachAngle: 101
   airMaxHorizontalSpeed: 10
