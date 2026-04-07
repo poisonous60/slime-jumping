@@ -22,6 +22,7 @@ namespace SlimeJumping.Controller
         private SlimeState currentState = SlimeState.Airborne;
         public SlimeState CurrentState => currentState;
         public bool IsTouchingSurface => isTouchingSurface;
+        public bool IsSticking => stickTimer > 0f;
         public Vector2 SurfaceNormal => surfaceNormal;
 
         // Judgment circle charge state (aimOffset = relative to slime center)
@@ -49,10 +50,19 @@ namespace SlimeJumping.Controller
 
         // Stick timer (delay before slide starts)
         private float stickTimer;
+        private bool preserveLandingVelocity;
 
         // Ground Dash (S impulse boost)
         private float dashCooldownTimer;
         private float dashBufferTimer;
+
+        // Hop cooldown
+        private float hopCooldownTimer;
+        private float hopBufferTimer;
+        private bool hopRequested;
+
+        // Hyper dash: crawl captured at charge entry (immune to charging decel)
+        private float chargeEntryCrawl;
 
         // Slide ramp-up timer (gradual slide acceleration after landing)
         private float slideRampTimer;
@@ -65,6 +75,7 @@ namespace SlimeJumping.Controller
         // Charging coyote time (grace period after leaving surface)
         private float coyoteTimer;
         private Vector2 lastSurfaceNormal;
+        private Vector2 lastSurfaceTangent = Vector2.right;
 
         // Surface contact info
         private Vector2 surfaceNormal;
@@ -124,6 +135,7 @@ namespace SlimeJumping.Controller
             inputReader.OnJumpPressed += HandleJumpPressed;
             inputReader.OnJumpReleased += HandleJumpReleased;
             inputReader.OnVerticalDownPressed += HandleVerticalDownPressed;
+            inputReader.OnVerticalUpPressed += HandleVerticalUpPressed;
         }
 
         private void OnDisable()
@@ -131,10 +143,16 @@ namespace SlimeJumping.Controller
             inputReader.OnJumpPressed -= HandleJumpPressed;
             inputReader.OnJumpReleased -= HandleJumpReleased;
             inputReader.OnVerticalDownPressed -= HandleVerticalDownPressed;
+            inputReader.OnVerticalUpPressed -= HandleVerticalUpPressed;
         }
 
         private void Update()
         {
+            if (hopCooldownTimer > 0f) hopCooldownTimer -= Time.deltaTime;
+            if (hopBufferTimer > 0f) hopBufferTimer -= Time.deltaTime;
+            if (dashCooldownTimer > 0f) dashCooldownTimer -= Time.deltaTime;
+            if (dashBufferTimer > 0f) dashBufferTimer -= Time.deltaTime;
+
             if (postLaunchTimer > 0f)
             {
                 postLaunchTimer -= Time.deltaTime;
@@ -201,6 +219,7 @@ namespace SlimeJumping.Controller
         {
             if (!isTouchingSurface || Vector2.Dot(surfaceNormal, Vector2.up) < settings.ceilingThreshold)
             {
+                hopRequested = false;
                 crawlVelocity = 0f;
                 launchSpeed = 0f;
                 launchHeight = rb.position.y;
@@ -265,19 +284,10 @@ namespace SlimeJumping.Controller
                 crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle) * dt);
 
             // 3. Ground Dash: S impulse with input buffer
-            dashCooldownTimer = Mathf.Max(0f, dashCooldownTimer - dt);
-            dashBufferTimer -= dt;
-
             if (dashBufferTimer > 0f && Mathf.Abs(inputX) > 0.01f && dashCooldownTimer <= 0f)
             {
-                float dashAngleScale = 1f - Mathf.InverseLerp(settings.groundDashAngleMin, settings.groundDashAngleMax, angle);
-                float dashStrength = settings.groundDashImpulse * dashAngleScale * surfaceMod.groundDashScale.Evaluate(angle);
-                if (dashStrength > 0f)
-                {
-                    crawlVelocity += -Mathf.Sign(inputX) * dashStrength;
-                    dashCooldownTimer = settings.groundDashCooldown;
-                    dashBufferTimer = 0f;
-                }
+                ApplyGroundDash(-Mathf.Sign(inputX));
+                dashBufferTimer = 0f;
             }
 
             // 4. Final tangent velocity
@@ -290,6 +300,12 @@ namespace SlimeJumping.Controller
                 velocity -= surfaceNormal * normalVel;
 
             SnapToSurface();
+
+            if (hopRequested)
+            {
+                hopRequested = false;
+                Hop();
+            }
         }
 
         // --- State: Charging ---
@@ -366,6 +382,7 @@ namespace SlimeJumping.Controller
                 // On surface: reset coyote, remember surface for grace period
                 coyoteTimer = settings.chargingCoyoteTime;
                 lastSurfaceNormal = surfaceNormal;
+                lastSurfaceTangent = surfaceTangent;
 
                 // Stick: delay before slide starts (aiming still runs via UpdateCharging)
                 if (stickTimer > 0f)
@@ -433,6 +450,7 @@ namespace SlimeJumping.Controller
             else
             {
                 // Coyote expired: cancel to Airborne
+                chargeEntryCrawl = 0f;
                 crawlVelocity = 0f;
                 launchSpeed = 0f;
                 launchHeight = rb.position.y;
@@ -514,7 +532,9 @@ namespace SlimeJumping.Controller
                     float redirectSign = Mathf.Sign(Vector2.Dot(Vector2.up, surfaceTangent));
                     float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, Vector2.up));
                     float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect.Evaluate(landingAngle) * redirectSign * redirectScale;
-                    crawlVelocity = effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
+                    hopBufferTimer = 0f;
+                    dashBufferTimer = 0f;
+                    crawlVelocity = ComputeLandingCrawlVelocity(effectiveTangent, landingAngle);
                     velocity = Vector2.zero;
 
                     if (surfaceUp >= settings.stickSlopeThreshold)
@@ -528,6 +548,7 @@ namespace SlimeJumping.Controller
                     slideRampTimer = 0f;
                     driftDirection = -surfaceNormal;
                     prevSurfaceNormal = surfaceNormal;
+                    chargeEntryCrawl = 0f;
                     currentState = SlimeState.Charging;
                     SnapToSurface();
                     if (chargeVisual != null) chargeVisual.Show();
@@ -550,9 +571,14 @@ namespace SlimeJumping.Controller
                     float redirectSign = Mathf.Sign(Vector2.Dot(Vector2.up, surfaceTangent));
                     float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, Vector2.up));
                     float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect.Evaluate(landingAngle) * redirectSign * redirectScale;
-                    crawlVelocity = effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
+
+                    if (hopBufferTimer > 0f)
+                        preserveLandingVelocity = true;
+
+                    crawlVelocity = ComputeLandingCrawlVelocity(effectiveTangent, landingAngle);
                     velocity = Vector2.zero;
 
+                    // conversionCount resets on floor landing only. Wall chains keep subsequentConversionRate — intentional.
                     if (surfaceUp >= settings.stickSlopeThreshold)
                     {
                         stickTimer = 0f;
@@ -564,6 +590,22 @@ namespace SlimeJumping.Controller
                     slideRampTimer = 0f;
                     currentState = SlimeState.Attached;
                     SnapToSurface();
+
+                    if (hopBufferTimer > 0f)
+                    {
+                        hopBufferTimer = 0f;
+                        dashBufferTimer = 0f;
+                        velocity = surfaceTangent * crawlVelocity;
+                        stickTimer = 0f;
+                        Hop();
+                        return;
+                    }
+
+                    if (dashBufferTimer > 0f && Mathf.Abs(inputReader.LastInputMove.x) > 0.01f && dashCooldownTimer <= 0f)
+                    {
+                        ApplyGroundDash(-Mathf.Sign(inputReader.LastInputMove.x));
+                        dashBufferTimer = 0f;
+                    }
                 }
                 return;
             }
@@ -599,8 +641,10 @@ namespace SlimeJumping.Controller
         private void HandleJumpPressed()
         {
             if (currentState != SlimeState.Attached || postLaunchTimer > 0f) return;
+            hopRequested = false;
 
             currentState = SlimeState.Charging;
+            chargeEntryCrawl = crawlVelocity;
             aimOffset = Vector2.zero;
             driftDirection = -surfaceNormal;
             prevSurfaceNormal = surfaceNormal;
@@ -614,6 +658,7 @@ namespace SlimeJumping.Controller
             SnapToSurface();
             coyoteTimer = settings.chargingCoyoteTime;
             lastSurfaceNormal = surfaceNormal;
+            lastSurfaceTangent = surfaceTangent;
             if (carrier != null) carrier.Attach(surfaceCollider);
             UpdateSurfaceModifiers(surfaceCollider);
 
@@ -628,7 +673,73 @@ namespace SlimeJumping.Controller
 
         private void HandleVerticalDownPressed()
         {
-            dashBufferTimer = settings.groundDashInputBuffer;
+            if (currentState == SlimeState.Attached || currentState == SlimeState.Airborne)
+                dashBufferTimer = settings.groundDashInputBuffer;
+        }
+
+        private void HandleVerticalUpPressed()
+        {
+            if (currentState == SlimeState.Attached)
+            {
+                if (postLaunchTimer > 0f) return;
+                if (hopCooldownTimer > 0f) return;
+                hopRequested = true;
+            }
+            else if (currentState == SlimeState.Airborne)
+            {
+                hopBufferTimer = settings.hopBufferDuration;
+            }
+        }
+
+        private void Hop()
+        {
+            // Precondition: must be called at end of FixedUpdateAttached,
+            // after velocity = surfaceTangent * (slideSpeed + crawlVelocity).
+            // During stick, velocity holds impact decel residual — start from zero.
+            // During normal operation, velocity = surfaceTangent * (slide + crawl) — preserve it.
+            if (stickTimer > 0f)
+                velocity = surfaceNormal * settings.hopPower;
+            else
+                velocity += surfaceNormal * settings.hopPower;
+            crawlVelocity = 0f;
+            stickTimer = 0f;
+            stickDeccelTimer = 0f;
+
+            ignoredColliders.Clear();
+            ignoreTimers.Clear();
+            Collider2D[] overlaps = Physics2D.OverlapCircleAll(
+                rb.position,
+                settings.slimeRadius + settings.launchClearanceThreshold,
+                settings.groundLayer);
+            foreach (var c in overlaps)
+            {
+                ignoredColliders.Add(c);
+                ignoreTimers.Add(settings.maxIgnoreTime);
+            }
+
+            if (carrier != null)
+            {
+                velocity += carrier.GetEffectiveVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
+                carrier.Detach();
+            }
+            surfaceMod = SurfaceModifiers.Default;
+            launchSpeed = velocity.magnitude;
+            launchHeight = rb.position.y;
+            hopCooldownTimer = settings.hopCooldown;
+
+            preserveLandingVelocity = true;
+            currentState = SlimeState.Airborne;
+            postLaunchTimer = settings.postLaunchIgnoreTime;
+        }
+
+        private float ComputeLandingCrawlVelocity(float effectiveTangent, float landingAngle)
+        {
+            if (preserveLandingVelocity)
+            {
+                preserveLandingVelocity = false;
+                return effectiveTangent * settings.hopLandingRetention;
+            }
+            return effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
         }
 
         private float CalculateStickDuration(float impactSpeed)
@@ -637,10 +748,27 @@ namespace SlimeJumping.Controller
             return Mathf.Lerp(settings.minStickDuration, settings.maxStickDuration, t);
         }
 
+        private void ApplyGroundDash(float inputSign)
+        {
+            float dashAngle = GetSurfaceAngle();
+            float dashAngleScale = 1f - Mathf.InverseLerp(settings.groundDashAngleMin, settings.groundDashAngleMax, dashAngle);
+            float dashStrength = settings.groundDashImpulse * dashAngleScale * surfaceMod.groundDashScale.Evaluate(dashAngle);
+            if (dashStrength > 0f)
+            {
+                crawlVelocity += inputSign * dashStrength;
+                dashCooldownTimer = settings.groundDashCooldown;
+            }
+        }
+
         // --- Launch ---
 
         private void Launch()
         {
+            preserveLandingVelocity = false;
+            hopBufferTimer = 0f;
+            dashBufferTimer = 0f;
+            float preLaunchCrawl = chargeEntryCrawl;
+            chargeEntryCrawl = 0f;
             crawlVelocity = 0f;
             ignoredColliders.Clear();
             ignoreTimers.Clear();
@@ -663,6 +791,7 @@ namespace SlimeJumping.Controller
                 : settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
             velocity = dir * power;
+            velocity += lastSurfaceTangent * preLaunchCrawl * settings.tangentInheritanceFactor;
             if (carrier != null)
             {
                 velocity += carrier.GetEffectiveVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());

@@ -17,6 +17,7 @@ namespace SlimeJumping.Debugging
         [SerializeField] private Color attachedColor = Color.green;
         [SerializeField] private Color chargingColor = Color.yellow;
         [SerializeField] private Color airborneColor = Color.cyan;
+        [SerializeField] private Color stickColor = new Color(1f, 0.5f, 0f);
         [SerializeField] private Color offColor = new Color(0.2f, 0.2f, 0.2f, 0.5f);
 
         private Texture2D circleTex;
@@ -52,6 +53,7 @@ namespace SlimeJumping.Debugging
             DrawIndicator(0, "ATT", SlimeController.SlimeState.Attached, state, attachedColor);
             DrawIndicator(1, "CHG", SlimeController.SlimeState.Charging, state, chargingColor);
             DrawIndicator(2, "AIR", SlimeController.SlimeState.Airborne, state, airborneColor);
+            DrawBoolIndicator(3, "STK", slimeController.IsSticking, stickColor);
 
             if (slimeController.IsTouchingSurface)
             {
@@ -72,6 +74,22 @@ namespace SlimeJumping.Debugging
             float y = screenOffset.y;
 
             bool isActive = currentState == targetState;
+            Color color = isActive ? activeColor : offColor;
+
+            Color prev = GUI.color;
+            GUI.color = color;
+            GUI.DrawTexture(new Rect(x, y, circleSize, circleSize), circleTex);
+            GUI.color = prev;
+
+            labelStyle.normal.textColor = isActive ? Color.white : new Color(1f, 1f, 1f, 0.4f);
+            GUI.Label(new Rect(x, y + circleSize + 2f, circleSize, 16f), label, labelStyle);
+        }
+
+        private void DrawBoolIndicator(int index, string label, bool isActive, Color activeColor)
+        {
+            float x = screenOffset.x + index * spacing;
+            float y = screenOffset.y;
+
             Color color = isActive ? activeColor : offColor;
 
             Color prev = GUI.color;

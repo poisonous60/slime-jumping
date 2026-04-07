@@ -21,6 +21,16 @@ namespace SlimeJumping.Settings
         public float groundDashAngleMin = 30f;
         public float groundDashAngleMax = 60f;
 
+        [Header("Hop")]
+        public float hopPower = 2.25f;
+        public float hopCooldown = 0.1f;
+        public float hopBufferDuration = 0.1f;
+        [Range(0f, 1f)]
+        public float hopLandingRetention = 1f;
+
+        [Header("Hyper Dash")]
+        [Range(0f, 1f)] public float tangentInheritanceFactor = 0.7f;
+
         [Header("Charge Circle")]
         [Min(0.01f)] public float chargeRadius = 1.5f;
         public float autoDriftSpeed = 1.5f;

@@ -43,8 +43,6 @@ namespace SlimeJumping.Input
             verticalDownAction.started += HandleVerticalDownStarted;
 
             playerMap.Enable();
-
-            _ = OnVerticalUpPressed;
         }
 
         private void OnDisable()

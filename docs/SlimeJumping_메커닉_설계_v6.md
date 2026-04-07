@@ -97,9 +97,11 @@ Attached 상태에서 A/D 크롤 중 S를 누르면 `crawlVelocity`에 순간 im
 
 - S pressed(rising edge)에만 발동, 홀드 시 반복 안 함.
 - **입력 버퍼**: S를 먼저 누르고 `groundDashInputBuffer`(0.1초) 안에 A/D 입력 시에도 발동.
-- **쿨타임**: `groundDashCooldown`(0.3초) 동안 재발동 불가.
+- **코요테 버퍼**: Airborne 상태에서 S 누르면 버퍼에 저장, 착지 시 A/D 홀드 중이면 발동.
+- **쿨타임**: `groundDashCooldown`(0.3초) 동안 재발동 불가. 타이머는 wall-clock 기반 (Airborne/Charging 중에도 경과).
 - **기울기 제한**: `groundDashAngleMin`(30°)~`groundDashAngleMax`(60°) 구간에서 1→0 보간. 평지=풀 부스트, 급경사=불가.
 - 표면별 `groundDashScale` 배율로 추가 조절 가능 (기본 1.0).
+- **입력 우선순위**: Charging > W(hop) > S(dash). Space 홀드 착지 시 둘 다 소비, hop 버퍼 활성 시 dash 버퍼 소비.
 
 ```
 if (S pressed && cooldown <= 0 && |inputX| > 0)
@@ -107,6 +109,35 @@ if (S pressed && cooldown <= 0 && |inputX| > 0)
     crawlVelocity += sign(inputDir) * groundDashImpulse * angleScale * surfaceMod.groundDashScale
     cooldown = groundDashCooldown
 ```
+
+### 홉 (W 표면 점프)
+
+Attached 상태에서 W를 누르면 표면 법선 방향으로 작은 점프. 기존 접선 운동량을 보존하면서 살짝 띄우는 표현용 액션.
+
+- `velocity += surfaceNormal * hopPower`. 스틱 중에는 `velocity = surfaceNormal * hopPower` (충돌 잔여 속도 무시).
+- `crawlVelocity = 0` (접선 운동량은 velocity 필드로 이관).
+- **입력 지연 처리 (Deferred)**: 입력 콜백은 `hopRequested` 플래그만 set. 실제 `Hop()`은 `FixedUpdateAttached` 끝에서 velocity가 신선한 상태에서 호출.
+- **착지 속도 보존**: `preserveLandingVelocity` 플래그로 hop 착지 시 retention을 `hopLandingRetention`(기본 1.0)으로 강제. 경사 가속 제어용 knob.
+- **쿨타임**: `hopCooldown`(0.1초).
+
+**홉 입력 버퍼 (코요테)**:
+- Airborne 상태에서 W 누르면 `hopBufferTimer`에 저장.
+- 착지 시 (Airborne → Attached) 버퍼가 활성이면:
+  1. `preserveLandingVelocity = true` → retention 100%로 crawlVelocity 보존.
+  2. `velocity = surfaceTangent * crawlVelocity`로 재구성 (착지 코드가 velocity를 0으로 만들었으므로).
+  3. `stickTimer = 0` (stick 분기 우회 — 각도 무관 일관 동작).
+  4. `Hop()` 즉시 호출.
+- 버퍼 hop은 `hopCooldown`을 우회 (의도적 — 벽 등반 사용처).
+
+### 하이퍼 대시 (Dash → Charge → Launch 콤보)
+
+그라운드 대시 후 즉시 차징하면, 대시 운동량이 발사에 합산되는 콤보 기법.
+
+- **캡처 시점**: 차징 진입 시 `chargeEntryCrawl = crawlVelocity` 저장. 차징 중 `crawlDeceleration`이 시각적 감속을 처리하지만, 캡처 값은 보존.
+- **발사 시**: `velocity += lastSurfaceTangent * chargeEntryCrawl * tangentInheritanceFactor`.
+- `tangentInheritanceFactor`(기본 0.7)로 boost 비율 조절.
+- **에너지 전환 경로**: Airborne → Charging 직행 시 `chargeEntryCrawl = 0` (에너지 전환과 하이퍼 대시 스택 방지).
+- **코요테 탄젠트**: `lastSurfaceTangent`를 캐싱하여 코요테 중(표면 이탈) Launch에서도 올바른 접선 방향 사용.
 
 ### 스틱 타이머 (착지 후 표면 고정)
 
@@ -372,10 +403,25 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | 파라미터 | 기본값 | 설명 |
 |---------|--------|------|
 | groundDashImpulse | 8 | S 누를 때 crawlVelocity에 더하는 순간 속도 |
-| groundDashCooldown | 0.3 | 대시 간 쿨타임 (초) |
-| groundDashInputBuffer | 0.1 | S 입력 버퍼 시간 — S 먼저 누르고 이 시간 내 A/D 시 발동 |
+| groundDashCooldown | 0.3 | 대시 간 쿨타임 (초). Wall-clock 기반 |
+| groundDashInputBuffer | 0.1 | S 입력 버퍼 시간 — Attached/Airborne에서 유효 |
 | groundDashAngleMin | 30 | 이 각도 이하에서 풀 대시 |
 | groundDashAngleMax | 60 | 이 각도 이상에서 대시 불가, 사이 보간 |
+
+### Hop
+
+| 파라미터 | 기본값 | 설명 |
+|---------|--------|------|
+| hopPower | 2.25 | W 누를 때 surfaceNormal 방향 impulse |
+| hopCooldown | 0.1 | 홉 간 쿨타임 (초). 버퍼 홉은 우회 |
+| hopBufferDuration | 0.1 | Airborne에서 W 입력 버퍼 시간 |
+| hopLandingRetention | 1 | 홉 착지 시 접선 속도 보존 비율. 경사 가속 제어용 (0~1) |
+
+### Hyper Dash
+
+| 파라미터 | 기본값 | 설명 |
+|---------|--------|------|
+| tangentInheritanceFactor | 0.7 | 차징 진입 시 캡처한 crawl의 발사 합산 비율 (0~1) |
 
 ### Charge Circle
 
@@ -441,8 +487,9 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | 입력 | 동작 |
 |------|------|
 | A / D | 표면 위 크롤링 (접선 투영) |
+| W | 홉 (표면 법선 방향 작은 점프, 접선 운동량 보존) |
 | S | 그라운드 대시 (크롤 방향 순간 부스트, A/D 입력 필요) |
-| Space 홀드 | 차징 시작 (판정원 생성, 조준점 중심) |
+| Space 홀드 | 차징 시작 (판정원 생성, 조준점 중심). Dash → Space = 하이퍼 대시 |
 
 ### 차징 (Charging)
 
@@ -457,8 +504,11 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | 입력 | 동작 |
 |------|------|
 | A / D | 수평 가감속 (하강 시에만) |
-| W / S | 중력 조절 (W=float, S=dive, 하강 시에만) |
+| W | 홉 버퍼 (착지 시 즉시 홉 발동) / 중력 조절 float (하강 시) |
+| S | 대시 버퍼 (착지 시 A/D 방향으로 대시 발동) / 중력 조절 dive (하강 시) |
 | Space 홀드 | 표면 충돌 시 에너지 전환 준비 |
+
+**착지 시 입력 우선순위**: Space(Charging) > W(Hop) > S(Dash). 상위 입력이 하위 버퍼를 소비.
 
 ### 표면 충돌
 
