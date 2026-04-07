@@ -62,6 +62,11 @@ namespace SlimeJumping.Settings
         [Range(0f, 1f)]
         public float stickCrawlMultiplier = 0.2f; // 0 = blocked, 1 = full crawl
         public float stickSlideTransitionRampTime = 0.2f;
+
+        [Header("Charge Entry Grace")]
+        public float chargeEntryStickBonus = 0.2f;
+        public float chargingSlideGravityScale = 0.5f;
+
         [Range(90f, 180f)]
         public float ceilingAngle = 107f;
         [Range(90f, 180f)]

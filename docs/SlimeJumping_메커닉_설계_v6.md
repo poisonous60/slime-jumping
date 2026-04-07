@@ -145,7 +145,7 @@ Attached 상태에서 W를 누르면 표면 법선 방향으로 작은 점프. �
 벽/급경사에 **공중에서 착지**할 때 충돌 속도에 비례한 시간 동안 슬라이드 없이 고정. 점성 슬라임이 철퍼덕 붙는 느낌.
 
 **적용 시점**: Airborne → Attached 착지, Airborne → Charging 에너지 전환 착지. 두 경로만 해당.
-**미적용**: 이미 부착된 상태에서 Space 눌러 Charging 진입 시 — 충돌이 아니므로 스틱 불필요. 기존 stickTimer 값이 그대로 이어짐.
+**Attached→Charging 진입 시 (Charge Entry Grace)**: Space를 눌러 차징 진입하면 `stickTimer += chargeEntryStickBonus` (가산). 인위적 스틱 이벤트를 발동시켜 현재 접선 속도에서 부드럽게 감속(`stickDeccelTimer` 재시작). 슬라이드 중이던 슬라임이 잠시 표면을 붙잡는 효과. 기존 stickTimer가 남아있으면 그 위에 가산되므로 플레이어의 커밋이 항상 보상받음.
 
 ```
 if (surfaceUp >= slopeThreshold)
@@ -231,6 +231,8 @@ direction = -aimOffset.normalized    // 압축 반대 방향
 ### 차징 중 슬라이드
 
 벽/급경사에서 차징 중에도 슬라이드가 동작. 슬라임이 흘러내리면서 차징 = 시간 압박. 판정원은 슬라임 기준 상대 좌표라 슬라임이 미끄러져도 같이 따라감.
+
+**차징 슬라이드 중력 감쇠**: 차징 중 슬라이드의 중력 접선 성분에 `chargingSlideGravityScale`을 곱함. Charge Entry Grace의 스틱 만료 후 슬라이드가 재개될 때 완만하게 가속. 시간 압박은 유지하되 즉각적 미끄러짐을 억제.
 
 ### 차징 규칙
 
@@ -455,6 +457,13 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | slopeThreshold | 0.7 | 이 이상 surfaceUp = 바닥 (스틱/슬라이드 없음). 약 45° |
 | ceilingThreshold | -0.3 | 이 미만 surfaceUp = 천장 (부착 불가). 약 107° |
 | ceilingReattachThreshold | -0.2 | Airborne에서 이 이상이어야 재부착. 히스테리시스 |
+
+### Charge Entry Grace
+
+| 파라미터 | 기본값 | 설명 |
+|---------|--------|------|
+| chargeEntryStickBonus | 0.2 | Attached→Charging 진입 시 가산되는 스틱 시간 (초) |
+| chargingSlideGravityScale | 0.5 | 차징 중 슬라이드 중력 접선 성분 배율 (0~1) |
 
 ### Air Control
 

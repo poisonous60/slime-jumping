@@ -87,6 +87,7 @@ namespace SlimeJumping.Controller
                 {
                     slideRampTimer = 0f;
                     wasStuck = false;
+                    crawlVelocity = Vector2.Dot(velocity, surfaceTangent);
                 }
                 if (stickTimer > 0f) wasStuck = true;
 
@@ -112,6 +113,7 @@ namespace SlimeJumping.Controller
                     float angle = GetSurfaceAngle();
                     Vector2 gravityVec = new Vector2(0f, settings.gravity);
                     float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
+                    gravAlongTangent *= settings.chargingSlideGravityScale;
                     if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
                         gravAlongTangent = 0f;
                     float slideSpeed = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);

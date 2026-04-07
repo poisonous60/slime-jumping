@@ -17,11 +17,16 @@ namespace SlimeJumping.Controller
             aimOffset = Vector2.zero;
             driftDirection = -surfaceNormal;
             prevSurfaceNormal = surfaceNormal;
+
+            // Charge entry stick grace: artificial stick event for smooth decel + slide suppression
             float tangentSpd = Vector2.Dot(velocity, surfaceTangent);
             impactVelocity = surfaceTangent * tangentSpd;
+            stickTimer += settings.chargeEntryStickBonus;
             stickDeccelTimer = 0f;
             slideRampTimer = 0f;
-            velocity = Vector2.zero;
+            wasStuck = true;
+            velocity = impactVelocity;
+
             activeChargeRadius = settings.chargeRadius;
 
             SnapToSurface();
