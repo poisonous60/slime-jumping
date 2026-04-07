@@ -202,7 +202,7 @@ else
 ```
 // 자동 드리프트
 radiusRatio = activeChargeRadius / chargeRadius
-activeDriftSpeed = autoDriftSpeed * lerp(1, radiusRatio, driftCompensation)
+activeDriftSpeed = autoDriftSpeed * lerp(1, radiusRatio, aimDriftRadiusScale)
 aimOffset += aimOffset.normalized * activeDriftSpeed * dt
 
 // WASD
@@ -298,15 +298,15 @@ crawlVelocity = 0
 - 약한 충돌 (spawnDistance ≤ chargeRadius): 일반 차징과 동일.
 - 강한 충돌 (spawnDistance > chargeRadius): 판정원 확장, 초과 파워 가능.
 
-### 드리프트 보상 (driftCompensation)
+### 드리프트 보상 (aimDriftRadiusScale)
 
 확장 판정원에서 드리프트 속도를 얼마나 보상할지.
 
 ```
-activeDriftSpeed = autoDriftSpeed * lerp(1, radiusRatio, driftCompensation)
+activeDriftSpeed = autoDriftSpeed * lerp(1, radiusRatio, aimDriftRadiusScale)
 ```
 
-| driftCompensation | 반지름 2배일 때 | 차징 시간 |
+| aimDriftRadiusScale | 반지름 2배일 때 | 차징 시간 |
 |-------------------|----------------|-----------|
 | 1.0 | 드리프트 2배 | 동일 |
 | 0.7 | 드리프트 1.7배 | 약 18% 증가 |
@@ -469,7 +469,7 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | 파라미터 | 기본값 | 설명 |
 |---------|--------|------|
 | heightRestorationRatio | 2.25 | 에너지 전환 복원 비율 (effectiveRate = sqrt(ratio) * chargeRadius / baseLaunchPower) |
-| driftCompensation | 0.7 | 확장 시 드리프트 보상 (1.0=시간 동일, 0.0=시간 비례 증가) |
+| aimDriftRadiusScale | 0.7 | 확장 시 드리프트 보상 (1.0=시간 동일, 0.0=시간 비례 증가) |
 
 ### Stick
 
