@@ -48,9 +48,30 @@ namespace SlimeJumping.Controller
                 return;
             }
 
-            // Surface/coyote physics
-            bool onValidSurface = isTouchingSurface
+            // Surface/coyote physics — with probe hysteresis (absorb 1-frame misses)
+            bool probeValid = isTouchingSurface
                 && Vector2.Dot(surfaceNormal, Vector2.up) >= settings.ceilingThreshold;
+
+            bool onValidSurface;
+            if (probeValid)
+            {
+                surfaceProbeMissFrames = 0;
+                cachedSurfaceCollider = surfaceCollider;
+                onValidSurface = true;
+            }
+            else if (surfaceProbeMissFrames < settings.chargingSurfaceProbeGraceFrames
+                     && cachedSurfaceCollider != null)
+            {
+                surfaceProbeMissFrames++;
+                surfaceNormal = lastSurfaceNormal;
+                surfaceTangent = lastSurfaceTangent;
+                surfaceCollider = cachedSurfaceCollider;
+                onValidSurface = true;
+            }
+            else
+            {
+                onValidSurface = false;
+            }
 
             if (onValidSurface)
             {
@@ -166,7 +187,7 @@ namespace SlimeJumping.Controller
                 conversionCount = 0;
                 if (carrier != null) carrier.Detach();
                 surfaceMod = SurfaceModifiers.Default;
-                currentState = SlimeState.Airborne;
+                ChangeState(SlimeState.Airborne);
                 if (chargeVisual != null) chargeVisual.Hide();
             }
         }

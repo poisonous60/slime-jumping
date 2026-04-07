@@ -11,6 +11,9 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateAirborne(float dt)
         {
+            if (attachLockoutTimer > 0f)
+                attachLockoutTimer -= dt;
+
             bool airControlActive = velocity.y <= settings.apexThreshold;
 
             // Gravity
@@ -40,6 +43,15 @@ namespace SlimeJumping.Controller
                     float normalVel = Vector2.Dot(velocity, surfaceNormal);
                     if (normalVel < 0f)
                         velocity -= surfaceNormal * normalVel;
+                    return;
+                }
+
+                // Attach debounce: block landing during lockout, cancel normal velocity only
+                if (attachLockoutTimer > 0f)
+                {
+                    float normalVel2 = Vector2.Dot(velocity, surfaceNormal);
+                    if (normalVel2 < 0f)
+                        velocity -= surfaceNormal * normalVel2;
                     return;
                 }
 
@@ -93,7 +105,11 @@ namespace SlimeJumping.Controller
                     driftDirection = -surfaceNormal;
                     prevSurfaceNormal = surfaceNormal;
                     chargeEntryCrawl = 0f;
-                    currentState = SlimeState.Charging;
+                    ChangeState(SlimeState.Charging);
+                    lastSurfaceNormal = surfaceNormal;
+                    lastSurfaceTangent = surfaceTangent;
+                    surfaceProbeMissFrames = 0;
+                    cachedSurfaceCollider = surfaceCollider;
                     SnapToSurface();
                     if (chargeVisual != null) chargeVisual.Show();
                 }
@@ -132,7 +148,7 @@ namespace SlimeJumping.Controller
                         stickTimer = CalculateStickDuration(landingSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
 
                     slideRampTimer = 0f;
-                    currentState = SlimeState.Attached;
+                    ChangeState(SlimeState.Attached);
                     SnapToSurface();
 
                     if (hopBufferTimer > 0f)

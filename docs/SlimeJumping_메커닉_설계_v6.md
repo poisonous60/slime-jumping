@@ -240,6 +240,31 @@ direction = -aimOffset.normalized    // 압축 반대 방향
 - **발사 후 입력 무시 윈도우: 0.05초.**
 - **최소 발사력**: aimOffset이 minLaunchRatio 미만이면 최소 파워로 클램프 후 발사. Attached로 돌아가지 않음 (캔슬 불가 원칙).
 
+### 차징 표면 프로브 히스테리시스
+
+곡면/모서리에서 SurfaceProbe가 1~2 프레임 표면 감지를 놓칠 수 있음 (접선 이동에 의한 chord-arc gap, 모서리 기하 불안정 등). 감지 실패 시 즉시 coyote로 빠지면 Charging→coyote→Airborne→재충돌 오실레이션 발생.
+
+**해결**: `chargingSurfaceProbeGraceFrames`(기본 3) 동안 캐시된 표면 데이터(법선, 접선, 콜라이더)로 valid 분기를 유지. grace 초과 시에만 coyote 진입.
+
+- `surfaceProbeMissFrames`: 연속 miss 카운터. 유효 프레임마다 0으로 리셋.
+- `cachedSurfaceCollider`: 마지막 유효 콜라이더. `null` 체크로 파괴된 오브젝트 방어.
+- grace 중 `isTouchingSurface`는 건드리지 않음 — 다른 코드의 side effect 방지.
+- grace 중 `SnapToSurface()`는 캐시된 콜라이더의 `ClosestPoint`를 사용하여 복원 시도.
+
+### 부착 디바운스 (Attach Debounce)
+
+모서리/코너에서 Attached↔Airborne 상태가 빠르게 토글되는 오실레이션 방지.
+
+**메커니즘**: 짧은 시간(`attachToggleWindow`, 0.1초) 내 상태 전환 횟수를 카운트. `attachToggleLockoutThreshold`(기본 10) 도달 시 `attachLockoutDuration`(0.1초) 동안 착지 전환 차단.
+
+- Lockout 중: 중력/에어 컨트롤은 정상 작동. 표면 접촉 시 법선 속도만 상쇄하여 관통 방지, 접선으로 미끄러져 벗어남.
+- Launch/Hop은 의도적 이탈이므로 카운터 리셋 (`intentional` 플래그).
+- 모든 비의도적 상태 전환이 카운트 대상 (Attached↔Airborne, Airborne↔Charging 포함).
+
+### 상태 전환 중앙화 (ChangeState)
+
+모든 `currentState` 변경은 `ChangeState(newState, intentional)` 함수를 통해 수행. 전환 시 디바운스 훅이 자동 실행. 향후 전환 관련 로직(사운드, 이벤트 등) 추가 시 단일 지점에서 처리.
+
 ### 발사 후 표면 무시
 
 발사한 표면 콜라이더를 임시 무시. 충분히 벗어나거나(clearanceThreshold) 시간 초과(maxIgnoreTime) 시 해제. 약한 발사에서 바닥에 즉시 재부착되는 문제 방지.
@@ -464,6 +489,15 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 |---------|--------|------|
 | chargeEntryStickBonus | 0.2 | Attached→Charging 진입 시 가산되는 스틱 시간 (초) |
 | chargingSlideGravityScale | 0.5 | 차징 중 슬라이드 중력 접선 성분 배율 (0~1) |
+| chargingSurfaceProbeGraceFrames | 3 | 차징 중 프로브 miss 허용 프레임 수 |
+
+### Attach Debounce
+
+| 파라미터 | 기본값 | 설명 |
+|---------|--------|------|
+| attachToggleWindow | 0.1 | 토글 감지 윈도우 (초). 이 시간 내 전환만 카운트 |
+| attachToggleLockoutThreshold | 10 | 이 횟수 도달 시 lockout 발동 |
+| attachLockoutDuration | 0.1 | Lockout 지속시간 (초). 착지 전환 차단 |
 
 ### Air Control
 

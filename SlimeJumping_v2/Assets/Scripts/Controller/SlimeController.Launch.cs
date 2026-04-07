@@ -41,7 +41,7 @@ namespace SlimeJumping.Controller
             launchSpeed = velocity.magnitude;
             launchHeight = rb.position.y;
 
-            currentState = SlimeState.Airborne;
+            ChangeState(SlimeState.Airborne, intentional: true);
             postLaunchTimer = settings.postLaunchIgnoreTime;
 
             if (chargeVisual != null) chargeVisual.Hide();
@@ -77,7 +77,7 @@ namespace SlimeJumping.Controller
             hopCooldownTimer = settings.hopCooldown;
 
             preserveLandingVelocity = true;
-            currentState = SlimeState.Airborne;
+            ChangeState(SlimeState.Airborne, intentional: true);
             postLaunchTimer = settings.postLaunchIgnoreTime;
         }
 

@@ -20,7 +20,7 @@ namespace SlimeJumping.Controller
                 conversionCount = 0;
                 if (carrier != null) carrier.Detach();
                 surfaceMod = SurfaceModifiers.Default;
-                currentState = SlimeState.Airborne;
+                ChangeState(SlimeState.Airborne);
                 return;
             }
 

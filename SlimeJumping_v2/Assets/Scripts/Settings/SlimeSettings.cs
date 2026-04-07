@@ -45,6 +45,12 @@ namespace SlimeJumping.Settings
         public float chargeNormalFollowSpeed = 5f;
         public float chargingCoyoteTime = 0.2f;
         public float coyoteGraceTime = 0.1f;
+        public int chargingSurfaceProbeGraceFrames = 3;
+
+        [Header("Attach Debounce")]
+        public float attachToggleWindow = 0.1f;
+        public int attachToggleLockoutThreshold = 10;
+        public float attachLockoutDuration = 0.1f;
 
         [Header("Energy Conversion")]
         [Min(0f)] public float initialConversionRate = 2.25f;

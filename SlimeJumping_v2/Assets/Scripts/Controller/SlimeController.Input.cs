@@ -12,7 +12,7 @@ namespace SlimeJumping.Controller
             if (currentState != SlimeState.Attached || postLaunchTimer > 0f) return;
             hopRequested = false;
 
-            currentState = SlimeState.Charging;
+            ChangeState(SlimeState.Charging);
             chargeEntryCrawl = crawlVelocity;
             aimOffset = Vector2.zero;
             driftDirection = -surfaceNormal;
@@ -33,6 +33,8 @@ namespace SlimeJumping.Controller
             coyoteTimer = settings.chargingCoyoteTime;
             lastSurfaceNormal = surfaceNormal;
             lastSurfaceTangent = surfaceTangent;
+            surfaceProbeMissFrames = 0;
+            cachedSurfaceCollider = surfaceCollider;
             if (carrier != null) carrier.Attach(surfaceCollider);
             UpdateSurfaceModifiers(surfaceCollider);
 

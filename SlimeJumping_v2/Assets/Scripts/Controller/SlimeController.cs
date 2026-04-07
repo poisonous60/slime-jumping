@@ -23,6 +23,10 @@ namespace SlimeJumping.Controller
         public bool IsTouchingSurface => isTouchingSurface;
         public bool IsSticking => stickTimer > 0f;
         public Vector2 SurfaceNormal => surfaceNormal;
+        public Vector2 Velocity => velocity;
+        public float CoyoteTimer => coyoteTimer;
+        public float StickTimer => stickTimer;
+        public Collider2D SurfaceCollider => surfaceCollider;
 
         // Judgment circle charge state (aimOffset = relative to slime center)
         private Vector2 aimOffset;
@@ -82,6 +86,15 @@ namespace SlimeJumping.Controller
         private Collider2D surfaceCollider;
         private Collider2D prevSurfaceCollider;
         private bool isTouchingSurface;
+
+        // Surface probe hysteresis (absorb 1-frame probe misses in Charging)
+        private int surfaceProbeMissFrames;
+        private Collider2D cachedSurfaceCollider;
+
+        // Attach debounce: prevent rapid Attached↔Airborne oscillation at corners/edges
+        private int attachToggleCount;
+        private float lastAttachToggleTime;
+        private float attachLockoutTimer;
 
         private SurfaceModifiers surfaceMod = SurfaceModifiers.Default;
 
@@ -248,6 +261,34 @@ namespace SlimeJumping.Controller
         private void SnapToSurface()
         {
             surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
+        }
+
+        private void ChangeState(SlimeState newState, bool intentional = false)
+        {
+            if (currentState == newState) return;
+
+            if (intentional)
+                attachToggleCount = 0;
+            else
+                RegisterAttachToggle();
+
+            currentState = newState;
+        }
+
+        private void RegisterAttachToggle()
+        {
+            if (Time.time - lastAttachToggleTime < settings.attachToggleWindow)
+                attachToggleCount++;
+            else
+                attachToggleCount = 1;
+
+            lastAttachToggleTime = Time.time;
+
+            if (attachToggleCount >= settings.attachToggleLockoutThreshold)
+            {
+                attachLockoutTimer = settings.attachLockoutDuration;
+                attachToggleCount = 0;
+            }
         }
     }
 }
