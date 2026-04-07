@@ -14,7 +14,7 @@ namespace SlimeJumping.Controller
 
             // Auto-drift outward (compensated for expanded radius)
             float radiusRatio = activeChargeRadius / settings.chargeRadius;
-            float activeDriftSpeed = settings.autoDriftSpeed * Mathf.Lerp(1f, radiusRatio, settings.driftCompensation);
+            float activeDriftSpeed = settings.autoDriftSpeed * Mathf.Lerp(1f, radiusRatio, settings.aimDriftRadiusScale);
 
             if (aimOffset.sqrMagnitude > 0.0001f)
                 aimOffset += aimOffset.normalized * activeDriftSpeed * dt;

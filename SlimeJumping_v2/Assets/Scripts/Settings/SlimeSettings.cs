@@ -57,7 +57,7 @@ namespace SlimeJumping.Settings
         [Range(0f, 1f)]
         public float subsequentConversionRate = 0.9f;
         public float notJumpConversionBonus = 1.3f;
-        public float driftCompensation = 0.7f;
+        public float aimDriftRadiusScale = 0.7f;
 
         [Header("Stick")]
         public float minStickDuration = 0.3f;
