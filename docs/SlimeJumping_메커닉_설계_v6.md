@@ -134,7 +134,7 @@ Attached 상태에서 W를 누르면 표면 법선 방향으로 작은 점프. �
 그라운드 대시 후 즉시 차징하면, 대시 운동량이 발사에 합산되는 콤보 기법.
 
 - **캡처 시점**: 차징 진입 시 `chargeEntryCrawl = crawlVelocity` 저장. 차징 중 `crawlDeceleration`이 시각적 감속을 처리하지만, 캡처 값은 보존.
-- **발사 시**: `velocity += lastSurfaceTangent * chargeEntryCrawl * tangentInheritanceFactor`.
+- **발사 시**: 일반 crawl 속도(`crawlSpeed`)를 baseline으로 빼고 dash 초과분만 반영. `excess = Max(0, |chargeEntryCrawl| - crawlSpeed)` → `velocity += lastSurfaceTangent * sign * excess * tangentInheritanceFactor`. 일반 crawl → charge = boost 0, dash → charge = dash 기여분만 boost.
 - `tangentInheritanceFactor`(기본 0.7)로 boost 비율 조절.
 - **에너지 전환 경로**: Airborne → Charging 직행 시 `chargeEntryCrawl = 0` (에너지 전환과 하이퍼 대시 스택 방지).
 - **코요테 탄젠트**: `lastSurfaceTangent`를 캐싱하여 코요테 중(표면 이탈) Launch에서도 올바른 접선 방향 사용.

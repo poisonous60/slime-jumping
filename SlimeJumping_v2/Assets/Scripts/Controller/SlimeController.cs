@@ -791,7 +791,8 @@ namespace SlimeJumping.Controller
                 : settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
             velocity = dir * power;
-            velocity += lastSurfaceTangent * preLaunchCrawl * settings.tangentInheritanceFactor;
+            float excess = Mathf.Max(0f, Mathf.Abs(preLaunchCrawl) - settings.crawlSpeed);
+            velocity += lastSurfaceTangent * Mathf.Sign(preLaunchCrawl) * excess * settings.tangentInheritanceFactor;
             if (carrier != null)
             {
                 velocity += carrier.GetEffectiveVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
