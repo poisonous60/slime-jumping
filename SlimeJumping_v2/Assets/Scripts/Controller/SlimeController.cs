@@ -50,9 +50,9 @@ namespace SlimeJumping.Controller
         // Stick timer (delay before slide starts)
         private float stickTimer;
 
-        // Hop (W impulse boost)
-        private float hopCooldownTimer;
-        private float hopBufferTimer;
+        // Ground Dash (S impulse boost)
+        private float dashCooldownTimer;
+        private float dashBufferTimer;
 
         // Slide ramp-up timer (gradual slide acceleration after landing)
         private float slideRampTimer;
@@ -123,14 +123,14 @@ namespace SlimeJumping.Controller
         {
             inputReader.OnJumpPressed += HandleJumpPressed;
             inputReader.OnJumpReleased += HandleJumpReleased;
-            inputReader.OnHopPressed += HandleHopPressed;
+            inputReader.OnGroundDashPressed += HandleGroundDashPressed;
         }
 
         private void OnDisable()
         {
             inputReader.OnJumpPressed -= HandleJumpPressed;
             inputReader.OnJumpReleased -= HandleJumpReleased;
-            inputReader.OnHopPressed -= HandleHopPressed;
+            inputReader.OnGroundDashPressed -= HandleGroundDashPressed;
         }
 
         private void Update()
@@ -264,19 +264,19 @@ namespace SlimeJumping.Controller
             else
                 crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle) * dt);
 
-            // 3. Hop: W impulse with input buffer
-            hopCooldownTimer = Mathf.Max(0f, hopCooldownTimer - dt);
-            hopBufferTimer -= dt;
+            // 3. Ground Dash: S impulse with input buffer
+            dashCooldownTimer = Mathf.Max(0f, dashCooldownTimer - dt);
+            dashBufferTimer -= dt;
 
-            if (hopBufferTimer > 0f && Mathf.Abs(inputX) > 0.01f && hopCooldownTimer <= 0f)
+            if (dashBufferTimer > 0f && Mathf.Abs(inputX) > 0.01f && dashCooldownTimer <= 0f)
             {
-                float hopAngleScale = 1f - Mathf.InverseLerp(settings.hopAngleMin, settings.hopAngleMax, angle);
-                float hopStrength = settings.hopImpulse * hopAngleScale * surfaceMod.hopScale.Evaluate(angle);
-                if (hopStrength > 0f)
+                float dashAngleScale = 1f - Mathf.InverseLerp(settings.groundDashAngleMin, settings.groundDashAngleMax, angle);
+                float dashStrength = settings.groundDashImpulse * dashAngleScale * surfaceMod.groundDashScale.Evaluate(angle);
+                if (dashStrength > 0f)
                 {
-                    crawlVelocity += -Mathf.Sign(inputX) * hopStrength;
-                    hopCooldownTimer = settings.hopCooldown;
-                    hopBufferTimer = 0f;
+                    crawlVelocity += -Mathf.Sign(inputX) * dashStrength;
+                    dashCooldownTimer = settings.groundDashCooldown;
+                    dashBufferTimer = 0f;
                 }
             }
 
@@ -626,9 +626,9 @@ namespace SlimeJumping.Controller
             Launch();
         }
 
-        private void HandleHopPressed()
+        private void HandleGroundDashPressed()
         {
-            hopBufferTimer = settings.hopInputBuffer;
+            dashBufferTimer = settings.groundDashInputBuffer;
         }
 
         private float CalculateStickDuration(float impactSpeed)

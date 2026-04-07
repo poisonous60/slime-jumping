@@ -15,7 +15,7 @@ namespace SlimeJumping.Physics
         public AngleScaledValue stickDuration;
         public AngleScaledValue impactRedirect;
         public AngleScaledValue wallAttachDampen;
-        public AngleScaledValue hopScale;
+        public AngleScaledValue groundDashScale;
 
         public static readonly SurfaceModifiers Default = new()
         {
@@ -30,7 +30,7 @@ namespace SlimeJumping.Physics
             stickDuration = AngleScaledValue.Constant(1f),
             impactRedirect = AngleScaledValue.Constant(0f),
             wallAttachDampen = AngleScaledValue.Constant(1f),
-            hopScale = AngleScaledValue.Constant(1f)
+            groundDashScale = AngleScaledValue.Constant(1f)
         };
     }
 }

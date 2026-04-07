@@ -15,11 +15,11 @@ namespace SlimeJumping.Input
 
         public event Action OnJumpPressed;
         public event Action OnJumpReleased;
-        public event Action OnHopPressed;
+        public event Action OnGroundDashPressed;
 
         private InputAction moveAction;
         private InputAction jumpAction;
-        private InputAction hopAction;
+        private InputAction groundDashAction;
 
         // Last-input-wins tracking
         private bool prevLeft, prevRight, prevUp, prevDown;
@@ -30,11 +30,11 @@ namespace SlimeJumping.Input
             var playerMap = inputActionAsset.FindActionMap("Player");
             moveAction = playerMap.FindAction("Move");
             jumpAction = playerMap.FindAction("Jump");
-            hopAction = playerMap.FindAction("Hop");
+            groundDashAction = playerMap.FindAction("GroundDash");
 
             jumpAction.started += HandleJumpStarted;
             jumpAction.canceled += HandleJumpCanceled;
-            hopAction.started += HandleHopStarted;
+            groundDashAction.started += HandleGroundDashStarted;
 
             playerMap.Enable();
         }
@@ -43,7 +43,7 @@ namespace SlimeJumping.Input
         {
             jumpAction.started -= HandleJumpStarted;
             jumpAction.canceled -= HandleJumpCanceled;
-            hopAction.started -= HandleHopStarted;
+            groundDashAction.started -= HandleGroundDashStarted;
 
             inputActionAsset.FindActionMap("Player").Disable();
         }
@@ -82,9 +82,9 @@ namespace SlimeJumping.Input
             OnJumpReleased?.Invoke();
         }
 
-        private void HandleHopStarted(InputAction.CallbackContext ctx)
+        private void HandleGroundDashStarted(InputAction.CallbackContext ctx)
         {
-            OnHopPressed?.Invoke();
+            OnGroundDashPressed?.Invoke();
         }
     }
 }

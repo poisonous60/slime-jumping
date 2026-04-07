@@ -28,9 +28,9 @@ namespace SlimeJumping.Physics
         [Tooltip("0 = absorb normal impact (default), 0.5 = redirect 50% of normal speed to tangent")]
         public AngleScaledValue impactRedirectRatio = AngleScaledValue.Constant(0f);
 
-        [Header("Hop")]
-        [Tooltip("Hop impulse multiplier. 0 = no hop on this surface")]
-        public AngleScaledValue hopScale = AngleScaledValue.Constant(1f);
+        [Header("Ground Dash")]
+        [Tooltip("Ground dash impulse multiplier. 0 = no dash on this surface")]
+        public AngleScaledValue groundDashScale = AngleScaledValue.Constant(1f);
 
         [Header("Wall Attach")]
         [Tooltip("Speed multiplier when attaching to surface. 1 = no dampen, 0.5 = half speed")]
@@ -49,7 +49,7 @@ namespace SlimeJumping.Physics
             stickDuration = stickDurationMultiplier,
             impactRedirect = impactRedirectRatio,
             wallAttachDampen = wallAttachSpeedDampen,
-            hopScale = hopScale
+            groundDashScale = groundDashScale
         };
     }
 }

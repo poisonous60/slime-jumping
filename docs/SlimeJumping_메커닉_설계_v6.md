@@ -91,6 +91,23 @@ slideSpeed = gravAlongTangent * slideGravityScale
 - 크롤링은 중력 접선 전체와 싸움 (slideThreshold 적용 전 값).
 - 최종 속도: `finalTangent = slideSpeed + crawlVelocity`.
 
+### 그라운드 대시 (S 순간 부스트)
+
+Attached 상태에서 A/D 크롤 중 S를 누르면 `crawlVelocity`에 순간 impulse 추가. 표면 부착 유지.
+
+- S pressed(rising edge)에만 발동, 홀드 시 반복 안 함.
+- **입력 버퍼**: S를 먼저 누르고 `groundDashInputBuffer`(0.1초) 안에 A/D 입력 시에도 발동.
+- **쿨타임**: `groundDashCooldown`(0.3초) 동안 재발동 불가.
+- **기울기 제한**: `groundDashAngleMin`(30°)~`groundDashAngleMax`(60°) 구간에서 1→0 보간. 평지=풀 부스트, 급경사=불가.
+- 표면별 `groundDashScale` 배율로 추가 조절 가능 (기본 1.0).
+
+```
+if (S pressed && cooldown <= 0 && |inputX| > 0)
+    angleScale = 1 - InverseLerp(groundDashAngleMin, groundDashAngleMax, surfaceAngle)
+    crawlVelocity += sign(inputDir) * groundDashImpulse * angleScale * surfaceMod.groundDashScale
+    cooldown = groundDashCooldown
+```
+
 ### 스틱 타이머 (착지 후 표면 고정)
 
 벽/급경사에 **공중에서 착지**할 때 충돌 속도에 비례한 시간 동안 슬라이드 없이 고정. 점성 슬라임이 철퍼덕 붙는 느낌.
@@ -350,6 +367,16 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | slideGravityScale | 1 | 중력 접선 → 미끄러짐 속도 배율 |
 | slideThreshold | 1 | 이 이하 접선 중력은 무시 (완만한 경사 보호) |
 
+### Ground Dash
+
+| 파라미터 | 기본값 | 설명 |
+|---------|--------|------|
+| groundDashImpulse | 8 | S 누를 때 crawlVelocity에 더하는 순간 속도 |
+| groundDashCooldown | 0.3 | 대시 간 쿨타임 (초) |
+| groundDashInputBuffer | 0.1 | S 입력 버퍼 시간 — S 먼저 누르고 이 시간 내 A/D 시 발동 |
+| groundDashAngleMin | 30 | 이 각도 이하에서 풀 대시 |
+| groundDashAngleMax | 60 | 이 각도 이상에서 대시 불가, 사이 보간 |
+
 ### Charge Circle
 
 | 파라미터 | 기본값 | 설명 |
@@ -413,7 +440,8 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 
 | 입력 | 동작 |
 |------|------|
-| WASD | 표면 위 크롤링 (접선 투영) |
+| A / D | 표면 위 크롤링 (접선 투영) |
+| S | 그라운드 대시 (크롤 방향 순간 부스트, A/D 입력 필요) |
 | Space 홀드 | 차징 시작 (판정원 생성, 조준점 중심) |
 
 ### 차징 (Charging)

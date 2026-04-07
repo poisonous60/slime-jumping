@@ -19,6 +19,11 @@ MonoBehaviour:
   slideThreshold: 7
   slideResistance: 3
   baseSlideRampUpTime: 0.2
+  hopImpulse: 1.5
+  hopCooldown: 0.34
+  hopInputBuffer: 0.1
+  hopAngleMin: 30
+  hopAngleMax: 60
   chargeRadius: 1.5
   autoDriftSpeed: 1.5
   inputAcceleration: 1
@@ -26,6 +31,7 @@ MonoBehaviour:
   minLaunchPower: 3
   chargeCurveExponent: 1
   maxAimAngularSpeed: 40
+  chargeNormalFollowSpeed: 5
   chargingCoyoteTime: 0.2
   coyoteGraceTime: 0.1
   initialConversionRate: 1
