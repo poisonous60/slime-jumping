@@ -101,6 +101,7 @@ Attached 상태에서 A/D 크롤 중 S를 누르면 `crawlVelocity`에 순간 im
 - **쿨타임**: `groundDashCooldown`(0.3초) 동안 재발동 불가. 타이머는 wall-clock 기반 (Airborne/Charging 중에도 경과).
 - **기울기 제한**: `groundDashAngleMin`(30°)~`groundDashAngleMax`(60°) 구간에서 1→0 보간. 평지=풀 부스트, 급경사=불가.
 - 표면별 `groundDashScale` 배율로 추가 조절 가능 (기본 1.0).
+- **속도 감쇠**: 같은 방향 crawl 속도가 `dashFalloffStart`(5) 이상이면 impulse 선형 감소, `dashFalloffEnd`(13)에서 0. 반대 방향은 풀 impulse. Hop-dash chain exploit 방지.
 - **입력 우선순위**: Charging > W(hop) > S(dash). Space 홀드 착지 시 둘 다 소비, hop 버퍼 활성 시 dash 버퍼 소비.
 
 ```
@@ -407,6 +408,8 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | groundDashInputBuffer | 0.1 | S 입력 버퍼 시간 — Attached/Airborne에서 유효 |
 | groundDashAngleMin | 30 | 이 각도 이하에서 풀 대시 |
 | groundDashAngleMax | 60 | 이 각도 이상에서 대시 불가, 사이 보간 |
+| dashFalloffStart | 5 | 이 속도까지는 풀 dash impulse |
+| dashFalloffEnd | 13 | 이 속도 이상에선 dash impulse 0 (선형 감소) |
 
 ### Hop
 

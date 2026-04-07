@@ -755,7 +755,9 @@ namespace SlimeJumping.Controller
             float dashStrength = settings.groundDashImpulse * dashAngleScale * surfaceMod.groundDashScale.Evaluate(dashAngle);
             if (dashStrength > 0f)
             {
-                crawlVelocity += inputSign * dashStrength;
+                float sameDirSpeed = Mathf.Max(0f, inputSign * crawlVelocity);
+                float falloff = 1f - Mathf.InverseLerp(settings.dashFalloffStart, settings.dashFalloffEnd, sameDirSpeed);
+                crawlVelocity += inputSign * dashStrength * falloff;
                 dashCooldownTimer = settings.groundDashCooldown;
             }
         }

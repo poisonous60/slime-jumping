@@ -20,6 +20,8 @@ namespace SlimeJumping.Settings
         public float groundDashInputBuffer = 0.1f;
         public float groundDashAngleMin = 30f;
         public float groundDashAngleMax = 60f;
+        public float dashFalloffStart = 5f;
+        public float dashFalloffEnd = 13f;
 
         [Header("Hop")]
         public float hopPower = 2.25f;
