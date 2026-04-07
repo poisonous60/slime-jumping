@@ -23,9 +23,23 @@ namespace SlimeJumping.Debugging
         private Texture2D circleTex;
         private GUIStyle labelStyle;
 
+        private Rigidbody2D rb;
+        private Vector2 prevVelocity;
+        private Vector2 acceleration;
+
         private void Awake()
         {
             circleTex = CreateCircleTexture(64);
+            if (slimeController != null)
+                rb = slimeController.GetComponent<Rigidbody2D>();
+        }
+
+        private void FixedUpdate()
+        {
+            if (rb == null) return;
+            Vector2 vel = rb.linearVelocity;
+            acceleration = (vel - prevVelocity) / Time.fixedDeltaTime;
+            prevVelocity = vel;
         }
 
         private void OnDestroy()
@@ -55,15 +69,31 @@ namespace SlimeJumping.Debugging
             DrawIndicator(2, "AIR", SlimeController.SlimeState.Airborne, state, airborneColor);
             DrawBoolIndicator(3, "STK", slimeController.IsSticking, stickColor);
 
+            labelStyle.normal.textColor = Color.white;
+            labelStyle.alignment = TextAnchor.MiddleLeft;
+            float labelY = screenOffset.y + circleSize + 22f;
+
+            Vector2 pos = slimeController.transform.position;
+            GUI.Label(new Rect(screenOffset.x, labelY, 200f, 20f), $"X: {pos.x:F1}  Y: {pos.y:F1}", labelStyle);
+            labelY += 18f;
+
+            if (rb != null)
+            {
+                Vector2 vel = rb.linearVelocity;
+                GUI.Label(new Rect(screenOffset.x, labelY, 280f, 20f), $"Vel: ({vel.x:F1}, {vel.y:F1})  |{vel.magnitude:F1}|", labelStyle);
+                labelY += 18f;
+
+                GUI.Label(new Rect(screenOffset.x, labelY, 280f, 20f), $"Acc: ({acceleration.x:F0}, {acceleration.y:F0})  |{acceleration.magnitude:F0}|", labelStyle);
+                labelY += 18f;
+            }
+
             if (slimeController.IsTouchingSurface)
             {
                 float angle = Mathf.Acos(Mathf.Abs(Vector2.Dot(slimeController.SurfaceNormal, Vector2.up))) * Mathf.Rad2Deg;
-                labelStyle.normal.textColor = Color.white;
-                labelStyle.alignment = TextAnchor.MiddleLeft;
-                float labelY = screenOffset.y + circleSize + 22f;
                 GUI.Label(new Rect(screenOffset.x, labelY, 200f, 20f), $"Surface: {angle:F1}°", labelStyle);
-                labelStyle.alignment = TextAnchor.MiddleCenter;
             }
+
+            labelStyle.alignment = TextAnchor.MiddleCenter;
         }
 
         private void DrawIndicator(int index, string label,

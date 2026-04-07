@@ -17,7 +17,7 @@ SlimeJumping_v2 is a **2.5D platformer** built in **Unity 6** (6000.3.11f1) wher
 - `SlimeJumping_v2/` — The Unity project root. Open this folder in Unity Hub.
 - `SlimeJumping_v2/Assets/` — All game assets go here.
 - `SlimeJumping_v2/ProjectSettings/` — Unity project configuration (do not manually edit).
-- `docs/` — Design documents (in Korean). The primary design reference is `SlimeJumping_메커닉_설계_v3.md`.
+- `docs/` — Design documents (in Korean). The primary design reference is `SlimeJumping_메커닉_설계_v6.md`, `프로토타입_구현_현황.md`.
 - `SlimeJumping_AssetVault/` — External asset packs stored outside the Unity project.
 
 
@@ -31,3 +31,4 @@ Don't use Comment when using `exec` commands. It returns error.
 
 ### Coding Convention
 - Use `rb.position` instead of `transform.position`
+- If some feature add or change, update  `SlimeJumping_메커닉_설계_v6.md`, `프로토타입_구현_현황.md` document in /docs folder

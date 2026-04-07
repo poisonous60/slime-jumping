@@ -159,6 +159,7 @@ else
 - `stickSpeedScale`: 커브 기울기 조절. 값이 크면 적은 속도에서도 빨리 max에 도달.
 - Attached: 고정 중 입력 차단.
 - Charging: 고정 중에도 판정원 조준은 동작 — 슬라이드만 멈춤.
+- **스틱→슬라이드 전환**: 스틱 만료 시 `slideRampTimer`를 리셋하여 슬라이드가 0→전체로 부드럽게 ramp-up. `wasStuck` 플래그로 만료 시점 감지.
 
 ### 표면 스냅
 

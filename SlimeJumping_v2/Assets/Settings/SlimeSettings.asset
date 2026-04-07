@@ -18,12 +18,19 @@ MonoBehaviour:
   slideGravityScale: 0.3
   slideThreshold: 7
   slideResistance: 3
-  baseSlideRampUpTime: 0.2
-  hopImpulse: 1.5
-  hopCooldown: 0.34
-  hopInputBuffer: 0.1
-  hopAngleMin: 30
-  hopAngleMax: 60
+  stickSlideTransitionRampTime: 0.2
+  groundDashImpulse: 3
+  groundDashCooldown: 0.34
+  groundDashInputBuffer: 0.1
+  groundDashAngleMin: 30
+  groundDashAngleMax: 60
+  dashFalloffStart: 3
+  dashFalloffEnd: 6
+  hopPower: 3
+  hopCooldown: 0.1
+  hopBufferDuration: 0.1
+  hopLandingRetention: 1
+  tangentInheritanceFactor: 1
   chargeRadius: 1.5
   autoDriftSpeed: 1.5
   inputAcceleration: 1

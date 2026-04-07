@@ -50,6 +50,7 @@ namespace SlimeJumping.Controller
 
         // Stick timer (delay before slide starts)
         private float stickTimer;
+        private bool wasStuck;
         private bool preserveLandingVelocity;
 
         // Ground Dash (S impulse boost)
@@ -245,6 +246,14 @@ namespace SlimeJumping.Controller
                 }
             }
 
+            // Reset slide ramp when stick expires (smooth transition)
+            if (wasStuck && stickTimer <= 0f)
+            {
+                slideRampTimer = 0f;
+                wasStuck = false;
+            }
+            if (stickTimer > 0f) wasStuck = true;
+
             // 1. Slide: fresh each frame, no accumulation (skip during stick)
             float angle = GetSurfaceAngle();
             float slideSpeed = 0f;
@@ -268,7 +277,7 @@ namespace SlimeJumping.Controller
                 // Slide ramp-up: gradual acceleration after landing
                 slideRampTimer += dt;
                 float surfaceRamp = surfaceMod.slideRampUp.Evaluate(angle);
-                float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.baseSlideRampUpTime;
+                float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.stickSlideTransitionRampTime;
                 float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
                 slideSpeed *= rampT;
             }
@@ -277,8 +286,23 @@ namespace SlimeJumping.Controller
             float crawlScale = (stickTimer > 0f) ? settings.stickCrawlMultiplier : 1f;
             float inputX = inputReader.LastInputMove.x;
             float targetSpeed = -inputX * settings.crawlSpeed * surfaceMod.crawlSpeed.Evaluate(angle) * crawlScale;
-            if (Mathf.Abs(targetSpeed) > Mathf.Abs(crawlVelocity)
-                || (targetSpeed != 0f && Mathf.Sign(targetSpeed) != Mathf.Sign(crawlVelocity)))
+            if (crawlVelocity != 0f && targetSpeed != 0f && Mathf.Sign(targetSpeed) != Mathf.Sign(crawlVelocity))
+            {
+                // Opposite direction: decel to 0, then accel toward new direction
+                float decelRate = settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle);
+                float absBefore = Mathf.Abs(crawlVelocity);
+                crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, decelRate * dt);
+                if (crawlVelocity == 0f)
+                {
+                    float dtLeft = dt - absBefore / decelRate;
+                    if (dtLeft > 0f)
+                    {
+                        float accelRate = settings.crawlAcceleration * surfaceMod.crawlAccel.Evaluate(angle);
+                        crawlVelocity = Mathf.MoveTowards(0f, targetSpeed, accelRate * dtLeft);
+                    }
+                }
+            }
+            else if (Mathf.Abs(targetSpeed) > Mathf.Abs(crawlVelocity))
                 crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlAcceleration * surfaceMod.crawlAccel.Evaluate(angle) * dt);
             else
                 crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle) * dt);
@@ -384,6 +408,14 @@ namespace SlimeJumping.Controller
                 lastSurfaceNormal = surfaceNormal;
                 lastSurfaceTangent = surfaceTangent;
 
+                // Reset slide ramp when stick expires (smooth transition)
+                if (wasStuck && stickTimer <= 0f)
+                {
+                    slideRampTimer = 0f;
+                    wasStuck = false;
+                }
+                if (stickTimer > 0f) wasStuck = true;
+
                 // Stick: delay before slide starts (aiming still runs via UpdateCharging)
                 if (stickTimer > 0f)
                 {
@@ -421,7 +453,7 @@ namespace SlimeJumping.Controller
                     // Slide ramp-up: gradual acceleration after landing
                     slideRampTimer += dt;
                     float surfaceRamp = surfaceMod.slideRampUp.Evaluate(angle);
-                    float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.baseSlideRampUpTime;
+                    float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.stickSlideTransitionRampTime;
                     float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
                     slideSpeed *= rampT;
 

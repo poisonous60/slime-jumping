@@ -12,7 +12,6 @@ namespace SlimeJumping.Settings
         public float slideGravityScale = 1f;
         public float slideThreshold = 1f;
         public float slideResistance = 2f;
-        public float baseSlideRampUpTime = 0.2f;
 
         [Header("Ground Dash")]
         public float groundDashImpulse = 8f;
@@ -60,6 +59,7 @@ namespace SlimeJumping.Settings
         public float stickSlopeThreshold = 0.7f; // surfaceUp above this = floor-like, no stick
         [Range(0f, 1f)]
         public float stickCrawlMultiplier = 0.2f; // 0 = blocked, 1 = full crawl
+        public float stickSlideTransitionRampTime = 0.2f;
         [Range(90f, 180f)]
         public float ceilingAngle = 107f;
         [Range(90f, 180f)]
