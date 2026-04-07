@@ -123,14 +123,14 @@ namespace SlimeJumping.Controller
         {
             inputReader.OnJumpPressed += HandleJumpPressed;
             inputReader.OnJumpReleased += HandleJumpReleased;
-            inputReader.OnGroundDashPressed += HandleGroundDashPressed;
+            inputReader.OnVerticalDownPressed += HandleVerticalDownPressed;
         }
 
         private void OnDisable()
         {
             inputReader.OnJumpPressed -= HandleJumpPressed;
             inputReader.OnJumpReleased -= HandleJumpReleased;
-            inputReader.OnGroundDashPressed -= HandleGroundDashPressed;
+            inputReader.OnVerticalDownPressed -= HandleVerticalDownPressed;
         }
 
         private void Update()
@@ -256,7 +256,7 @@ namespace SlimeJumping.Controller
 
             // 2. Crawl: accel/decel model (weakened during stick)
             float crawlScale = (stickTimer > 0f) ? settings.stickCrawlMultiplier : 1f;
-            float inputX = inputReader.MoveInput.x;
+            float inputX = inputReader.LastInputMove.x;
             float targetSpeed = -inputX * settings.crawlSpeed * surfaceMod.crawlSpeed.Evaluate(angle) * crawlScale;
             if (Mathf.Abs(targetSpeed) > Mathf.Abs(crawlVelocity)
                 || (targetSpeed != 0f && Mathf.Sign(targetSpeed) != Mathf.Sign(crawlVelocity)))
@@ -308,7 +308,7 @@ namespace SlimeJumping.Controller
                 aimOffset += driftDirection * activeDriftSpeed * dt;
 
             // WASD: 2D acceleration on aim offset
-            Vector2 input = inputReader.MoveInput;
+            Vector2 input = inputReader.AimInput;
             Vector2 prevAim = aimOffset;
             aimOffset += input * settings.inputAcceleration * dt;
 
@@ -626,7 +626,7 @@ namespace SlimeJumping.Controller
             Launch();
         }
 
-        private void HandleGroundDashPressed()
+        private void HandleVerticalDownPressed()
         {
             dashBufferTimer = settings.groundDashInputBuffer;
         }
@@ -747,7 +747,7 @@ namespace SlimeJumping.Controller
             float bestDist = float.MaxValue;
             float bestScore = -10f;
             float distTolerance = dist * 0.5f;
-            float inputX = (currentState == SlimeState.Charging) ? 0f : inputReader.MoveInput.x;
+            float inputX = (currentState == SlimeState.Charging) ? 0f : inputReader.LastInputMove.x;
 
             foreach (var d in directions)
             {

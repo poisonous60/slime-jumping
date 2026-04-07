@@ -8,18 +8,22 @@ namespace SlimeJumping.Input
     {
         [SerializeField] private InputActionAsset inputActionAsset;
 
-        public Vector2 MoveInput { get; private set; }
+        public Vector2 AimInput { get; private set; }
         /// <summary>Last-input-wins variant. Use for air control so charging→airborne transitions feel responsive.</summary>
         public Vector2 LastInputMove { get; private set; }
         public bool IsJumpHeld { get; private set; }
+        public bool VerticalUpHeld { get; private set; }
+        public bool VerticalDownHeld { get; private set; }
 
         public event Action OnJumpPressed;
         public event Action OnJumpReleased;
-        public event Action OnGroundDashPressed;
+        public event Action OnVerticalUpPressed;
+        public event Action OnVerticalDownPressed;
 
-        private InputAction moveAction;
+        private InputAction aimAction;
         private InputAction jumpAction;
-        private InputAction groundDashAction;
+        private InputAction verticalUpAction;
+        private InputAction verticalDownAction;
 
         // Last-input-wins tracking
         private bool prevLeft, prevRight, prevUp, prevDown;
@@ -28,32 +32,39 @@ namespace SlimeJumping.Input
         private void OnEnable()
         {
             var playerMap = inputActionAsset.FindActionMap("Player");
-            moveAction = playerMap.FindAction("Move");
+            aimAction = playerMap.FindAction("Aim");
             jumpAction = playerMap.FindAction("Jump");
-            groundDashAction = playerMap.FindAction("GroundDash");
+            verticalUpAction = playerMap.FindAction("VerticalUp");
+            verticalDownAction = playerMap.FindAction("VerticalDown");
 
             jumpAction.started += HandleJumpStarted;
             jumpAction.canceled += HandleJumpCanceled;
-            groundDashAction.started += HandleGroundDashStarted;
+            verticalUpAction.started += HandleVerticalUpStarted;
+            verticalDownAction.started += HandleVerticalDownStarted;
 
             playerMap.Enable();
+
+            _ = OnVerticalUpPressed;
         }
 
         private void OnDisable()
         {
             jumpAction.started -= HandleJumpStarted;
             jumpAction.canceled -= HandleJumpCanceled;
-            groundDashAction.started -= HandleGroundDashStarted;
+            verticalUpAction.started -= HandleVerticalUpStarted;
+            verticalDownAction.started -= HandleVerticalDownStarted;
 
             inputActionAsset.FindActionMap("Player").Disable();
         }
 
         private void Update()
         {
-            MoveInput = moveAction.ReadValue<Vector2>();
+            AimInput = aimAction.ReadValue<Vector2>();
+            VerticalUpHeld = verticalUpAction.IsPressed();
+            VerticalDownHeld = verticalDownAction.IsPressed();
 
             var kb = Keyboard.current;
-            if (kb == null) { LastInputMove = MoveInput; return; }
+            if (kb == null) { LastInputMove = Vector2.zero; return; }
 
             bool left = kb.aKey.isPressed, right = kb.dKey.isPressed;
             bool up = kb.wKey.isPressed, down = kb.sKey.isPressed;
@@ -82,9 +93,14 @@ namespace SlimeJumping.Input
             OnJumpReleased?.Invoke();
         }
 
-        private void HandleGroundDashStarted(InputAction.CallbackContext ctx)
+        private void HandleVerticalUpStarted(InputAction.CallbackContext ctx)
         {
-            OnGroundDashPressed?.Invoke();
+            OnVerticalUpPressed?.Invoke();
+        }
+
+        private void HandleVerticalDownStarted(InputAction.CallbackContext ctx)
+        {
+            OnVerticalDownPressed?.Invoke();
         }
     }
 }
