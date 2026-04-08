@@ -41,7 +41,7 @@ namespace SlimeJumping.Controller
                 {
                     stickDeccelTimer += dt;
                     float t = stickDeccelTimer / settings.stickDecelerationTime;
-                    velocity = Vector2.Lerp(impactVelocity, Vector2.zero, t);
+                    velocity = surfaceTangent * Mathf.Lerp(impactTangentSpeed, 0f, t);
                     SnapToSurface();
                     return;
                 }

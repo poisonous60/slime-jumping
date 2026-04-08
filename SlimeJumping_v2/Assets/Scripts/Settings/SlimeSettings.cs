@@ -106,5 +106,27 @@ namespace SlimeJumping.Settings
         public float postLaunchIgnoreTime = 0.05f;
         public float launchClearanceThreshold = 0.05f;
         public float maxIgnoreTime = 0.15f;
+
+        [Header("Visual Rotation")]
+        public float visualSlerpSpeed = 15f;
+
+        [Header("Face Tracking")]
+        public float faceOffsetScale = 0.03f;
+        public float faceOffsetMax = 0.2f;
+        public float faceSmoothTime = 0.1f;
+        public float faceChargingScale = 0.2f;
+        public float faceLingerThreshold = 0.1f;
+        public float faceLingerDecay = 1.5f;
+
+        [Header("Face Idle Drift")]
+        public float faceDriftAmplitude = 0.01f;
+        public float faceDriftFreqX = 0.7f;
+        public float faceDriftFreqY = 0.9f;
+        public float faceDriftSharpness = 4f;
+
+        [Header("Blink")]
+        public float blinkDuration = 0.1f;
+        public float blinkIntervalMin = 3f;
+        public float blinkIntervalMax = 7f;
     }
 }

@@ -56,7 +56,7 @@ Attached ──Space──▶ Charging
 
 ### 표면 감지
 
-`OverlapCircleNonAlloc`로 범위 내 콜라이더 수집 후, `ClosestPoint`로 법선·거리 계산. Active contacts (distance ≤ slimeRadius + contactSkin) 수집 후 5-step geometric fallback으로 primary 결정.
+`OverlapCircleNonAlloc`로 범위 내 콜라이더 수집 후, `ClosestPoint`로 법선·거리 계산. Active contacts (distance ≤ slimeRadius + contactSkin) 수집 후 천장 프리필터 + 5-step geometric fallback으로 primary 결정.
 
 ### 크롤링 (WASD 이동)
 
@@ -174,6 +174,7 @@ else
 
 `OverlapCircleNonAlloc` + `ClosestPoint`로 active contacts (distance ≤ slimeRadius + contactSkin)를 수집한 뒤, 5-step fallback으로 primary 결정:
 1. 단일 contact → 그것 (99% 케이스)
+1.5. **천장 프리필터**: active contact에 천장(`surfaceUp < ceilingThreshold`)과 비천장이 혼재하면, 천장을 step 2-5 후보에서 제외. 전부 천장이면 필터 미적용.
 2. 침투된 contact가 있으면 가장 깊은 것 (motion-aware, weight 없음)
 3. 입력 방향 tiebreaker: `-normal · inputDir` 최대값
 4. continuity: prevCollider가 active set에 있으면 유지
@@ -588,8 +589,8 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 ## 10. 설계 원칙
 
 1. **원 하나가 게임 전부**: 단일 원형 콜라이더로 모든 게임플레이. 소프트바디는 비주얼 오버레이.
-2. **점성 슬라임**: 표면에 닿으면 붙는다. 바운스 없음. 운동량 전부 흡수.
-3. **판정원이 파워와 방향을 동시 결정**: 조준점 위치 하나로 발사 벡터가 결정됨. 별도 계수 없음.
+2. **점성 슬라임**: 표면에 닿으면 붙는다. 바운스 없음. 운동량 전부 흡수. (관성은 있을 수 있음)
+3. **판정원이 파워와 방향을 동시 결정**: 조준점 위치 하나로 발사 벡터가 결정됨. 별도 계수 없음. (관성은 있을 수 있음)
 4. **불안정함은 시간이 만든다**: 벽/경사 슬라이드로 차징 시간 제한. 안정도 시스템 없음.
 5. **차징은 커밋**: 캔슬 불가. WASD로 발사까지 능동적 조절.
 6. **사전 커밋 보상**: 에너지 전환은 부딪히기 전에 Space를 미리 누른 플레이어가 보상받음.

@@ -17,7 +17,25 @@ namespace SlimeJumping.Physics
         private readonly Collider2D[] contactColliders = new Collider2D[16];
         private readonly Vector2[] contactNormals = new Vector2[16];
         private readonly float[] contactDistances = new float[16];
+        private readonly bool[] contactActive = new bool[16];
         private int contactCount;
+
+        // Diagnostic state
+        private int activeCount;
+        private int selectedIdx = -1;
+        private int phaseAIterCount;
+        private float phaseARemainPen;
+
+        // Diagnostic accessors
+        public int ContactCount => contactCount;
+        public int ActiveContactCount => activeCount;
+        public int SelectedIndex => selectedIdx;
+        public int PhaseAIterations => phaseAIterCount;
+        public float PhaseARemainingPenetration => phaseARemainPen;
+        public Collider2D GetContactCollider(int i) => contactColliders[i];
+        public Vector2 GetContactNormal(int i) => contactNormals[i];
+        public float GetContactDistance(int i) => contactDistances[i];
+        public bool IsContactActive(int i) => contactActive[i];
 
         // Finding 1: preserve last valid normal for deep penetration fallback
         private Vector2 lastGoodNormal = Vector2.up;
@@ -72,6 +90,8 @@ namespace SlimeJumping.Physics
 
             if (contactCount == 0)
             {
+                activeCount = 0;
+                selectedIdx = -1;
                 // Edge case: all nearby colliders deeply penetrated
                 // Use prevCollider with last known normal; otherwise treat as no surface
                 if (hasNearby && prevCollider != null)
@@ -86,6 +106,7 @@ namespace SlimeJumping.Physics
             // Identify active contacts (within slimeRadius + contactSkin)
             // and select primary using 5-step fallback
             int selected = SelectPrimary(radius, contactSkin, inputX, prevCollider);
+            selectedIdx = selected;
             normal = contactNormals[selected];
             col = contactColliders[selected];
             lastGoodNormal = normal;
@@ -95,7 +116,7 @@ namespace SlimeJumping.Physics
         private int SelectPrimary(float radius, float contactSkin, float inputX, Collider2D prevCollider)
         {
             // Count active contacts and find closest overall
-            int activeCount = 0;
+            int localActiveCount = 0;
             int firstActive = -1;
             int closestIdx = 0;
             float closestDist = contactDistances[0];
@@ -107,25 +128,53 @@ namespace SlimeJumping.Physics
                     closestDist = contactDistances[i];
                     closestIdx = i;
                 }
-                if (contactDistances[i] <= radius + contactSkin)
+                bool isActive = contactDistances[i] <= radius + contactSkin;
+                contactActive[i] = isActive;
+                if (isActive)
                 {
-                    activeCount++;
+                    localActiveCount++;
                     if (firstActive < 0) firstActive = i;
                 }
             }
+            activeCount = localActiveCount;
 
             // No active contacts — select closest (landing detection)
-            if (activeCount == 0) return closestIdx;
+            if (localActiveCount == 0) return closestIdx;
 
             // Step 1: Single active contact — no choice needed
-            if (activeCount == 1) return firstActive;
+            if (localActiveCount == 1) return firstActive;
+
+            // Step 1.5: Ceiling filter — when active contacts mix ceiling and
+            // non-ceiling, exclude ceiling contacts from steps 2-5.
+            // Prevents a marginally-deeper ceiling from winning over a valid floor.
+            bool filterCeiling = false;
+            float ceilThresh = settings.ceilingThreshold;
+            {
+                int attachableCount = 0;
+                int firstAttachable = -1;
+                for (int i = 0; i < contactCount; i++)
+                {
+                    if (!contactActive[i]) continue;
+                    if (Vector2.Dot(contactNormals[i], Vector2.up) >= ceilThresh)
+                    {
+                        attachableCount++;
+                        if (firstAttachable < 0) firstAttachable = i;
+                    }
+                }
+                if (attachableCount > 0 && attachableCount < localActiveCount)
+                {
+                    filterCeiling = true;
+                    firstActive = firstAttachable;
+                }
+            }
 
             // Step 2: Penetration wins — deepest penetrating contact
             int deepestIdx = -1;
             float deepestPen = 0f;
             for (int i = 0; i < contactCount; i++)
             {
-                if (contactDistances[i] > radius + contactSkin) continue;
+                if (!contactActive[i]) continue;
+                if (filterCeiling && Vector2.Dot(contactNormals[i], Vector2.up) < ceilThresh) continue;
                 float pen = radius - contactDistances[i];
                 if (pen > deepestPen)
                 {
@@ -145,7 +194,8 @@ namespace SlimeJumping.Physics
 
                 for (int i = 0; i < contactCount; i++)
                 {
-                    if (contactDistances[i] > radius + contactSkin) continue;
+                    if (!contactActive[i]) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], Vector2.up) < ceilThresh) continue;
                     float d = -Vector2.Dot(contactNormals[i], inputDir);
                     if (d > bestDot)
                     {
@@ -167,7 +217,8 @@ namespace SlimeJumping.Physics
             {
                 for (int i = 0; i < contactCount; i++)
                 {
-                    if (contactDistances[i] > radius + contactSkin) continue;
+                    if (!contactActive[i]) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], Vector2.up) < ceilThresh) continue;
                     if (contactColliders[i] == prevCollider) return i;
                 }
             }
@@ -178,7 +229,8 @@ namespace SlimeJumping.Physics
                 float bestGrav = float.MinValue;
                 for (int i = 0; i < contactCount; i++)
                 {
-                    if (contactDistances[i] > radius + contactSkin) continue;
+                    if (!contactActive[i]) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], Vector2.up) < ceilThresh) continue;
                     float g = Vector2.Dot(contactNormals[i], Vector2.up);
                     if (g > bestGrav)
                     {
@@ -203,9 +255,12 @@ namespace SlimeJumping.Physics
             // Phase A: Depenetrate against all nearby colliders (push only)
             bool anyPush = false;
             int count = Physics2D.OverlapCircleNonAlloc(pos, radius + skin, depenetrationBuffer, mask);
+            int iterationsRun = 0;
 
             for (int iter = 0; iter < 3; iter++)
             {
+                iterationsRun++;
+
                 // Re-query after position changed from previous iteration
                 if (iter > 0 && anyPush)
                     count = Physics2D.OverlapCircleNonAlloc(pos, radius + skin, depenetrationBuffer, mask);
@@ -230,6 +285,24 @@ namespace SlimeJumping.Physics
                     }
                 }
                 if (!anyPenetration) break;
+            }
+
+            // Diagnostic: measure remaining penetration after Phase A
+            phaseAIterCount = iterationsRun;
+            phaseARemainPen = 0f;
+            if (anyPush)
+            {
+                int postCount = Physics2D.OverlapCircleNonAlloc(pos, radius + skin, depenetrationBuffer, mask);
+                for (int i = 0; i < postCount; i++)
+                {
+                    if (ignoredColliders.Contains(depenetrationBuffer[i])) continue;
+                    Vector2 c = depenetrationBuffer[i].ClosestPoint(pos);
+                    Vector2 d = pos - c;
+                    float dist = d.magnitude;
+                    if (dist < 0.0001f) continue;
+                    if (dist < radius)
+                        phaseARemainPen += radius - dist;
+                }
             }
 
             // Phase B: Primary pull — only when Phase A found nothing to fix (genuine drift).

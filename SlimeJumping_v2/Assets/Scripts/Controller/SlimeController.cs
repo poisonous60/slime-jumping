@@ -27,6 +27,19 @@ namespace SlimeJumping.Controller
         public float CoyoteTimer => coyoteTimer;
         public float StickTimer => stickTimer;
         public Collider2D SurfaceCollider => surfaceCollider;
+        public int AttachToggleCount => attachToggleCount;
+        public float AttachLockoutTimer => attachLockoutTimer;
+        public float StickDeccelTimer => stickDeccelTimer;
+        public float SlideRampTimer => slideRampTimer;
+        public float CrawlVelocity => crawlVelocity;
+        public Vector2 SurfaceTangent => surfaceTangent;
+        public SurfaceProbe Probe => surfaceProbe;
+        public Vector2 AimDirection => aimOffset.sqrMagnitude > 0.0001f
+            ? -aimOffset.normalized
+            : surfaceNormal;
+        public float ChargingProgress => activeChargeRadius > 0.0001f
+            ? aimOffset.magnitude / activeChargeRadius
+            : 0f;
 
         // Judgment circle charge state (aimOffset = relative to slime center)
         private Vector2 aimOffset;
@@ -40,7 +53,8 @@ namespace SlimeJumping.Controller
 
         // Manual velocity
         private Vector2 velocity;
-        private Vector2 impactVelocity;
+        // Signed scalar along surfaceTangent; negative = against tangent direction
+        private float impactTangentSpeed;
         private float stickDeccelTimer;
         private Vector2 prevSurfaceNormal;
 
