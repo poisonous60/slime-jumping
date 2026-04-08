@@ -56,7 +56,7 @@ Attached ──Space──▶ Charging
 
 ### 표면 감지
 
-8방향 CircleCast로 범위 내 콜라이더 식별 후, `ClosestPoint`로 실제 접촉점·법선·거리 계산. Cast hit 데이터는 콜라이더 식별에만 사용. 복수 표면 감지 시 거리 + 입력 방향 기반 우선순위.
+`OverlapCircleNonAlloc`로 범위 내 콜라이더 수집 후, `ClosestPoint`로 법선·거리 계산. Active contacts (distance ≤ slimeRadius + contactSkin) 수집 후 5-step geometric fallback으로 primary 결정.
 
 ### 크롤링 (WASD 이동)
 
@@ -162,9 +162,22 @@ else
 - Charging: 고정 중에도 판정원 조준은 동작 — 슬라이드만 멈춤.
 - **스틱→슬라이드 전환**: 스틱 만료 시 `slideRampTimer`를 리셋하여 슬라이드가 0→전체로 부드럽게 ramp-up. `wasStuck` 플래그로 만료 시점 감지.
 
-### 표면 스냅
+### 표면 스냅 (2-Phase Depenetration)
 
-`ClosestPoint + normal * radius`로 표면에 밀착. `transform.position` 직접 설정 (velocity 제어와의 충돌 방지).
+**Phase A — Depenetration**: `OverlapCircleNonAlloc`로 주변 모든 콜라이더를 모은 뒤, 각 콜라이더에 대해 `ClosestPoint` 기반으로 침투 여부를 판단하고 밀어냄 (push only, 최대 3회 반복). 여러 면이 만나는 코너에서 Minkowski boundary로 자동 수렴.
+
+**Phase B — Primary Pull**: primary surface와의 거리가 `slimeRadius + contactSkin`을 초과할 때만 끌어당김 (한 방향). 코너에서는 양쪽 면과 정확히 slimeRadius 거리이므로 Phase B 미발동 → 안정.
+
+`rb.position` 직접 설정 (velocity 제어와의 충돌 방지).
+
+### 표면 선택 (Geometric Primary Selection)
+
+`OverlapCircleNonAlloc` + `ClosestPoint`로 active contacts (distance ≤ slimeRadius + contactSkin)를 수집한 뒤, 5-step fallback으로 primary 결정:
+1. 단일 contact → 그것 (99% 케이스)
+2. 침투된 contact가 있으면 가장 깊은 것 (motion-aware, weight 없음)
+3. 입력 방향 tiebreaker: `-normal · inputDir` 최대값
+4. continuity: prevCollider가 active set에 있으면 유지
+5. gravity alignment: `normal · up` 최대값 (fresh landing)
 
 ---
 
@@ -521,7 +534,9 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 |---------|--------|------|
 | gravity | -20 | 키네마틱 중력 |
 | slimeRadius | 0.4 | CircleCollider2D 반지름 |
-| surfaceCheckDistance | 0.05 | 표면 감지 캐스트 거리 |
+| surfaceCheckDistance | 0.05 | 표면 감지 거리 |
+| contactSkin | 0.02 | active contact 판정 허용 오차 |
+| depenetrationSkin | 0.01 | depenetration OverlapCircle 검색 마진 |
 | attachedCheckMultiplier | 3 | Attached/Charging 표면 감지 거리 배율 |
 | airborneCheckMultiplier | 1 | Airborne 표면 감지 거리 배율 |
 | postLaunchIgnoreTime | 0.05 | 발사 후 입력 무시 |

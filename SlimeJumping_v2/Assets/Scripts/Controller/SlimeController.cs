@@ -188,7 +188,7 @@ namespace SlimeJumping.Controller
             float surfaceMultiplier = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 ? settings.attachedCheckMultiplier : settings.airborneCheckMultiplier;
             float inputX = (currentState == SlimeState.Charging) ? 0f : inputReader.LastInputMove.x;
-            isTouchingSurface = surfaceProbe.CheckSurface(out surfaceNormal, out surfaceCollider, surfaceMultiplier, inputX);
+            isTouchingSurface = surfaceProbe.CheckSurface(out surfaceNormal, out surfaceCollider, surfaceMultiplier, inputX, surfaceCollider);
 
             surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
 
