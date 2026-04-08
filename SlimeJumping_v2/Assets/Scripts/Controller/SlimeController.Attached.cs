@@ -24,6 +24,15 @@ namespace SlimeJumping.Controller
                 return;
             }
 
+            // Reset slide ramp when stick expires (smooth transition)
+            if (wasStuck && stickTimer <= 0f)
+            {
+                slideRampTimer = 0f;
+                wasStuck = false;
+                crawlVelocity = Vector2.Dot(velocity, surfaceTangent);
+            }
+            if (stickTimer > 0f) wasStuck = true;
+
             // Stick: delay before slide starts, with optional deceleration
             if (stickTimer > 0f)
             {
@@ -37,14 +46,6 @@ namespace SlimeJumping.Controller
                     return;
                 }
             }
-
-            // Reset slide ramp when stick expires (smooth transition)
-            if (wasStuck && stickTimer <= 0f)
-            {
-                slideRampTimer = 0f;
-                wasStuck = false;
-            }
-            if (stickTimer > 0f) wasStuck = true;
 
             // 1. Slide: fresh each frame, no accumulation (skip during stick)
             float angle = GetSurfaceAngle();
