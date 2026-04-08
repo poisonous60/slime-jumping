@@ -33,6 +33,10 @@ namespace SlimeJumping.Settings
         [Range(0f, 1f)] public float tangentInheritanceFactor = 0.7f;
         [Tooltip("Crawl speed below this threshold is ignored during tangent inheritance. 0 = inherit full crawl speed.")]
         [Min(0f)] public float hyperDashDeduction = 5f;
+        [Tooltip("Energy conversion ratio below which hyper dash is fully retained.")]
+        public float hyperDashConversionDampingMin = 1.2f;
+        [Tooltip("Energy conversion ratio at which hyper dash is fully dampened.")]
+        public float hyperDashConversionDampingMax = 2f;
 
         [Header("Charge Circle")]
         [Min(0.01f)] public float chargeRadius = 1.5f;

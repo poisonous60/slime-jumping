@@ -137,7 +137,8 @@ Attached 상태에서 W를 누르면 표면 법선 방향으로 작은 점프. �
 - **캡처 시점**: 차징 진입 시 `chargeEntryCrawl = crawlVelocity` 저장. 차징 중 `crawlDeceleration`이 시각적 감속을 처리하지만, 캡처 값은 보존.
 - **발사 시**: 일반 crawl 속도(`crawlSpeed`)를 baseline으로 빼고 dash 초과분만 반영. `excess = Max(0, |chargeEntryCrawl| - crawlSpeed)` → `velocity += lastSurfaceTangent * sign * excess * tangentInheritanceFactor`. 일반 crawl → charge = boost 0, dash → charge = dash 기여분만 boost.
 - `tangentInheritanceFactor`(기본 0.7)로 boost 비율 조절.
-- **에너지 전환 경로**: Airborne → Charging 직행 시 `chargeEntryCrawl = 0` (에너지 전환과 하이퍼 대시 스택 방지).
+- **홉 경로**: Hop 시 `chargeEntryCrawl = crawlVelocity` 캡처. 홉 후 에너지 전환 착지 시 crawl boost 사용 가능.
+- **에너지 전환 감쇠**: 에너지 전환 크기에 비례하여 crawl boost 감쇠. `conversionRatio = activeChargeRadius / chargeRadius`로 측정. `hyperDashConversionDampingMin`(1.2) 이하면 100% 유지, `hyperDashConversionDampingMax`(2.0) 이상이면 0%. 약한 전환(홉 등)은 full boost, 강한 전환은 판정원 확장으로 이미 충분하므로 boost 제거.
 - **코요테 탄젠트**: `lastSurfaceTangent`를 캐싱하여 코요테 중(표면 이탈) Launch에서도 올바른 접선 방향 사용.
 
 ### 스틱 타이머 (착지 후 표면 고정)
@@ -453,6 +454,8 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | 파라미터 | 기본값 | 설명 |
 |---------|--------|------|
 | tangentInheritanceFactor | 0.7 | 차징 진입 시 캡처한 crawl의 발사 합산 비율 (0~1) |
+| hyperDashConversionDampingMin | 1.2 | 이 전환 비율 이하에서는 crawl boost 100% 유지 |
+| hyperDashConversionDampingMax | 2.0 | 이 전환 비율 이상에서는 crawl boost 0% |
 
 ### Charge Circle
 

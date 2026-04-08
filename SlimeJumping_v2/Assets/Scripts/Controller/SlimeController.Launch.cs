@@ -53,6 +53,7 @@ namespace SlimeJumping.Controller
             // after velocity = surfaceTangent * (slideSpeed + crawlVelocity).
             // During stick, velocity holds impact decel residual — start from zero.
             // During normal operation, velocity = surfaceTangent * (slide + crawl) — preserve it.
+            chargeEntryCrawl = crawlVelocity;
             if (stickTimer > 0f)
                 velocity = surfaceNormal * settings.hopPower;
             else

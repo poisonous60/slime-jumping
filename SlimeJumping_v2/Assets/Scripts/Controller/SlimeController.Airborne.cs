@@ -104,7 +104,9 @@ namespace SlimeJumping.Controller
                     slideRampTimer = 0f;
                     driftDirection = -surfaceNormal;
                     prevSurfaceNormal = surfaceNormal;
-                    chargeEntryCrawl = 0f;
+                    float conversionRatio = activeChargeRadius / settings.chargeRadius;
+                    float hyperDashRetention = 1f - Mathf.InverseLerp(settings.hyperDashConversionDampingMin, settings.hyperDashConversionDampingMax, conversionRatio);
+                    chargeEntryCrawl *= hyperDashRetention;
                     ChangeState(SlimeState.Charging);
                     lastSurfaceNormal = surfaceNormal;
                     lastSurfaceTangent = surfaceTangent;
