@@ -16,13 +16,13 @@ MonoBehaviour:
   crawlAcceleration: 5
   crawlDeceleration: 8
   slideGravityScale: 0.4
-  slideThreshold: 7
-  slideResistance: 3
-  groundDashImpulse: 3
+  slideThreshold: 3
+  slideResistance: 4
+  groundDashImpulse: 2.5
   groundDashCooldown: 0.34
   groundDashInputBuffer: 0.1
-  groundDashAngleMin: 30
-  groundDashAngleMax: 60
+  groundDashAngleMin: 60
+  groundDashAngleMax: 150
   dashFalloffStart: 3
   dashFalloffEnd: 6
   hopPower: 3
@@ -30,7 +30,7 @@ MonoBehaviour:
   hopBufferDuration: 0.1
   hopLandingRetention: 1
   tangentInheritanceFactor: 1
-  hyperDashDeduction: 5
+  hyperDashDeduction: 3
   chargeRadius: 1.5
   autoDriftSpeed: 1.5
   inputAcceleration: 1
@@ -41,19 +41,25 @@ MonoBehaviour:
   chargeNormalFollowSpeed: 5
   chargingCoyoteTime: 0.2
   coyoteGraceTime: 0.1
+  chargingSurfaceProbeGraceFrames: 3
+  attachToggleWindow: 0.1
+  attachToggleLockoutThreshold: 10
+  attachLockoutDuration: 0.1
   initialConversionRate: 1
   subsequentConversionRate: 0.9
   notJumpConversionBonus: 1.05
-  driftCompensation: 0.9
+  aimDriftRadiusScale: 0.7
   minStickDuration: 0.3
-  maxStickDuration: 0.6
+  maxStickDuration: 0.3
   stickSpeedScale: 0.1
   stickDecelerationTime: 0.4
   stickSlopeThreshold: 0.7
   stickCrawlMultiplier: 0.2
   stickSlideTransitionRampTime: 0.6
-  ceilingAngle: 107
-  ceilingReattachAngle: 101
+  chargeEntryStickBonus: 0.2
+  chargingSlideGravityScale: 0.5
+  ceilingAngle: 145
+  ceilingReattachAngle: 140
   airMaxHorizontalSpeed: 10
   airAcceleration: 3
   airDeceleration: 5
@@ -65,7 +71,7 @@ MonoBehaviour:
   gravity: -20
   slimeRadius: 0.2
   surfaceCheckDistance: 0.05
-  attachedCheckMultiplier: 3
+  attachedCheckMultiplier: 5
   airborneCheckMultiplier: 1
   groundLayer:
     serializedVersion: 2
