@@ -31,6 +31,8 @@ MonoBehaviour:
   hopLandingRetention: 1
   tangentInheritanceFactor: 1
   hyperDashDeduction: 3
+  hyperDashConversionDampingMin: 1.2
+  hyperDashConversionDampingMax: 2
   chargeRadius: 1.5
   autoDriftSpeed: 1.5
   inputAcceleration: 1
@@ -57,7 +59,7 @@ MonoBehaviour:
   stickCrawlMultiplier: 0.2
   stickSlideTransitionRampTime: 0.6
   chargeEntryStickBonus: 0.2
-  chargingSlideGravityScale: 0.5
+  chargingSlideGravityScale: 0.7
   ceilingAngle: 145
   ceilingReattachAngle: 140
   airMaxHorizontalSpeed: 10
@@ -71,7 +73,8 @@ MonoBehaviour:
   gravity: -20
   slimeRadius: 0.2
   surfaceCheckDistance: 0.05
-  attachedCheckMultiplier: 5
+  inputAlignWeight: 0.8
+  attachedCheckMultiplier: 4
   airborneCheckMultiplier: 1
   groundLayer:
     serializedVersion: 2

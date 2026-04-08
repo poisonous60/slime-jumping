@@ -16,6 +16,9 @@ namespace SlimeJumping.Physics
             new(-0.707f, 0.707f), new(0.707f, 0.707f)
         };
 
+        // Reusable collection to avoid GC alloc per frame
+        private readonly Dictionary<Collider2D, Vector2> candidateCache = new();
+
         public SurfaceProbe(Rigidbody2D rb, SlimeSettings settings, List<Collider2D> ignoredColliders)
         {
             this.rb = rb;
@@ -37,36 +40,66 @@ namespace SlimeJumping.Physics
             float bestScore = -10f;
             float distTolerance = dist * 0.5f;
 
+            // Phase 1: Collect unique colliders (cast is for identification only)
+            candidateCache.Clear();
             foreach (var d in Directions)
             {
                 RaycastHit2D[] hits = Physics2D.CircleCastAll(pos, radius * 0.9f, d, dist, mask);
                 foreach (var h in hits)
                 {
                     if (ignoredColliders.Contains(h.collider)) continue;
+                    if (!candidateCache.ContainsKey(h.collider))
+                        candidateCache.Add(h.collider, h.normal); // store cast normal as fallback
+                }
+            }
 
-                    Vector2 toHit = h.point - pos;
-                    float below = toHit.sqrMagnitude > 0.0001f
-                        ? Vector2.Dot(toHit.normalized, Vector2.down)
-                        : 0f;
+            // Phase 2: Score each unique collider using ClosestPoint-based data
+            foreach (var kvp in candidateCache)
+            {
+                Collider2D candidate = kvp.Key;
+                Vector2 fallbackNormal = kvp.Value;
 
-                    float inputAlign = Mathf.Abs(inputX) > 0.01f ? -h.normal.x * inputX : 0f;
+                Vector2 closest = candidate.ClosestPoint(pos);
+                Vector2 toSlime = pos - closest;
 
-                    float score = below + inputAlign * 0.5f;
+                Vector2 realNormal;
+                float realDist;
 
-                    if (col == null || h.distance < bestDist - distTolerance)
-                    {
-                        bestDist = h.distance;
-                        bestScore = score;
-                        normal = h.normal;
-                        col = h.collider;
-                    }
-                    else if (h.distance < bestDist + distTolerance && score > bestScore)
-                    {
-                        bestDist = h.distance;
-                        bestScore = score;
-                        normal = h.normal;
-                        col = h.collider;
-                    }
+                if (toSlime.sqrMagnitude > 0.0001f)
+                {
+                    float mag = toSlime.magnitude;
+                    realNormal = toSlime / mag;
+                    realDist = mag - radius;
+                }
+                else
+                {
+                    // Deep inside collider — ClosestPoint returned pos itself
+                    realNormal = fallbackNormal;
+                    realDist = -radius;
+                }
+
+                Vector2 toClosest = closest - pos;
+                float below = toClosest.sqrMagnitude > 0.0001f
+                    ? Vector2.Dot(toClosest.normalized, Vector2.down)
+                    : 0f;
+
+                float inputAlign = Mathf.Abs(inputX) > 0.01f ? -realNormal.x * inputX : 0f;
+
+                float score = below + inputAlign * settings.inputAlignWeight;
+
+                if (col == null || realDist < bestDist - distTolerance)
+                {
+                    bestDist = realDist;
+                    bestScore = score;
+                    normal = realNormal;
+                    col = candidate;
+                }
+                else if (realDist < bestDist + distTolerance && score > bestScore)
+                {
+                    bestDist = realDist;
+                    bestScore = score;
+                    normal = realNormal;
+                    col = candidate;
                 }
             }
 

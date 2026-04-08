@@ -190,17 +190,6 @@ namespace SlimeJumping.Controller
             float inputX = (currentState == SlimeState.Charging) ? 0f : inputReader.LastInputMove.x;
             isTouchingSurface = surfaceProbe.CheckSurface(out surfaceNormal, out surfaceCollider, surfaceMultiplier, inputX);
 
-            // Correct normal if slime is on the underside of a surface
-            if (isTouchingSurface && surfaceCollider != null)
-            {
-                Vector2 pos = rb.position;
-                Vector2 closest = surfaceCollider.ClosestPoint(pos);
-                Vector2 toSlime = pos - closest;
-                // If normal points away from slime, flip it
-                if (Vector2.Dot(toSlime, surfaceNormal) < 0f)
-                    surfaceNormal = -surfaceNormal;
-            }
-
             surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
 
             if (isTouchingSurface && surfaceCollider != prevSurfaceCollider

@@ -98,6 +98,8 @@ namespace SlimeJumping.Settings
         public float gravity = -20f;
         public float slimeRadius = 0.4f;
         public float surfaceCheckDistance = 0.05f;
+        [Tooltip("Weight for input-direction bias when scoring surface hits. 0 = disabled.")]
+        public float inputAlignWeight = 0.5f;
         public float attachedCheckMultiplier = 3f;
         public float airborneCheckMultiplier = 1f;
         public LayerMask groundLayer;
