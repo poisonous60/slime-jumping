@@ -13,32 +13,38 @@ MonoBehaviour:
   m_Name: SlimeSettings
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSettings
   crawlSpeed: 4
-  crawlAcceleration: 5
+  crawlAcceleration: 8
   crawlDeceleration: 8
   slideGravityScale: 0.4
   slideThreshold: 3
   slideResistance: 4
-  groundDashImpulse: 2.5
+  groundDashImpulse: 3.3
   groundDashCooldown: 0.34
   groundDashInputBuffer: 0.1
   groundDashAngleMin: 60
   groundDashAngleMax: 150
   dashFalloffStart: 3
   dashFalloffEnd: 6
-  hopPower: 3
+  hopPower: 4
+  hopPowerMin: 1
+  hopMinAngle: 70
+  hopMaxAngle: 90
   hopCooldown: 0.1
-  hopBufferDuration: 0.1
+  hopBufferDuration: 0.05
   hopLandingRetention: 1
+  hopMomentumBonus: 1
+  hopMomentumMaxSpeed: 20
   tangentInheritanceFactor: 1
-  hyperDashDeduction: 3
+  hyperDashDeduction: 1
   hyperDashConversionDampingMin: 1.2
   hyperDashConversionDampingMax: 2
-  chargeRadius: 1.5
-  autoDriftSpeed: 0
-  inputAcceleration: 2
+  chargeRadius: 2
+  autoDriftSpeed: 3
+  inputAcceleration: 4
   baseLaunchPower: 9
   minLaunchPower: 3
-  chargeCurveExponent: 1
+  chargeCurveExponent: 0.7
+  chargeFullAimTime: 0.2
   maxAimAngularSpeed: 40
   chargeNormalFollowSpeed: 5
   chargingCoyoteTime: 0.2
@@ -47,7 +53,7 @@ MonoBehaviour:
   attachToggleWindow: 0.1
   attachToggleLockoutThreshold: 10
   attachLockoutDuration: 0.1
-  initialConversionRate: 1
+  initialConversionRate: 1.2
   subsequentConversionRate: 0.9
   notJumpConversionBonus: 1.05
   aimDriftRadiusScale: 0.7

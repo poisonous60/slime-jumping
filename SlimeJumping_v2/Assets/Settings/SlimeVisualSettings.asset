@@ -26,9 +26,9 @@ MonoBehaviour:
   impactOscFreq: 2.5
   impactSpeedReference: 20
   impactMinThreshold: 0.05
-  velocityStretchIntensityX: 0.3
+  velocityStretchIntensityX: 0.1
   velocityStretchIntensityY: 0.3
-  velocityStretchSpeedRef: 15
+  velocityStretchSpeedRef: 10
   velocityStretchMaxX: 0.3
   velocityStretchMaxY: 0.6
   velocityLeanDistance: 0.1
@@ -52,7 +52,7 @@ MonoBehaviour:
   faceOffsetScale: 0.1
   faceOffsetMax: 0.3
   faceSmoothTime: 0.03
-  faceChargingScale: 1
+  faceChargingScale: -0.5
   faceLingerThreshold: 1
   faceLingerDecay: 5
   faceDriftAmplitude: 0.1

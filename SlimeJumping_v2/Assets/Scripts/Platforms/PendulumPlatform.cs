@@ -4,7 +4,7 @@ namespace SlimeJumping.Platforms
 {
     public class PendulumPlatform : PlatformMotor
     {
-        [SerializeField] Transform pivot;
+        [SerializeField] Vector2 localPivot = new Vector2(0f, 3f);
         [SerializeField, Min(0.01f)] float ropeLength = 3f;
         [SerializeField] float gravity = 10f;
         [SerializeField] float damping = 0.02f;
@@ -16,6 +16,7 @@ namespace SlimeJumping.Platforms
         [SerializeField] float tiltStiffness = 20f;
         [SerializeField] float tiltDamping = 5f;
 
+        Vector2 worldPivot;
         float angle;
         float angularVel;
 
@@ -28,12 +29,7 @@ namespace SlimeJumping.Platforms
         {
             base.Awake();
 
-            if (pivot == null)
-            {
-                Debug.LogError($"[PendulumPlatform] pivot is not assigned on {name}. Disabling.", this);
-                enabled = false;
-                return;
-            }
+            worldPivot = rb.position + localPivot;
 
             var box = GetComponentInChildren<BoxCollider2D>();
             if (box == null)
@@ -68,7 +64,7 @@ namespace SlimeJumping.Platforms
             angularVel += angularAccel * dt;
             angle += angularVel * dt;
 
-            Vector2 pivotPos = pivot.position;
+            Vector2 pivotPos = worldPivot;
             Vector2 offset = new Vector2(
                 Mathf.Sin(angle) * ropeLength,
                 -Mathf.Cos(angle) * ropeLength
@@ -85,11 +81,10 @@ namespace SlimeJumping.Platforms
 
         void OnDrawGizmos()
         {
-            if (pivot == null) return;
             Gizmos.color = Color.yellow;
-            Vector2 pivotPos = pivot.position;
-            Vector2 platformPos = rb != null ? rb.position : (Vector2)transform.position;
-            Gizmos.DrawLine(pivotPos, platformPos);
+            Vector2 origin = rb != null ? rb.position : (Vector2)transform.position;
+            Vector2 pivotPos = Application.isPlaying ? worldPivot : origin + localPivot;
+            Gizmos.DrawLine(pivotPos, origin);
             Gizmos.DrawSphere(pivotPos, 0.1f);
         }
     }

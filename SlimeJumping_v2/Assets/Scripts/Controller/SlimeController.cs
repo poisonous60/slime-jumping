@@ -78,6 +78,9 @@ namespace SlimeJumping.Controller
         // Active charge radius (expanded on energy conversion)
         private float activeChargeRadius;
 
+        // Full-charge aim grace timer
+        private float chargeFullAimTimer;
+
         // Stick timer (delay before slide starts)
         private float stickTimer;
         private bool wasStuck;

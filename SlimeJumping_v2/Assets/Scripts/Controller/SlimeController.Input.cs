@@ -27,6 +27,7 @@ namespace SlimeJumping.Controller
             velocity = surfaceTangent * impactTangentSpeed;
 
             activeChargeRadius = settings.chargeRadius;
+            chargeFullAimTimer = 0f;
 
             SnapToSurface();
             coyoteTimer = settings.chargingCoyoteTime;

@@ -125,8 +125,9 @@ if (S pressed && cooldown <= 0 && |inputX| > 0)
 
 Attached 상태에서 W를 누르면 표면 법선 방향으로 작은 점프. 기존 접선 운동량을 보존하면서 살짝 띄우는 표현용 액션.
 
-- `velocity += surfaceNormal * hopPower`. 스틱 중에는 `velocity = surfaceNormal * hopPower` (충돌 잔여 속도 무시).
+- `velocity += Vector2.up * hopPower`. 표면 법선과 무관하게 항상 위쪽으로 점프. 스틱 중에는 `velocity = Vector2.up * hopPower` (충돌 잔여 속도 무시).
 - `crawlVelocity = 0` (접선 운동량은 velocity 필드로 이관).
+- **홉 모멘텀**: 스틱이 아닌 상태에서 홉 시 A/D 입력 방향으로 접선 속도 `hopMomentumBonus`만큼 가산. `hopMomentumMaxSpeed`에서 캡. 입력 중립이면 보너스 미적용. 반복 홉으로 점진적 가속 가능 (버니홉).
 - **입력 지연 처리 (Deferred)**: 입력 콜백은 `hopRequested` 플래그만 set. 실제 `Hop()`은 `FixedUpdateAttached` 끝에서 velocity가 신선한 상태에서 호출.
 - **착지 속도 보존**: `preserveLandingVelocity` 플래그로 hop 착지 시 retention을 `hopLandingRetention`(기본 1.0)으로 강제. 경사 가속 제어용 knob.
 - **쿨타임**: `hopCooldown`(0.1초).
@@ -237,7 +238,7 @@ aimOffset += wasdInput * inputAcceleration * dt
 ### 발사 트리거
 
 1. **스페이스 릴리즈** — 수동 발사. 현재 조준점 위치 기준.
-2. **가장자리 도달** — 자동 발사. 풀파워 (또는 확장 시 초과 파워).
+2. **가장자리 도달** — 자동 발사. 풀파워 (또는 확장 시 초과 파워). 단, `chargeFullAimTime`(0.1초) 동안 방향 조정 유예. 이 시간 동안 파워는 확정(가장자리 고정)되고 WASD로 방향만 변경 가능. 유예 중 스페이스 릴리즈 시 즉시 발사.
 
 ### 발사력 공식
 
@@ -468,10 +469,15 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 
 | 파라미터 | 기본값 | 설명 |
 |---------|--------|------|
-| hopPower | 2.25 | W 누를 때 surfaceNormal 방향 impulse |
+| hopPower | 2.25 | 홉 impulse (hopMinAngle 이하에서 적용) |
+| hopPowerMin | 1.125 | hopMaxAngle에서의 홉 impulse |
+| hopMinAngle | 70 | 이 각도 이하에서 hopPower 풀 적용 (도) |
+| hopMaxAngle | 90 | 이 각도에서 hopPowerMin 적용. 사이는 lerp (도) |
 | hopCooldown | 0.1 | 홉 간 쿨타임 (초). 버퍼 홉은 우회 |
 | hopBufferDuration | 0.1 | Airborne에서 W 입력 버퍼 시간 |
 | hopLandingRetention | 1 | 홉 착지 시 접선 속도 보존 비율. 경사 가속 제어용 (0~1) |
+| hopMomentumBonus | 1.5 | 홉 시 접선 속도 가산량. 반복 홉으로 가속 |
+| hopMomentumMaxSpeed | 20 | 홉 모멘텀 최대 접선 속도 캡 |
 
 ### Hyper Dash
 
@@ -488,6 +494,7 @@ impactSpeed = shadowSpeedSq > 0 ? sqrt(shadowSpeedSq) : 0
 | chargeRadius | 1.5 | 기본 판정원 반지름 |
 | autoDriftSpeed | 1.5 | 조준점 자동 바깥 이동 속도 |
 | inputAcceleration | 1.0 | WASD 조준점 가속도 (autoDriftSpeed보다 낮아야 무한 차징 방지) |
+| chargeFullAimTime | 0.1 | 풀차지 후 방향 조정 유예 시간 (초). 파워 확정, 방향만 변경 가능 |
 | baseLaunchPower | 15 | 풀파워 발사 속도 |
 | minLaunchRatio | 0.05 | 최소 발사 비율 (제로파워 방지) |
 

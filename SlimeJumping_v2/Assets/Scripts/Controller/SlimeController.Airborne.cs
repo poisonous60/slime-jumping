@@ -100,6 +100,7 @@ namespace SlimeJumping.Controller
 
                     activeChargeRadius = Mathf.Max(spawnDistance, settings.chargeRadius);
                     aimOffset = Vector2.zero;
+                    chargeFullAimTimer = 0f;
 
                     slideRampTimer = 0f;
                     driftDirection = -surfaceNormal;

@@ -24,10 +24,20 @@ namespace SlimeJumping.Settings
 
         [Header("Hop")]
         public float hopPower = 2.25f;
+        [Tooltip("Minimum hop power at hopMaxAngle.")]
+        public float hopPowerMin = 1.125f;
+        [Tooltip("Surface angle (degrees) below which full hopPower applies.")]
+        public float hopMinAngle = 70f;
+        [Tooltip("Surface angle (degrees) at which hopPowerMin applies. Lerp between.")]
+        public float hopMaxAngle = 90f;
         public float hopCooldown = 0.1f;
         public float hopBufferDuration = 0.1f;
         [Range(0f, 1f)]
         public float hopLandingRetention = 1f;
+        [Tooltip("Tangent speed bonus added per hop in movement direction. 0 = no momentum gain.")]
+        [Min(0f)] public float hopMomentumBonus = 1.5f;
+        [Tooltip("Maximum tangent speed achievable via hop momentum accumulation.")]
+        [Min(0f)] public float hopMomentumMaxSpeed = 20f;
 
         [Header("Hyper Dash")]
         [Range(0f, 1f)] public float tangentInheritanceFactor = 0.7f;
@@ -45,6 +55,8 @@ namespace SlimeJumping.Settings
         [Min(0.01f)] public float baseLaunchPower = 15f;
         public float minLaunchPower = 3f;
         public float chargeCurveExponent = 1f;
+        [Tooltip("Grace period at full charge to adjust aim direction without affecting power.")]
+        [Min(0f)] public float chargeFullAimTime = 0.1f;
         public float maxAimAngularSpeed = 180f;
         public float chargeNormalFollowSpeed = 5f;
         public float chargingCoyoteTime = 0.2f;
@@ -77,6 +89,7 @@ namespace SlimeJumping.Settings
         public float chargeEntryStickBonus = 0.2f;
         public float chargingSlideGravityScale = 0.5f;
 
+        [Header("Ceiling")]
         [Range(90f, 180f)]
         public float ceilingAngle = 107f;
         [Range(90f, 180f)]

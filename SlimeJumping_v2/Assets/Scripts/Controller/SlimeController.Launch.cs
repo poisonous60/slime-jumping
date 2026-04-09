@@ -54,10 +54,30 @@ namespace SlimeJumping.Controller
             // During stick, velocity holds impact decel residual — start from zero.
             // During normal operation, velocity = surfaceTangent * (slide + crawl) — preserve it.
             chargeEntryCrawl = crawlVelocity;
+            float angle = GetSurfaceAngle();
+            float hopT = Mathf.InverseLerp(settings.hopMinAngle, settings.hopMaxAngle, angle);
+            float power = Mathf.Lerp(settings.hopPower, settings.hopPowerMin, hopT);
             if (stickTimer > 0f)
-                velocity = surfaceNormal * settings.hopPower;
+            {
+                // Always hop upward, not along surfaceNormal
+                velocity = Vector2.up * power;
+            }
             else
-                velocity += surfaceNormal * settings.hopPower;
+            {
+                // Hop momentum: boost in A/D input direction, neutral = no bonus
+                float inputX = inputReader.LastInputMove.x;
+                if (settings.hopMomentumBonus > 0f && Mathf.Abs(inputX) > 0.01f)
+                {
+                    float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
+                    float inputSign = -Mathf.Sign(inputX);
+                    float currentInDir = tangentSpeed * inputSign;
+                    float boosted = Mathf.Min(Mathf.Max(currentInDir, 0f) + settings.hopMomentumBonus,
+                                              settings.hopMomentumMaxSpeed);
+                    velocity += surfaceTangent * (inputSign * boosted - tangentSpeed);
+                }
+                // Always hop upward, not along surfaceNormal
+                velocity += Vector2.up * power;
+            }
             crawlVelocity = 0f;
             stickTimer = 0f;
             stickDeccelTimer = 0f;

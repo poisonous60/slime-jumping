@@ -40,12 +40,16 @@ namespace SlimeJumping.Controller
                 aimOffset = new Vector2(Mathf.Cos(clampedAngle), Mathf.Sin(clampedAngle)) * radius;
             }
 
-            // Auto-launch when reaching edge
+            // Auto-launch when reaching edge (with aim grace period)
             if (aimOffset.magnitude >= activeChargeRadius)
             {
                 aimOffset = aimOffset.normalized * activeChargeRadius;
-                Launch();
-                return;
+                chargeFullAimTimer += dt;
+                if (chargeFullAimTimer >= settings.chargeFullAimTime)
+                {
+                    Launch();
+                    return;
+                }
             }
 
             // Surface/coyote physics — with probe hysteresis (absorb 1-frame misses)
