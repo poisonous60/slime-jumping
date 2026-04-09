@@ -75,6 +75,9 @@ namespace SlimeJumping.Settings
         public float blinkIntervalMin = 3f;
         public float blinkIntervalMax = 7f;
 
+        [Header("Visual Clearance")]
+        public float visualClearanceSkin = 0.02f;
+
         private void OnValidate()
         {
             if (chargingSpeedMax <= chargingSpeedMin)

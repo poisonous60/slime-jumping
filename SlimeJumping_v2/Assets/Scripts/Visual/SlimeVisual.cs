@@ -6,6 +6,8 @@ public class SlimeVisual : MonoBehaviour
 {
     [SerializeField] private SlimeController slimeController;
     [SerializeField] private SlimeVisualSettings settings;
+    [SerializeField] private SlimeSettings slimeSettings;
+    [SerializeField] private CircleCollider2D slimeCollider;
     [SerializeField] private Transform body;
     [SerializeField] private Transform face;
     [SerializeField] private SpriteRenderer eyesRenderer;
@@ -55,6 +57,9 @@ public class SlimeVisual : MonoBehaviour
     private float smoothedSquashStrength;
     private float squashStrengthVel;
 
+    // Visual clearance
+    private readonly RaycastHit2D[] clearanceHits = new RaycastHit2D[8];
+
     private void Start()
     {
         smoothedScale = Vector2.one;
@@ -96,9 +101,43 @@ public class SlimeVisual : MonoBehaviour
         Vector2 targetOff = sag + lean + chargePush;
         smoothedOffset = SmoothDampV2(smoothedOffset, targetOff, ref offsetVelocity, settings.offsetSmoothTime);
 
-        // Apply
-        body.localScale = new Vector3(finalScale.x, finalScale.y, 1f);
-        body.localPosition = new Vector3(smoothedOffset.x, smoothedOffset.y, 0f);
+        // Visual clearance clamp (prevent penetration at corners)
+        Vector2 appliedOffset = smoothedOffset;
+        Vector2 appliedScale = finalScale;
+
+        if (slimeCollider != null && slimeSettings != null && appliedOffset.sqrMagnitude > 1e-6f)
+        {
+            Vector2 worldOffset = (Vector2)transform.TransformVector(appliedOffset);
+            Vector2 sagDir = worldOffset.normalized;
+            float offsetMag = worldOffset.magnitude;
+
+            Vector3 colScale = slimeCollider.transform.lossyScale;
+            float colliderWorldRadius = slimeCollider.radius * Mathf.Max(colScale.x, colScale.y);
+
+            // appliedScale.x = tangent-direction scale (body.localX ≈ tangent on surfaces)
+            float scaleExt = Mathf.Max(0f, (appliedScale.x - 1f) * colliderWorldRadius);
+            float desiredReach = offsetMag + scaleExt;
+
+            // Uses transform.position (interpolated) intentionally: visual-only check in LateUpdate
+            float clearance = QueryClearance(
+                (Vector2)transform.position, sagDir,
+                colliderWorldRadius + desiredReach + settings.visualClearanceSkin);
+
+            float maxReach = Mathf.Max(0f, clearance - colliderWorldRadius - settings.visualClearanceSkin);
+
+            if (desiredReach > maxReach && desiredReach > 0.001f)
+            {
+                float ratio = maxReach / desiredReach;
+                appliedOffset *= ratio;
+
+                float deltaX = appliedScale.x - 1f;
+                if (deltaX > 0f)
+                    appliedScale.x = 1f + deltaX * ratio;
+            }
+        }
+
+        body.localScale = new Vector3(appliedScale.x, appliedScale.y, 1f);
+        body.localPosition = new Vector3(appliedOffset.x, appliedOffset.y, 0f);
 
         // Shader properties
         if (bodyRenderer != null)
@@ -406,6 +445,24 @@ public class SlimeVisual : MonoBehaviour
             nextBlinkTime = time + settings.blinkDuration
                           + Random.Range(settings.blinkIntervalMin, settings.blinkIntervalMax);
         }
+    }
+
+    // --- Visual clearance ---
+    // Limitation: ray from inside a deeply-penetrated collider won't detect it (Physics2D semantics).
+    // If clamp fails at deep penetration, expand to 3-ray fan (see plan fallback #2).
+
+    private float QueryClearance(Vector2 origin, Vector2 direction, float maxDist)
+    {
+        int count = Physics2D.RaycastNonAlloc(
+            origin, direction, clearanceHits, maxDist, slimeSettings.groundLayer);
+        float closest = maxDist;
+        for (int i = 0; i < count; i++)
+        {
+            if (clearanceHits[i].collider == slimeCollider) continue;
+            if (clearanceHits[i].distance < closest)
+                closest = clearanceHits[i].distance;
+        }
+        return closest;
     }
 
     // --- Utility ---

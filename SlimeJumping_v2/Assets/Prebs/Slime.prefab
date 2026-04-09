@@ -354,6 +354,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlimeVisual
   slimeController: {fileID: 9168155837090635056}
   settings: {fileID: 11400000, guid: 70b655362c58b5f42a22cb5a7bd2613e, type: 2}
+  slimeSettings: {fileID: 11400000, guid: 4b7a3b7018847154e984f9c08fe823ff, type: 2}
+  slimeCollider: {fileID: 3390682563588278431}
   body: {fileID: 4399736521439725470}
   face: {fileID: 7476365139290886694}
   eyesRenderer: {fileID: 2093952364849901553}
@@ -508,8 +510,8 @@ MonoBehaviour:
   circleImage: {fileID: 0}
   aimDotImage: {fileID: 0}
   aimLineImage: {fileID: 0}
-  showCircle: 1
-  showAimDot: 1
+  showCircle: 0
+  showAimDot: 0
   unchargedColor: {r: 0, g: 1, b: 0, a: 1}
   fullChargeColor: {r: 1, g: 0, b: 0, a: 1}
   circleScreenRadius: 150

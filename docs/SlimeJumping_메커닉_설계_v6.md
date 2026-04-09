@@ -25,6 +25,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 
 - `SlimeVisual.cs` — `LateUpdate`에서 body localScale/localPosition 조작. 물리에 영향 없음.
 - 표면 squash, 충격 squash, 속도 stretch, 호흡, 차징 변형을 slow/fast 2-layer SmoothDamp로 합성.
+- **Visual Clearance Clamp**: 적용 직전 sag 방향 레이캐스트로 인접 표면 거리 측정 → offset과 scale을 ratio 기반 축소. 벽-바닥/천장-벽 코너에서 비주얼 침범 방지. smoothing target은 수정하지 않아 코너 이탈 시 자연 복구.
 - 비대칭 셰이더(`_Asymmetry`, `_ChargeDip`, `_DipCenterU`)로 달걀 모양 + 차징 인덴트 표현.
 - Controller가 노출하는 읽기 전용 API: `Velocity`, `SurfaceNormal`, `CurrentState`, `AimDirection`, `ChargingProgress`, `ChargingLaunchSpeed`.
 - 상세 사양은 `슬라임_비주얼_진행현황_및_계획.md` 참조.
