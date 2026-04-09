@@ -83,16 +83,39 @@ MonoBehaviour:
   postLaunchIgnoreTime: 0.05
   launchClearanceThreshold: 0.05
   maxIgnoreTime: 0.15
-  visualSlerpSpeed: 5
+  deformSmoothTime: 0.1
+  offsetSmoothTime: 0.1
+  deformAxisSlerpSpeed: 15
+  deformScaleMin: 0.4
+  deformScaleMax: 1.8
+  surfaceSquashIntensity: 0
+  surfaceSquashAsymmetry: 0.3
+  gravitySagDistance: 1
+  gravitySagMax: 1
+  impactSquashIntensity: 0.25
+  impactDuration: 0.3
+  impactDecayRate: 8
+  impactOscFreq: 2.5
+  impactSpeedReference: 20
+  impactMinThreshold: 0.05
+  velocityStretchIntensity: 0.15
+  velocityStretchSpeedRef: 15
+  velocityStretchMax: 0.3
+  velocityLeanDistance: 0.05
+  velocityLeanMax: 0.08
+  velocityAxisThreshold: 1
+  breathAmplitude: 0.02
+  breathFrequency: 0.4
   faceOffsetScale: 0.03
   faceOffsetMax: 0.3
   faceSmoothTime: 0.1
   faceChargingScale: 0.3
   faceLingerThreshold: 0.1
   faceLingerDecay: 1.5
-  faceDriftAmplitude: 0.01
-  faceDriftFreqX: 1.3
-  faceDriftFreqY: 0.9
+  faceDriftAmplitude: 0.1
+  faceDriftFreqX: 1
+  faceDriftFreqY: 0.5
+  faceDriftSharpness: 4
   blinkDuration: 0.1
   blinkIntervalMin: 3
   blinkIntervalMax: 7
