@@ -19,13 +19,23 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - 충돌 판정, 이동, 차징, 발사, 에어 컨트롤, 벽 부착, 드리프트 — 전부 단일 원형 콜라이더 기반.
 - 소프트바디 없이도 모든 메커닉이 완전히 동작함.
 
+### Phase 1.5: 절차적 변형 비주얼 (현재 구현 완료)
+
+방사 대칭 스프라이트 + 코드 기반 squash/stretch/관성 제어. 물리와 완전 분리된 비주얼 레이어.
+
+- `SlimeVisual.cs` — `LateUpdate`에서 body localScale/localPosition 조작. 물리에 영향 없음.
+- 표면 squash, 충격 squash, 속도 stretch, 호흡, 차징 변형을 slow/fast 2-layer SmoothDamp로 합성.
+- 비대칭 셰이더(`_Asymmetry`, `_ChargeDip`, `_DipCenterU`)로 달걀 모양 + 차징 인덴트 표현.
+- Controller가 노출하는 읽기 전용 API: `Velocity`, `SurfaceNormal`, `CurrentState`, `AimDirection`, `ChargingProgress`, `ChargingLaunchSpeed`.
+- 상세 사양은 `슬라임_비주얼_진행현황_및_계획.md` 참조.
+
 ### Phase 2: 소프트바디 비주얼 오버레이 (후순위, 미구현)
 
-Phase 1이 완성된 후 비주얼로 얹는 레이어.
+Phase 1.5를 교체할 수 있는 장기 옵션.
 
 - 중심 1개 + 주변 6개 노드가 스프링으로 연결. 중심 → 주변 단방향.
 - 게임플레이 수치에는 일절 관여하지 않음. Phase 1 코드 수정 없이 추가 가능.
-- 차징 중 슬라임 변형으로 판정원 UI를 대체할 수 있음 (조준점 방향 = 압축 방향).
+- Phase 1.5의 "Controller → Visual" 인터페이스를 그대로 재사용, 하부 구현만 교체.
 
 ---
 
