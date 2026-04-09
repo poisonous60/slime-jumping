@@ -31,6 +31,7 @@ namespace SlimeJumping.Controller
         public float AttachLockoutTimer => attachLockoutTimer;
         public float StickDeccelTimer => stickDeccelTimer;
         public float SlideRampTimer => slideRampTimer;
+        public float Gravity => settings.gravity;
         public float CrawlVelocity => crawlVelocity;
         public Vector2 SurfaceTangent => surfaceTangent;
         public SurfaceProbe Probe => surfaceProbe;
@@ -40,6 +41,19 @@ namespace SlimeJumping.Controller
         public float ChargingProgress => activeChargeRadius > 0.0001f
             ? aimOffset.magnitude / activeChargeRadius
             : 0f;
+        public float ChargingLaunchSpeed
+        {
+            get
+            {
+                float ratio = activeChargeRadius > 0.0001f
+                    ? aimOffset.magnitude / settings.chargeRadius
+                    : 0f;
+                float curved = Mathf.Pow(ratio, settings.chargeCurveExponent);
+                return activeChargeRadius > settings.chargeRadius
+                    ? curved * settings.baseLaunchPower
+                    : settings.minLaunchPower + curved * (settings.baseLaunchPower - settings.minLaunchPower);
+            }
+        }
 
         // Judgment circle charge state (aimOffset = relative to slime center)
         private Vector2 aimOffset;

@@ -11,6 +11,7 @@ namespace SlimeJumping.Editor
     public static class SlimeSceneSetup
     {
         private const string SettingsPath = "Assets/Settings/SlimeSettings.asset";
+        private const string VisualSettingsPath = "Assets/Settings/SlimeVisualSettings.asset";
         private const string InputActionsPath = "Assets/InputSystem_Actions.inputactions";
 
         [MenuItem("SlimeJumping/Create Slime Settings")]
@@ -33,6 +34,24 @@ namespace SlimeJumping.Editor
             AssetDatabase.CreateAsset(settings, SettingsPath);
             AssetDatabase.SaveAssets();
             Debug.Log("Created SlimeSettings at " + SettingsPath);
+            EditorGUIUtility.PingObject(settings);
+        }
+
+        [MenuItem("SlimeJumping/Create Slime Visual Settings")]
+        public static void CreateSlimeVisualSettings()
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<SlimeVisualSettings>(VisualSettingsPath);
+            if (existing != null)
+            {
+                Debug.Log("SlimeVisualSettings already exists at " + VisualSettingsPath);
+                EditorGUIUtility.PingObject(existing);
+                return;
+            }
+
+            var settings = ScriptableObject.CreateInstance<SlimeVisualSettings>();
+            AssetDatabase.CreateAsset(settings, VisualSettingsPath);
+            AssetDatabase.SaveAssets();
+            Debug.Log("Created SlimeVisualSettings at " + VisualSettingsPath);
             EditorGUIUtility.PingObject(settings);
         }
 

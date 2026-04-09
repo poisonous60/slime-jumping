@@ -5,7 +5,7 @@ using SlimeJumping.Settings;
 public class SlimeVisual : MonoBehaviour
 {
     [SerializeField] private SlimeController slimeController;
-    [SerializeField] private SlimeSettings settings;
+    [SerializeField] private SlimeVisualSettings settings;
     [SerializeField] private Transform body;
     [SerializeField] private Transform face;
     [SerializeField] private SpriteRenderer eyesRenderer;
@@ -43,10 +43,15 @@ public class SlimeVisual : MonoBehaviour
     // Breathing (C-6)
     private float breathPhase;
 
+    // Charging curve (0~1, computed per frame)
+    private float chargingCurve;
+
     // Shader asymmetry
     private SpriteRenderer bodyRenderer;
     private MaterialPropertyBlock mpb;
     private static readonly int AsymmetryID = Shader.PropertyToID("_Asymmetry");
+    private static readonly int ChargeDipID = Shader.PropertyToID("_ChargeDip");
+    private static readonly int DipCenterUID = Shader.PropertyToID("_DipCenterU");
     private float smoothedSquashStrength;
     private float squashStrengthVel;
 
@@ -67,36 +72,54 @@ public class SlimeVisual : MonoBehaviour
         UpdateDeformAxis();
         UpdateSquashStrength();
         DetectImpact();
+        UpdateChargingCurve();
 
         // Scale: slow layer
         Vector2 surfSq = ComputeSurfaceSquash();
         Vector2 velStr = ComputeVelocityStretch();
-        Vector2 targetScale = Vector2.one + surfSq + velStr;
+        Vector2 chargeSq = ComputeChargingSquash();
+        Vector2 targetScale = Vector2.one + surfSq + velStr + chargeSq;
         smoothedScale = SmoothDampV2(smoothedScale, targetScale, ref scaleVelocity, settings.deformSmoothTime);
 
         // Scale: fast layer
         Vector2 impact = ComputeImpactOverlay();
         Vector2 breath = ComputeBreathing();
-        Vector2 finalScale = smoothedScale + impact + breath;
+        Vector2 chargeTremor = ComputeChargingTremor();
+        Vector2 finalScale = smoothedScale + impact + breath + chargeTremor;
         finalScale.x = Mathf.Clamp(finalScale.x, settings.deformScaleMin, settings.deformScaleMax);
         finalScale.y = Mathf.Clamp(finalScale.y, settings.deformScaleMin, settings.deformScaleMax);
 
         // Offset
         Vector2 sag = ComputeGravitySagOffset();
         Vector2 lean = ComputeVelocityLeanOffset();
-        Vector2 targetOff = sag + lean;
+        Vector2 chargePush = ComputeChargingOffset();
+        Vector2 targetOff = sag + lean + chargePush;
         smoothedOffset = SmoothDampV2(smoothedOffset, targetOff, ref offsetVelocity, settings.offsetSmoothTime);
 
         // Apply
         body.localScale = new Vector3(finalScale.x, finalScale.y, 1f);
         body.localPosition = new Vector3(smoothedOffset.x, smoothedOffset.y, 0f);
 
-        // Shader asymmetry (same SmoothDamp curve as scale — no desync)
+        // Shader properties
         if (bodyRenderer != null)
         {
             float asymmetry = -smoothedSquashStrength * settings.surfaceSquashAsymmetry;
+
+            float chargeDip = chargingCurve * settings.chargingDipMax;
+
+            float dipCenterU = 0f;
+            if (slimeController.CurrentState == SlimeController.SlimeState.Charging)
+            {
+                Vector2 aim = slimeController.AimDirection;
+                Vector2 tangent = new Vector2(-lastSurfaceNormal.y, lastSurfaceNormal.x);
+                float aimTangent = Vector2.Dot(aim, tangent);
+                dipCenterU = aimTangent * settings.chargingDipLateralShift;
+            }
+
             bodyRenderer.GetPropertyBlock(mpb);
             mpb.SetFloat(AsymmetryID, asymmetry);
+            mpb.SetFloat(ChargeDipID, chargeDip);
+            mpb.SetFloat(DipCenterUID, dipCenterU);
             bodyRenderer.SetPropertyBlock(mpb);
         }
 
@@ -129,24 +152,13 @@ public class SlimeVisual : MonoBehaviour
         Vector2 targetAxis;
         if (slimeController.CurrentState == SlimeController.SlimeState.Airborne)
         {
-            Vector2 vel = cachedVelocity;
-            if (vel.sqrMagnitude > settings.velocityAxisThreshold * settings.velocityAxisThreshold)
-                targetAxis = vel.normalized;
-            else
-                targetAxis = lastDeformAxis;
+            // Axis-decomposed stretch uses world axes, so body.up must be world up
+            targetAxis = Vector2.up;
         }
         else
         {
             targetAxis = lastSurfaceNormal;
         }
-
-        // Airborne only: prevent >90-degree Slerp. Scale along +axis and -axis produce
-        // the same ellipse on a symmetric circle, so take the shorter rotation path.
-        // On surfaces, direction matters for shader asymmetry (which side is "bottom"),
-        // so we must follow the exact surfaceNormal even if it's a large rotation.
-        if (slimeController.CurrentState == SlimeController.SlimeState.Airborne
-            && Vector2.Dot(targetAxis, (Vector2)body.up) < 0f)
-            targetAxis = -targetAxis;
 
         lastDeformAxis = targetAxis;
         body.up = Vector3.Slerp(body.up, (Vector3)targetAxis,
@@ -159,7 +171,7 @@ public class SlimeVisual : MonoBehaviour
     {
         float target = (slimeController.CurrentState == SlimeController.SlimeState.Airborne)
             ? 0f
-            : Mathf.Clamp01(-Vector2.Dot(new Vector2(0f, settings.gravity).normalized, lastSurfaceNormal));
+            : Mathf.Clamp01(-Vector2.Dot(new Vector2(0f, slimeController.Gravity).normalized, lastSurfaceNormal));
         smoothedSquashStrength = Mathf.SmoothDamp(smoothedSquashStrength, target,
                                                   ref squashStrengthVel, settings.deformSmoothTime);
     }
@@ -180,8 +192,8 @@ public class SlimeVisual : MonoBehaviour
             return Vector2.zero;
 
         Vector2 tangent = new Vector2(-lastSurfaceNormal.y, lastSurfaceNormal.x);
-        Vector2 gravity = new Vector2(0f, settings.gravity);
-        float sagStrength = Vector2.Dot(gravity, tangent) / Mathf.Abs(settings.gravity);
+        Vector2 gravity = new Vector2(0f, slimeController.Gravity);
+        float sagStrength = Vector2.Dot(gravity, tangent) / Mathf.Abs(slimeController.Gravity);
 
         return tangent * sagStrength * settings.gravitySagDistance;
     }
@@ -229,19 +241,35 @@ public class SlimeVisual : MonoBehaviour
 
     private Vector2 ComputeVelocityStretch()
     {
+        if (slimeController.CurrentState == SlimeController.SlimeState.Airborne)
+        {
+            Vector2 gravityDir = new Vector2(0f, slimeController.Gravity).normalized;
+            Vector2 horizontalDir = new Vector2(-gravityDir.y, gravityDir.x);
+
+            float verticalSpeed = Mathf.Abs(Vector2.Dot(cachedVelocity, gravityDir));
+            float horizontalSpeed = Mathf.Abs(Vector2.Dot(cachedVelocity, horizontalDir));
+
+            float vNorm = Mathf.Clamp01(verticalSpeed / settings.velocityStretchSpeedRef);
+            float hNorm = Mathf.Clamp01(horizontalSpeed / settings.velocityStretchSpeedRef);
+
+            float vCurved = Mathf.Pow(vNorm, settings.velocityStretchCurvePower);
+            float hCurved = Mathf.Pow(hNorm, settings.velocityStretchCurvePower);
+
+            float vStretch = Mathf.Min(vCurved * settings.velocityStretchIntensityY, settings.velocityStretchMaxY);
+            float hStretch = Mathf.Min(hCurved * settings.velocityStretchIntensityX, settings.velocityStretchMaxX);
+
+            float damp = settings.velocityStretchCrossDamping;
+            return new Vector2(hStretch - vStretch * damp, vStretch - hStretch * damp);
+        }
+
+        // Surface: body.up = surfaceNormal, velocity along tangent = local X → (+stretch, -stretch)
         float speed = cachedVelocity.magnitude;
         if (speed < 0.1f)
             return Vector2.zero;
 
         float normalizedSpeed = Mathf.Clamp01(speed / settings.velocityStretchSpeedRef);
-        float stretch = Mathf.Min(normalizedSpeed * settings.velocityStretchIntensity, settings.velocityStretchMax);
-
-        // On surface: body.up = surfaceNormal, velocity along tangent = local X → (+stretch, -stretch)
-        // Airborne: body.up = velocity direction, velocity along local Y → (-stretch, +stretch)
-        if (slimeController.CurrentState == SlimeController.SlimeState.Airborne)
-            return new Vector2(-stretch, stretch);
-        else
-            return new Vector2(stretch, -stretch);
+        float stretch = Mathf.Min(normalizedSpeed * settings.velocityStretchIntensityX, settings.velocityStretchMaxX);
+        return new Vector2(stretch, -stretch);
     }
 
     // --- Velocity lean offset (C-4) ---
@@ -255,6 +283,56 @@ public class SlimeVisual : MonoBehaviour
         float normalizedSpeed = Mathf.Clamp01(speed / settings.velocityStretchSpeedRef);
         Vector2 leanOffset = -cachedVelocity.normalized * normalizedSpeed * settings.velocityLeanDistance;
         return Vector2.ClampMagnitude(leanOffset, settings.velocityLeanMax);
+    }
+
+    // --- Charging curve ---
+
+    private void UpdateChargingCurve()
+    {
+        if (slimeController.CurrentState != SlimeController.SlimeState.Charging
+            || slimeController.ChargingProgress < 0.001f)
+        {
+            chargingCurve = 0f;
+            return;
+        }
+        float speed = slimeController.ChargingLaunchSpeed;
+        float range = settings.chargingSpeedMax - settings.chargingSpeedMin;
+        float t = Mathf.Clamp01((speed - settings.chargingSpeedMin) / Mathf.Max(0.01f, range));
+        chargingCurve = Mathf.Pow(t, settings.chargingCurvePower);
+    }
+
+    // --- Charging squash (slow layer) ---
+
+    private Vector2 ComputeChargingSquash()
+    {
+        float squash = chargingCurve * settings.chargingSquashMax;
+        return new Vector2(squash, -squash);
+    }
+
+    // --- Charging tremor (fast layer) ---
+
+    private Vector2 ComputeChargingTremor()
+    {
+        if (chargingCurve < 0.001f)
+            return Vector2.zero;
+
+        float speed = slimeController.ChargingLaunchSpeed;
+        float range = settings.chargingSpeedMax - settings.chargingTremorThreshold;
+        float t = Mathf.Clamp01((speed - settings.chargingTremorThreshold) / Mathf.Max(0.01f, range));
+        float tremor = Mathf.Sin(Time.time * settings.chargingTremorFrequency * 2f * Mathf.PI)
+                     * t * t
+                     * settings.chargingTremorMax;
+
+        return new Vector2(tremor, -tremor);
+    }
+
+    // --- Charging offset (surface push — slow layer) ---
+
+    private Vector2 ComputeChargingOffset()
+    {
+        Vector2 surfacePush = -lastSurfaceNormal * chargingCurve * settings.chargingPushMax;
+        Vector2 aimPull = -slimeController.AimDirection * settings.bodyChargingAimPull;
+        return surfacePush + aimPull;
     }
 
     // --- Breathing (C-6) ---
@@ -274,9 +352,7 @@ public class SlimeVisual : MonoBehaviour
         Vector2 interest;
         if (slimeController.CurrentState == SlimeController.SlimeState.Charging)
         {
-            interest = slimeController.AimDirection
-                     * slimeController.ChargingProgress
-                     * settings.faceChargingScale;
+            interest = -slimeController.AimDirection * settings.faceChargingScale;
             lastInterest = interest;
         }
         else
@@ -306,7 +382,8 @@ public class SlimeVisual : MonoBehaviour
         currentFaceOffset = Vector2.SmoothDamp(
             currentFaceOffset, target, ref faceVelocity, settings.faceSmoothTime);
 
-        face.localPosition = (Vector3)currentFaceOffset;
+        Vector2 finalFacePos = (Vector2)body.localPosition + currentFaceOffset;
+        face.localPosition = new Vector3(finalFacePos.x, finalFacePos.y, face.localPosition.z);
         face.localRotation = Quaternion.identity;
     }
 

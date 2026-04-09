@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 95361b73a2f59a04bb54a2029ac8b5da, type: 3}
+  m_Name: SlimeVisualSettings
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeVisualSettings
+  deformSmoothTime: 0.1
+  offsetSmoothTime: 0.1
+  deformAxisSlerpSpeed: 15
+  deformScaleMin: 0.4
+  deformScaleMax: 2
+  surfaceSquashIntensity: 0.01
+  surfaceSquashAsymmetry: 0.1
+  gravitySagDistance: 1
+  impactSquashIntensity: 0.25
+  impactDuration: 0.3
+  impactDecayRate: 8
+  impactOscFreq: 2.5
+  impactSpeedReference: 20
+  impactMinThreshold: 0.05
+  velocityStretchIntensityX: 0.3
+  velocityStretchIntensityY: 0.3
+  velocityStretchSpeedRef: 15
+  velocityStretchMaxX: 0.3
+  velocityStretchMaxY: 0.6
+  velocityLeanDistance: 0.1
+  velocityLeanMax: 0.2
+  velocityAxisThreshold: 1
+  velocityStretchCurvePower: 2
+  velocityStretchCrossDamping: 0.3
+  chargingSpeedMin: 3
+  chargingSpeedMax: 15
+  chargingCurvePower: 1
+  chargingSquashMax: 0.2
+  chargingDipMax: 0.2
+  chargingPushMax: 0.1
+  bodyChargingAimPull: 0.15
+  chargingDipLateralShift: 0.2
+  chargingTremorFrequency: 25
+  chargingTremorMax: 0.03
+  chargingTremorThreshold: 9
+  breathAmplitude: 0.02
+  breathFrequency: 0.4
+  faceOffsetScale: 0.1
+  faceOffsetMax: 0.3
+  faceSmoothTime: 0.03
+  faceChargingScale: 1
+  faceLingerThreshold: 1
+  faceLingerDecay: 5
+  faceDriftAmplitude: 0.1
+  faceDriftFreqX: 1
+  faceDriftFreqY: 0.5
+  faceDriftSharpness: 4
+  blinkDuration: 0.1
+  blinkIntervalMin: 3
+  blinkIntervalMax: 7

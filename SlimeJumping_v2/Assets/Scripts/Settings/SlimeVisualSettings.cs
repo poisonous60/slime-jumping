@@ -1,0 +1,86 @@
+using UnityEngine;
+
+namespace SlimeJumping.Settings
+{
+    [CreateAssetMenu(fileName = "SlimeVisualSettings", menuName = "SlimeJumping/Slime Visual Settings")]
+    public class SlimeVisualSettings : ScriptableObject
+    {
+        [Header("Deformation General")]
+        public float deformSmoothTime = 0.1f;
+        public float offsetSmoothTime = 0.1f;
+        public float deformAxisSlerpSpeed = 15f;
+        public float deformScaleMin = 0.4f;
+        public float deformScaleMax = 1.8f;
+
+        [Header("Surface Squash (C-5)")]
+        public float surfaceSquashIntensity = 0.12f;
+        public float surfaceSquashAsymmetry = 0.3f;
+        public float gravitySagDistance = 0.06f;
+
+        [Header("Impact Squash (C-2)")]
+        public float impactSquashIntensity = 0.25f;
+        public float impactDuration = 0.3f;
+        public float impactDecayRate = 8f;
+        public float impactOscFreq = 2.5f;
+        public float impactSpeedReference = 20f;
+        public float impactMinThreshold = 0.05f;
+
+        [Header("Velocity Stretch (C-4)")]
+        public float velocityStretchIntensityX = 0.15f;
+        public float velocityStretchIntensityY = 0.15f;
+        public float velocityStretchSpeedRef = 15f;
+        public float velocityStretchMaxX = 0.3f;
+        public float velocityStretchMaxY = 0.3f;
+        public float velocityLeanDistance = 0.05f;
+        public float velocityLeanMax = 0.08f;
+        public float velocityAxisThreshold = 1f;
+        [Min(0.1f)] public float velocityStretchCurvePower = 2f;
+        [Min(0f)] public float velocityStretchCrossDamping = 0.3f;
+
+        [Header("Charging Curve")]
+        public float chargingSpeedMin = 3f;
+        public float chargingSpeedMax = 15f;
+        [Min(0.1f)] public float chargingCurvePower = 1f;
+
+        [Header("Charging Effects")]
+        public float chargingSquashMax = 0.2f;
+        public float chargingDipMax = 0.2f;
+        public float chargingPushMax = 0.1f;
+        public float bodyChargingAimPull = 0.15f;
+        public float chargingDipLateralShift = 0.2f;
+        public float chargingTremorFrequency = 25f;
+        public float chargingTremorMax = 0.03f;
+        public float chargingTremorThreshold = 9f;
+
+        [Header("Breathing (C-6)")]
+        public float breathAmplitude = 0.02f;
+        public float breathFrequency = 0.4f;
+
+        [Header("Face Tracking")]
+        public float faceOffsetScale = 0.03f;
+        public float faceOffsetMax = 0.2f;
+        public float faceSmoothTime = 0.1f;
+        public float faceChargingScale = 0.05f;
+        public float faceLingerThreshold = 0.1f;
+        public float faceLingerDecay = 1.5f;
+
+        [Header("Face Idle Drift")]
+        public float faceDriftAmplitude = 0.01f;
+        public float faceDriftFreqX = 0.7f;
+        public float faceDriftFreqY = 0.9f;
+        public float faceDriftSharpness = 4f;
+
+        [Header("Blink")]
+        public float blinkDuration = 0.1f;
+        public float blinkIntervalMin = 3f;
+        public float blinkIntervalMax = 7f;
+
+        private void OnValidate()
+        {
+            if (chargingSpeedMax <= chargingSpeedMin)
+                Debug.LogWarning($"[SlimeVisualSettings] chargingSpeedMax ({chargingSpeedMax}) must be > chargingSpeedMin ({chargingSpeedMin})");
+            if (chargingTremorThreshold >= chargingSpeedMax)
+                Debug.LogWarning($"[SlimeVisualSettings] chargingTremorThreshold ({chargingTremorThreshold}) must be < chargingSpeedMax ({chargingSpeedMax})");
+        }
+    }
+}

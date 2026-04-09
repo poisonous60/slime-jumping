@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Settings
 {
-    [CreateAssetMenu(fileName = "SlimeSettings", menuName = "SlimeJumping/Slime Settings")]
+    [CreateAssetMenu(fileName = "SlimeSettings", menuName = "SlimeJumping/Slime Physical Settings")]
     public class SlimeSettings : ScriptableObject
     {
         [Header("Surface Movement")]
@@ -107,55 +107,6 @@ namespace SlimeJumping.Settings
         public float launchClearanceThreshold = 0.05f;
         public float maxIgnoreTime = 0.15f;
 
-        [Header("Deformation General")]
-        public float deformSmoothTime = 0.1f;
-        public float offsetSmoothTime = 0.1f;
-        public float deformAxisSlerpSpeed = 15f;
-        public float deformScaleMin = 0.4f;
-        public float deformScaleMax = 1.8f;
-
-        [Header("Surface Squash (C-5)")]
-        public float surfaceSquashIntensity = 0.12f;
-        public float surfaceSquashAsymmetry = 0.3f;
-        public float gravitySagDistance = 0.06f;
-
-        [Header("Impact Squash (C-2)")]
-        public float impactSquashIntensity = 0.25f;
-        public float impactDuration = 0.3f;
-        public float impactDecayRate = 8f;
-        public float impactOscFreq = 2.5f;
-        public float impactSpeedReference = 20f;
-        public float impactMinThreshold = 0.05f;
-
-        [Header("Velocity Stretch (C-4)")]
-        public float velocityStretchIntensity = 0.15f;
-        public float velocityStretchSpeedRef = 15f;
-        public float velocityStretchMax = 0.3f;
-        public float velocityLeanDistance = 0.05f;
-        public float velocityLeanMax = 0.08f;
-        public float velocityAxisThreshold = 1f;
-
-        [Header("Breathing (C-6)")]
-        public float breathAmplitude = 0.02f;
-        public float breathFrequency = 0.4f;
-
-        [Header("Face Tracking")]
-        public float faceOffsetScale = 0.03f;
-        public float faceOffsetMax = 0.2f;
-        public float faceSmoothTime = 0.1f;
-        public float faceChargingScale = 0.2f;
-        public float faceLingerThreshold = 0.1f;
-        public float faceLingerDecay = 1.5f;
-
-        [Header("Face Idle Drift")]
-        public float faceDriftAmplitude = 0.01f;
-        public float faceDriftFreqX = 0.7f;
-        public float faceDriftFreqY = 0.9f;
-        public float faceDriftSharpness = 4f;
-
-        [Header("Blink")]
-        public float blinkDuration = 0.1f;
-        public float blinkIntervalMin = 3f;
-        public float blinkIntervalMax = 7f;
+        public float Gravity => gravity;
     }
 }

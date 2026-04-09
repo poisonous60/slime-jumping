@@ -11,6 +11,10 @@ namespace SlimeJumping.Debugging
         [SerializeField] private RectTransform aimDotImage;
         [SerializeField] private Image aimLineImage;
 
+        [Header("Toggle")]
+        [SerializeField] private bool showCircle = true;
+        [SerializeField] private bool showAimDot = true;
+
         [Header("Visual Settings")]
         [SerializeField] private Color unchargedColor = Color.green;
         [SerializeField] private Color fullChargeColor = Color.red;
@@ -28,9 +32,9 @@ namespace SlimeJumping.Debugging
 
         public void Show()
         {
-            if (circleImage != null) circleImage.gameObject.SetActive(true);
-            if (aimDotImage != null) aimDotImage.gameObject.SetActive(true);
-            if (aimLineImage != null) aimLineImage.gameObject.SetActive(true);
+            if (circleImage != null) circleImage.gameObject.SetActive(showCircle);
+            if (aimDotImage != null) aimDotImage.gameObject.SetActive(showAimDot);
+            if (aimLineImage != null) aimLineImage.gameObject.SetActive(showAimDot);
         }
 
         public void Hide()

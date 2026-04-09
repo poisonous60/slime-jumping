@@ -2796,7 +2796,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Camera.SlimeCameraFollow
   target: {fileID: 754441510}
-  smoothTime: 0.15
+  smoothTime: 0
   offset: {x: 0, y: 1, z: -6}
 --- !u!1 &333111022
 GameObject:
@@ -3690,7 +3690,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 9dfc825aed78fcd4ba02077103263b40, type: 2}
+  - {fileID: -876546973899608171, guid: c4d5e8c2586ad874b868511bd427a17d, type: 3}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -4902,7 +4902,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SlimeVisual
   slimeController: {fileID: 754441511}
-  settings: {fileID: 11400000, guid: 4b7a3b7018847154e984f9c08fe823ff, type: 2}
+  settings: {fileID: 11400000, guid: 70b655362c58b5f42a22cb5a7bd2613e, type: 2}
   body: {fileID: 480507897}
   face: {fileID: 1359374447}
   eyesRenderer: {fileID: 101139331}
@@ -6556,7 +6556,7 @@ Transform:
   m_GameObject: {fileID: 754441506}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -63.72, y: 10.29, z: 0}
+  m_LocalPosition: {x: -63.19, y: 0.65, z: 0}
   m_LocalScale: {x: 2, y: 2, z: 2}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -6701,9 +6701,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Debugging.SlimeStateDebugUI
   slimeController: {fileID: 754441511}
   screenOffset: {x: 20, y: 20}
-  circleSize: 80
-  spacing: 100
-  fontSize: 20
+  circleSize: 40
+  spacing: 50
+  fontSize: 10
   attachedColor: {r: 0, g: 1, b: 0, a: 1}
   chargingColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   airborneColor: {r: 0, g: 1, b: 1, a: 1}
@@ -6730,7 +6730,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 754441506}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8ef2b04784b33c748a332452509285f6, type: 3}
   m_Name: 
