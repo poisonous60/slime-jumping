@@ -52,6 +52,19 @@ namespace SlimeJumping.Controller
                 }
             }
 
+            // Volume charging: gravity only, fall cap applied by DragZone.FixedUpdate via ClampFallSpeed()
+            if (isVolumeCharging)
+            {
+                velocity.y += settings.gravity * dt;
+
+                if (!IsInChargeVolume)
+                {
+                    isVolumeCharging = false;
+                    CancelChargingToAirborne();
+                }
+                return;
+            }
+
             // Surface/coyote physics — with probe hysteresis (absorb 1-frame misses)
             bool probeValid = isTouchingSurface
                 && Vector2.Dot(surfaceNormal, Vector2.up) >= settings.ceilingThreshold;
@@ -187,17 +200,22 @@ namespace SlimeJumping.Controller
             else
             {
                 // Coyote expired: cancel to Airborne
-                chargeEntryCrawl = 0f;
-                crawlVelocity = 0f;
-                launchSpeed = 0f;
-                launchHeight = rb.position.y;
-                slideRampTimer = 0f;
-                conversionCount = 0;
                 if (carrier != null) carrier.Detach();
-                surfaceMod = SurfaceModifiers.Default;
-                ChangeState(SlimeState.Airborne);
-                if (chargeVisual != null) chargeVisual.Hide();
+                CancelChargingToAirborne();
             }
+        }
+
+        private void CancelChargingToAirborne()
+        {
+            crawlVelocity = 0f;
+            chargeEntryCrawl = 0f;
+            launchSpeed = 0f;
+            launchHeight = rb.position.y;
+            slideRampTimer = 0f;
+            conversionCount = 0;
+            surfaceMod = SurfaceModifiers.Default;
+            ChangeState(SlimeState.Airborne);
+            if (chargeVisual != null) chargeVisual.Hide();
         }
     }
 }

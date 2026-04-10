@@ -9,7 +9,20 @@ namespace SlimeJumping.Controller
 
         private void HandleJumpPressed()
         {
-            if (currentState != SlimeState.Attached || postLaunchTimer > 0f) return;
+            if (postLaunchTimer > 0f) return;
+
+            if (currentState == SlimeState.Attached)
+            {
+                HandleSurfaceChargeEntry();
+            }
+            else if (currentState == SlimeState.Airborne && IsInChargeVolume)
+            {
+                EnterVolumeCharging();
+            }
+        }
+
+        private void HandleSurfaceChargeEntry()
+        {
             hopRequested = false;
 
             ChangeState(SlimeState.Charging);
@@ -38,6 +51,27 @@ namespace SlimeJumping.Controller
             if (carrier != null) carrier.Attach(surfaceCollider);
             UpdateSurfaceModifiers(surfaceCollider);
 
+            if (chargeVisual != null) chargeVisual.Show();
+        }
+
+        private void EnterVolumeCharging()
+        {
+            isVolumeCharging = true;
+
+            surfaceNormal = Vector2.up;
+            surfaceTangent = Vector2.right;
+            lastSurfaceNormal = Vector2.up;
+            lastSurfaceTangent = Vector2.right;
+            prevSurfaceNormal = Vector2.up;
+
+            aimOffset = Vector2.zero;
+            driftDirection = Vector2.down;
+            activeChargeRadius = settings.chargeRadius;
+            chargeFullAimTimer = 0f;
+            chargeEntryCrawl = 0f;
+            crawlVelocity = 0f;
+
+            ChangeState(SlimeState.Charging, intentional: true);
             if (chargeVisual != null) chargeVisual.Show();
         }
 

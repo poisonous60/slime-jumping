@@ -16,10 +16,14 @@ namespace SlimeJumping.Controller
             float preLaunchCrawl = chargeEntryCrawl;
             chargeEntryCrawl = 0f;
             crawlVelocity = 0f;
-            ignoredColliderList.RegisterOverlapping(
-                rb.position,
-                settings.slimeRadius + settings.launchClearanceThreshold,
-                settings.groundLayer);
+
+            if (!isVolumeCharging)
+            {
+                ignoredColliderList.RegisterOverlapping(
+                    rb.position,
+                    settings.slimeRadius + settings.launchClearanceThreshold,
+                    settings.groundLayer);
+            }
 
             bool isEnergyConversion = activeChargeRadius > settings.chargeRadius;
             activeChargeRadius = settings.chargeRadius;
@@ -30,13 +34,25 @@ namespace SlimeJumping.Controller
                 : settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
             velocity = dir * power;
-            float excess = Mathf.Max(0f, Mathf.Abs(preLaunchCrawl) - settings.hyperDashDeduction);
-            velocity += lastSurfaceTangent * Mathf.Sign(preLaunchCrawl) * excess * settings.tangentInheritanceFactor;
-            if (carrier != null)
+
+            if (!isVolumeCharging)
             {
-                velocity += carrier.GetEffectiveVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
-                carrier.Detach();
+                // Surface launch: hyper dash + carrier
+                float excess = Mathf.Max(0f, Mathf.Abs(preLaunchCrawl) - settings.hyperDashDeduction);
+                velocity += lastSurfaceTangent * Mathf.Sign(preLaunchCrawl) * excess * settings.tangentInheritanceFactor;
+                if (carrier != null)
+                {
+                    velocity += carrier.GetEffectiveVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
+                    carrier.Detach();
+                }
             }
+            // Volume launch: pure aim direction, no hyper dash, no carrier
+
+            // Inside drag zone: reduce launch velocity. Exit multiplier restores on leaving.
+            if (CurrentDragZone != null)
+                velocity *= CurrentDragZone.launchMultiplier;
+
+            isVolumeCharging = false;
             surfaceMod = SurfaceModifiers.Default;
             launchSpeed = velocity.magnitude;
             launchHeight = rb.position.y;

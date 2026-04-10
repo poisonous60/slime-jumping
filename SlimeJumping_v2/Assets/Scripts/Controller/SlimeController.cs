@@ -4,6 +4,7 @@ using SlimeJumping.Input;
 using SlimeJumping.Debugging;
 using SlimeJumping.Physics;
 using SlimeJumping.Platforms;
+using SlimeJumping.Mechanisms;
 
 namespace SlimeJumping.Controller
 {
@@ -65,6 +66,13 @@ namespace SlimeJumping.Controller
 
         // Launch surface ignore
         private IgnoredColliderList ignoredColliderList;
+
+        // Volume charging flag (sand: Airborne → Charging without surface)
+        private bool isVolumeCharging;
+
+        // Current drag zone (set by DragZone.OnTriggerEnter/Exit, single zone only)
+        public DragZone CurrentDragZone { get; private set; }
+        public bool IsInChargeVolume => CurrentDragZone != null && CurrentDragZone.allowCharging;
 
         // Manual velocity
         private Vector2 velocity;
@@ -271,6 +279,32 @@ namespace SlimeJumping.Controller
             var tag = col != null ? col.GetComponentInParent<SurfaceTag>() : null;
             surfaceMod = tag != null ? tag.GetModifiers() : SurfaceModifiers.Default;
         }
+
+        // --- Drag Zone API (called by DragZone.cs) ---
+
+        public void OnDragZoneEnter(DragZone zone)
+        {
+            velocity *= zone.entryMultiplier;
+            CurrentDragZone = zone;
+
+            if (currentState == SlimeState.Airborne && zone.allowCharging
+                && inputReader.IsJumpHeld && postLaunchTimer <= 0f)
+            {
+                EnterVolumeCharging();
+            }
+        }
+
+        public void OnDragZoneExit(DragZone zone)
+        {
+            if (CurrentDragZone != zone) return;
+            float savedY = velocity.y;
+            velocity *= zone.exitMultiplier;
+            if (savedY < 0f) velocity.y = savedY;
+            CurrentDragZone = null;
+        }
+
+        public void ApplyDragFactor(float factor) { velocity *= factor; }
+        public void ClampFallSpeed(float max) { if (velocity.y < -max) velocity.y = -max; }
 
         private float GetSurfaceAngle()
         {

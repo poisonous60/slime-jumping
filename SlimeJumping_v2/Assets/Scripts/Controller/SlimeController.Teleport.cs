@@ -8,6 +8,12 @@ namespace SlimeJumping.Controller
         public void TeleportTo(Vector2 worldPos, Vector2 newVelocity)
         {
             // Charging cleanup
+            isVolumeCharging = false;
+            if (CurrentDragZone != null)
+            {
+                CurrentDragZone.ForceExit();
+                CurrentDragZone = null;
+            }
             aimOffset = Vector2.zero;
             chargeFullAimTimer = 0f;
             coyoteTimer = 0f;
