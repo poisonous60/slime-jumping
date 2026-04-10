@@ -29,6 +29,7 @@ public class SlimeVisual : MonoBehaviour
     // Deformation axis
     private Vector2 lastDeformAxis = Vector2.up;
     private Vector2 lastSurfaceNormal = Vector2.up;
+    private Vector2 prevGravityUp = Vector2.up;
 
     // Scale pipeline
     private Vector2 smoothedScale = Vector2.one;
@@ -181,6 +182,18 @@ public class SlimeVisual : MonoBehaviour
 
     private void UpdateDeformAxis()
     {
+        // Detect gravity direction change: snap body.up and reset scale state
+        // to prevent deformation along intermediate slerp angles.
+        Vector2 currentGravityUp = slimeController.GravityUp;
+        if (Vector2.Dot(prevGravityUp, currentGravityUp) < 0.7f)
+        {
+            body.up = (Vector3)currentGravityUp;
+            scaleVelocity = Vector2.zero;
+            smoothedScale = Vector2.one;
+            offsetVelocity = Vector2.zero;
+        }
+        prevGravityUp = currentGravityUp;
+
         Vector2 normal = slimeController.SurfaceNormal;
         if (slimeController.CurrentState != SlimeController.SlimeState.Airborne
             && normal.sqrMagnitude > 0.001f)
