@@ -663,7 +663,57 @@ CrumblingPlatform (부모)
 
 ---
 
-## 10. 설계 원칙
+## 10. 메커니즘 시스템 (Portal, Signal, Button)
+
+### 메커니즘 카테고리
+
+두 종류로 분류:
+
+- **A. Trigger volume류** (포탈, 킬존, 체크포인트, 바람, 부스터): Unity trigger collider로 표현. `OnTriggerEnter2D`는 `OnCollisionEnter2D`와 독립적 콜백. 물리적 배치(벽 표면보다 약간 앞)만으로 SlimeController 충돌 로직보다 먼저 처리 가능. Hook 불필요.
+- **B. Contact interceptor류** (no-stick 영역, 바운스 패드, 부서지는 블록): 실제 collision 이벤트에 끼어들어 attach 로직을 대체/수정. 2개째 메커니즘부터 `ISlimeInteractor` 인터페이스 도입 예정.
+
+### Portal (텔레포터 쌍)
+
+Portal-style 파란색/주황색 텔레포터. 벽에 배치.
+
+**프레임 규약**: `transform.right` = 포탈 바깥 방향(슬라임 출구), `transform.up` = 포탈 접선.
+
+**속도 변환**:
+```
+vIn      = dot(velocity, -entry.OutNormal)   // 포탈로 들어오는 성분
+vTangent = dot(velocity, entry.Tangent)      // 접선 성분
+newV     = exit.OutNormal * vIn + exit.Tangent * vTangent
+```
+
+법선 성분은 출구 normal로, 접선 성분은 출구 tangent로 매핑. 원작 Portal의 거동과 동일.
+
+**재진입 방지**: 출구 포탈에 `reentryCooldown`(0.2초) 적용. 텔레포트 직후 같은 프레임에 trigger 재발화 방지.
+
+**TeleportTo**: SlimeController의 공개 메서드. 위치/속도 설정 + Airborne 강제 전환 + 모든 상태(Charging, Carrier, Stick 등) 초기화.
+
+### SignalSource (신호 시스템)
+
+`UnityEvent onActivate` / `onDeactivate`를 가진 베이스 클래스. Inspector에서 연결만으로 레벨 디자인 가능.
+
+버튼, 압력판, 타이머, 무게 플랫폼 등이 상속. 코드 수정 없이 `onActivate → 원하는 메서드` 연결.
+
+### WeightDescendPlatform (무게 하강 플랫폼 / 버튼)
+
+슬라임이 위에 서면 천천히 내려가는 플랫폼. 바닥 도달 시 `Activate()` 발동. 슬라임 이탈 시 복귀, 복귀 완료 시 `Deactivate()`.
+
+- Sensor 기반 감지 (Attached 상태 무관 — charging 중, 인접 표면 접촉 중에도 동작)
+- PlatformMotor 미상속 (rider 의존 → time/waypoint 패턴과 다름)
+- Kinematic Rigidbody2D + MovePosition
+
+### PortalSwapper (포탈 위치 교체)
+
+신호 수신 시 포탈을 두 슬롯 사이에서 교체. `swapDelay` 후 실행.
+
+**Fling puzzle**: 포탈 루프(A→B→낙하→A→B...) 중 버튼으로 포탈 B 위치 변경 → 슬라임이 옆으로 사출.
+
+---
+
+## 11. 설계 원칙
 
 1. **원 하나가 게임 전부**: 단일 원형 콜라이더로 모든 게임플레이. 소프트바디는 비주얼 오버레이.
 2. **점성 슬라임**: 표면에 닿으면 붙는다. 바운스 없음. 운동량 전부 흡수. (관성은 있을 수 있음)
