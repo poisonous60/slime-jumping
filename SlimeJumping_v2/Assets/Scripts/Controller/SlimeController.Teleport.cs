@@ -40,6 +40,7 @@ namespace SlimeJumping.Controller
             // Position and velocity
             rb.position = worldPos;
             velocity = newVelocity;
+            externalDeltaV = Vector2.zero;
             rb.linearVelocity = newVelocity;
 
             // Energy tracking

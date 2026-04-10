@@ -24,6 +24,7 @@ namespace SlimeJumping.Controller
         public bool IsSticking => stickTimer > 0f;
         public Vector2 SurfaceNormal => surfaceNormal;
         public Vector2 Velocity => velocity;
+        public void AddExternalVelocity(Vector2 deltaV) { externalDeltaV += deltaV; }
         public float CoyoteTimer => coyoteTimer;
         public float StickTimer => stickTimer;
         public Collider2D SurfaceCollider => surfaceCollider;
@@ -67,6 +68,9 @@ namespace SlimeJumping.Controller
 
         // Manual velocity
         private Vector2 velocity;
+        // Accumulated velocity delta from external sources (wind, conveyor, etc.).
+        // Consumed and zeroed each FixedUpdate. Callers supply acceleration*dt.
+        private Vector2 externalDeltaV;
         // Signed scalar along surfaceTangent; negative = against tangent direction
         private float impactTangentSpeed;
         private float stickDeccelTimer;
@@ -242,6 +246,16 @@ namespace SlimeJumping.Controller
                 case SlimeState.Airborne:
                     FixedUpdateAirborne(dt);
                     break;
+            }
+
+            // External forces (wind, conveyor, etc.)
+            if (externalDeltaV.sqrMagnitude > 0.0001f)
+            {
+                if (currentState == SlimeState.Airborne)
+                    velocity += externalDeltaV;
+                else
+                    velocity += surfaceTangent * Vector2.Dot(externalDeltaV, surfaceTangent);
+                externalDeltaV = Vector2.zero;
             }
 
             Vector2 platformVel = (carrier != null && carrier.IsOnPlatform)

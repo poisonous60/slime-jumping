@@ -711,6 +711,37 @@ newV     = exit.OutNormal * vIn + exit.Tangent * vTangent
 
 **Fling puzzle**: 포탈 루프(A→B→낙하→A→B...) 중 버튼으로 포탈 B 위치 변경 → 슬라임이 옆으로 사출.
 
+### WindZone2D (바람 구간)
+
+Trigger volume에 들어오면 슬라임에 지속적 가속을 적용하는 환경 기믹. Pogostuck, Egging On 등에서 볼 수 있는 표준 플랫포머 기믹.
+
+**핵심 필드**:
+- `windAcceleration` (Vector2): 바람 방향 + 세기 (units/s²). 방향은 월드 기준.
+- `terminalSpeed` (float): 바람 방향으로의 최대 속도. 도달 시 가속 감쇠. 0이면 무제한.
+- `airborneMultiplier` (float, 기본 1.0): Airborne 상태 배율.
+- `attachedMultiplier` (float, 기본 0.7): Attached 상태 배율 (크롤/슬라이드 중).
+- `chargingMultiplier` (float, 기본 0.2): Charging 상태 배율.
+
+**동작**:
+```
+windDir = normalize(windAcceleration)
+falloff = clamp01(1 - dot(slime.Velocity, windDir) / terminalSpeed)
+deltaV  = windDir * |windAcceleration| * stateMultiplier * falloff * dt
+slime.AddExternalVelocity(deltaV)
+```
+
+**상태별 처리**:
+- Airborne: deltaV를 velocity에 직접 가산.
+- Attached/Charging: deltaV를 `surfaceTangent`에 투영 후 가산. 법선 성분 제거로 표면 스냅 지터 방지.
+
+**외부 힘 파이프라인** (`SlimeController.AddExternalVelocity`):
+- `externalDeltaV` 누적자에 velocity delta 축적.
+- FixedUpdate에서 state switch 이후, `rb.linearVelocity` 대입 직전에 적용.
+- 적분 순서: 중력/상태물리 → 외부힘 → 플랫폼속도 → rb 대입.
+- TeleportTo 시 누적자 초기화.
+
+**비주얼**: 자식 ParticleSystem. Stretched Billboard + Velocity over Lifetime으로 바람 방향 시각화. Noise 모듈로 물결 효과 추가 가능.
+
 ---
 
 ## 11. 설계 원칙
