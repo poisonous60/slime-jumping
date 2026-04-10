@@ -1,4 +1,5 @@
 using UnityEngine;
+using SlimeJumping.Controller;
 
 namespace SlimeJumping.Platforms
 {
@@ -6,13 +7,20 @@ namespace SlimeJumping.Platforms
     public class PlatformCarrier : MonoBehaviour
     {
         Rigidbody2D rb;
+        SlimeController slime;
         PlatformMotor currentPlatform;
 
         [SerializeField] float slimeMass = 1f;
 
         public bool IsOnPlatform => currentPlatform != null;
 
-        void Awake() => rb = GetComponent<Rigidbody2D>();
+        void Awake()
+        {
+            rb = GetComponent<Rigidbody2D>();
+            slime = GetComponent<SlimeController>();
+        }
+
+        Vector2 RiderVelocity => slime != null ? slime.Velocity : Vector2.zero;
 
         public void Attach(Collider2D surfaceCollider)
         {
@@ -23,7 +31,7 @@ namespace SlimeJumping.Platforms
                 : null;
 
             if (currentPlatform != null)
-                currentPlatform.ApplyRiderInfluence(rb.position, slimeMass);
+                currentPlatform.ApplyRiderInfluence(rb.position, slimeMass, RiderVelocity);
         }
 
         public void Detach()
@@ -34,8 +42,8 @@ namespace SlimeJumping.Platforms
 
         void FixedUpdate()
         {
-            if (currentPlatform == null) { currentPlatform = null; return; }
-            currentPlatform.ApplyRiderInfluence(rb.position, slimeMass);
+            if (currentPlatform == null) return;
+            currentPlatform.ApplyRiderInfluence(rb.position, slimeMass, RiderVelocity);
         }
 
         /// <summary>

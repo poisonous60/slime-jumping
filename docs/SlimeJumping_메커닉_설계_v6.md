@@ -796,6 +796,62 @@ SandVolume (GameObject)
 
 ---
 
+## 10-1. PushDoor (밀어서 여는 문)
+
+살롱 도어 스타일의 경첩 문. 슬라임이 밀면 콜라이더가 X축으로 평행이동하고, 분리된 3D 비주얼이 회전하여 문이 안쪽으로 열리는 모습을 보여줌. 충분히 밀면 콜라이더가 비활성화되어 통과 가능, 이후 스프링 복원.
+
+### 핵심 구조
+- **물리**: 1D 스프링-댐퍼 (X축 변위). 상태 변수 = `currentX` (0이 닫힘).
+- **비주얼**: 콜라이더와 분리된 3D 메시. `theta = (currentX / openThreshold) * maxVisualAngleDeg` 선형 매핑으로 회전.
+- **콜라이더/비주얼 분리**: 콜라이더는 직선 이동, 비주얼만 3D 회전. 정면 카메라에서는 일치하게 보임.
+
+### 물리 모델
+```
+force = -stiffness * currentX - damping * xVelocity + externalForce
+a = force / mass
+xVelocity += a * dt
+currentX += xVelocity * dt
+```
+
+externalForce = `Dot(riderVelocity, doorPushDirection) * riderMass * pushFactor`
+- `riderVelocity`: carrier 보정 전 슬라임 자체 속도 (피드백 루프 차단)
+- `doorPushDirection`: `transform.right` (부모 로컬 X축)
+
+### 통과 조건
+- `|currentX| >= openThreshold` → 콜라이더 비활성
+- 스프링 복원으로 `|currentX| < openThreshold` 시 재활성화 시도 (CrumblingPlatform 패턴: overlap 체크)
+
+### 방향 모드
+- 양방향: currentX 양/음 모두 가능 (살롱 도어)
+- 한 방향: 한쪽만 허용, 반대는 벽처럼 작용
+
+### Carrier 추종
+PlatformMotor 상속. 콜라이더가 X 평행이동하므로 carrier에 translation 델타로 자동 전파. 슬라임이 위에 서 있으면 문 복원 시 옆으로 밀려남.
+
+### 파라미터
+| 파라미터 | 기본값 | 설명 |
+|---------|--------|------|
+| stiffness | 30 | 복원 스프링 강도 |
+| damping | 3 | 속도 감쇠 |
+| mass | 1 | 반응성 (작을수록 가벼움) |
+| maxX | 1.0 | X 변위 한계 |
+| openThreshold | 0.7 | 통과 가능 X 변위 |
+| pushFactor | 1 | velocity→force 게인 |
+| oneWay | false | 한 방향 모드 |
+| maxVisualAngleDeg | 75 | 비주얼 최대 회전각 |
+
+### Scene 구조
+```
+PushDoor (힌지 위치, Layer 7)
+├─ Rigidbody2D (Kinematic)
+├─ BoxCollider2D (offset으로 문판 위치)
+├─ PushDoor.cs
+└─ VisualPivot (자식, position 0,0,0)
+    └─ Mesh (Cube, 힌지에서 한 방향으로 오프셋)
+```
+
+---
+
 ## 11. 설계 원칙
 
 1. **원 하나가 게임 전부**: 단일 원형 콜라이더로 모든 게임플레이. 소프트바디는 비주얼 오버레이.
