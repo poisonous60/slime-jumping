@@ -7,6 +7,7 @@ namespace SlimeJumping.Physics
         public AngleScaledValue crawlSpeed;
         public AngleScaledValue crawlAccel;
         public AngleScaledValue crawlDecel;
+        public AngleScaledValue crawlOverspeedDecel;
         public AngleScaledValue slideResistance;
         public AngleScaledValue slideGravity;
         public AngleScaledValue slideRampUp;
@@ -22,6 +23,7 @@ namespace SlimeJumping.Physics
             crawlSpeed = AngleScaledValue.Constant(1f),
             crawlAccel = AngleScaledValue.Constant(1f),
             crawlDecel = AngleScaledValue.Constant(1f),
+            crawlOverspeedDecel = AngleScaledValue.Constant(1f),
             slideResistance = AngleScaledValue.Constant(1f),
             slideGravity = AngleScaledValue.Constant(1f),
             slideRampUp = AngleScaledValue.Constant(0f),

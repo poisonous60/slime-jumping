@@ -13,6 +13,7 @@ namespace SlimeJumping.Physics
         public AngleScaledValue crawlSpeedMultiplier = AngleScaledValue.Constant(1f);
         public AngleScaledValue crawlAccelerationMultiplier = AngleScaledValue.Constant(1f);
         public AngleScaledValue crawlDecelerationMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue crawlOverspeedDecelerationMultiplier = AngleScaledValue.Constant(1f);
 
         [Header("Slide")]
         [Tooltip("0 = ice (no resistance), 2+ = mud (high resistance)")]
@@ -41,6 +42,7 @@ namespace SlimeJumping.Physics
             crawlSpeed = crawlSpeedMultiplier,
             crawlAccel = crawlAccelerationMultiplier,
             crawlDecel = crawlDecelerationMultiplier,
+            crawlOverspeedDecel = crawlOverspeedDecelerationMultiplier,
             slideResistance = slideResistanceMultiplier,
             slideGravity = slideGravityMultiplier,
             slideRampUp = slideRampUpTime,

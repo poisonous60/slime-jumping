@@ -75,11 +75,16 @@ Attached ──Space──▶ Charging
 
 ```
 targetSpeed = input.x * crawlSpeed
+overspeed = |crawlVelocity| > crawlSpeed
+decel = overspeed ? crawlOverspeedDeceleration : crawlDeceleration
+
 if (가속 또는 역방향)
     crawlVelocity = MoveTowards(crawlVelocity, targetSpeed, crawlAcceleration * dt)
 else
-    crawlVelocity = MoveTowards(crawlVelocity, targetSpeed, crawlDeceleration * dt)
+    crawlVelocity = MoveTowards(crawlVelocity, targetSpeed, decel * dt)
 ```
+
+- `crawlOverspeedDeceleration`: 최대 속도(crawlSpeed) 초과 시 적용되는 감속값. 착지 관성 등으로 crawlSpeed를 넘었을 때 별도 감속률 적용.
 
 - 바닥: A/D 좌우. 벽: W/S 위아래.
 - 이동 속도는 느림 — 위치 미세 조정용. 주 이동은 차징 발사.

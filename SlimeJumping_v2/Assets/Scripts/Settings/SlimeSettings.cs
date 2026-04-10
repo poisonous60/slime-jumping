@@ -9,6 +9,8 @@ namespace SlimeJumping.Settings
         public float crawlSpeed = 5f;
         public float crawlAcceleration = 50f;
         public float crawlDeceleration = 30f;
+        [Tooltip("Deceleration applied when crawl speed exceeds max crawl speed (e.g. from landing momentum)")]
+        public float crawlOverspeedDeceleration = 15f;
         public float slideGravityScale = 1f;
         public float slideThreshold = 1f;
         public float slideResistance = 2f;

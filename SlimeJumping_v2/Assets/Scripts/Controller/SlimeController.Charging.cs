@@ -158,7 +158,11 @@ namespace SlimeJumping.Controller
                     float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
                     slideSpeed *= rampT;
 
-                    crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle) * dt);
+                    float maxCrawl = settings.crawlSpeed * surfaceMod.crawlSpeed.Evaluate(angle);
+                    float chargingDecel = Mathf.Abs(crawlVelocity) > maxCrawl
+                        ? settings.crawlOverspeedDeceleration * surfaceMod.crawlOverspeedDecel.Evaluate(angle)
+                        : settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle);
+                    crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, chargingDecel * dt);
 
                     float finalTangent = slideSpeed + crawlVelocity;
                     velocity = surfaceTangent * finalTangent;

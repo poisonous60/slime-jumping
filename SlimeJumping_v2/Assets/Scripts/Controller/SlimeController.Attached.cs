@@ -78,16 +78,20 @@ namespace SlimeJumping.Controller
             // 2. Crawl: accel/decel model (weakened during stick)
             float crawlScale = (stickTimer > 0f) ? settings.stickCrawlMultiplier : 1f;
             float inputX = inputReader.LastInputMove.x;
-            float targetSpeed = -inputX * settings.crawlSpeed * surfaceMod.crawlSpeed.Evaluate(angle) * crawlScale;
+            float maxCrawlSpeed = settings.crawlSpeed * surfaceMod.crawlSpeed.Evaluate(angle);
+            float targetSpeed = -inputX * maxCrawlSpeed * crawlScale;
+            bool overspeed = Mathf.Abs(crawlVelocity) > maxCrawlSpeed;
+            float decelValue = overspeed
+                ? settings.crawlOverspeedDeceleration * surfaceMod.crawlOverspeedDecel.Evaluate(angle)
+                : settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle);
             if (crawlVelocity != 0f && targetSpeed != 0f && Mathf.Sign(targetSpeed) != Mathf.Sign(crawlVelocity))
             {
                 // Opposite direction: decel to 0, then accel toward new direction
-                float decelRate = settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle);
                 float absBefore = Mathf.Abs(crawlVelocity);
-                crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, decelRate * dt);
+                crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, decelValue * dt);
                 if (crawlVelocity == 0f)
                 {
-                    float dtLeft = dt - absBefore / decelRate;
+                    float dtLeft = dt - absBefore / decelValue;
                     if (dtLeft > 0f)
                     {
                         float accelRate = settings.crawlAcceleration * surfaceMod.crawlAccel.Evaluate(angle);
@@ -98,7 +102,7 @@ namespace SlimeJumping.Controller
             else if (Mathf.Abs(targetSpeed) > Mathf.Abs(crawlVelocity))
                 crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlAcceleration * surfaceMod.crawlAccel.Evaluate(angle) * dt);
             else
-                crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle) * dt);
+                crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, decelValue * dt);
 
             // 3. Ground Dash: S impulse with input buffer
             if (dashBufferTimer > 0f && Mathf.Abs(inputX) > 0.01f && dashCooldownTimer <= 0f)
