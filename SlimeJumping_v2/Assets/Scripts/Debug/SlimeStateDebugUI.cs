@@ -89,7 +89,7 @@ namespace SlimeJumping.Debugging
 
             if (slimeController.IsTouchingSurface)
             {
-                float angle = Mathf.Acos(Mathf.Abs(Vector2.Dot(slimeController.SurfaceNormal, Vector2.up))) * Mathf.Rad2Deg;
+                float angle = Mathf.Acos(Mathf.Abs(Vector2.Dot(slimeController.SurfaceNormal, slimeController.GravityUp))) * Mathf.Rad2Deg;
                 GUI.Label(new Rect(screenOffset.x, labelY, 200f, 20f), $"Surface: {angle:F1}°", labelStyle);
             }
 

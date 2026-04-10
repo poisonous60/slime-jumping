@@ -10,12 +10,13 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateAttached(float dt)
         {
-            if (!isTouchingSurface || Vector2.Dot(surfaceNormal, Vector2.up) < settings.ceilingThreshold)
+            if (!isTouchingSurface || Vector2.Dot(surfaceNormal, gravityUp) < settings.ceilingThreshold)
             {
                 hopRequested = false;
                 crawlVelocity = 0f;
                 launchSpeed = 0f;
-                launchHeight = rb.position.y;
+                launchHeight = Vector2.Dot(rb.position, gravityUp);
+                launchGravityUp = gravityUp;
                 slideRampTimer = 0f;
                 conversionCount = 0;
                 if (carrier != null) carrier.Detach();
@@ -52,7 +53,7 @@ namespace SlimeJumping.Controller
             float slideSpeed = 0f;
             if (stickTimer <= 0f)
             {
-                Vector2 gravityVec = new Vector2(0f, settings.gravity);
+                Vector2 gravityVec = GravityVector;
                 float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
                 if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
                     gravAlongTangent = 0f;

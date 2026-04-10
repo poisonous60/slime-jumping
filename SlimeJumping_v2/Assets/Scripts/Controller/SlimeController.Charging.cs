@@ -55,7 +55,7 @@ namespace SlimeJumping.Controller
             // Volume charging: gravity only, fall cap applied by DragZone.FixedUpdate via ClampFallSpeed()
             if (isVolumeCharging)
             {
-                velocity.y += settings.gravity * dt;
+                velocity += GravityVector * dt;
 
                 if (!IsInChargeVolume)
                 {
@@ -67,7 +67,7 @@ namespace SlimeJumping.Controller
 
             // Surface/coyote physics — with probe hysteresis (absorb 1-frame misses)
             bool probeValid = isTouchingSurface
-                && Vector2.Dot(surfaceNormal, Vector2.up) >= settings.ceilingThreshold;
+                && Vector2.Dot(surfaceNormal, gravityUp) >= settings.ceilingThreshold;
 
             bool onValidSurface;
             if (probeValid)
@@ -149,7 +149,7 @@ namespace SlimeJumping.Controller
                 {
                     // Slime still slides on walls during charging (same physics as Attached, no crawl input)
                     float angle = GetSurfaceAngle();
-                    Vector2 gravityVec = new Vector2(0f, settings.gravity);
+                    Vector2 gravityVec = GravityVector;
                     float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
                     gravAlongTangent *= settings.chargingSlideGravityScale;
                     if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
@@ -193,7 +193,7 @@ namespace SlimeJumping.Controller
                 coyoteTimer -= dt;
                 float elapsed = settings.chargingCoyoteTime - coyoteTimer;
                 if (elapsed > settings.coyoteGraceTime)
-                    velocity.y += settings.gravity * dt;
+                    velocity += GravityVector * dt;
                 else
                     velocity = Vector2.zero; // Grace: freeze at edge
             }
@@ -210,7 +210,8 @@ namespace SlimeJumping.Controller
             crawlVelocity = 0f;
             chargeEntryCrawl = 0f;
             launchSpeed = 0f;
-            launchHeight = rb.position.y;
+            launchHeight = Vector2.Dot(rb.position, gravityUp);
+            launchGravityUp = gravityUp;
             slideRampTimer = 0f;
             conversionCount = 0;
             surfaceMod = SurfaceModifiers.Default;

@@ -5,6 +5,7 @@ using SlimeJumping.Debugging;
 using SlimeJumping.Physics;
 using SlimeJumping.Platforms;
 using SlimeJumping.Mechanisms;
+using System.Collections.Generic;
 
 namespace SlimeJumping.Controller
 {
@@ -74,6 +75,24 @@ namespace SlimeJumping.Controller
         public DragZone CurrentDragZone { get; private set; }
         public bool IsInChargeVolume => CurrentDragZone != null && CurrentDragZone.allowCharging;
 
+        // --- Gravity Field ---
+        // LIFO stack of active gravity zones. Empty = world gravity.
+        private readonly List<GravityField> gravityFieldStack = new List<GravityField>();
+        // Computed once per FixedUpdate, before state dispatch.
+        private Vector2 gravityUp = Vector2.up;
+        private Vector2 gravityRight = Vector2.right;
+
+        public Vector2 GravityUp => gravityUp;
+        public Vector2 GravityRight => gravityRight;
+        public Vector2 GravityVector => -gravityUp * Mathf.Abs(settings.gravity);
+
+        public void PushGravityField(GravityField field)
+        {
+            if (!gravityFieldStack.Contains(field))
+                gravityFieldStack.Add(field);
+        }
+        public void PopGravityField(GravityField field) { gravityFieldStack.Remove(field); }
+
         // Manual velocity
         private Vector2 velocity;
         // Accumulated velocity delta from external sources (wind, conveyor, etc.).
@@ -117,6 +136,7 @@ namespace SlimeJumping.Controller
         // Energy-based conversion normalization (stored at launch)
         private float launchSpeed;
         private float launchHeight;
+        private Vector2 launchGravityUp = Vector2.up;
 
         // Charging coyote time (grace period after leaving surface)
         private float coyoteTimer;
@@ -159,7 +179,8 @@ namespace SlimeJumping.Controller
             SyncRadius();
             ignoredColliderList = new IgnoredColliderList(settings.maxIgnoreTime);
             surfaceProbe = new SurfaceProbe(rb, settings, ignoredColliderList.Colliders);
-            launchHeight = rb.position.y;
+            launchHeight = Vector2.Dot(rb.position, gravityUp);
+            launchGravityUp = gravityUp;
         }
 
         private void OnValidate()
@@ -227,11 +248,27 @@ namespace SlimeJumping.Controller
         {
             float dt = Time.fixedDeltaTime;
 
+            // Compute effective gravity direction (LIFO stack: last entered zone wins)
+            if (gravityFieldStack.Count > 0)
+            {
+                var topField = gravityFieldStack[gravityFieldStack.Count - 1];
+                Vector2 newUp = -topField.GetDownDirection(rb.position);
+                if (newUp.sqrMagnitude < 0.0001f)
+                    gravityUp = Vector2.up; // NaN guard: designer error (pivot reachable)
+                else
+                    gravityUp = newUp.normalized;
+            }
+            else
+            {
+                gravityUp = Vector2.up;
+            }
+            gravityRight = new Vector2(gravityUp.y, -gravityUp.x);
+
             ignoredColliderList.Tick(dt, rb.position, settings.slimeRadius, settings.launchClearanceThreshold);
             float surfaceMultiplier = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 ? settings.attachedCheckMultiplier : settings.airborneCheckMultiplier;
             float inputX = (currentState == SlimeState.Charging) ? 0f : inputReader.LastInputMove.x;
-            isTouchingSurface = surfaceProbe.CheckSurface(out surfaceNormal, out surfaceCollider, surfaceMultiplier, inputX, surfaceCollider);
+            isTouchingSurface = surfaceProbe.CheckSurface(out surfaceNormal, out surfaceCollider, surfaceMultiplier, inputX, surfaceCollider, gravityUp, gravityRight);
 
             surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
 
@@ -297,18 +334,30 @@ namespace SlimeJumping.Controller
         public void OnDragZoneExit(DragZone zone)
         {
             if (CurrentDragZone != zone) return;
-            float savedY = velocity.y;
+            float savedFall = Vector2.Dot(velocity, gravityUp); // negative when falling
             velocity *= zone.exitMultiplier;
-            if (savedY < 0f) velocity.y = savedY;
+            if (savedFall < 0f)
+            {
+                float hSpeed = Vector2.Dot(velocity, gravityRight);
+                velocity = gravityUp * savedFall + gravityRight * hSpeed;
+            }
             CurrentDragZone = null;
         }
 
         public void ApplyDragFactor(float factor) { velocity *= factor; }
-        public void ClampFallSpeed(float max) { if (velocity.y < -max) velocity.y = -max; }
+        public void ClampFallSpeed(float max)
+        {
+            float fallSpeed = -Vector2.Dot(velocity, gravityUp); // positive when falling
+            if (fallSpeed > max)
+            {
+                float hSpeed = Vector2.Dot(velocity, gravityRight);
+                velocity = gravityUp * (-max) + gravityRight * hSpeed;
+            }
+        }
 
         private float GetSurfaceAngle()
         {
-            return SurfaceProbe.GetSurfaceAngle(surfaceNormal);
+            return SurfaceProbe.GetSurfaceAngle(surfaceNormal, gravityUp);
         }
 
         private Vector2 GetSurfaceVelocity(Collider2D col)

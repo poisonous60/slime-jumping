@@ -58,14 +58,14 @@ namespace SlimeJumping.Controller
         {
             isVolumeCharging = true;
 
-            surfaceNormal = Vector2.up;
-            surfaceTangent = Vector2.right;
-            lastSurfaceNormal = Vector2.up;
-            lastSurfaceTangent = Vector2.right;
-            prevSurfaceNormal = Vector2.up;
+            surfaceNormal = gravityUp;
+            surfaceTangent = gravityRight;
+            lastSurfaceNormal = gravityUp;
+            lastSurfaceTangent = gravityRight;
+            prevSurfaceNormal = gravityUp;
 
             aimOffset = Vector2.zero;
-            driftDirection = Vector2.down;
+            driftDirection = -gravityUp;
             activeChargeRadius = settings.chargeRadius;
             chargeFullAimTimer = 0f;
             chargeEntryCrawl = 0f;

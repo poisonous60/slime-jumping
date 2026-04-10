@@ -191,8 +191,8 @@ public class SlimeVisual : MonoBehaviour
         Vector2 targetAxis;
         if (slimeController.CurrentState == SlimeController.SlimeState.Airborne)
         {
-            // Axis-decomposed stretch uses world axes, so body.up must be world up
-            targetAxis = Vector2.up;
+            // Axis-decomposed stretch uses gravity axes, so body.up must be gravity up
+            targetAxis = slimeController.GravityUp;
         }
         else
         {
@@ -210,7 +210,7 @@ public class SlimeVisual : MonoBehaviour
     {
         float target = (slimeController.CurrentState == SlimeController.SlimeState.Airborne)
             ? 0f
-            : Mathf.Clamp01(-Vector2.Dot(new Vector2(0f, slimeController.Gravity).normalized, lastSurfaceNormal));
+            : Mathf.Clamp01(-Vector2.Dot(-slimeController.GravityUp, lastSurfaceNormal));
         smoothedSquashStrength = Mathf.SmoothDamp(smoothedSquashStrength, target,
                                                   ref squashStrengthVel, settings.deformSmoothTime);
     }
@@ -231,7 +231,7 @@ public class SlimeVisual : MonoBehaviour
             return Vector2.zero;
 
         Vector2 tangent = new Vector2(-lastSurfaceNormal.y, lastSurfaceNormal.x);
-        Vector2 gravity = new Vector2(0f, slimeController.Gravity);
+        Vector2 gravity = slimeController.GravityVector;
         float sagStrength = Vector2.Dot(gravity, tangent) / Mathf.Abs(slimeController.Gravity);
 
         return tangent * sagStrength * settings.gravitySagDistance;
@@ -282,8 +282,11 @@ public class SlimeVisual : MonoBehaviour
     {
         if (slimeController.CurrentState == SlimeController.SlimeState.Airborne)
         {
-            Vector2 gravityDir = new Vector2(0f, slimeController.Gravity).normalized;
-            Vector2 horizontalDir = new Vector2(-gravityDir.y, gravityDir.x);
+            // Decompose along body.up (current visual orientation), not GravityUp directly.
+            // body.up slerps toward GravityUp; using it here avoids axis mismatch during transitions.
+            Vector2 bodyUp = (Vector2)body.up;
+            Vector2 gravityDir = -bodyUp;
+            Vector2 horizontalDir = new Vector2(bodyUp.y, -bodyUp.x);
 
             float verticalSpeed = Mathf.Abs(Vector2.Dot(cachedVelocity, gravityDir));
             float horizontalSpeed = Mathf.Abs(Vector2.Dot(cachedVelocity, horizontalDir));

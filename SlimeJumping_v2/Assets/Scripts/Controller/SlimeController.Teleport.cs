@@ -7,6 +7,11 @@ namespace SlimeJumping.Controller
     {
         public void TeleportTo(Vector2 worldPos, Vector2 newVelocity)
         {
+            // Clear stale gravity fields (trigger exit won't fire for old location)
+            gravityFieldStack.Clear();
+            gravityUp = Vector2.up;
+            gravityRight = Vector2.right;
+
             // Charging cleanup
             isVolumeCharging = false;
             if (CurrentDragZone != null)
@@ -51,7 +56,8 @@ namespace SlimeJumping.Controller
 
             // Energy tracking
             launchSpeed = newVelocity.magnitude;
-            launchHeight = worldPos.y;
+            launchHeight = Vector2.Dot(worldPos, gravityUp);
+            launchGravityUp = gravityUp;
             conversionCount = 0;
 
             // Force Airborne

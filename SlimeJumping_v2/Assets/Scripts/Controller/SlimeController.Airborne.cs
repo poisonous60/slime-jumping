@@ -14,7 +14,7 @@ namespace SlimeJumping.Controller
             if (attachLockoutTimer > 0f)
                 attachLockoutTimer -= dt;
 
-            bool airControlActive = velocity.y <= settings.apexThreshold;
+            bool airControlActive = Vector2.Dot(velocity, gravityUp) <= settings.apexThreshold;
 
             // Gravity
             float gravityScale = 1f;
@@ -30,12 +30,12 @@ namespace SlimeJumping.Controller
             {
                 asymScale = settings.risingGravityScale;
             }
-            velocity.y += settings.gravity * gravityScale * asymScale * dt;
+            velocity += -gravityUp * Mathf.Abs(settings.gravity) * gravityScale * asymScale * dt;
 
             // Land on any surface
             if (isTouchingSurface)
             {
-                float surfaceUp = Vector2.Dot(surfaceNormal, Vector2.up);
+                float surfaceUp = Vector2.Dot(surfaceNormal, gravityUp);
 
                 // Ceiling: don't attach, just cancel normal velocity and stay airborne
                 if (surfaceUp < settings.ceilingReattachThreshold)
@@ -62,7 +62,7 @@ namespace SlimeJumping.Controller
                 {
                     // Energy conversion: use energy conservation (v² = v₀² + 2gh)
                     // so W/S gravity control doesn't inflate/deflate conversion
-                    float heightDelta = launchHeight - rb.position.y;
+                    float heightDelta = launchHeight - Vector2.Dot(rb.position, launchGravityUp);
                     float shadowSpeedSq = launchSpeed * launchSpeed
                         + 2f * Mathf.Abs(settings.gravity) * heightDelta;
                     float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
@@ -85,8 +85,8 @@ namespace SlimeJumping.Controller
 
                     float landingAngle = GetSurfaceAngle();
                     tangentSpeed *= surfaceMod.wallAttachDampen.Evaluate(landingAngle);
-                    float redirectSign = Mathf.Sign(Vector2.Dot(Vector2.up, surfaceTangent));
-                    float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, Vector2.up));
+                    float redirectSign = Mathf.Sign(Vector2.Dot(gravityUp, surfaceTangent));
+                    float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, gravityUp));
                     float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect.Evaluate(landingAngle) * redirectSign * redirectScale;
                     hopBufferTimer = 0f;
                     dashBufferTimer = 0f;
@@ -131,8 +131,8 @@ namespace SlimeJumping.Controller
 
                     float landingAngle = GetSurfaceAngle();
                     tangentSpeed *= surfaceMod.wallAttachDampen.Evaluate(landingAngle);
-                    float redirectSign = Mathf.Sign(Vector2.Dot(Vector2.up, surfaceTangent));
-                    float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, Vector2.up));
+                    float redirectSign = Mathf.Sign(Vector2.Dot(gravityUp, surfaceTangent));
+                    float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, gravityUp));
                     float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect.Evaluate(landingAngle) * redirectSign * redirectScale;
 
                     if (hopBufferTimer > 0f)
@@ -174,26 +174,34 @@ namespace SlimeJumping.Controller
             }
 
             // Air control: horizontal acceleration with speed cap (last-input-wins)
+            // "Horizontal" = perpendicular to effective gravity, not necessarily world-X.
             if (airControlActive)
             {
                 float inputX = inputReader.LastInputMove.x;
                 if (Mathf.Abs(inputX) > 0.01f)
                 {
-                    float targetVx = inputX * settings.airMaxHorizontalSpeed;
-                    float accel = (inputX * velocity.x >= 0f)
+                    float currentH = Vector2.Dot(velocity, gravityRight);
+                    float targetH = inputX * settings.airMaxHorizontalSpeed;
+                    float accel = (inputX * currentH >= 0f)
                         ? settings.airAcceleration
                         : settings.airDeceleration;
 
-                    if (Mathf.Abs(velocity.x) > settings.airMaxHorizontalSpeed)
+                    float newH;
+                    if (Mathf.Abs(currentH) > settings.airMaxHorizontalSpeed)
                     {
                         // Already faster than cap (from launch) — only allow braking
-                        if (inputX * velocity.x < 0)
-                            velocity.x = Mathf.MoveTowards(velocity.x, targetVx, settings.airAcceleration * dt);
+                        if (inputX * currentH < 0)
+                            newH = Mathf.MoveTowards(currentH, targetH, settings.airAcceleration * dt);
+                        else
+                            newH = currentH;
                     }
                     else
                     {
-                        velocity.x = Mathf.MoveTowards(velocity.x, targetVx, accel * dt);
+                        newH = Mathf.MoveTowards(currentH, targetH, accel * dt);
                     }
+
+                    float gravComponent = Vector2.Dot(velocity, gravityUp);
+                    velocity = gravityUp * gravComponent + gravityRight * newH;
                 }
             }
 

@@ -72,8 +72,8 @@ namespace SlimeJumping.Debugging
                 var n = probe.GetContactNormal(i);
                 float dist = probe.GetContactDistance(i);
                 bool isActive = probe.IsContactActive(i);
-                float angle = SurfaceProbe.GetSurfaceAngle(n);
-                float surfaceUp = Vector2.Dot(n, Vector2.up);
+                float angle = SurfaceProbe.GetSurfaceAngle(n, slimeController.GravityUp);
+                float surfaceUp = Vector2.Dot(n, slimeController.GravityUp);
                 bool isPrimary = i == probe.SelectedIndex;
 
                 Debug.Log($"  [{i}] {col.name}: angle={angle:F1} surfaceUp={surfaceUp:F3}" +

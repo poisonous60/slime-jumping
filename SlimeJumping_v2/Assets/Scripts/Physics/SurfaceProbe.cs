@@ -48,7 +48,8 @@ namespace SlimeJumping.Physics
         }
 
         public bool CheckSurface(out Vector2 normal, out Collider2D col,
-            float distMultiplier, float inputX, Collider2D prevCollider)
+            float distMultiplier, float inputX, Collider2D prevCollider,
+            Vector2 gravityUp, Vector2 gravityRight)
         {
             float radius = settings.slimeRadius;
             float detectRange = settings.surfaceCheckDistance * distMultiplier;
@@ -56,7 +57,7 @@ namespace SlimeJumping.Physics
             LayerMask mask = settings.groundLayer;
             Vector2 pos = rb.position;
 
-            normal = Vector2.up;
+            normal = gravityUp;
             col = null;
             contactCount = 0;
 
@@ -105,7 +106,7 @@ namespace SlimeJumping.Physics
 
             // Identify active contacts (within slimeRadius + contactSkin)
             // and select primary using 5-step fallback
-            int selected = SelectPrimary(radius, contactSkin, inputX, prevCollider);
+            int selected = SelectPrimary(radius, contactSkin, inputX, prevCollider, gravityUp, gravityRight);
             selectedIdx = selected;
             normal = contactNormals[selected];
             col = contactColliders[selected];
@@ -113,7 +114,8 @@ namespace SlimeJumping.Physics
             return true;
         }
 
-        private int SelectPrimary(float radius, float contactSkin, float inputX, Collider2D prevCollider)
+        private int SelectPrimary(float radius, float contactSkin, float inputX, Collider2D prevCollider,
+            Vector2 gravityUp, Vector2 gravityRight)
         {
             // Count active contacts and find closest overall
             int localActiveCount = 0;
@@ -155,7 +157,7 @@ namespace SlimeJumping.Physics
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
-                    if (Vector2.Dot(contactNormals[i], Vector2.up) >= ceilThresh)
+                    if (Vector2.Dot(contactNormals[i], gravityUp) >= ceilThresh)
                     {
                         attachableCount++;
                         if (firstAttachable < 0) firstAttachable = i;
@@ -174,7 +176,7 @@ namespace SlimeJumping.Physics
             for (int i = 0; i < contactCount; i++)
             {
                 if (!contactActive[i]) continue;
-                if (filterCeiling && Vector2.Dot(contactNormals[i], Vector2.up) < ceilThresh) continue;
+                if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
                 float pen = radius - contactDistances[i];
                 if (pen > deepestPen)
                 {
@@ -187,7 +189,7 @@ namespace SlimeJumping.Physics
             // Step 3: Input tiebreaker — surface slime is pressing into
             if (Mathf.Abs(inputX) > 0.01f)
             {
-                Vector2 inputDir = new Vector2(inputX, 0f).normalized;
+                Vector2 inputDir = (gravityRight * inputX).normalized;
                 int bestIdx = -1;
                 float bestDot = float.MinValue;
                 float secondDot = float.MinValue;
@@ -195,7 +197,7 @@ namespace SlimeJumping.Physics
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
-                    if (filterCeiling && Vector2.Dot(contactNormals[i], Vector2.up) < ceilThresh) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
                     float d = -Vector2.Dot(contactNormals[i], inputDir);
                     if (d > bestDot)
                     {
@@ -218,7 +220,7 @@ namespace SlimeJumping.Physics
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
-                    if (filterCeiling && Vector2.Dot(contactNormals[i], Vector2.up) < ceilThresh) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
                     if (contactColliders[i] == prevCollider) return i;
                 }
             }
@@ -230,8 +232,8 @@ namespace SlimeJumping.Physics
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
-                    if (filterCeiling && Vector2.Dot(contactNormals[i], Vector2.up) < ceilThresh) continue;
-                    float g = Vector2.Dot(contactNormals[i], Vector2.up);
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
+                    float g = Vector2.Dot(contactNormals[i], gravityUp);
                     if (g > bestGrav)
                     {
                         bestGrav = g;
@@ -322,9 +324,9 @@ namespace SlimeJumping.Physics
             rb.position = pos;
         }
 
-        public static float GetSurfaceAngle(Vector2 surfaceNormal)
+        public static float GetSurfaceAngle(Vector2 surfaceNormal, Vector2 gravityUp)
         {
-            return Mathf.Acos(Mathf.Abs(Vector2.Dot(surfaceNormal, Vector2.up))) * Mathf.Rad2Deg;
+            return Mathf.Acos(Mathf.Abs(Vector2.Dot(surfaceNormal, gravityUp))) * Mathf.Rad2Deg;
         }
     }
 }

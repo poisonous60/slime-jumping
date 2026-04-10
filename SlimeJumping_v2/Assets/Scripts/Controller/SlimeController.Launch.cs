@@ -55,7 +55,8 @@ namespace SlimeJumping.Controller
             isVolumeCharging = false;
             surfaceMod = SurfaceModifiers.Default;
             launchSpeed = velocity.magnitude;
-            launchHeight = rb.position.y;
+            launchHeight = Vector2.Dot(rb.position, gravityUp);
+            launchGravityUp = gravityUp;
 
             ChangeState(SlimeState.Airborne, intentional: true);
             postLaunchTimer = settings.postLaunchIgnoreTime;
@@ -75,8 +76,8 @@ namespace SlimeJumping.Controller
             float power = Mathf.Lerp(settings.hopPower, settings.hopPowerMin, hopT);
             if (stickTimer > 0f)
             {
-                // Always hop upward, not along surfaceNormal
-                velocity = Vector2.up * power;
+                // Always hop in gravity-up direction, not along surfaceNormal
+                velocity = gravityUp * power;
             }
             else
             {
@@ -91,8 +92,8 @@ namespace SlimeJumping.Controller
                                               settings.hopMomentumMaxSpeed);
                     velocity += surfaceTangent * (inputSign * boosted - tangentSpeed);
                 }
-                // Always hop upward, not along surfaceNormal
-                velocity += Vector2.up * power;
+                // Always hop in gravity-up direction, not along surfaceNormal
+                velocity += gravityUp * power;
             }
             crawlVelocity = 0f;
             stickTimer = 0f;
@@ -110,7 +111,8 @@ namespace SlimeJumping.Controller
             }
             surfaceMod = SurfaceModifiers.Default;
             launchSpeed = velocity.magnitude;
-            launchHeight = rb.position.y;
+            launchHeight = Vector2.Dot(rb.position, gravityUp);
+            launchGravityUp = gravityUp;
             hopCooldownTimer = settings.hopCooldown;
 
             preserveLandingVelocity = true;

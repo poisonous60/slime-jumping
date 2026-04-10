@@ -95,7 +95,7 @@ namespace SlimeJumping.Platforms
 
             if (useAngleLimit)
             {
-                float angle = Mathf.Acos(Vector2.Dot(slime.SurfaceNormal, Vector2.up)) * Mathf.Rad2Deg;
+                float angle = Mathf.Acos(Vector2.Dot(slime.SurfaceNormal, slime.GravityUp)) * Mathf.Rad2Deg;
                 if (angle < minSurfaceAngle || angle > maxSurfaceAngle) return;
             }
 

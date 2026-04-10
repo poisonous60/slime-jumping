@@ -794,6 +794,40 @@ SandVolume (GameObject)
 └─ DragZone.cs (entryMultiplier, exitMultiplier, launchMultiplier, dragFactor, maxFallSpeed, allowCharging)
 ```
 
+### GravityField (중력 방향 치환 구간)
+
+**Force field이 아님**. 구간 내부에서 "아래" 방향만 바꿈. 중력 크기(`|settings.gravity|`)는 동일.
+Mario Galaxy의 gravity area와 같은 모델: 시각적으로 끌어당김처럼 보이는 것은 down 방향 변화의 결과지 force 때문이 아님.
+
+**모드 2가지**:
+- **Fixed**: Inspector에서 `localDownDirection` 벡터 1개 설정. zone 안 어디서든 같은 방향. "뒤집힌 방", "벽이 바닥인 구역" 등에 적합.
+- **Radial**: `localPivot` 점(로컬 좌표) 기준으로 down = 슬라임→pivot 방향. `invertDirection`으로 안/밖 전환. 원형 플랫폼 빙 둘러 붙기에 적합.
+
+**진입/탈출**: velocity 보존, 중력 방향만 즉시 전환. 부착 중 전환은 자연 동작에 맡김 (별도 처리 없음).
+
+**겹침 정책**: 디자인상 금지. 안전망으로 LIFO 스택 (마지막 진입 zone이 이김).
+
+**갇힘 방지**: 시스템에 탈출 메커니즘 없음. 디자이너가 레벨로 보장.
+
+**Effective Gravity**: `SlimeController`가 매 FixedUpdate 첫머리에 `gravityUp`/`gravityRight`/`GravityVector`를 1회 계산. 모든 물리/비주얼 코드가 이를 참조 (Vector2.up 직접 사용 안 함).
+
+| 파라미터 | 타입 | 비고 |
+|----------|------|------|
+| gravityMode | enum {Fixed, Radial} | |
+| localDownDirection | Vector2 | Fixed 모드에서만 사용 |
+| localPivot | Vector2 | Radial 모드에서만 사용. transform 기준 로컬 오프셋 |
+| invertDirection | bool | Radial일 때 false=중심으로(inward), true=밖으로(outward) |
+| (collider) | Collider2D, isTrigger=true | 아무 모양 OK. Layer 9: GravityField |
+
+**Scene 구조**:
+```
+GravityZone (GameObject, Layer 9)
+├─ CircleCollider2D 또는 BoxCollider2D (trigger)
+└─ GravityField.cs (gravityMode, localDownDirection, localPivot, invertDirection)
+```
+
+**스코프 외**: 카메라 회전, force field falloff, 다중 zone 가중 평균, 중력 강도 오버라이드.
+
 ---
 
 ## 10-1. PushDoor (밀어서 여는 문)
