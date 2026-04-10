@@ -210,8 +210,7 @@ namespace SlimeJumping.Controller
             crawlVelocity = 0f;
             chargeEntryCrawl = 0f;
             launchSpeed = 0f;
-            launchHeight = Vector2.Dot(rb.position, gravityUp);
-            launchGravityUp = gravityUp;
+            launchPosition = rb.position;
             slideRampTimer = 0f;
             conversionCount = 0;
             surfaceMod = SurfaceModifiers.Default;

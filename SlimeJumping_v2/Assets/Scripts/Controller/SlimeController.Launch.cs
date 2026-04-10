@@ -55,8 +55,7 @@ namespace SlimeJumping.Controller
             isVolumeCharging = false;
             surfaceMod = SurfaceModifiers.Default;
             launchSpeed = velocity.magnitude;
-            launchHeight = Vector2.Dot(rb.position, gravityUp);
-            launchGravityUp = gravityUp;
+            launchPosition = rb.position;
 
             ChangeState(SlimeState.Airborne, intentional: true);
             postLaunchTimer = settings.postLaunchIgnoreTime;
@@ -111,8 +110,7 @@ namespace SlimeJumping.Controller
             }
             surfaceMod = SurfaceModifiers.Default;
             launchSpeed = velocity.magnitude;
-            launchHeight = Vector2.Dot(rb.position, gravityUp);
-            launchGravityUp = gravityUp;
+            launchPosition = rb.position;
             hopCooldownTimer = settings.hopCooldown;
 
             preserveLandingVelocity = true;

@@ -56,8 +56,7 @@ namespace SlimeJumping.Controller
 
             // Energy tracking
             launchSpeed = newVelocity.magnitude;
-            launchHeight = Vector2.Dot(worldPos, gravityUp);
-            launchGravityUp = gravityUp;
+            launchPosition = worldPos;
             conversionCount = 0;
 
             // Force Airborne

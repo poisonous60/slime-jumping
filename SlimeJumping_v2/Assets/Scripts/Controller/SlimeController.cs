@@ -135,8 +135,7 @@ namespace SlimeJumping.Controller
 
         // Energy-based conversion normalization (stored at launch)
         private float launchSpeed;
-        private float launchHeight;
-        private Vector2 launchGravityUp = Vector2.up;
+        private Vector2 launchPosition;
 
         // Charging coyote time (grace period after leaving surface)
         private float coyoteTimer;
@@ -179,8 +178,7 @@ namespace SlimeJumping.Controller
             SyncRadius();
             ignoredColliderList = new IgnoredColliderList(settings.maxIgnoreTime);
             surfaceProbe = new SurfaceProbe(rb, settings, ignoredColliderList.Colliders);
-            launchHeight = Vector2.Dot(rb.position, gravityUp);
-            launchGravityUp = gravityUp;
+            launchPosition = rb.position;
         }
 
         private void OnValidate()
@@ -249,10 +247,13 @@ namespace SlimeJumping.Controller
             float dt = Time.fixedDeltaTime;
 
             // Compute effective gravity direction (LIFO stack: last entered zone wins)
+            // For radial zones, evaluate at midpoint (pos + vel*dt/2) to get second-order
+            // accuracy and prevent systematic energy drift from forward Euler.
             if (gravityFieldStack.Count > 0)
             {
                 var topField = gravityFieldStack[gravityFieldStack.Count - 1];
-                Vector2 newUp = -topField.GetDownDirection(rb.position);
+                Vector2 samplePos = rb.position + velocity * (dt * 0.5f);
+                Vector2 newUp = -topField.GetDownDirection(samplePos);
                 if (newUp.sqrMagnitude < 0.0001f)
                     gravityUp = Vector2.up; // NaN guard: designer error (pivot reachable)
                 else

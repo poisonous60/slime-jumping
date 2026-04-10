@@ -62,7 +62,7 @@ namespace SlimeJumping.Controller
                 {
                     // Energy conversion: use energy conservation (v² = v₀² + 2gh)
                     // so W/S gravity control doesn't inflate/deflate conversion
-                    float heightDelta = launchHeight - Vector2.Dot(rb.position, launchGravityUp);
+                    float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
                     float shadowSpeedSq = launchSpeed * launchSpeed
                         + 2f * Mathf.Abs(settings.gravity) * heightDelta;
                     float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;

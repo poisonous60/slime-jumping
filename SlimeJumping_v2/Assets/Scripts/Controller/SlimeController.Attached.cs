@@ -15,8 +15,7 @@ namespace SlimeJumping.Controller
                 hopRequested = false;
                 crawlVelocity = 0f;
                 launchSpeed = 0f;
-                launchHeight = Vector2.Dot(rb.position, gravityUp);
-                launchGravityUp = gravityUp;
+                launchPosition = rb.position;
                 slideRampTimer = 0f;
                 conversionCount = 0;
                 if (carrier != null) carrier.Detach();
