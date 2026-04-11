@@ -93,6 +93,15 @@ namespace SlimeJumping.Controller
         private void HandleVerticalUpPressed()
         {
             if (_override != null || currentState == SlimeState.Stunned) return;
+
+            // Interaction takes priority over hop when a valid interactable is in range
+            if (interactionDetector.HasInteractable
+                && currentState == SlimeState.Attached)
+            {
+                interactionDetector.TryInteract();
+                return;
+            }
+
             if (currentState == SlimeState.Attached)
             {
                 if (postLaunchTimer > 0f) return;

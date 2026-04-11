@@ -6,6 +6,7 @@ using SlimeJumping.Physics;
 using SlimeJumping.Platforms;
 using SlimeJumping.Mechanisms;
 using SlimeJumping.Interfaces;
+using SlimeJumping.Interaction;
 using System.Collections.Generic;
 
 namespace SlimeJumping.Controller
@@ -16,6 +17,7 @@ namespace SlimeJumping.Controller
         [SerializeField] private SlimeSettings settings;
         [SerializeField] private SlimeChargeVisual chargeVisual;
         [SerializeField] private PlatformCarrier carrier;
+        [SerializeField] private InteractionDetector interactionDetector;
 
         private Rigidbody2D rb;
         private CircleCollider2D circleCollider;
@@ -188,8 +190,12 @@ namespace SlimeJumping.Controller
 
         private SurfaceProbe surfaceProbe;
 
+        // --- Landing event (for VFX, sound, etc.) ---
+        public event System.Action<Vector2, Vector2> OnLanded; // (position, surfaceNormal)
+
         private void Awake()
         {
+            Debug.Assert(interactionDetector != null, "[SlimeController] InteractionDetector is required on Slime prefab");
             rb = GetComponent<Rigidbody2D>();
             circleCollider = GetComponent<CircleCollider2D>();
             spriteRenderer = GetComponent<SpriteRenderer>();
@@ -554,6 +560,22 @@ namespace SlimeJumping.Controller
 
         // --- External Controller Override ---
 
+        /// <summary>
+        /// Direct velocity write. Only callable while HasOverride==true.
+        /// Use AddExternalVelocity / MultiplyVelocity for normal velocity changes.
+        /// NOTE: OverridePosition is not yet needed — add when #5/#27/#31 require
+        /// path-based slime movement during override.
+        /// </summary>
+        public void OverrideVelocity(Vector2 v)
+        {
+            if (!HasOverride)
+            {
+                Debug.LogError("[SlimeController] OverrideVelocity called outside of override context");
+                return;
+            }
+            velocity = v;
+        }
+
         public void SetOverride(IExternalController controller)
         {
             if (_override != null)
@@ -573,6 +595,9 @@ namespace SlimeJumping.Controller
             surfaceMod = SurfaceModifiers.Default;
             blockAttachCount = 0;
             stunTimer = 0f;
+
+            // Unity doesn't fire OnTriggerExit2D after override — clear stale candidates
+            interactionDetector.ClearCandidates();
 
             _override = controller;
             _override.OnTakeControl(this);

@@ -15,8 +15,8 @@ TagManager:
   - Environment
   - DragVolume
   - GravityField
-  - 
-  - 
+  - Interactable
+  - InteractionSensor
   - 
   - 
   - 
@@ -38,8 +38,17 @@ TagManager:
   - 
   - 
   m_SortingLayers:
+  - name: Background_VFX
+    uniqueID: 1001
+    locked: 0
   - name: Default
     uniqueID: 0
+    locked: 0
+  - name: Character_VFX
+    uniqueID: 1002
+    locked: 0
+  - name: Foreground_VFX
+    uniqueID: 1003
     locked: 0
   m_RenderingLayers:
   - Default

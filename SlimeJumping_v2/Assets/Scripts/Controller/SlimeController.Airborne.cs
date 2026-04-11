@@ -126,6 +126,8 @@ namespace SlimeJumping.Controller
                     cachedSurfaceCollider = surfaceCollider;
                     SnapToSurface();
                     if (chargeVisual != null) chargeVisual.Show();
+                    // Intentionally before CheckPlatformEffect: dust puff on JumpPad contact is natural.
+                    OnLanded?.Invoke(rb.position, surfaceNormal);
 
                     // Platform effect check (after state is finalized).
                     // JumpPad etc. may call ForceAirborneWithVelocity here,
@@ -169,6 +171,7 @@ namespace SlimeJumping.Controller
                     slideRampTimer = 0f;
                     ChangeState(SlimeState.Attached);
                     SnapToSurface();
+                    OnLanded?.Invoke(rb.position, surfaceNormal);
 
                     // Platform effect check (after state is finalized).
                     // JumpPad etc. may call ForceAirborneWithVelocity here,

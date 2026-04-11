@@ -62,6 +62,9 @@ namespace SlimeJumping.Controller
             launchPosition = worldPos;
             conversionCount = 0;
 
+            // Unity doesn't fire OnTriggerExit2D after teleport — clear stale candidates
+            interactionDetector.ClearCandidates();
+
             // Force Airborne
             ChangeState(SlimeState.Airborne, intentional: true);
         }
