@@ -65,6 +65,13 @@ namespace SlimeJumping.Controller
                 return;
             }
 
+            // BlockAttach (e.g. water zone): cancel charging to airborne
+            if (blockAttachCount > 0)
+            {
+                CancelChargingToAirborne();
+                return;
+            }
+
             // Surface/coyote physics — with probe hysteresis (absorb 1-frame misses)
             bool probeValid = isTouchingSurface
                 && Vector2.Dot(surfaceNormal, gravityUp) >= settings.ceilingThreshold;

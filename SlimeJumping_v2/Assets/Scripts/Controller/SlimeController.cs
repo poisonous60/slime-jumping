@@ -172,8 +172,16 @@ namespace SlimeJumping.Controller
         private IExternalController _override;
         public bool HasOverride => _override != null;
 
-        // --- Platform effect (Phase 2 forward-compat, null until wired) ---
+        // --- Platform effect ---
         private IPlatformEffect activePlatformEffect;
+
+        // --- Environmental zone flags ---
+        // Set by zones (e.g. WaterZone) to block landing while inside.
+        // Counter-based: multiple overlapping zones stack correctly.
+        private int blockAttachCount;
+        public bool BlockAttach => blockAttachCount > 0;
+        public void PushBlockAttach() { blockAttachCount++; }
+        public void PopBlockAttach() { blockAttachCount = Mathf.Max(0, blockAttachCount - 1); }
 
         private SpriteRenderer spriteRenderer;
 

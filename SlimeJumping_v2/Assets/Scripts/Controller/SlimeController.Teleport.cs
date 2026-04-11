@@ -49,6 +49,7 @@ namespace SlimeJumping.Controller
             wasStuck = false;
             preserveLandingVelocity = false;
             stunTimer = 0f;
+            blockAttachCount = 0;
 
             // Position and velocity
             rb.position = worldPos;

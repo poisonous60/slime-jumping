@@ -55,6 +55,17 @@ namespace SlimeJumping.Controller
                     return;
                 }
 
+                // BlockAttach (e.g. water zone): don't attach, cancel normal velocity.
+                // Don't return — fall through to air control so slime can move away.
+                if (blockAttachCount > 0)
+                {
+                    float normalVel3 = Vector2.Dot(velocity, surfaceNormal);
+                    if (normalVel3 < 0f)
+                        velocity -= surfaceNormal * normalVel3;
+                }
+                else
+                {
+
                 // Get landing platform velocity (including angular contribution) before attaching
                 Vector2 landingPlatformVel = GetSurfaceVelocity(surfaceCollider);
 
@@ -182,6 +193,7 @@ namespace SlimeJumping.Controller
                     }
                 }
                 return;
+                } // end else (blockAttach)
             }
 
             // Air control: horizontal acceleration with speed cap (last-input-wins)
