@@ -124,7 +124,7 @@ namespace SlimeJumping.Controller
 
             SnapToSurface();
 
-            activePlatformEffect?.OnSlimeStay(this, dt);
+            if (IsPlatformEffectAlive) activePlatformEffect.OnSlimeStay(this, dt);
 
             if (hopRequested)
             {

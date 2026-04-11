@@ -193,7 +193,7 @@ namespace SlimeJumping.Controller
 
                     SnapToSurface();
 
-                    activePlatformEffect?.OnSlimeStay(this, dt);
+                    if (IsPlatformEffectAlive) activePlatformEffect.OnSlimeStay(this, dt);
                 }
             }
             else if (coyoteTimer > 0f)
@@ -218,6 +218,8 @@ namespace SlimeJumping.Controller
         {
             crawlVelocity = 0f;
             chargeEntryCrawl = 0f;
+            aimOffset = Vector2.zero;
+            chargeFullAimTimer = 0f;
             launchSpeed = 0f;
             launchPosition = rb.position;
             slideRampTimer = 0f;

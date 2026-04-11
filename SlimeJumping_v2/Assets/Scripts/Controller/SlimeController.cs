@@ -26,6 +26,7 @@ namespace SlimeJumping.Controller
         public bool IsTouchingSurface => isTouchingSurface;
         public bool IsSticking => stickTimer > 0f;
         public Vector2 SurfaceNormal => surfaceNormal;
+        public Vector2 Position => rb.position;
         public Vector2 Velocity => velocity;
         public void AddExternalVelocity(Vector2 deltaV) { externalDeltaV += deltaV; }
         public float CoyoteTimer => coyoteTimer;
@@ -459,27 +460,30 @@ namespace SlimeJumping.Controller
 
         // --- Platform Effect ---
 
+        // Unity pitfall: interface references to destroyed MonoBehaviours are not null
+        // in the CLR sense, only via Unity's overloaded == operator. Cast to Object first.
+        private bool IsPlatformEffectAlive =>
+            activePlatformEffect != null && (activePlatformEffect as Object) != null;
+
         private void CheckPlatformEffect(Collider2D col)
         {
             var newEffect = col != null ? col.GetComponentInParent<IPlatformEffect>() : null;
             if (newEffect == activePlatformEffect) return;
 
-            if (activePlatformEffect != null)
+            if (IsPlatformEffectAlive)
                 activePlatformEffect.OnSlimeDetach(this);
 
             activePlatformEffect = newEffect;
 
-            if (activePlatformEffect != null)
+            if (IsPlatformEffectAlive)
                 activePlatformEffect.OnSlimeAttach(this);
         }
 
         private void ClearPlatformEffect()
         {
-            if (activePlatformEffect != null)
-            {
+            if (IsPlatformEffectAlive)
                 activePlatformEffect.OnSlimeDetach(this);
-                activePlatformEffect = null;
-            }
+            activePlatformEffect = null;
         }
 
         // --- Hazard API ---
@@ -532,6 +536,7 @@ namespace SlimeJumping.Controller
             postLaunchTimer = 0f;
             wasStuck = false;
             preserveLandingVelocity = false;
+            blockAttachCount = 0;
 
             // Enter Stunned
             stunTimer = effect.stunDuration;
@@ -566,6 +571,8 @@ namespace SlimeJumping.Controller
             if (carrier != null) carrier.Detach();
             ClearPlatformEffect();
             surfaceMod = SurfaceModifiers.Default;
+            blockAttachCount = 0;
+            stunTimer = 0f;
 
             _override = controller;
             _override.OnTakeControl(this);
@@ -578,7 +585,11 @@ namespace SlimeJumping.Controller
             _override.OnReleaseControl(this);
             _override = null;
 
-            // Clear stale gravity fields (slime may have moved during override)
+            // Clear stale gravity fields (slime may have moved during override).
+            // NOTE: If slime is still physically inside a GravityField after release,
+            // that zone won't re-fire OnTriggerEnter2D. The IExternalController
+            // implementation is responsible for moving the slime outside gravity zones
+            // before releasing, or the zone will be silently orphaned until re-entry.
             gravityFieldStack.Clear();
             gravityUp = Vector2.up;
             gravityRight = Vector2.right;

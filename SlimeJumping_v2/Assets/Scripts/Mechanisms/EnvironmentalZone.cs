@@ -12,6 +12,7 @@ namespace SlimeJumping.Mechanisms
     public abstract class EnvironmentalZone : MonoBehaviour
     {
         protected SlimeController trackedSlime;
+        private int overlappingColliderCount;
 
         protected virtual void Reset()
         {
@@ -21,21 +22,25 @@ namespace SlimeJumping.Mechanisms
         protected virtual void OnTriggerEnter2D(Collider2D other)
         {
             var slime = other.GetComponentInParent<SlimeController>();
-            if (slime != null)
-            {
-                trackedSlime = slime;
-                OnSlimeEnter(slime);
-            }
+            if (slime == null) return;
+
+            overlappingColliderCount++;
+            if (trackedSlime == slime) return; // already tracked (multi-collider)
+
+            trackedSlime = slime;
+            OnSlimeEnter(slime);
         }
 
         protected virtual void OnTriggerExit2D(Collider2D other)
         {
             var slime = other.GetComponentInParent<SlimeController>();
-            if (slime != null && slime == trackedSlime)
-            {
-                OnSlimeExit(slime);
-                trackedSlime = null;
-            }
+            if (slime == null || slime != trackedSlime) return;
+
+            overlappingColliderCount--;
+            if (overlappingColliderCount > 0) return; // other colliders still inside
+
+            OnSlimeExit(slime);
+            trackedSlime = null;
         }
 
         protected virtual void FixedUpdate()
