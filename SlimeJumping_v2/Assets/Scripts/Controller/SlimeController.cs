@@ -449,7 +449,21 @@ namespace SlimeJumping.Controller
         /// </summary>
         public void MultiplyVelocity(float factor) { velocity *= factor; }
 
-        // --- Platform Effect (forward-compat, wired in Phase 2) ---
+        // --- Platform Effect ---
+
+        private void CheckPlatformEffect(Collider2D col)
+        {
+            var newEffect = col != null ? col.GetComponentInParent<IPlatformEffect>() : null;
+            if (newEffect == activePlatformEffect) return;
+
+            if (activePlatformEffect != null)
+                activePlatformEffect.OnSlimeDetach(this);
+
+            activePlatformEffect = newEffect;
+
+            if (activePlatformEffect != null)
+                activePlatformEffect.OnSlimeAttach(this);
+        }
 
         private void ClearPlatformEffect()
         {

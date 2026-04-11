@@ -115,6 +115,11 @@ namespace SlimeJumping.Controller
                     cachedSurfaceCollider = surfaceCollider;
                     SnapToSurface();
                     if (chargeVisual != null) chargeVisual.Show();
+
+                    // Platform effect check (after state is finalized).
+                    // JumpPad etc. may call ForceAirborneWithVelocity here,
+                    // which changes state from Charging back to Airborne.
+                    CheckPlatformEffect(surfaceCollider);
                 }
                 else
                 {
@@ -153,6 +158,12 @@ namespace SlimeJumping.Controller
                     slideRampTimer = 0f;
                     ChangeState(SlimeState.Attached);
                     SnapToSurface();
+
+                    // Platform effect check (after state is finalized).
+                    // JumpPad etc. may call ForceAirborneWithVelocity here,
+                    // which changes state from Attached back to Airborne.
+                    CheckPlatformEffect(surfaceCollider);
+                    if (currentState != SlimeState.Attached) return;
 
                     if (hopBufferTimer > 0f)
                     {

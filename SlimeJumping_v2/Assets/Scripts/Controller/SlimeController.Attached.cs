@@ -19,6 +19,7 @@ namespace SlimeJumping.Controller
                 slideRampTimer = 0f;
                 conversionCount = 0;
                 if (carrier != null) carrier.Detach();
+                ClearPlatformEffect();
                 surfaceMod = SurfaceModifiers.Default;
                 ChangeState(SlimeState.Airborne);
                 return;
@@ -121,6 +122,8 @@ namespace SlimeJumping.Controller
                 velocity -= surfaceNormal * normalVel;
 
             SnapToSurface();
+
+            activePlatformEffect?.OnSlimeStay(this, dt);
 
             if (hopRequested)
             {

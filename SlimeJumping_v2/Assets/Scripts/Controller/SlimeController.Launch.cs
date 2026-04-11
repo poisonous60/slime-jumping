@@ -8,6 +8,53 @@ namespace SlimeJumping.Controller
     {
         // --- Launch / Hop / Ground Dash ---
 
+        /// <summary>
+        /// Shared tail for all exit-to-airborne transitions (Launch, Hop, ForceAirborneWithVelocity).
+        /// Caller must set velocity and handle carrier/state-specific cleanup before calling.
+        /// </summary>
+        private void FinalizeAirborneExit()
+        {
+            ClearPlatformEffect();
+            surfaceMod = SurfaceModifiers.Default;
+            launchSpeed = velocity.magnitude;
+            launchPosition = rb.position;
+            ChangeState(SlimeState.Airborne, intentional: true);
+            postLaunchTimer = settings.postLaunchIgnoreTime;
+        }
+
+        /// <summary>
+        /// Forces the slime into Airborne with the given velocity.
+        /// Used by IPlatformEffect implementations (JumpPad, Catapult, etc.).
+        /// Single code path shared with Launch/Hop via FinalizeAirborneExit.
+        /// </summary>
+        public void ForceAirborneWithVelocity(Vector2 vel)
+        {
+            velocity = vel;
+            crawlVelocity = 0f;
+            chargeEntryCrawl = 0f;
+            stickTimer = 0f;
+            stickDeccelTimer = 0f;
+            slideRampTimer = 0f;
+            hopRequested = false;
+
+            if (currentState == SlimeState.Charging)
+            {
+                isVolumeCharging = false;
+                aimOffset = Vector2.zero;
+                if (chargeVisual != null) chargeVisual.Hide();
+            }
+
+            if (carrier != null) carrier.Detach();
+
+            ignoredColliderList.RegisterOverlapping(
+                rb.position,
+                settings.slimeRadius + settings.launchClearanceThreshold,
+                settings.groundLayer);
+
+            conversionCount = 0;
+            FinalizeAirborneExit();
+        }
+
         private void Launch()
         {
             preserveLandingVelocity = false;
@@ -53,13 +100,7 @@ namespace SlimeJumping.Controller
                 velocity *= CurrentDragZone.launchMultiplier;
 
             isVolumeCharging = false;
-            surfaceMod = SurfaceModifiers.Default;
-            launchSpeed = velocity.magnitude;
-            launchPosition = rb.position;
-
-            ChangeState(SlimeState.Airborne, intentional: true);
-            postLaunchTimer = settings.postLaunchIgnoreTime;
-
+            FinalizeAirborneExit();
             if (chargeVisual != null) chargeVisual.Hide();
         }
 
@@ -108,14 +149,9 @@ namespace SlimeJumping.Controller
                 velocity += carrier.GetEffectiveVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
                 carrier.Detach();
             }
-            surfaceMod = SurfaceModifiers.Default;
-            launchSpeed = velocity.magnitude;
-            launchPosition = rb.position;
             hopCooldownTimer = settings.hopCooldown;
-
             preserveLandingVelocity = true;
-            ChangeState(SlimeState.Airborne, intentional: true);
-            postLaunchTimer = settings.postLaunchIgnoreTime;
+            FinalizeAirborneExit();
         }
 
         private void ApplyGroundDash(float inputSign)
