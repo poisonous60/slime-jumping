@@ -9,6 +9,7 @@ namespace SlimeJumping.Controller
 
         private void HandleJumpPressed()
         {
+            if (_override != null || currentState == SlimeState.Stunned) return;
             if (postLaunchTimer > 0f) return;
 
             if (currentState == SlimeState.Attached)
@@ -77,18 +78,21 @@ namespace SlimeJumping.Controller
 
         private void HandleJumpReleased()
         {
+            if (_override != null) return;
             if (currentState != SlimeState.Charging) return;
             Launch();
         }
 
         private void HandleVerticalDownPressed()
         {
+            if (_override != null || currentState == SlimeState.Stunned) return;
             if (currentState == SlimeState.Attached || currentState == SlimeState.Airborne)
                 dashBufferTimer = settings.groundDashInputBuffer;
         }
 
         private void HandleVerticalUpPressed()
         {
+            if (_override != null || currentState == SlimeState.Stunned) return;
             if (currentState == SlimeState.Attached)
             {
                 if (postLaunchTimer > 0f) return;

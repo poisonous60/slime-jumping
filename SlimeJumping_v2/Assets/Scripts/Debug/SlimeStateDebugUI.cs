@@ -17,6 +17,7 @@ namespace SlimeJumping.Debugging
         [SerializeField] private Color attachedColor = Color.green;
         [SerializeField] private Color chargingColor = Color.yellow;
         [SerializeField] private Color airborneColor = Color.cyan;
+        [SerializeField] private Color stunnedColor = new Color(1f, 0.2f, 0.2f);
         [SerializeField] private Color stickColor = new Color(1f, 0.5f, 0f);
         [SerializeField] private Color offColor = new Color(0.2f, 0.2f, 0.2f, 0.5f);
 
@@ -67,7 +68,8 @@ namespace SlimeJumping.Debugging
             DrawIndicator(0, "ATT", SlimeController.SlimeState.Attached, state, attachedColor);
             DrawIndicator(1, "CHG", SlimeController.SlimeState.Charging, state, chargingColor);
             DrawIndicator(2, "AIR", SlimeController.SlimeState.Airborne, state, airborneColor);
-            DrawBoolIndicator(3, "STK", slimeController.IsSticking, stickColor);
+            DrawIndicator(3, "STN", SlimeController.SlimeState.Stunned, state, stunnedColor);
+            DrawBoolIndicator(4, "STK", slimeController.IsSticking, stickColor);
 
             labelStyle.normal.textColor = Color.white;
             labelStyle.alignment = TextAnchor.MiddleLeft;

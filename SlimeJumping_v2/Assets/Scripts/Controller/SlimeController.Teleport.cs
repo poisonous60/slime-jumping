@@ -47,6 +47,7 @@ namespace SlimeJumping.Controller
             dashBufferTimer = 0f;
             wasStuck = false;
             preserveLandingVelocity = false;
+            stunTimer = 0f;
 
             // Position and velocity
             rb.position = worldPos;

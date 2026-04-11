@@ -5,6 +5,7 @@ using SlimeJumping.Debugging;
 using SlimeJumping.Physics;
 using SlimeJumping.Platforms;
 using SlimeJumping.Mechanisms;
+using SlimeJumping.Interfaces;
 using System.Collections.Generic;
 
 namespace SlimeJumping.Controller
@@ -19,7 +20,7 @@ namespace SlimeJumping.Controller
         private Rigidbody2D rb;
         private CircleCollider2D circleCollider;
 
-        public enum SlimeState { Attached, Charging, Airborne }
+        public enum SlimeState { Attached, Charging, Airborne, Stunned }
         private SlimeState currentState = SlimeState.Airborne;
         public SlimeState CurrentState => currentState;
         public bool IsTouchingSurface => isTouchingSurface;
@@ -160,6 +161,20 @@ namespace SlimeJumping.Controller
 
         private SurfaceModifiers surfaceMod = SurfaceModifiers.Default;
 
+        // --- Stunned state ---
+        private float stunTimer;
+        private DamageType lastDamageType;
+        public bool IsStunned => currentState == SlimeState.Stunned;
+        public float StunTimer => stunTimer;
+        public DamageType LastDamageType => lastDamageType;
+
+        // --- External controller override ---
+        private IExternalController _override;
+        public bool HasOverride => _override != null;
+
+        // --- Platform effect (Phase 2 forward-compat, null until wired) ---
+        private IPlatformEffect activePlatformEffect;
+
         private SpriteRenderer spriteRenderer;
 
         private SurfaceProbe surfaceProbe;
@@ -226,6 +241,12 @@ namespace SlimeJumping.Controller
 
         private void Update()
         {
+            if (_override != null)
+            {
+                _override.ExternalUpdate(this);
+                return;
+            }
+
             if (hopCooldownTimer > 0f) hopCooldownTimer -= Time.deltaTime;
             if (hopBufferTimer > 0f) hopBufferTimer -= Time.deltaTime;
             if (dashCooldownTimer > 0f) dashCooldownTimer -= Time.deltaTime;
@@ -245,6 +266,13 @@ namespace SlimeJumping.Controller
         private void FixedUpdate()
         {
             float dt = Time.fixedDeltaTime;
+
+            if (_override != null)
+            {
+                _override.ExternalFixedUpdate(this, dt);
+                rb.linearVelocity = velocity;
+                return;
+            }
 
             // Compute effective gravity direction (LIFO stack: last entered zone wins)
             // For radial zones, evaluate at midpoint (pos + vel*dt/2) to get second-order
@@ -292,12 +320,15 @@ namespace SlimeJumping.Controller
                 case SlimeState.Airborne:
                     FixedUpdateAirborne(dt);
                     break;
+                case SlimeState.Stunned:
+                    FixedUpdateStunned(dt);
+                    break;
             }
 
             // External forces (wind, conveyor, etc.)
             if (externalDeltaV.sqrMagnitude > 0.0001f)
             {
-                if (currentState == SlimeState.Airborne)
+                if (currentState == SlimeState.Airborne || currentState == SlimeState.Stunned)
                     velocity += externalDeltaV;
                 else
                     velocity += surfaceTangent * Vector2.Dot(externalDeltaV, surfaceTangent);
@@ -407,6 +438,135 @@ namespace SlimeJumping.Controller
                 attachLockoutTimer = settings.attachLockoutDuration;
                 attachToggleCount = 0;
             }
+        }
+
+        // --- Multiplicative velocity channel ---
+
+        /// <summary>
+        /// Multiplicative velocity channel (drag, water resistance, rain slowdown).
+        /// Parallel to AddExternalVelocity (additive channel).
+        /// ApplyDragFactor remains as alias for DragZone compatibility.
+        /// </summary>
+        public void MultiplyVelocity(float factor) { velocity *= factor; }
+
+        // --- Platform Effect (forward-compat, wired in Phase 2) ---
+
+        private void ClearPlatformEffect()
+        {
+            if (activePlatformEffect != null)
+            {
+                activePlatformEffect.OnSlimeDetach(this);
+                activePlatformEffect = null;
+            }
+        }
+
+        // --- Hazard API ---
+
+        /// <summary>
+        /// Single entry point for all hazard contact. Transitions to Stunned state
+        /// with configurable knockback and duration.
+        /// </summary>
+        public void ApplyHazardEffect(HazardEffect effect)
+        {
+            if (_override != null) return;
+            // TODO: time-based i-frame (stunIFrameDuration) for hazard variety.
+            // Current policy: stunned = immune. Sufficient for Phase 0-1.
+            // For Phase 5+ (lightning after saw blade), split into time-based window
+            // so stun expiry can be immediately followed by a new hazard hit.
+            if (currentState == SlimeState.Stunned) return;
+
+            // Clean up charging state
+            if (currentState == SlimeState.Charging)
+            {
+                isVolumeCharging = false;
+                if (chargeVisual != null) chargeVisual.Hide();
+            }
+
+            // Detach
+            if (carrier != null) carrier.Detach();
+            ClearPlatformEffect();
+            surfaceMod = SurfaceModifiers.Default;
+
+            // Compute knockback direction
+            Vector2 kbDir = effect.knockbackDirection;
+            if (kbDir.sqrMagnitude < 0.0001f)
+                kbDir = gravityUp;
+
+            // Apply knockback velocity
+            velocity = kbDir.normalized * effect.knockbackForce;
+
+            // Reset state fields
+            crawlVelocity = 0f;
+            chargeEntryCrawl = 0f;
+            aimOffset = Vector2.zero;
+            chargeFullAimTimer = 0f;
+            coyoteTimer = 0f;
+            stickTimer = 0f;
+            stickDeccelTimer = 0f;
+            slideRampTimer = 0f;
+            hopRequested = false;
+            hopBufferTimer = 0f;
+            dashBufferTimer = 0f;
+            postLaunchTimer = 0f;
+            wasStuck = false;
+            preserveLandingVelocity = false;
+
+            // Enter Stunned
+            stunTimer = effect.stunDuration;
+            lastDamageType = effect.damageType;
+            launchSpeed = 0f;
+            launchPosition = rb.position;
+            conversionCount = 0;
+            ignoredColliderList.RegisterOverlapping(
+                rb.position,
+                settings.slimeRadius + settings.launchClearanceThreshold,
+                settings.groundLayer);
+
+            ChangeState(SlimeState.Stunned, intentional: true);
+        }
+
+        // --- External Controller Override ---
+
+        public void SetOverride(IExternalController controller)
+        {
+            if (_override != null)
+            {
+                Debug.LogWarning("[SlimeController] Override already set. Releasing previous before setting new.");
+                _override.OnReleaseControl(this);
+            }
+
+            // Clean up current state
+            if (currentState == SlimeState.Charging)
+            {
+                isVolumeCharging = false;
+                if (chargeVisual != null) chargeVisual.Hide();
+            }
+            if (carrier != null) carrier.Detach();
+            ClearPlatformEffect();
+            surfaceMod = SurfaceModifiers.Default;
+
+            _override = controller;
+            _override.OnTakeControl(this);
+        }
+
+        public void ReleaseOverride(IExternalController controller)
+        {
+            if (_override != controller) return;
+
+            _override.OnReleaseControl(this);
+            _override = null;
+
+            // Clear stale gravity fields (slime may have moved during override)
+            gravityFieldStack.Clear();
+            gravityUp = Vector2.up;
+            gravityRight = Vector2.right;
+
+            // Resume as Airborne
+            launchSpeed = 0f;
+            launchPosition = rb.position;
+            conversionCount = 0;
+            stunTimer = 0f;
+            ChangeState(SlimeState.Airborne, intentional: true);
         }
     }
 }

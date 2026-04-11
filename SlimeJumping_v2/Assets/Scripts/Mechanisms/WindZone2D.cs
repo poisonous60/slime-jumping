@@ -115,7 +115,9 @@ namespace SlimeJumping.Mechanisms
             float multiplier;
             switch (trackedSlime.CurrentState)
             {
-                case SlimeController.SlimeState.Airborne:  multiplier = airborneMultiplier; break;
+                case SlimeController.SlimeState.Airborne:
+                case SlimeController.SlimeState.Stunned:
+                    multiplier = airborneMultiplier; break;
                 case SlimeController.SlimeState.Charging:  multiplier = chargingMultiplier; break;
                 default:                                   multiplier = attachedMultiplier; break;
             }

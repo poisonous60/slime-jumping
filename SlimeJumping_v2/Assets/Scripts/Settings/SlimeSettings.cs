@@ -123,5 +123,11 @@ namespace SlimeJumping.Settings
         public float maxIgnoreTime = 0.15f;
 
         public float Gravity => gravity;
+
+        [Header("Stunned")]
+        [Tooltip("Default stun duration if hazard doesn't specify.")]
+        public float defaultStunDuration = 0.5f;
+        [Tooltip("Default knockback force if hazard doesn't specify.")]
+        public float defaultKnockbackForce = 8f;
     }
 }
