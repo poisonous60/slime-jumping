@@ -42,7 +42,7 @@ Phase 1.5를 교체할 수 있는 장기 옵션.
 
 ## 2. 상태 머신
 
-3개 상태: **Attached**, **Charging**, **Airborne**.
+4개 상태: **Attached**, **Charging**, **Airborne**, **Stunned**.
 
 ```
 Attached ──Space──▶ Charging
@@ -50,7 +50,13 @@ Attached ──Space──▶ Charging
     │                 릴리즈/풀차지/자동발사
     │                    ▼
     └──표면접촉── Airborne ──Space홀드+표면접촉──▶ Charging (에너지 전환)
+                     ▲    │
+                     │  위험접촉
+                     │    ▼
+                     └── Stunned (타이머 만료 시 Airborne 복귀)
 ```
+
+**IExternalController override**: `_override` 필드가 non-null이면 상태 머신 전체가 중단되고 외부 컨트롤러에 위임. SetOverride/ReleaseOverride로 진입/탈출. 뱀 삼킴, 벤치 앉기, 퍼즐 오버레이, 시네마틱 인트로에 사용.
 
 ---
 
@@ -900,6 +906,43 @@ PushDoor (Layer 7)
 └─ VisualPivot (자식)
     └─ Mesh (3D Cube, Z 방향으로 문판 표현)
 ```
+
+---
+
+## 10-2. 확장 메커니즘 인프라
+
+### Stunned 상태 + HazardEffect
+
+위험 오브젝트에 의해 `ApplyHazardEffect(HazardEffect)` 호출 시 진입. 입력 잠금, 중력만 적용, 표면 부착 차단, 타이머 만료 시 Airborne 복귀. 기절 중 추가 위험은 무시 (i-frame).
+
+`HazardEffect` struct: `knockbackForce`, `knockbackDirection` (zero=자동계산), `stunDuration`, `damageType`.
+
+### SpikeHazard (가시)
+
+IHazardSource 구현. 방향 3모드: localUp / auto / redirect target. 트리거 콜라이더.
+
+### JumpPad (점프대)
+
+IPlatformEffect 구현. 착지 시 `ForceAirborneWithVelocity` 호출. 방향/세기/쿨다운 설정 가능.
+
+### ConveyorBelt (컨베이어벨트)
+
+IPlatformEffect 구현. `OnSlimeStay`에서 `AddExternalVelocity`. 터미널 스피드 감쇠.
+
+### WaterZone (물)
+
+EnvironmentalZone 구현. 진입/탈출 속도 배율, 드래그(곱셈), 부력(가산), 낙하 캡, attach 차단.
+`blockAttach` 카운터 기반 — Airborne 착지 차단 + Attached/Charging에서 즉시 분리. Air control은 유지 (벽에서 A/D로 이탈 가능).
+
+### 외부 속도 Two-Channel Model
+
+- **가산**: `AddExternalVelocity(deltaV)` — 바람, 부력, 컨베이어.
+- **곱셈**: `MultiplyVelocity(factor)` — 드래그, 물 저항.
+- Airborne/Stunned: 가산 직접 적용. Attached/Charging: surfaceTangent 투영.
+
+### IPlatformEffect 라이프사이클
+
+`CheckPlatformEffect` 착지 시퀀스 완료 후 호출. `OnSlimeStay` 매 프레임. `ClearPlatformEffect` 분리 시.
 
 ---
 
