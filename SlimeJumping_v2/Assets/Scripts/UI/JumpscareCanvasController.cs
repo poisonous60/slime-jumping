@@ -7,10 +7,14 @@ namespace SlimeJumping.UI
         public void Trigger(Sprite image, AudioClip sound,
             float displaySeconds = 0.4f, float fadeSeconds = 0.3f)
         {
-            StopAllCoroutines();
+            if (fullscreenImage != null)
+            {
+                if (image != null) fullscreenImage.sprite = image;
+                fullscreenImage.color = Color.white;
+            }
             if (sound != null && audioSource != null) audioSource.PlayOneShot(sound);
             if (impulseEmitter != null) impulseEmitter.Emit(1.5f);
-            StartCoroutine(RunFade(image, Color.white, displaySeconds, fadeSeconds));
+            StartFade(displaySeconds, fadeSeconds);
         }
     }
 }

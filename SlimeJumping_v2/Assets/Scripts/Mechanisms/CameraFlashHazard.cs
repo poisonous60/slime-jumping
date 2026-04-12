@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
 using SlimeJumping.Controller;
@@ -9,10 +8,11 @@ using SlimeJumping.UI;
 
 namespace SlimeJumping.Mechanisms
 {
+    [RequireComponent(typeof(Collider2D))]
     public class CameraFlashHazard : MonoBehaviour, IHazardSource
     {
-        [Header("Timing")]
-        [SerializeField] private float flashInterval = 4f;
+        [Header("Behavior")]
+        [SerializeField] private bool oneShot = true;
         [SerializeField] private float flashWarmup = 0.3f;
         [SerializeField] private float stunDuration = 0.6f;
 
@@ -26,12 +26,8 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float bulbWarmupIntensity = 0.3f;
         [SerializeField] private float bulbFlashIntensity = 1.5f;
 
-        private float timer;
         private bool isFlashing;
-
-        // TODO: SlimeController.TeleportTo leaves stale entries (OnTriggerExit2D미발화).
-        // 현재 슬라임 1마리 가정으로 실용 영향 없음. 다중 도입 시 정리 훅 필요.
-        private readonly HashSet<SlimeController> insideArea = new();
+        private bool hasFired;
 
         public bool IsActive => isFlashing;
 
@@ -43,17 +39,38 @@ namespace SlimeJumping.Mechanisms
             damageType = DamageType.CameraFlash
         };
 
-        void Update()
+        public void ResetOneShot() => hasFired = false;
+
+        void OnDisable()
         {
-            timer += Time.deltaTime;
-            if (timer >= flashInterval)
-            {
-                timer = 0f;
-                StartCoroutine(FlashSequence());
-            }
+            // Coroutine is killed by Unity when disabled; clear transient state so re-enable is usable.
+            isFlashing = false;
+            if (bulbLight != null) bulbLight.intensity = bulbBaseIntensity;
         }
 
-        IEnumerator FlashSequence()
+        void Reset()
+        {
+            var col = GetComponent<Collider2D>();
+            if (col != null) col.isTrigger = true;
+        }
+
+        void OnTriggerEnter2D(Collider2D other)
+        {
+            var slime = other.GetComponentInParent<SlimeController>();
+            if (slime == null) return;
+            TriggerFlash(slime);
+        }
+
+        public void TriggerFlash(SlimeController slime)
+        {
+            if (oneShot && hasFired) return;
+            if (isFlashing) return;
+            isFlashing = true;
+            hasFired = true;
+            StartCoroutine(FlashSequence(slime));
+        }
+
+        IEnumerator FlashSequence(SlimeController slime)
         {
             float t = 0f;
             while (t < flashWarmup)
@@ -64,34 +81,17 @@ namespace SlimeJumping.Mechanisms
                 yield return null;
             }
 
-            isFlashing = true;
             if (bulbLight != null) bulbLight.intensity = bulbFlashIntensity;
             if (shutterAudio != null && shutterClip != null) shutterAudio.PlayOneShot(shutterClip);
             if (impulseEmitter != null) impulseEmitter.Emit(0.2f);
             if (flashCanvas != null) flashCanvas.Trigger();
 
-            var effect = GetHazardEffect();
-            foreach (var slime in insideArea)
-            {
-                if (slime != null) slime.ApplyHazardEffect(effect);
-            }
+            if (slime != null) slime.ApplyHazardEffect(GetHazardEffect());
 
             yield return null;
             isFlashing = false;
 
             if (bulbLight != null) bulbLight.intensity = bulbBaseIntensity;
-        }
-
-        internal void NotifyEnter(Collider2D other)
-        {
-            var slime = other.GetComponentInParent<SlimeController>();
-            if (slime != null) insideArea.Add(slime);
-        }
-
-        internal void NotifyExit(Collider2D other)
-        {
-            var slime = other.GetComponentInParent<SlimeController>();
-            if (slime != null) insideArea.Remove(slime);
         }
     }
 }

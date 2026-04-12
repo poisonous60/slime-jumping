@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Rendering.Universal;
 using UnityEditor;
 using Unity.Cinemachine;
 using SlimeJumping.Effects;
@@ -13,6 +14,9 @@ namespace SlimeJumping.Editor
         [MenuItem("SlimeJumping/Setup Camera Flash Test")]
         public static void Setup()
         {
+            var existing = GameObject.Find("CameraFlashTest");
+            if (existing != null) Undo.DestroyObjectImmediate(existing);
+
             var root = new GameObject("CameraFlashTest");
             Undo.RegisterCreatedObjectUndo(root, "Create Camera Flash Test");
 
@@ -23,60 +27,80 @@ namespace SlimeJumping.Editor
                 new Vector3(baseX, baseY - 0.5f, 0f),
                 new Vector3(16f, 1f, 1f));
 
-            // studio_camera prefab host
+            // StudioCamera group — identity transform wrapper so 2D children aren't affected
+            // by the prefab's 3D rotation (studio_camera.prefab has 270° X rotation for model orientation).
+            var flashHost = new GameObject("StudioCamera");
+            flashHost.transform.SetParent(root.transform, false);
+            flashHost.transform.position = new Vector3(baseX + 3f, baseY + 2f, 0f);
+
+            // Visual child — prefab mesh with its original 3D rotation, isolated.
             var prefabPath = "Assets/Prebs/building/studio_camera.prefab";
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-            GameObject flashHost;
             if (prefab != null)
             {
-                flashHost = (GameObject)PrefabUtility.InstantiatePrefab(prefab, root.transform);
-                PrefabUtility.UnpackPrefabInstance(flashHost, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
-                flashHost.name = "StudioCamera";
-                flashHost.transform.position = new Vector3(baseX + 3f, baseY + 2f, 0f);
-                foreach (var c in flashHost.GetComponentsInChildren<Collider2D>(true))
+                var visual = (GameObject)PrefabUtility.InstantiatePrefab(prefab, flashHost.transform);
+                PrefabUtility.UnpackPrefabInstance(visual, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                visual.name = "Visual";
+                visual.transform.localPosition = Vector3.zero;
+                foreach (var c in visual.GetComponentsInChildren<Collider2D>(true))
                     Object.DestroyImmediate(c);
-                foreach (var c in flashHost.GetComponentsInChildren<Collider>(true))
+                foreach (var c in visual.GetComponentsInChildren<Collider>(true))
                     Object.DestroyImmediate(c);
-                // Keep MeshRenderer/MeshFilter — studio_camera mesh is the visual reference.
             }
             else
             {
-                Debug.LogWarning($"[CameraFlashTestSetup] {prefabPath} not found — using empty host.");
-                flashHost = new GameObject("StudioCamera");
-                flashHost.transform.parent = root.transform;
-                flashHost.transform.position = new Vector3(baseX + 3f, baseY + 2f, 0f);
+                Debug.LogWarning($"[CameraFlashTestSetup] {prefabPath} not found — no visual mesh.");
             }
 
-            // Flash hazard on host
-            var hazard = flashHost.AddComponent<CameraFlashHazard>();
+            // Audio/Impulse on StudioCamera group (3D positional source + camera shake origin)
             var audio = flashHost.AddComponent<AudioSource>();
             audio.spatialBlend = 1f;
             audio.playOnAwake = false;
+
             flashHost.AddComponent<CinemachineImpulseSource>();
             var emitter = flashHost.AddComponent<ImpulseEmitter>();
 
-            // Hazard area child
-            var areaGo = new GameObject("HazardArea");
-            areaGo.transform.parent = flashHost.transform;
-            areaGo.transform.localPosition = new Vector3(0f, -1.5f, 0f);
-            var areaCol = areaGo.AddComponent<BoxCollider2D>();
-            areaCol.isTrigger = true;
-            areaCol.size = new Vector2(4f, 3f);
-            var area = areaGo.AddComponent<CameraFlashHazardArea>();
-            var areaSo = new SerializedObject(area);
-            areaSo.FindProperty("owner").objectReferenceValue = hazard;
-            areaSo.ApplyModifiedProperties();
+            // Bulb light child (Light2D, point). Optional — only renders when URP 2D Renderer configured.
+            var bulbGo = new GameObject("BulbLight");
+            bulbGo.transform.SetParent(flashHost.transform, false);
+            bulbGo.transform.localPosition = new Vector3(0f, -0.2f, 0f);
+            var bulb = bulbGo.AddComponent<Light2D>();
+            bulb.lightType = Light2D.LightType.Point;
+            bulb.color = new Color(1f, 0.95f, 0.8f);
+            bulb.intensity = 0f;
+            bulb.pointLightOuterRadius = 3f;
+            bulb.pointLightInnerRadius = 0.3f;
 
-            // FlashCanvas
-            var canvasGo = CreateOverlayCanvas("FlashCanvas", 9998, root.transform);
-            var flashCanvas = canvasGo.AddComponent<FlashCanvasController>();
-            WireCanvas(canvasGo, flashCanvas);
+            // Trigger child — JumpscareTrigger 패턴 (self-contained, OnTriggerEnter2D).
+            var triggerGo = new GameObject("Trigger");
+            triggerGo.transform.SetParent(flashHost.transform, false);
+            triggerGo.transform.localPosition = new Vector3(0f, -1.5f, 0f);
+            triggerGo.layer = 0;
+            var triggerCol = triggerGo.AddComponent<BoxCollider2D>();
+            triggerCol.isTrigger = true;
+            triggerCol.size = new Vector2(4f, 3f);
+            triggerCol.offset = Vector2.zero;
+            var hazard = triggerGo.AddComponent<CameraFlashHazard>();
+
+            // Shared FullscreenEffectCanvas → FlashEffect child
+            var canvasRoot = FullscreenCanvasSetupUtility.GetOrCreateRoot();
+            var effectGo = FullscreenCanvasSetupUtility.GetOrCreateEffectChild(canvasRoot, "FlashEffect");
+            var img = FullscreenCanvasSetupUtility.AddFullscreenImage(effectGo, new Color(1f, 1f, 1f, 0.5f));
+            BuildViewfinder(effectGo.transform);
+
+            var flashCanvas = effectGo.GetComponent<FlashCanvasController>();
+            if (flashCanvas == null) flashCanvas = effectGo.AddComponent<FlashCanvasController>();
+            var flashSo = new SerializedObject(flashCanvas);
+            flashSo.FindProperty("canvasGroup").objectReferenceValue = effectGo.GetComponent<CanvasGroup>();
+            flashSo.FindProperty("fullscreenImage").objectReferenceValue = img;
+            flashSo.ApplyModifiedProperties();
 
             // Wire hazard
             var hazardSo = new SerializedObject(hazard);
             hazardSo.FindProperty("flashCanvas").objectReferenceValue = flashCanvas;
             hazardSo.FindProperty("shutterAudio").objectReferenceValue = audio;
             hazardSo.FindProperty("impulseEmitter").objectReferenceValue = emitter;
+            hazardSo.FindProperty("bulbLight").objectReferenceValue = bulb;
             hazardSo.ApplyModifiedProperties();
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
@@ -84,44 +108,52 @@ namespace SlimeJumping.Editor
 
             Selection.activeGameObject = root;
             Debug.Log("Camera Flash Test setup complete!\n" +
-                "- HazardArea 4x3 below studio camera. Slime inside at flash moment gets stunned.\n" +
-                "- flashInterval 4s. Assign shutterClip on StudioCamera CameraFlashHazard for audio.\n" +
-                "- bulbLight Light2D optional — assign in Inspector if URP 2D Renderer configured.");
+                "- Trigger GameObject has CameraFlashHazard (self-contained — JumpscareTrigger 패턴).\n" +
+                "- 4x3 trigger below studio camera. Slime enters → 0.3s warmup → flash + stun + viewfinder.\n" +
+                "- oneShot=true (fires once). Toggle on Trigger Inspector for re-fire during testing.\n" +
+                "- Assign shutterClip on Trigger's CameraFlashHazard for audio.");
         }
 
-        static GameObject CreateOverlayCanvas(string name, int sortingOrder, Transform parent)
+        static void BuildViewfinder(Transform parent)
         {
-            var canvasGo = new GameObject(name, typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-            canvasGo.transform.SetParent(parent, false);
-            var canvas = canvasGo.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = sortingOrder;
-            var scaler = canvasGo.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            // Skip if already built (re-setup case)
+            if (parent.Find("TL_H") != null) return;
 
-            var imgGo = new GameObject("FullscreenImage", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            imgGo.transform.SetParent(canvasGo.transform, false);
-            var rect = imgGo.GetComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            var img = imgGo.GetComponent<Image>();
-            img.color = new Color(1f, 1f, 1f, 0f);
+            var color = new Color(0.1f, 0.1f, 0.1f, 1f);
+            float inset = 80f;
+            float armLen = 100f;
+            float thick = 5f;
+
+            AddBar(parent, "TL_H", new Vector2(0f, 1f), new Vector2(inset, -inset - thick), new Vector2(inset + armLen, -inset), color);
+            AddBar(parent, "TL_V", new Vector2(0f, 1f), new Vector2(inset, -inset - armLen), new Vector2(inset + thick, -inset), color);
+
+            AddBar(parent, "TR_H", new Vector2(1f, 1f), new Vector2(-inset - armLen, -inset - thick), new Vector2(-inset, -inset), color);
+            AddBar(parent, "TR_V", new Vector2(1f, 1f), new Vector2(-inset - thick, -inset - armLen), new Vector2(-inset, -inset), color);
+
+            AddBar(parent, "BL_H", new Vector2(0f, 0f), new Vector2(inset, inset), new Vector2(inset + armLen, inset + thick), color);
+            AddBar(parent, "BL_V", new Vector2(0f, 0f), new Vector2(inset, inset), new Vector2(inset + thick, inset + armLen), color);
+
+            AddBar(parent, "BR_H", new Vector2(1f, 0f), new Vector2(-inset - armLen, inset), new Vector2(-inset, inset + thick), color);
+            AddBar(parent, "BR_V", new Vector2(1f, 0f), new Vector2(-inset - thick, inset), new Vector2(-inset, inset + armLen), color);
+
+            float crossLen = 30f;
+            AddBar(parent, "Cross_H", new Vector2(0.5f, 0.5f), new Vector2(-crossLen, -thick * 0.5f), new Vector2(crossLen, thick * 0.5f), color);
+            AddBar(parent, "Cross_V", new Vector2(0.5f, 0.5f), new Vector2(-thick * 0.5f, -crossLen), new Vector2(thick * 0.5f, crossLen), color);
+        }
+
+        static Image AddBar(Transform parent, string name, Vector2 anchor, Vector2 offsetMin, Vector2 offsetMax, Color color)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = anchor;
+            rt.anchorMax = anchor;
+            rt.offsetMin = offsetMin;
+            rt.offsetMax = offsetMax;
+            var img = go.GetComponent<Image>();
+            img.color = color;
             img.raycastTarget = false;
-
-            // FlashCanvas는 audio/impulse를 본체에서 처리하므로 Canvas에는 audio/impulse 미부착.
-            return canvasGo;
-        }
-
-        static void WireCanvas(GameObject canvasGo, FullscreenOverlayCanvas controller)
-        {
-            var so = new SerializedObject(controller);
-            so.FindProperty("fullscreenImage").objectReferenceValue =
-                canvasGo.GetComponentInChildren<Image>();
-            // audioSource/impulseEmitter는 FlashCanvas에서 사용 안 함. 비워둠.
-            so.ApplyModifiedProperties();
+            return img;
         }
 
         static GameObject CreatePlatform(string name, Transform parent, Vector3 pos, Vector3 scale)

@@ -34,3 +34,5 @@ If a newly-written `.cs` file fails to compile with "type could not be found" AN
 ### Coding Convention
 - Use `rb.position` instead of `transform.position`
 - If some feature add or change, update  `SlimeJumping_메커닉_설계_v6.md`, `프로토타입_구현_현황.md` document in /docs folder
+- Never use `??` or `?.` with UnityEngine.Object references (Component, GameObject, etc). C# null-coalescing operators bypass Unity's overloaded `==` and mis-handle "fake null" (destroyed-but-not-null) references.
+- Divide visual and collider. Don't let them effect each other (e.g. even if visual rotate, collider shouldn't be effected)

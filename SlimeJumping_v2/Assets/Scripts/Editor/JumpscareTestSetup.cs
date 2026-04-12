@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.UI;
 using UnityEditor;
 using Unity.Cinemachine;
 using SlimeJumping.Effects;
@@ -13,6 +12,9 @@ namespace SlimeJumping.Editor
         [MenuItem("SlimeJumping/Setup Jumpscare Test")]
         public static void Setup()
         {
+            var existing = GameObject.Find("JumpscareTest");
+            if (existing != null) Undo.DestroyObjectImmediate(existing);
+
             var root = new GameObject("JumpscareTest");
             Undo.RegisterCreatedObjectUndo(root, "Create Jumpscare Test");
 
@@ -59,10 +61,29 @@ namespace SlimeJumping.Editor
             triggerCol.size = new Vector2(3f, 3f);
             var trigger = triggerGo.AddComponent<JumpscareTrigger>();
 
-            // Canvas with image + audio + impulse
-            var canvasGo = CreateOverlayCanvas("JumpscareCanvas", 9999, root.transform);
-            var jumpscareCanvas = canvasGo.AddComponent<JumpscareCanvasController>();
-            WireCanvas(canvasGo, jumpscareCanvas);
+            // Shared FullscreenEffectCanvas → JumpscareEffect child
+            var canvasRoot = FullscreenCanvasSetupUtility.GetOrCreateRoot();
+            var effectGo = FullscreenCanvasSetupUtility.GetOrCreateEffectChild(canvasRoot, "JumpscareEffect");
+            var img = FullscreenCanvasSetupUtility.AddFullscreenImage(effectGo, new Color(1f, 1f, 1f, 0f));
+
+            var audio = effectGo.GetComponent<AudioSource>();
+            if (audio == null) audio = effectGo.AddComponent<AudioSource>();
+            audio.spatialBlend = 0f;
+            audio.playOnAwake = false;
+
+            if (effectGo.GetComponent<CinemachineImpulseSource>() == null)
+                effectGo.AddComponent<CinemachineImpulseSource>();
+            var emitter = effectGo.GetComponent<ImpulseEmitter>();
+            if (emitter == null) emitter = effectGo.AddComponent<ImpulseEmitter>();
+
+            var jumpscareCanvas = effectGo.GetComponent<JumpscareCanvasController>();
+            if (jumpscareCanvas == null) jumpscareCanvas = effectGo.AddComponent<JumpscareCanvasController>();
+            var jumpscareSo = new SerializedObject(jumpscareCanvas);
+            jumpscareSo.FindProperty("canvasGroup").objectReferenceValue = effectGo.GetComponent<CanvasGroup>();
+            jumpscareSo.FindProperty("fullscreenImage").objectReferenceValue = img;
+            jumpscareSo.FindProperty("audioSource").objectReferenceValue = audio;
+            jumpscareSo.FindProperty("impulseEmitter").objectReferenceValue = emitter;
+            jumpscareSo.ApplyModifiedProperties();
 
             // Wire trigger → canvas
             var triggerSo = new SerializedObject(trigger);
@@ -75,57 +96,11 @@ namespace SlimeJumping.Editor
 
             Selection.activeGameObject = root;
             Debug.Log("Jumpscare Test setup complete!\n" +
-                "- Trigger is 2x2 on scareHost. Walk the slime into it.\n" +
+                "- Trigger 3x3 on scareHost. Walk the slime into it.\n" +
                 "- White fullscreen fade + ImpulseEmitter force 1.5.\n" +
                 "- oneShot=false for testing; toggle in Inspector if needed.\n" +
+                "- Shared FullscreenEffectCanvas/JumpscareEffect child added (reused across tests).\n" +
                 "- Assign scareImage / scareSound on the Trigger in Inspector for full effect.");
-        }
-
-        static GameObject CreateOverlayCanvas(string name, int sortingOrder, Transform parent)
-        {
-            var canvasGo = new GameObject(name, typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-            canvasGo.transform.SetParent(parent, false);
-            var canvas = canvasGo.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = sortingOrder;
-            var scaler = canvasGo.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-
-            // Fullscreen image child
-            var imgGo = new GameObject("FullscreenImage", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            imgGo.transform.SetParent(canvasGo.transform, false);
-            var rect = imgGo.GetComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            var img = imgGo.GetComponent<Image>();
-            img.color = new Color(1f, 1f, 1f, 0f);
-            img.raycastTarget = false;
-
-            // AudioSource (2D)
-            var audio = canvasGo.AddComponent<AudioSource>();
-            audio.spatialBlend = 0f;
-            audio.playOnAwake = false;
-
-            // ImpulseSource + Emitter
-            canvasGo.AddComponent<CinemachineImpulseSource>();
-            canvasGo.AddComponent<ImpulseEmitter>();
-
-            return canvasGo;
-        }
-
-        static void WireCanvas(GameObject canvasGo, FullscreenOverlayCanvas controller)
-        {
-            var so = new SerializedObject(controller);
-            so.FindProperty("fullscreenImage").objectReferenceValue =
-                canvasGo.GetComponentInChildren<Image>();
-            so.FindProperty("audioSource").objectReferenceValue =
-                canvasGo.GetComponent<AudioSource>();
-            so.FindProperty("impulseEmitter").objectReferenceValue =
-                canvasGo.GetComponent<ImpulseEmitter>();
-            so.ApplyModifiedProperties();
         }
 
         static GameObject CreatePlatform(string name, Transform parent, Vector3 pos, Vector3 scale)
