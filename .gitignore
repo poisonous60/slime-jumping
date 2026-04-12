@@ -2,8 +2,16 @@
 # Asset Vault (external asset packs — large binaries, not tracked)
 # ===========================
 SlimeJumping_AssetVault/
-SlimeJumping_v2/Assets/Art/3d model/
+
+# ===========================
+# Third-party Asset Store packages (move imported packages here)
+# ===========================
+SlimeJumping_v2/Assets/ThirdParty/
+SlimeJumping_v2/Assets/Art/
 SlimeJumping_v2/Assets/POLYGON city pack/
+SlimeJumping_v2/Assets/Inguz Media Studio/
+SlimeJumping_v2/Assets/Prebs/
+SlimeJumping_v2/Assets/Sound/
 
 # ===========================
 # Unity generated
@@ -52,6 +60,9 @@ sysinfo.txt
 # Other work (reference projects with their own git repos)
 # ===========================
 other_work/
+AssetBrowser/
+SlimeJumping_v2/Screenshots/
+
 
 # ===========================
 # Builds
