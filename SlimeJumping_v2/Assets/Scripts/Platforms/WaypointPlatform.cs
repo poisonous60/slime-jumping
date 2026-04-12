@@ -2,6 +2,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms
 {
+    [DisallowMultipleComponent]
     public class WaypointPlatform : PlatformMotor
     {
         [SerializeField] Vector2[] localWaypoints;
@@ -9,6 +10,10 @@ namespace SlimeJumping.Platforms
         [SerializeField] float waitTime = 0.5f;
         [SerializeField] bool loop = true;      // false = ping-pong
         [SerializeField] AnimationCurve easeCurve = AnimationCurve.Linear(0, 0, 1, 1);
+
+        public System.Func<bool> CanAdvance;
+        public event System.Action OnSegmentArrived;
+        public Vector2 LastDirection { get; private set; }
 
         Vector2[] worldWaypoints;
         int currentIndex;
@@ -43,10 +48,17 @@ namespace SlimeJumping.Platforms
                 return (rb.position, rb.rotation);
             }
 
+            // Gate only at segment start so a rider leaving mid-segment still completes the current run.
+            if (journeyProgress == 0f && CanAdvance != null && !CanAdvance())
+                return (rb.position, rb.rotation);
+
             int nextIndex = currentIndex + direction;
             Vector2 from = worldWaypoints[currentIndex];
             Vector2 to = worldWaypoints[nextIndex];
             float dist = Vector2.Distance(from, to);
+
+            if (journeyProgress == 0f && dist > 0.0001f)
+                LastDirection = (to - from) / dist;
 
             if (dist > 0.001f)
                 journeyProgress += (speed * dt) / dist;
@@ -64,6 +76,7 @@ namespace SlimeJumping.Platforms
                     else direction *= -1;
                 }
 
+                OnSegmentArrived?.Invoke();
                 return (to, rb.rotation);
             }
 

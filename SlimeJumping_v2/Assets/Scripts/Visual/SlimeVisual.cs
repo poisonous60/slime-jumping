@@ -58,6 +58,20 @@ public class SlimeVisual : MonoBehaviour
     private float smoothedSquashStrength;
     private float squashStrengthVel;
 
+    // External animation gate — when true, skip all Body deformation each frame.
+    // Used by IExternalController implementers (sit-pose, firework recoil, pipe transit, etc.).
+    private bool isExternallyAnimated;
+    public bool IsExternallyAnimated
+    {
+        get => isExternallyAnimated;
+        set
+        {
+            if (isExternallyAnimated == value) return;
+            isExternallyAnimated = value;
+            ResetDeformationState();
+        }
+    }
+
     // Visual clearance
     private readonly RaycastHit2D[] clearanceHits = new RaycastHit2D[8];
 
@@ -74,6 +88,8 @@ public class SlimeVisual : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (isExternallyAnimated) return;
+
         CacheVelocity();
         UpdateDeformAxis();
         UpdateSquashStrength();
@@ -167,6 +183,34 @@ public class SlimeVisual : MonoBehaviour
         UpdateBlink();
 
         prevState = slimeController.CurrentState;
+    }
+
+    private void ResetDeformationState()
+    {
+        smoothedScale = Vector2.one;
+        scaleVelocity = Vector2.zero;
+        smoothedOffset = Vector2.zero;
+        offsetVelocity = Vector2.zero;
+        impactTimer = -1f;
+        impactMagnitude = 0f;
+        chargingCurve = 0f;
+        smoothedSquashStrength = 0f;
+        squashStrengthVel = 0f;
+
+        if (body != null)
+        {
+            body.localScale = Vector3.one;
+            body.localPosition = Vector3.zero;
+        }
+
+        if (bodyRenderer != null && mpb != null)
+        {
+            bodyRenderer.GetPropertyBlock(mpb);
+            mpb.SetFloat(AsymmetryID, 0f);
+            mpb.SetFloat(ChargeDipID, 0f);
+            mpb.SetFloat(DipCenterUID, 0f);
+            bodyRenderer.SetPropertyBlock(mpb);
+        }
     }
 
     // --- Velocity caching ---
