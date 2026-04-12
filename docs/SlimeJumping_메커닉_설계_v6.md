@@ -913,7 +913,7 @@ PushDoor (Layer 7)
 
 ### Stunned 상태 + HazardEffect
 
-위험 오브젝트에 의해 `ApplyHazardEffect(HazardEffect)` 호출 시 진입. 입력 잠금, 중력만 적용, 표면 부착 차단, 타이머 만료 시 Airborne 복귀. 기절 중 추가 위험은 무시 (i-frame).
+위험 오브젝트에 의해 `ApplyHazardEffect(HazardEffect)` 호출 시 진입. 입력 잠금, 공중에선 중력만 적용, 표면 접촉 시 Attached처럼 달라붙어 정지 (미끄러지지 않음), 타이머 만료 시 Airborne 복귀. 기절 중 추가 위험은 무시 (i-frame).
 
 `HazardEffect` struct: `knockbackForce`, `knockbackDirection` (zero=자동계산), `stunDuration`, `damageType`.
 
@@ -943,6 +943,29 @@ EnvironmentalZone 구현. 진입/탈출 속도 배율, 드래그(곱셈), 부력
 ### IPlatformEffect 라이프사이클
 
 `CheckPlatformEffect` 착지 시퀀스 완료 후 호출. `OnSlimeStay` 매 프레임. `ClearPlatformEffect` 분리 시.
+
+### Tier 1 인터랙터블 (명세 #002 묶음 B)
+
+`InteractableBase` 상속, W 입력으로 발동. `InteractionDetector`가 broad-phase + narrow-phase(slime body overlap) 조합으로 후보 선택. `ReleaseOverride.Rescan`으로 override 해제 후 동일 trigger 재등록.
+
+- `SitPoseInteractable` (IExternalController) — 침대/벤치/신사/화톳불 옆자리
+- `MediaInteractable_TV` — 화면 머티리얼 + 오디오 토글
+- `MediaInteractable_Phonograph` — 트랙 순환 + 디스크 축 선택 회전
+- `ApplianceInteractable_Washing` — 토글 + 시각 루트 리사주 진동 (콜라이더 분리 원칙 준수)
+- `FireworkInteractable` — `ForceAirborneWithVelocity` 발사 (launchDelay, pushOriginOffset, launchAwayFromCenter)
+
+### Tier 1 Hazard / 인테리어 (명세 #002 묶음 A·C)
+
+- `JumpscareTrigger` + `JumpscareCanvasController` — 풀스크린 페이드 + `ImpulseEmitter`
+- `CameraFlashHazard` + `FlashCanvasController` — self-contained 트리거, 뷰파인더 UI
+- `SawBladeHazard` — pull 방향 `HazardEffect` (radial+tangent 블렌드, speedRetainRatio, hitCooldown)
+- `KnifeHazard` — pull + body passthrough (`Physics2D.IgnoreCollision` + SurfaceProbe ignore list, overlap-aware release, re-hit guard)
+- `CCTVTracker` — 3D `Quaternion.AngleAxis` 추적, rest pose 캡처 + rotationAxis/centerAngle/maxAngle 콘
+
+### 공용 VFX 인프라 보강
+
+- `ImpulseEmitter` — Cinemachine 3.x `CinemachineImpulseSource` 래퍼
+- `FullscreenEffectCanvas` / `FullscreenOverlayCanvas` — 풀스크린 이펙트 공용 베이스
 
 ---
 

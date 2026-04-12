@@ -206,7 +206,7 @@ namespace SlimeJumping.Controller
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
 
             SyncRadius();
-            ignoredColliderList = new IgnoredColliderList(settings.maxIgnoreTime);
+            ignoredColliderList = new IgnoredColliderList(settings.maxIgnoreTime, circleCollider);
             surfaceProbe = new SurfaceProbe(rb, settings, ignoredColliderList.Colliders);
             launchPosition = rb.position;
         }
@@ -558,6 +558,21 @@ namespace SlimeJumping.Controller
             ChangeState(SlimeState.Stunned, intentional: true);
         }
 
+        /// <summary>
+        /// Registers a collider in SurfaceProbe's ignore list for the given duration.
+        /// Call this alongside Physics2D.IgnoreCollision so that manual-ignore hazards
+        /// (KnifeHazard, etc.) also suppress surface-detection, not just physics contact.
+        /// </summary>
+        public void RegisterIgnoredCollider(Collider2D col, float duration)
+        {
+            ignoredColliderList.RegisterSingle(col, duration);
+        }
+
+        public void UnregisterIgnoredCollider(Collider2D col)
+        {
+            ignoredColliderList.Unregister(col);
+        }
+
         // --- External Controller Override ---
 
         /// <summary>
@@ -609,6 +624,11 @@ namespace SlimeJumping.Controller
 
             _override.OnReleaseControl(this);
             _override = null;
+
+            // SetOverride cleared detector candidates; if we're still overlapping
+            // the same interactable (e.g. standing up from a bench), Unity won't
+            // re-fire OnTriggerEnter2D. Rescan current overlaps so W works again.
+            interactionDetector.Rescan();
 
             // Clear stale gravity fields (slime may have moved during override).
             // NOTE: If slime is still physically inside a GravityField after release,

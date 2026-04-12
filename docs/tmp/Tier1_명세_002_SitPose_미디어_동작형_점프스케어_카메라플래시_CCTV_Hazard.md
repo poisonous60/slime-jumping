@@ -6,8 +6,15 @@
 >
 > **진행 상황** (2026-04-12):
 > - 묶음 A (§1 Impulse 인프라 + §5 점프스케어 + §6 카메라플래시) ✅ 완료
-> - 묶음 B (§2 Sit-pose + §3 미디어 + §4 동작형) — 미착수
-> - 묶음 C (§7 CCTV + §8 Hazard) — 미착수
+> - 묶음 B (§2 Sit-pose + §3 미디어 + §4 동작형) ✅ 스크립트 완료 (prefab 연결 작업 대기)
+> - 묶음 C (§7 CCTV + §8 Hazard) ✅ 스크립트 완료 (prefab 연결 작업 대기)
+>
+> **묶음 B/C 구현 노트**:
+> - §2 SitPose: `Input.GetKeyDown` 대신 `SlimeInputReader.OnVerticalUpPressed` 이벤트 구독 (New Input System 단독 모드 대응).
+> - §7 CCTV: `FindFirstObjectByType<SlimeController>` (Unity 6 API).
+> - §8.1 SawBlade: 명세의 `spinTransferStrength` → `tangentWeight` (Range[0,1])로 교체, radial↔tangent 방향 블렌드.
+> - §4.1 세탁기: 옵션 B (토글 + 시각 루트 리사주 진동).
+> - §8.2 Knife: `DamageType.Generic`.
 
 ---
 
@@ -195,27 +202,50 @@ FireworkInteractable : InteractableBase
   - **그 외 Z (배경/전경)**: SpriteRenderer (또는 MeshRenderer)만, 콜라이더 없음
   - 이건 prefab variant 두 개로 분리하거나 인스펙터에서 토글하는 식. 권장: prefab variant 분리.
 
+### 프리팹 준비 규약 (LensAxis 방식)
+
+프리팹 계층 변경 없이 **컴포넌트 부착 + 드롭다운 선택**만으로 세팅한다.
+
+1. 회전시킬 헤드 노드(기존 메시가 들어있는 회전 대상)를 `headTransform` 필드에 할당.
+2. 그 헤드 Transform의 로컬 축 중 렌즈가 향하는 축을 `lensAxis` 드롭다운(`+Z`/`-Z`/`+X`/`-X`/`+Y`/`-Y`)에서 선택. Scene 뷰의 빨강(X)/초록(Y)/파랑(Z) 로컬 축 기즈모로 육안 판별 가능. 인스펙터 값 변경 시 노란색 기즈모(= 현재 렌즈 방향)가 즉시 갱신되므로 Play 모드 없이 확인 가능.
+
 ### CCTVTracker 클래스
 ```csharp
+public enum LensAxis { PositiveZ, NegativeZ, PositiveX, NegativeX, PositiveY, NegativeY }
+
 public class CCTVTracker : MonoBehaviour {
-    [SerializeField] Transform headTransform;     // 회전할 카메라 헤드 자식
-    [SerializeField] Transform target;            // null 가능 — null이면 SlimeController.Instance 자동 탐색
-    [SerializeField] float maxAngleDeg = 90f;     // 회전 가능 범위 (양쪽 ±max)
-    [SerializeField] float angularSpeed = 90f;    // deg/s, 추적 속도 한계
-    [SerializeField] float idleAngle = 0f;        // 타겟 없을 때 복귀 각도
-    [SerializeField] float trackingRange = 20f;   // 이 거리 밖이면 idle로 복귀
+    [SerializeField] Transform headTransform;     // 회전할 헤드 노드 (기존 메시 그대로)
+    [SerializeField] LensAxis lensAxis;           // 헤드 로컬 축 중 렌즈가 향하는 방향
+    [SerializeField] Transform target;            // null 가능 — null이면 SlimeController 자동 탐색
+    [SerializeField] float trackingRange = 20f;
+    [SerializeField] float angularSpeed = 120f;
+    // 비대칭 cone clamp: initial forward 기준 yaw/pitch 각각 상한
+    [SerializeField] float maxLeftDeg = 90f;      // yaw -방향 한계
+    [SerializeField] float maxRightDeg = 90f;     // yaw +방향 한계
+    [SerializeField] float maxUpDeg = 60f;        // pitch +방향 한계
+    [SerializeField] float maxDownDeg = 60f;      // pitch -방향 한계
 }
 ```
 
 **동작 (Update)**:
-1. 타겟 위치 확인 (자동 탐색 시 SlimeController 한 번만 캐싱)
-2. 거리 > trackingRange 또는 타겟 null → idleAngle 향해 lerp (angularSpeed 제한)
-3. 그 외 → `Mathf.Atan2((target.position - this.position).y, (target.position - this.position).x)` 계산
-4. headTransform의 forward 축 (또는 prefab의 헤드 forward 정의에 맞게)이 그 각도 향하게 회전
-5. maxAngleDeg 클램프 (this.transform.right 기준 상대 각도)
-6. angularSpeed로 회전 속도 제한 (Quaternion.RotateTowards)
+1. Start에서 `initialLocalRotation = headTransform.localRotation` 캐싱. target null이면 `FindFirstObjectByType<SlimeController>` 1회 캐싱.
+2. `parentRot = headTransform.parent != null ? headTransform.parent.rotation : Quaternion.identity`, `idleWorld = parentRot * initialLocalRotation`.
+3. target 유효 + `(target.pos - headTransform.pos).sqrMagnitude ≤ trackingRange²`:
+   - `dir = target.pos - headTransform.pos`
+   - `lensLocal = AxisToVec(lensAxis)`, `initialForward = idleWorld * lensLocal`
+   - **비대칭 cone clamp (yaw/pitch 박스)**:
+     1. initialForward 기준 orthonormal basis 생성: `fwd = initialForward`, `right = normalize(cross(worldUp, fwd))` (평행 시 world +Z/+X로 폴백), `up = normalize(cross(fwd, right))`.
+     2. `dir`을 basis에 투영: `yaw = Atan2(dir·right, dir·fwd)` (+우/-좌), `pitch = Atan2(dir·up, sqrt((dir·fwd)² + (dir·right)²))` (+상/-하). `dir·fwd < 0`이면 yaw를 ±π/2로 포화(뒤쪽 반구 방지).
+     3. `yaw ∈ [-maxLeft, +maxRight]`, `pitch ∈ [-maxDown, +maxUp]`로 클램프.
+     4. 재구성: `clampedDir = cos(pitch) * (cos(yaw)*fwd + sin(yaw)*right) + sin(pitch)*up`.
+   - `desired = Quaternion.LookRotation(clampedDir, Vector3.up) * Quaternion.FromToRotation(lensLocal, Vector3.forward)` — lensLocal 축이 clampedDir을 가리키도록 보정.
+4. 아니면 `desired = idleWorld`.
+5. `headTransform.rotation = Quaternion.RotateTowards(headTransform.rotation, desired, angularSpeed * Time.deltaTime)`.
 
 **노트**:
+- Z 좌표가 슬라임과 다른 CCTV도 3D 방향을 그대로 추적(렌즈가 위/아래로 기울어짐).
+- 프리팹별 렌즈 로컬 축(+X/-Y 등) 차이는 `lensAxis` 드롭다운이 흡수 — 프리팹 계층/메시 회전 변경 불필요.
+- 월드 up 기준(`Vector3.up`). 기울어진 마운트 variant가 필요하면 `parentRot * Vector3.up`으로 전환.
 - 슬라임이 CCTV 본체에 닿아도 어떤 효과도 없음 — 순수 장식. (Z=0 케이스에서 BoxCollider2D는 단순 지형 콜라이더로 작동. SurfaceTag로 일반 surface 지정.)
 
 ---

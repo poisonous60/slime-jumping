@@ -1,0 +1,93 @@
+using UnityEngine;
+using SlimeJumping.Controller;
+using SlimeJumping.Interfaces;
+
+namespace SlimeJumping.Mechanisms
+{
+    // Trigger Collider2D must be on the SAME GameObject as this component — OnTriggerEnter2D only
+    // fires on MonoBehaviours attached to the collider's GameObject. The visual-only `bladeTransform`
+    // (rotating mesh) is a separate child.
+    [RequireComponent(typeof(Collider2D))]
+    public class SawBladeHazard : MonoBehaviour, IHazardSource
+    {
+        [Header("Rotation (visual)")]
+        [SerializeField] private Transform bladeTransform;
+        [SerializeField] private float rotationRPM = 600f;
+
+        [Header("Hazard")]
+        [Range(0f, 1f)]
+        [Tooltip("Fraction of incoming speed retained after pass-through. 1 = no slowdown, 0 = full stop. 0.4 = keep 40% of entry speed.")]
+        [SerializeField] private float speedRetainRatio = 0.4f;
+        [Tooltip("Extra impulse added on top of retained velocity. Pulls slime toward the blade for 'sliced' feel.")]
+        [SerializeField] private float pullForce = 6f;
+        [Range(0f, 1f)]
+        [Tooltip("0 = pure pull toward blade, 1 = pure tangent (spin-aligned drag). 0.3 = mostly inward with a twist.")]
+        [SerializeField] private float tangentWeight = 0.3f;
+        [SerializeField] private float stunDuration = 0.6f;
+        [Tooltip("Seconds between hits on the same slime. Prevents continuous pull once they slide off.")]
+        [SerializeField] private float hitCooldown = 1.2f;
+
+        private SlimeController cachedSlime;
+        private float nextHitTime;
+
+        public bool IsActive => isActiveAndEnabled;
+
+        private void Reset()
+        {
+            var col = GetComponent<Collider2D>();
+            if (col != null) col.isTrigger = true;
+        }
+
+        private void Update()
+        {
+            if (bladeTransform != null)
+            {
+                bladeTransform.Rotate(Vector3.forward, rotationRPM * 6f * Time.deltaTime);
+            }
+        }
+
+        public HazardEffect GetHazardEffect()
+        {
+            Vector2 finalVel = Vector2.zero;
+
+            if (cachedSlime != null && bladeTransform != null)
+            {
+                Vector2 retained = cachedSlime.Velocity * speedRetainRatio;
+
+                Vector2 toSlime = cachedSlime.Position - (Vector2)bladeTransform.position;
+                toSlime = toSlime.sqrMagnitude > 0.0001f ? toSlime.normalized : Vector2.up;
+                Vector2 pullIn = -toSlime;
+                Vector2 tangent = new Vector2(-toSlime.y, toSlime.x) * Mathf.Sign(rotationRPM);
+                Vector2 pullDir = (pullIn * (1f - tangentWeight) + tangent * tangentWeight).normalized;
+
+                finalVel = retained + pullDir * pullForce;
+            }
+
+            float mag = finalVel.magnitude;
+            Vector2 dir = mag > 0.0001f ? finalVel / mag : Vector2.zero;
+
+            return new HazardEffect
+            {
+                knockbackForce = mag,
+                knockbackDirection = dir,
+                stunDuration = stunDuration,
+                damageType = DamageType.SawBlade
+            };
+        }
+
+        private void OnTriggerEnter2D(Collider2D other) => TryHit(other);
+        private void OnTriggerStay2D(Collider2D other) => TryHit(other);
+
+        private void TryHit(Collider2D other)
+        {
+            if (Time.time < nextHitTime) return;
+
+            var slime = other.GetComponentInParent<SlimeController>();
+            if (slime == null) return;
+
+            cachedSlime = slime;
+            slime.ApplyHazardEffect(GetHazardEffect());
+            nextHitTime = Time.time + hitCooldown;
+        }
+    }
+}

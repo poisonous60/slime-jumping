@@ -5,24 +5,25 @@ namespace SlimeJumping.Controller
     public partial class SlimeController
     {
         // --- State: Stunned ---
-        // Reuses Airborne collision response (gravity + normal velocity cancellation)
-        // but blocks Attached/Charging transitions while stunTimer > 0.
-        // No air control, no W/S gravity modulation.
+        // Sticks to any contacted surface (like Attached) until stun expires.
+        // No air control, no W/S gravity modulation, no state transitions.
 
         private void FixedUpdateStunned(float dt)
         {
             stunTimer -= dt;
 
-            // Gravity (1x, no W/S modulation, no asymmetric rising/falling scale)
-            velocity += -gravityUp * Mathf.Abs(settings.gravity) * dt;
+            bool stickable = isTouchingSurface
+                && surfaceCollider != null
+                && !ignoredColliderList.Contains(surfaceCollider);
 
-            // Surface collision: cancel normal velocity only (same as Airborne ceiling hit).
-            // Never attach — stay airborne until stun expires.
-            if (isTouchingSurface)
+            if (stickable)
             {
-                float normalVel = Vector2.Dot(velocity, surfaceNormal);
-                if (normalVel < 0f)
-                    velocity -= surfaceNormal * normalVel;
+                velocity = Vector2.zero;
+                SnapToSurface();
+            }
+            else
+            {
+                velocity += -gravityUp * Mathf.Abs(settings.gravity) * dt;
             }
 
             // Timer expired: recover to Airborne

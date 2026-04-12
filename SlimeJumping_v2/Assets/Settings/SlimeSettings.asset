@@ -42,7 +42,7 @@ MonoBehaviour:
   chargeRadius: 2
   autoDriftSpeed: 3
   inputAcceleration: 4
-  baseLaunchPower: 9
+  baseLaunchPower: 15
   minLaunchPower: 3
   chargeCurveExponent: 0.7
   chargeFullAimTime: 0.2
@@ -90,3 +90,5 @@ MonoBehaviour:
   postLaunchIgnoreTime: 0.05
   launchClearanceThreshold: 0.05
   maxIgnoreTime: 0.15
+  defaultStunDuration: 0.5
+  defaultKnockbackForce: 8
