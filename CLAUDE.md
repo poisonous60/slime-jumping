@@ -28,6 +28,8 @@ Available commands: `list`, `exec`, `run_tests`, `console`, `screenshot`, `refre
 Don't use Comment when using `exec` commands. It returns error.
 `unity-cli exec` requires a return statement (e.g. `return 1;`). Expressions like `Debug.Log(...)` alone will fail.
 
+If a newly-written `.cs` file fails to compile with "type could not be found" AND `CompilationPipeline.GetAssemblies()` doesn't list it under Assembly-CSharp, Unity's AssetDatabase has a stuck import entry — `refresh_unity` / `AssetDatabase.Refresh` / `ImportAsset(ForceUpdate)` won't fix it. Delete both `.cs` and `.cs.meta`, refresh, then rewrite the file to force a fresh import.
+
 
 ### Coding Convention
 - Use `rb.position` instead of `transform.position`
