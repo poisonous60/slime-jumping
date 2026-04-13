@@ -191,7 +191,7 @@ namespace SlimeJumping.Controller
         private SurfaceProbe surfaceProbe;
 
         // --- Landing event (for VFX, sound, etc.) ---
-        public event System.Action<Vector2, Vector2> OnLanded; // (position, surfaceNormal)
+        public event System.Action<Vector2, Vector2> OnLanded; // (contactPoint, surfaceNormal)
 
         private void Awake()
         {
