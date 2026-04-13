@@ -86,18 +86,35 @@ namespace SlimeJumping.Editor
             Vector2 localPivot, float ropeLength, float startAngleDeg,
             float landingImpulseScale, float riderPosAngAccelScale, float damping)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = name;
-            go.transform.parent = parent;
-            go.transform.position = pos;
-            go.transform.localScale = new Vector3(3f, 0.3f, 1f);
-            go.layer = 7;
+            var root = new GameObject(name);
+            root.transform.parent = parent;
+            root.transform.position = pos;
 
-            Object.DestroyImmediate(go.GetComponent<BoxCollider>());
-            var col2d = go.AddComponent<BoxCollider2D>();
+            var board = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            board.name = "Board";
+            board.transform.SetParent(root.transform, false);
+            board.transform.localScale = new Vector3(3f, 0.3f, 1f);
+            board.layer = 7;
+
+            Object.DestroyImmediate(board.GetComponent<BoxCollider>());
+            var col2d = board.AddComponent<BoxCollider2D>();
             col2d.size = Vector2.one;
 
-            var pend = go.AddComponent<PendulumPlatform>();
+            var pend = board.AddComponent<PendulumPlatform>();
+
+            var ropeGo = new GameObject("Rope");
+            ropeGo.transform.SetParent(root.transform, false);
+            var lr = ropeGo.AddComponent<LineRenderer>();
+            lr.useWorldSpace = true;
+            lr.positionCount = 2;
+            lr.startWidth = lr.endWidth = 0.08f;
+            lr.textureMode = LineTextureMode.Tile;
+            lr.alignment = LineAlignment.View;
+            lr.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>(
+                "Assets/Prebs/Platform/Materials/RopeMaterial.mat");
+            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            lr.receiveShadows = false;
+
             var so = new SerializedObject(pend);
             so.FindProperty("localPivot").vector2Value = localPivot;
             so.FindProperty("ropeLength").floatValue = ropeLength;
@@ -105,12 +122,15 @@ namespace SlimeJumping.Editor
             so.FindProperty("landingImpulseScale").floatValue = landingImpulseScale;
             so.FindProperty("riderPosAngAccelScale").floatValue = riderPosAngAccelScale;
             so.FindProperty("damping").floatValue = damping;
+            var ropesProp = so.FindProperty("ropes");
+            ropesProp.arraySize = 1;
+            ropesProp.GetArrayElementAtIndex(0).objectReferenceValue = lr;
             so.ApplyModifiedProperties();
 
-            go.GetComponent<MeshRenderer>().sharedMaterial =
+            board.GetComponent<MeshRenderer>().sharedMaterial =
                 MakeMaterial(new Color(0.3f, 0.6f, 0.9f));
 
-            return go;
+            return root;
         }
 
         static GameObject CreatePlatform(string name, Transform parent, Vector3 pos, Vector3 scale)

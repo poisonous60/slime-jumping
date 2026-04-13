@@ -12,6 +12,7 @@ namespace SlimeJumping.Rendering
         Water,
         Dust,
         Lightning,
-        Pipe
+        Pipe,
+        Slice
     }
 }

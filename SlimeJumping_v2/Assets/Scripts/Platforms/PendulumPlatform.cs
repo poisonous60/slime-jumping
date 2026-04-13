@@ -27,6 +27,11 @@ namespace SlimeJumping.Platforms
                  "0.3 = board stays relatively level like a swing seat, even as rope swings wide.")]
         [SerializeField, Range(0f, 1f)] float swayRatio = 1f;
 
+        [Header("Rope Visual")]
+        [Tooltip("LineRenderers drawn from pivot to board. Each rope's Z is taken from its own " +
+                 "transform, so you can stack ropes at different Z depths. Uses world-space positions.")]
+        [SerializeField] LineRenderer[] ropes;
+
         Vector2 worldPivot;
         float angle;
         float angularVel;
@@ -103,6 +108,24 @@ namespace SlimeJumping.Platforms
             float rotDeg = angle * Mathf.Rad2Deg * swayRatio + currentTilt;
 
             return (worldPivot + offset, rotDeg);
+        }
+
+        void LateUpdate()
+        {
+            if (ropes == null) return;
+
+            Vector2 boardPos = transform.position;
+            for (int i = 0; i < ropes.Length; i++)
+            {
+                var rope = ropes[i];
+                if (rope == null) continue;
+
+                rope.useWorldSpace = true;
+                rope.positionCount = 2;
+                float z = rope.transform.position.z;
+                rope.SetPosition(0, new Vector3(worldPivot.x, worldPivot.y, z));
+                rope.SetPosition(1, new Vector3(boardPos.x, boardPos.y, z));
+            }
         }
 
         void OnDrawGizmos()

@@ -25,6 +25,8 @@ namespace SlimeJumping.Rendering
             new VFXColorEntry { type = VFXType.Dust, primary = new Color(0.76f, 0.7f, 0.5f), secondary = new Color(0.6f, 0.55f, 0.4f) },
             new VFXColorEntry { type = VFXType.Lightning, primary = new Color(0.9f, 0.9f, 1f), secondary = new Color(0.5f, 0.5f, 1f) },
             new VFXColorEntry { type = VFXType.Pipe, primary = new Color(0.4f, 1f, 0.8f), secondary = new Color(0.2f, 0.7f, 0.5f) },
+            // TODO: 디자이너가 슬라임 바디 색과 맞춰 튜닝 (placeholder: green)
+            new VFXColorEntry { type = VFXType.Slice, primary = new Color(0.5f, 0.85f, 0.4f), secondary = new Color(0.35f, 0.6f, 0.25f) },
         };
 
         public Color GetPrimary(VFXType type)

@@ -9,7 +9,8 @@ namespace SlimeJumping.Interfaces
         SawBlade,
         Lightning,
         Fire,
-        CameraFlash
+        CameraFlash,
+        Slice
     }
 
     [System.Serializable]

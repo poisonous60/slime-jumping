@@ -1035,14 +1035,15 @@ EnvironmentalZone 구현. 진입/탈출 속도 배율, 드래그(곱셈), 부력
 
 - `JumpscareTrigger` + `JumpscareCanvasController` — 풀스크린 페이드 + `ImpulseEmitter`
 - `CameraFlashHazard` + `FlashCanvasController` — self-contained 트리거, 뷰파인더 UI
-- `SawBladeHazard` — pull 방향 `HazardEffect` (radial+tangent 블렌드, speedRetainRatio, hitCooldown)
-- `KnifeHazard` — pull + body passthrough (`Physics2D.IgnoreCollision` + SurfaceProbe ignore list, overlap-aware release, re-hit guard)
+- `SawBladeHazard` — pull 방향 `HazardEffect` (radial+tangent 블렌드, speedRetainRatio, hitCooldown). 접촉 시 `SliceEffect` 스폰(파티클/SFX/Impulse) + `AddExternalVelocity(tangent * sliceKick)` — tangent 부호는 슬라임 속도 사영으로 결정(정지 시 `rotationRPM` fallback).
+- `KnifeHazard` — pull + body passthrough (`Physics2D.IgnoreCollision` + SurfaceProbe ignore list, overlap-aware release, re-hit guard). 접촉 시 `SliceEffect` 스폰 + `AddExternalVelocity(edge * sliceKick)` — edge 방향은 `bladeEdgeRef.right`(null일 시 `transform.right`), 부호는 슬라임 속도 사영으로 결정.
 - `CCTVTracker` — 3D `Quaternion.AngleAxis` 추적, rest pose 캡처 + rotationAxis/centerAngle/maxAngle 콘
 
 ### 공용 VFX 인프라 보강
 
 - `ImpulseEmitter` — Cinemachine 3.x `CinemachineImpulseSource` 래퍼
 - `FullscreenEffectCanvas` / `FullscreenOverlayCanvas` — 풀스크린 이펙트 공용 베이스
+- `SliceEffect` (prefab + MonoBehaviour) — Knife/Saw 공통 베임 피드백. `Spawn(prefab, contactPoint, signedTangent)` 정적 팩토리. `signedTangent`는 local +Y로 cone 회전 정렬. `ParticlePaletteBinder`로 `VFXType.Slice` 팔레트 색 자동 주입. 수명은 `max(particleLife, audioClip.length) + 0.1s`로 자체 관리 — SFX 잘림 방지. `DamageType.Slice`로 해저드 식별.
 
 ---
 

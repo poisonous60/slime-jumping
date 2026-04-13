@@ -31,3 +31,6 @@ MonoBehaviour:
   - type: 5
     primary: {r: 0.4, g: 1, b: 0.8, a: 1}
     secondary: {r: 0.2, g: 0.7, b: 0.5, a: 1}
+  - type: 6
+    primary: {r: 0.5, g: 0.85, b: 0.4, a: 1}
+    secondary: {r: 0.35, g: 0.6, b: 0.25, a: 1}

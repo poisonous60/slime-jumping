@@ -1,5 +1,6 @@
 using UnityEngine;
 using SlimeJumping.Controller;
+using SlimeJumping.Effects;
 using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
@@ -26,6 +27,13 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float stunDuration = 0.6f;
         [Tooltip("Seconds between hits on the same slime. Prevents continuous pull once they slide off.")]
         [SerializeField] private float hitCooldown = 1.2f;
+
+        [Header("Slice FX")]
+        [SerializeField] private SliceEffect sliceEffectPrefab;
+        [SerializeField] private ImpulseEmitter impulseEmitter;
+        [SerializeField] private float impulseForce = 0.2f;
+        [Tooltip("Extra velocity along the rotational tangent, in the slime's slide direction.")]
+        [SerializeField] private float sliceKick = 3f;
 
         private SlimeController cachedSlime;
         private float nextHitTime;
@@ -71,7 +79,7 @@ namespace SlimeJumping.Mechanisms
                 knockbackForce = mag,
                 knockbackDirection = dir,
                 stunDuration = stunDuration,
-                damageType = DamageType.SawBlade
+                damageType = DamageType.Slice
             };
         }
 
@@ -86,6 +94,21 @@ namespace SlimeJumping.Mechanisms
             if (slime == null) return;
 
             cachedSlime = slime;
+
+            Vector2 bladePos = bladeTransform != null ? (Vector2)bladeTransform.position
+                                                       : (Vector2)transform.position;
+            Vector2 toSlime = slime.Position - bladePos;
+            Vector2 radial = toSlime.sqrMagnitude > 0.0001f ? toSlime.normalized : Vector2.up;
+            Vector2 perp = new Vector2(-radial.y, radial.x);
+            float perpDot = Vector2.Dot(slime.Velocity, perp);
+            float perpSign = Mathf.Abs(perpDot) > 0.01f ? Mathf.Sign(perpDot) : Mathf.Sign(rotationRPM);
+            Vector2 signedTangent = perp * perpSign;
+            Vector2 contact = GetComponent<Collider2D>().ClosestPoint(slime.Position);
+            if (sliceEffectPrefab != null)
+                SliceEffect.Spawn(sliceEffectPrefab, contact, signedTangent);
+            if (impulseEmitter != null) impulseEmitter.Emit(impulseForce);
+            slime.AddExternalVelocity(signedTangent * sliceKick);
+
             slime.ApplyHazardEffect(GetHazardEffect());
             nextHitTime = Time.time + hitCooldown;
         }

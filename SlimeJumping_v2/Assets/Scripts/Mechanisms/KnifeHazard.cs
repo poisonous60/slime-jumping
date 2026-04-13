@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using SlimeJumping.Controller;
+using SlimeJumping.Effects;
 using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
@@ -19,6 +20,15 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float stunDuration = 0.8f;
         [Tooltip("Seconds between hits on the same slime. Prevents continuous re-trigger.")]
         [SerializeField] private float hitCooldown = 1.2f;
+
+        [Header("Slice FX")]
+        [SerializeField] private SliceEffect sliceEffectPrefab;
+        [SerializeField] private ImpulseEmitter impulseEmitter;
+        [SerializeField] private float impulseForce = 0.2f;
+        [Tooltip("Extra velocity along the blade-edge tangent, in the slime's slide direction. 'Scratch on inertia' feel.")]
+        [SerializeField] private float sliceKick = 2f;
+        [Tooltip("Local +X should point along the cutting edge. Leave null to use this GameObject's right.")]
+        [SerializeField] private Transform bladeEdgeRef;
 
         [Header("Body Passthrough")]
         [Tooltip("Root transform of the knife body. All Collider2D in its subtree (except this hazard's own trigger) are ignored after a hit for `passthroughDuration` seconds. Assign the body GO or any common ancestor.")]
@@ -60,7 +70,7 @@ namespace SlimeJumping.Mechanisms
                 knockbackForce = mag,
                 knockbackDirection = dir,
                 stunDuration = stunDuration,
-                damageType = DamageType.Generic
+                damageType = DamageType.Slice
             };
         }
 
@@ -77,6 +87,18 @@ namespace SlimeJumping.Mechanisms
             if (slime.Velocity.magnitude < velocityThreshold) return;
 
             cachedSlime = slime;
+
+            Vector2 edge = (bladeEdgeRef != null ? (Vector2)bladeEdgeRef.right
+                                                 : (Vector2)transform.right).normalized;
+            float edgeDot = Vector2.Dot(slime.Velocity, edge);
+            float edgeSign = Mathf.Abs(edgeDot) > 0.01f ? Mathf.Sign(edgeDot) : 1f;
+            Vector2 signedTangent = edge * edgeSign;
+            Vector2 contact = GetComponent<Collider2D>().ClosestPoint(slime.Position);
+            if (sliceEffectPrefab != null)
+                SliceEffect.Spawn(sliceEffectPrefab, contact, signedTangent);
+            if (impulseEmitter != null) impulseEmitter.Emit(impulseForce);
+            slime.AddExternalVelocity(signedTangent * sliceKick);
+
             slime.ApplyHazardEffect(GetHazardEffect());
             nextHitTime = Time.time + hitCooldown;
 
