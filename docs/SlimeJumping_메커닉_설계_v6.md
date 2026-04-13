@@ -627,6 +627,10 @@ CrumblingPlatform (부모)
 | launchClearanceThreshold | 0.05 | 발사 표면 무시 해제 거리 |
 | maxIgnoreTime | 0.15 | 발사 표면 무시 최대 시간 |
 
+**IgnoredColliderList 모드 분리** (2026-04-13):
+- `ReattachGuard` — Launch/Hop/ForceAirborne/스턴 knockback이 사용. `RegisterOverlapping`으로 발사 표면 주변 ground를 등록. SurfaceProbe probe 필터만 적용, `Physics2D.IgnoreCollision`은 호출하지 않음 → 물리 충돌은 유지되어 낮은 점프/아래로 발사에서도 바닥 관통 없음. 분리 거리(`slimeRadius + launchClearanceThreshold`) 초과 시 즉시 해제, 그렇지 않으면 `maxIgnoreTime` 상한까지.
+- `Passthrough` — KnifeHazard body 관통 전용. `Physics2D.IgnoreCollision` + probe 필터. 타이머만으로 해제(관통 중 거리 흔들림에 영향 받지 않음).
+
 ---
 
 ## 9. 입력 요약

@@ -559,13 +559,13 @@ namespace SlimeJumping.Controller
         }
 
         /// <summary>
-        /// Registers a collider in SurfaceProbe's ignore list for the given duration.
-        /// Call this alongside Physics2D.IgnoreCollision so that manual-ignore hazards
-        /// (KnifeHazard, etc.) also suppress surface-detection, not just physics contact.
+        /// Registers a collider as Passthrough — slime physically transits through it
+        /// (Physics2D.IgnoreCollision) AND SurfaceProbe skips it. For hazard body
+        /// pass-through (KnifeHazard etc.); not for launch clearance.
         /// </summary>
         public void RegisterIgnoredCollider(Collider2D col, float duration)
         {
-            ignoredColliderList.RegisterSingle(col, duration);
+            ignoredColliderList.RegisterSingle(col, duration, IgnoreMode.Passthrough);
         }
 
         public void UnregisterIgnoredCollider(Collider2D col)
