@@ -1,0 +1,142 @@
+using UnityEngine;
+using UnityEditor;
+using SlimeJumping.Platforms;
+
+namespace SlimeJumping.Editor
+{
+    public static class PendulumPlatformTestSetup
+    {
+        [MenuItem("SlimeJumping/Setup PendulumPlatform Test")]
+        public static void SetupPendulumTest()
+        {
+            var root = new GameObject("PendulumPlatformTest");
+            Undo.RegisterCreatedObjectUndo(root, "Create PendulumPlatform Test");
+
+            float baseX = 4f;
+            float baseY = 0f;
+
+            // Ground floor
+            CreatePlatform("Floor", root.transform,
+                new Vector3(baseX, baseY - 5f, 0f),
+                new Vector3(30f, 1f, 1f));
+
+            // Left launcher platform — slingshot onto pendulums from here
+            CreatePlatform("LaunchPad_Left", root.transform,
+                new Vector3(baseX - 12f, baseY + 2f, 0f),
+                new Vector3(3f, 1f, 1f));
+
+            // Right launcher platform
+            CreatePlatform("LaunchPad_Right", root.transform,
+                new Vector3(baseX + 12f, baseY + 2f, 0f),
+                new Vector3(3f, 1f, 1f));
+
+            // Pendulum 1: default tuning — moderate impulse + torque
+            CreatePendulum("Pendulum_Default", root.transform,
+                new Vector3(baseX - 6f, baseY + 2f, 0f),
+                localPivot: new Vector2(0f, 3f),
+                ropeLength: 3f,
+                startAngleDeg: 30f,
+                landingImpulseScale: 1f,
+                riderPosAngAccelScale: 0.1f,
+                damping: 0.02f);
+
+            // Pendulum 2: high impulse, low torque — emphasize landing inertia
+            CreatePendulum("Pendulum_HighImpulse", root.transform,
+                new Vector3(baseX, baseY + 2f, 0f),
+                localPivot: new Vector2(0f, 3f),
+                ropeLength: 3f,
+                startAngleDeg: 0f,
+                landingImpulseScale: 2.5f,
+                riderPosAngAccelScale: 0.05f,
+                damping: 0.02f);
+
+            // Pendulum 3: low impulse, high torque — emphasize standing-weight swing
+            CreatePendulum("Pendulum_HighTorque", root.transform,
+                new Vector3(baseX + 6f, baseY + 2f, 0f),
+                localPivot: new Vector2(0f, 3f),
+                ropeLength: 3f,
+                startAngleDeg: 0f,
+                landingImpulseScale: 0.3f,
+                riderPosAngAccelScale: 0.4f,
+                damping: 0.05f);
+
+            // Pendulum 4: long rope — slow period, easier to observe physics
+            CreatePendulum("Pendulum_Long", root.transform,
+                new Vector3(baseX - 3f, baseY + 6f, 0f),
+                localPivot: new Vector2(0f, 5f),
+                ropeLength: 5f,
+                startAngleDeg: 0f,
+                landingImpulseScale: 1.5f,
+                riderPosAngAccelScale: 0.15f,
+                damping: 0.02f);
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
+                UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+
+            Selection.activeGameObject = root;
+            Debug.Log("PendulumPlatform Test setup complete!\n" +
+                "- Pendulum_Default: balanced (impulse=1.0, torque=0.1)\n" +
+                "- Pendulum_HighImpulse: landing inertia emphasized (impulse=2.5)\n" +
+                "- Pendulum_HighTorque: standing-weight emphasized (torque=0.4)\n" +
+                "- Pendulum_Long: long rope, slow period (L=5)\n" +
+                "Slingshot from LaunchPad_Left/Right onto pendulums to see impulse. Stand still to see position torque.");
+        }
+
+        static GameObject CreatePendulum(string name, Transform parent, Vector3 pos,
+            Vector2 localPivot, float ropeLength, float startAngleDeg,
+            float landingImpulseScale, float riderPosAngAccelScale, float damping)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.parent = parent;
+            go.transform.position = pos;
+            go.transform.localScale = new Vector3(3f, 0.3f, 1f);
+            go.layer = 7;
+
+            Object.DestroyImmediate(go.GetComponent<BoxCollider>());
+            var col2d = go.AddComponent<BoxCollider2D>();
+            col2d.size = Vector2.one;
+
+            var pend = go.AddComponent<PendulumPlatform>();
+            var so = new SerializedObject(pend);
+            so.FindProperty("localPivot").vector2Value = localPivot;
+            so.FindProperty("ropeLength").floatValue = ropeLength;
+            so.FindProperty("startAngleDeg").floatValue = startAngleDeg;
+            so.FindProperty("landingImpulseScale").floatValue = landingImpulseScale;
+            so.FindProperty("riderPosAngAccelScale").floatValue = riderPosAngAccelScale;
+            so.FindProperty("damping").floatValue = damping;
+            so.ApplyModifiedProperties();
+
+            go.GetComponent<MeshRenderer>().sharedMaterial =
+                MakeMaterial(new Color(0.3f, 0.6f, 0.9f));
+
+            return go;
+        }
+
+        static GameObject CreatePlatform(string name, Transform parent, Vector3 pos, Vector3 scale)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.parent = parent;
+            go.transform.position = pos;
+            go.transform.localScale = scale;
+            go.layer = 7;
+
+            Object.DestroyImmediate(go.GetComponent<BoxCollider>());
+            var col2d = go.AddComponent<BoxCollider2D>();
+            col2d.size = Vector2.one;
+
+            go.GetComponent<MeshRenderer>().sharedMaterial =
+                MakeMaterial(new Color(0.5f, 0.5f, 0.5f));
+
+            return go;
+        }
+
+        static Material MakeMaterial(Color color)
+        {
+            var mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            mat.color = color;
+            return mat;
+        }
+    }
+}

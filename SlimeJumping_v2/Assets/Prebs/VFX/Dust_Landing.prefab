@@ -21,6 +21,10 @@ PrefabInstance:
       value: 60
       objectReference: {fileID: 0}
     - target: {fileID: 6337291401475030409, guid: 6ebbfbd78e4d96545ab898e3b934ac1b, type: 3}
+      propertyPath: ShapeModule.enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6337291401475030409, guid: 6ebbfbd78e4d96545ab898e3b934ac1b, type: 3}
       propertyPath: ShapeModule.m_Position.y
       value: -0.2
       objectReference: {fileID: 0}

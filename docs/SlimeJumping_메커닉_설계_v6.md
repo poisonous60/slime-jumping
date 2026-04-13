@@ -507,6 +507,79 @@ CrumblingPlatform (부모)
 
 ---
 
+## 7-2. 회전 원형 플랫폼 (Rolling Disk Platform)
+
+슬라임의 무게(위치)로 자유 회전하는 원형 플랫폼. `TiltPlatform`과 구조는 같지만 스프링 복원과 각도 제한이 없어 360° 회전 허용 — 라이더가 한쪽에 머물면 결국 굴러 떨어짐.
+
+### 물리 모델
+
+- 상태: `currentAngle` (deg, 자유 wrap), `angularVel` (deg/s).
+- 각가속도 누적: `pendingAngAccel += -effectiveArm · mass · riderAngAccelScale`.
+  - **기준축은 world-horizontal** (`riderWorldPos.x − rb.position.x`) — 디스크 자기 회전과 무관. 중력이 world-down이라 불균형 축도 world-X.
+  - 부호: 라이더가 +X(world)면 디스크 CW(부호 -) 회전.
+  - `riderAngAccelScale`가 중력·관성모멘트 상수를 모두 흡수.
+- **Dead zone** (`deadZoneAngleDeg`, 기본 15°): 디스크 정점(world-up 기준)으로부터 ±`deadZoneAngleDeg` 이내에 라이더가 서 있으면 토크 0. 경계 밖에서 0부터 선형으로 증가(하드 컷 아님). `stickSlopeThreshold`와 유사한 정지 영역 제공.
+- `ComputeMotion`: `angAccel = pendingAngAccel − angularDamping · angularVel`, clamp `maxAngularSpeed`.
+- 복원 항 없음 — dead zone 안에서만 토크 0, 밖에서는 복원 없이 계속 회전.
+
+### 점프 이탈 시 탄젠셜 속도
+
+`PlatformCarrier.GetEffectiveVelocity`의 기존 크로스 곱 로직(선형속도 + `angularVel × arm`)으로 자동 전달. 캐리어·베이스 클래스 수정 없음.
+
+### 프리팹 구성
+
+```
+RollingDiskPlatform
+├─ RollingDiskPlatform.cs (→ Rigidbody2D Kinematic 자동 추가)
+├─ CircleCollider2D
+└─ Visual (자식, 콜라이더와 함께 회전)
+```
+
+---
+
+## 7-3. 매달린 플랫폼 (Pendulum with Landing Inertia)
+
+줄 기반 진자 위에 얹힌 판자 플랫폼. 슬라임이 착지하는 순간의 수평 속도와 서 있는 위치가 진자 스윙에 영향을 준다.
+
+### 물리 모델
+
+- 상태: `angle` (rad), `angularVel` (rad/s), `worldPivot` (고정).
+- 진자 방정식: `α = −(g/L)·sin(θ) − c·ω + pendingRiderAngAccel`.
+- 출력: `pos = worldPivot + (sin(θ)·L, −cos(θ)·L)`, `rot = θ · Rad2Deg · swayRatio + currentTilt`.
+
+### 라이더 영향 — 세 층
+
+**(a) 착지 임펄스 (한 번, 줄 스윙에 작용)**
+- Attach 순간(=`ApplyRiderInfluence` 첫 호출)에만 `angularVel += riderVelocity.x / L · landingImpulseScale`.
+- `riderAttached` 플래그로 제어, `RemoveRider`에서 리셋.
+- 전제: `SlimeController`가 같은 `surfaceCollider`에 대해 `Attach` 중복을 방지(SlimeController.cs:319의 `surfaceCollider != prevSurfaceCollider` 가드).
+
+**(b) 위치 기반 연속 토크 (줄 스윙에 작용)**
+- 매 프레임 `pendingRiderAngAccel += −gravity · mass · localX · riderPosAngAccelScale`.
+- `ComputeMotion`에서 진자 방정식에 합산 후 0으로 리셋.
+- (a)와 (b)는 방향이 반대 — (a) 운동량 전달은 라이더 진행방향, (b) 중력 토크는 반대방향. 물리적으로 정상.
+
+**(c) 판자 flex (스프링-댐퍼, 줄 스윙과 독립)**
+- 매 프레임 `targetTilt = −clamp(localX/halfWidth) · maxTiltAngle · mass` 설정.
+- `ComputeMotion`에서 스프링-댐퍼(`tiltStiffness`, `tiltDamping`)로 `currentTilt`가 `targetTilt`를 따라감.
+- 출력 회전에 **가산** (`+ currentTilt`) — 줄은 그대로 스윙하되 판자 자체가 라이더 쪽으로 기우는 즉각적 반응.
+
+### swayRatio — 판자/줄 커플링 계수
+
+- 출력 수식: `rotDeg = angle·Rad2Deg · swayRatio + currentTilt`.
+- `swayRatio = 1.0` (기본): 판자가 줄과 같은 각도로 기울어짐 (실제 진자).
+- `swayRatio = 0.3`: 줄이 45° 스윙해도 판자는 13.5°만 — 그네 좌석처럼 상대적으로 수평 유지.
+- `swayRatio = 0.0`: 판자는 줄 스윙과 무관하게 수평 고정 (단 `currentTilt`는 별개로 계속 작동).
+- `currentTilt`는 swayRatio 영향을 받지 않음 — 두 효과는 독립.
+
+### 한계
+
+- 단일 라이더 가정 (동시 착지 시 첫 번째만 임펄스 발동).
+- World-down gravity 가정 — `GravityField` 구역 내 배치 비추천.
+- 부호는 플레이테스트에서 확정 — 의도와 반대면 `landingImpulseScale` 또는 `riderPosAngAccelScale`의 부호 반전.
+
+---
+
 ## 8. 튜닝 파라미터
 
 ### Surface Movement
