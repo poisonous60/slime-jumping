@@ -57,7 +57,7 @@ namespace SlimeJumping.Platforms
             halfWidth = box != null ? box.size.x * box.transform.lossyScale.x * 0.5f : 1f;
         }
 
-        public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity)
+        public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity, bool isCharging)
         {
             if (!riderAttached)
             {

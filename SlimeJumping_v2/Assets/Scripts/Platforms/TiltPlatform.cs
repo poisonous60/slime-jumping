@@ -32,7 +32,7 @@ namespace SlimeJumping.Platforms
             halfWidth = box.size.x * box.transform.lossyScale.x * 0.5f;
         }
 
-        public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity)
+        public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity, bool isCharging)
         {
             float localX = transform.InverseTransformPoint(riderWorldPos).x;
             float ratio = Mathf.Clamp(localX / halfWidth, -1f, 1f);

@@ -44,7 +44,7 @@ namespace SlimeJumping.Platforms
 
         protected abstract (Vector2 position, float rotation) ComputeMotion(float dt);
 
-        public virtual void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity) { }
+        public virtual void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity, bool isCharging) { }
         public virtual void RemoveRider() { }
     }
 }

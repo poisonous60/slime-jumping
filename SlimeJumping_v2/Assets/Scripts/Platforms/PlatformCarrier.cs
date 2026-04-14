@@ -4,6 +4,7 @@ using SlimeJumping.Controller;
 namespace SlimeJumping.Platforms
 {
     [RequireComponent(typeof(Rigidbody2D))]
+    [DefaultExecutionOrder(-200)]
     public class PlatformCarrier : MonoBehaviour
     {
         Rigidbody2D rb;
@@ -31,7 +32,7 @@ namespace SlimeJumping.Platforms
                 : null;
 
             if (currentPlatform != null)
-                currentPlatform.ApplyRiderInfluence(rb.position, slimeMass, RiderVelocity);
+                currentPlatform.ApplyRiderInfluence(rb.position, slimeMass, RiderVelocity, RiderIsCharging);
         }
 
         public void Detach()
@@ -43,8 +44,10 @@ namespace SlimeJumping.Platforms
         void FixedUpdate()
         {
             if (currentPlatform == null) return;
-            currentPlatform.ApplyRiderInfluence(rb.position, slimeMass, RiderVelocity);
+            currentPlatform.ApplyRiderInfluence(rb.position, slimeMass, RiderVelocity, RiderIsCharging);
         }
+
+        bool RiderIsCharging => slime != null && slime.IsCharging;
 
         /// <summary>
         /// Platform velocity including rotational tangential contribution.

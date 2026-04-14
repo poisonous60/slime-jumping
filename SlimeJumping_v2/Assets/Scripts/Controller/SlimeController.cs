@@ -168,6 +168,7 @@ namespace SlimeJumping.Controller
         private float stunTimer;
         private DamageType lastDamageType;
         public bool IsStunned => currentState == SlimeState.Stunned;
+        public bool IsCharging => currentState == SlimeState.Charging;
         public float StunTimer => stunTimer;
         public DamageType LastDamageType => lastDamageType;
 

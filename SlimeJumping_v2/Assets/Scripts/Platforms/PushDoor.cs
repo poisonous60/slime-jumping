@@ -59,7 +59,7 @@ namespace SlimeJumping.Platforms
         }
 
         // Mass-independent push by design: any slime pushes equally
-        public override void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity)
+        public override void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity, bool isCharging)
         {
             Vector2 toRider = riderWorldPos - rb.position;
             float side = Mathf.Sign(Vector2.Dot(toRider, cachedRight));

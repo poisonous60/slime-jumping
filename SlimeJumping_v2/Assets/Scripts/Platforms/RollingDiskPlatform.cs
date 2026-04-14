@@ -30,7 +30,7 @@ namespace SlimeJumping.Platforms
             diskRadius = col.radius * maxScale;
         }
 
-        public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity)
+        public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity, bool isCharging)
         {
             // World-horizontal offset — gravity (world-down) creates the imbalance,
             // so the torque arm is measured in world X, not disk-local X.

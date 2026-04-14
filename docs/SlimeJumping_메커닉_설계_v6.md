@@ -580,6 +580,65 @@ RollingDiskPlatform
 
 ---
 
+## 7-4. 탄력 나뭇가지 (Springy Branch)
+
+한쪽 끝이 고정된 가지. 라이더가 올라타거나 슬램 착지하면 반대 끝이 휨 → 스프링 복원으로 진동. 발사 타이밍에 따라 `AngularVelocity × arm` 이 `SlimeController.Launch` 에 자동 합산되어 점프 높이가 증폭됨 (타이밍이 차지량과 별개의 스킬 축).
+
+### 물리 모델
+
+- 상태: `currentAngle` (쉬는 각도 기준 편차, deg), `angularVel` (deg/s), `pivotWorldPos` (Awake 캡처, 고정), `baseRotation` (Awake 에서 `rb.rotation` 캡처 → 피벗의 초기 회전이 쉬는 방향).
+- 각 스프링-댐퍼: `α = (−k·θ − c·ω + pendingRiderTorque) / I_total`.
+- 디자이너는 raw `k, c` 대신 `naturalFreqHz`, `dampingRatio` 로 조절 → 내부에서 `k = ω² · I_total`, `c = 2ζω · I_total` 도출.
+- `I_total = I_branch + m_rider · arm²` (라이더가 있을 때 관성모멘트 증가 → 주파수 유지).
+- 출력: `(pivotWorldPos, baseRotation + currentAngle)`. 위치는 고정, 회전만 변함 → `PlatformCarrier` 가 `AngularVelocity × arm` 만 정확히 전달 (이중 계산 방지).
+- 가지 방향은 씬에서 BranchPivot 오브젝트를 직접 회전해 설정 (별도 `restAngleDeg` 파라미터 없음 — 중복 제거).
+
+### 에너지 유입 — Δp 기반 통합 펌핑
+
+슬램 착지와 몸 흔들기를 하나의 물리 경로로 처리:
+- 매 틱 `dv = riderVelocity - previousRiderVel` (첫 접촉 시 `dv = riderVelocity` 로 슬램 임펄스).
+- `angularImpulse = (r × dv · mass) / I_total · riderPumpGain` (2D cross product, 각도 무관 정확).
+- 차지 중에는 `riderPumpGain × chargePumpScale` 로 별도 배율.
+- 재착지 펌핑 방지 가드: `slamReattachLockout` + `slamMinDownSpeed`.
+- 착지 후 `previousRiderVel = 0` 으로 초기화 (SlimeController 가 landing 시 `velocity = 0` 으로 리셋하는 비연속 변화에 의한 가짜 반대 임펄스 방지).
+
+### 에너지 배출 — 독립 감쇠
+
+- 스프링 감쇠(`dampingRatio`) 와 별개로 `angularVel *= exp(-decayRate · dt)` 추가.
+- `riderDecayRate` (라이더 있을 때) vs `passiveDecayRate` (없을 때) 분리 → "라이더 있으면 덜 튄다" vs "떠나면 확 죽는다" 등 독립 튜닝.
+
+### 하드 캡
+
+- `maxTipSpeed` — `|angularVel| · branchLength` 상한. 런치 보너스 절대 천장을 m/s 단위로 지정. 펌핑이 아무리 쌓여도 이 이상은 안 나옴.
+
+### 발사 시 에너지 합산
+
+[SlimeController.Launch.cs:80-95](../SlimeJumping_v2/Assets/Scripts/Controller/SlimeController.Launch.cs#L80-L95):
+```
+velocity = chargeDir × power                       // 차지 파워 (에너지 전환 보너스 포함)
+velocity += carrier.GetEffectiveVelocity() × carrierFriction   // 가지 팁 속도
+```
+고공 낙하 → 에너지 전환으로 확장된 차지 반경 + 슬램으로 휜 가지의 업스윙 피크 타이밍 = 최강 런치 벡터. 단, 가지 기여분은 벡터 합산이라 발사 방향과 팁 속도 방향이 일치할 때만 완전 합산 (기본적으로 수직 점프 퍼즐).
+
+### 오브젝트 계층 (중요)
+
+```
+BranchPivot   (월드 고정 위치, 회전만 함. Rigidbody2D + SpringyBranchPlatform + SpringyBranchVisual)
+  └─ BranchBody   (+halfLength 오프셋 자식, BoxCollider2D + 비주얼 메시)
+  └─ Bone_0..N    (비주얼 휨 전용 본 체인, BranchPivot 직접 자식 — 비균일 스케일 상속 방지)
+```
+
+피벗이 원호를 그리면 `motor.Velocity + AngularVelocity × arm` 이 이중 계산됨. 피벗은 제자리에서 회전만.
+
+### 한계
+
+- 단일 라이더 가정.
+- `pivotWorldPos` 는 `Awake` 에서 캡처 — 런타임 이동 불가.
+- `branchLength` 는 런타임 변경 시 물리는 반영되지만 콜라이더/본 위치는 setup 시점에 박힘 → 런타임 변경 비추.
+- `chargePumpScale` 은 실효성 낮음 — SlimeController 가 Charging 상태에서 `velocity ≈ 0` 으로 유지해 Δp 가 거의 0. 향후 차지 중 자유 이동 메커닉이 추가되면 활성화됨.
+
+---
+
 ## 8. 튜닝 파라미터
 
 ### Surface Movement
