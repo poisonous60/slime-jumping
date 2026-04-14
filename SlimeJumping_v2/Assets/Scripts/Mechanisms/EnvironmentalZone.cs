@@ -12,7 +12,7 @@ namespace SlimeJumping.Mechanisms
     public abstract class EnvironmentalZone : MonoBehaviour
     {
         protected SlimeController trackedSlime;
-        private int overlappingColliderCount;
+        protected int overlappingColliderCount;
 
         protected virtual void Reset()
         {
@@ -52,5 +52,18 @@ namespace SlimeJumping.Mechanisms
         protected virtual void OnSlimeEnter(SlimeController slime) { }
         protected virtual void OnSlimeExit(SlimeController slime) { }
         protected abstract void ApplyEffect(SlimeController slime, float dt);
+
+        // Disabling/destroying the zone mid-overlap wouldn't fire OnTriggerExit2D,
+        // leaving Push/Pop counters (blockAttach, inFluid, ...) stranded on the slime.
+        // Treat disable as exit so the slime's fluid-state counters stay balanced.
+        protected virtual void OnDisable()
+        {
+            if (trackedSlime != null)
+            {
+                OnSlimeExit(trackedSlime);
+                trackedSlime = null;
+            }
+            overlappingColliderCount = 0;
+        }
     }
 }

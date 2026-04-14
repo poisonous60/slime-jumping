@@ -43,6 +43,7 @@ namespace SlimeJumping.Mechanisms
             slime.MultiplyVelocity(entryMultiplier);
             if (blockAttach)
                 slime.PushBlockAttach();
+            slime.PushInFluid();
         }
 
         protected override void OnSlimeExit(SlimeController slime)
@@ -50,6 +51,7 @@ namespace SlimeJumping.Mechanisms
             slime.MultiplyVelocity(exitMultiplier);
             if (blockAttach)
                 slime.PopBlockAttach();
+            slime.PopInFluid();
         }
 
         protected override void ApplyEffect(SlimeController slime, float dt)

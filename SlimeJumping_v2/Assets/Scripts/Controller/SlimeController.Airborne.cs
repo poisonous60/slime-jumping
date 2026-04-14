@@ -14,7 +14,11 @@ namespace SlimeJumping.Controller
             if (attachLockoutTimer > 0f)
                 attachLockoutTimer -= dt;
 
-            bool airControlActive = Vector2.Dot(velocity, gravityUp) <= settings.apexThreshold;
+            // Apex threshold locks air control while rising hard. In a fluid medium
+            // (water etc.) the upward velocity comes from buoyancy, not a launch —
+            // the player should still be able to steer. Bypass the apex gate while submerged.
+            bool airControlActive = InFluid
+                || Vector2.Dot(velocity, gravityUp) <= settings.apexThreshold;
 
             // Gravity
             float gravityScale = 1f;

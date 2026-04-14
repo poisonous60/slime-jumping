@@ -189,6 +189,14 @@ namespace SlimeJumping.Controller
         public void PushBlockAttach() { blockAttachCount++; }
         public void PopBlockAttach() { blockAttachCount = Mathf.Max(0, blockAttachCount - 1); }
 
+        // Set by fluid zones (water, future honey/viscous fluids) where the slime is
+        // suspended in a medium. Grants unconditional air control — apex-threshold lockout
+        // doesn't apply because vertical motion is driven by buoyancy, not a launch.
+        private int inFluidCount;
+        public bool InFluid => inFluidCount > 0;
+        public void PushInFluid() { inFluidCount++; }
+        public void PopInFluid() { inFluidCount = Mathf.Max(0, inFluidCount - 1); }
+
         private SpriteRenderer spriteRenderer;
 
         private SurfaceProbe surfaceProbe;
@@ -591,6 +599,7 @@ namespace SlimeJumping.Controller
             wasStuck = false;
             preserveLandingVelocity = false;
             blockAttachCount = 0;
+            inFluidCount = 0;
 
             // Enter Stunned
             stunTimer = effect.stunDuration;
@@ -657,6 +666,7 @@ namespace SlimeJumping.Controller
             ClearPlatformEffect();
             surfaceMod = SurfaceModifiers.Default;
             blockAttachCount = 0;
+            inFluidCount = 0;
             stunTimer = 0f;
 
             // Unity doesn't fire OnTriggerExit2D after override — clear stale candidates
