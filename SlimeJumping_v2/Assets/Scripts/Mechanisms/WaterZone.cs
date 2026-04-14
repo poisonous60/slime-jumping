@@ -38,11 +38,28 @@ namespace SlimeJumping.Mechanisms
         [Header("Visual")]
         [SerializeField] private Color waterColor = new Color(0.2f, 0.5f, 1f, 0.25f);
 
+        [Header("Splash VFX")]
+        [SerializeField] private GameObject enterSplashPrefab;
+        [SerializeField] private GameObject exitSplashPrefab;
+        [Tooltip("Y offset above the water surface where splash spawns (prevents half-clipping).")]
+        [SerializeField] private float splashSurfaceOffset = 0.15f;
+        [Tooltip("Safety auto-destroy for splash instances in case ParticleSystem stopAction fails.")]
+        [SerializeField] private float splashFallbackLifetime = 3f;
+        [Tooltip("Below this speed, splash uses identity rotation (prevents jitter at near-zero velocity).")]
+        [SerializeField] private float minSplashSpeed = 0.5f;
+        [Tooltip("Exit splash is skipped when slime's Y is farther than this from the water surface (e.g., side exits).")]
+        [SerializeField] private float exitSplashYTolerance = 0.3f;
+        [Tooltip("Z-axis rotation offset to match splash prefab's default emission axis. +Y axis prefab = -90, +X = 0, -Y = 90.")]
+        [SerializeField] private float splashForwardAxisZDeg = -90f;
+
         protected override void OnSlimeEnter(SlimeController slime)
         {
             slime.MultiplyVelocity(entryMultiplier);
             if (blockAttach)
                 slime.PushBlockAttach();
+
+            Vector3 point = GetSurfaceSpawnPoint(slime.Position.x);
+            SpawnSplash(enterSplashPrefab, point, slime.Velocity, reverseDir: true);
         }
 
         protected override void OnSlimeExit(SlimeController slime)
@@ -50,6 +67,60 @@ namespace SlimeJumping.Mechanisms
             slime.MultiplyVelocity(exitMultiplier);
             if (blockAttach)
                 slime.PopBlockAttach();
+
+            float surfaceY = GetSurfaceY();
+            if (Mathf.Abs(slime.Position.y - surfaceY) > exitSplashYTolerance)
+                return;
+
+            Vector3 point = GetSurfaceSpawnPoint(slime.Position.x);
+            SpawnSplash(exitSplashPrefab, point, slime.Velocity, reverseDir: false);
+        }
+
+        // --- Splash helpers ---
+
+        private float GetSurfaceY()
+        {
+            var col = GetComponent<Collider2D>();
+            if (col is BoxCollider2D box)
+            {
+                Vector3 center = transform.TransformPoint(box.offset);
+                float halfH = box.size.y * transform.lossyScale.y * 0.5f;
+                return center.y + halfH;
+            }
+            return col != null ? col.bounds.max.y : transform.position.y;
+        }
+
+        private Vector3 GetSurfaceSpawnPoint(float xWorld)
+        {
+            return new Vector3(xWorld, GetSurfaceY() + splashSurfaceOffset, transform.position.z);
+        }
+
+        private void SpawnSplash(GameObject prefab, Vector3 position, Vector2 dir2D, bool reverseDir)
+        {
+            if (prefab == null) return;
+
+            Quaternion rot;
+            if (dir2D.sqrMagnitude < minSplashSpeed * minSplashSpeed)
+            {
+                rot = Quaternion.identity;
+            }
+            else
+            {
+                Vector2 d = reverseDir ? -dir2D.normalized : dir2D.normalized;
+                float zDeg = Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg + splashForwardAxisZDeg;
+                rot = Quaternion.Euler(0f, 0f, zDeg);
+            }
+
+            GameObject instance = Instantiate(prefab, position, rot);
+
+            var ps = instance.GetComponentInChildren<ParticleSystem>();
+            if (ps != null)
+            {
+                var main = ps.main;
+                main.stopAction = ParticleSystemStopAction.Destroy;
+            }
+
+            Destroy(instance, splashFallbackLifetime);
         }
 
         protected override void ApplyEffect(SlimeController slime, float dt)

@@ -1025,7 +1025,7 @@ EnvironmentalZone 구현. 진입/탈출 속도 배율, 드래그(곱셈), 부력
 
 `InteractableBase` 상속, W 입력으로 발동. `InteractionDetector`가 broad-phase + narrow-phase(slime body overlap) 조합으로 후보 선택. `ReleaseOverride.Rescan`으로 override 해제 후 동일 trigger 재등록.
 
-- `SitPoseInteractable` (IExternalController) — 침대/벤치/신사/화톳불 옆자리
+- `SitPoseInteractable` (IExternalController) — 침대/벤치/신사/화톳불 옆자리. 물리 동결 + anchor 텔레포트만 담당. 앉기 애니메이션은 **슬라임에 정적 부착된 `SitPoseAnimator`** 컴포넌트가 구동(코드 기반, 외부 튠 라이브러리 없음): 4단계 상태머신(`SittingDown` OutBack squash → `Idle` Spring-Damper breathing → `GettingUp` anticipation+OutElastic settle → `Released`). 가구별 튜닝은 `SitPoseProfile` ScriptableObject. 비주얼 쓰기는 `SlimeVisual.SetExternalDeform(scale, asymmetry, chargeDip)` — `IsExternallyAnimated` 게이트 준수, MPB 경유로 SRP Batcher 호환 유지. 일어나기 완료는 `SitPoseAnimator.OnFullyReleased` 이벤트로 통지되어 Interactable이 그 시점에 `ReleaseOverride` 호출(get-up 중 물리 동결 유지).
 - `MediaInteractable_TV` — 화면 머티리얼 + 오디오 토글
 - `MediaInteractable_Phonograph` — 트랙 순환 + 디스크 축 선택 회전
 - `ApplianceInteractable_Washing` — 토글 + 시각 루트 리사주 진동 (콜라이더 분리 원칙 준수)

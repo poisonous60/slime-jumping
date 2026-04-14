@@ -58,7 +58,7 @@ public class SlimeVisual : MonoBehaviour
     private float smoothedSquashStrength;
     private float squashStrengthVel;
 
-    // External animation gate — when true, skip all Body deformation each frame.
+    // External animation gate — when true, body is externally driven; face keeps its own pipeline.
     // Used by IExternalController implementers (sit-pose, firework recoil, pipe transit, etc.).
     private bool isExternallyAnimated;
     public bool IsExternallyAnimated
@@ -88,7 +88,15 @@ public class SlimeVisual : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (isExternallyAnimated) return;
+        if (isExternallyAnimated)
+        {
+            // External animator drives body (scale/position/shader). Face animation
+            // (drift + blink) keeps running so the slime feels alive while sitting.
+            CacheVelocity();
+            UpdateFaceOffset();
+            UpdateBlink();
+            return;
+        }
 
         CacheVelocity();
         UpdateDeformAxis();
@@ -183,6 +191,39 @@ public class SlimeVisual : MonoBehaviour
         UpdateBlink();
 
         prevState = slimeController.CurrentState;
+    }
+
+    // Body sprite's native height in local units. Used by external animators to compute
+    // pivot-compensation offsets (sprite pivot is centered, so pure scale lifts/drops both edges).
+    public float BodyNativeHeight
+    {
+        get
+        {
+            if (bodyRenderer == null) bodyRenderer = body != null ? body.GetComponent<SpriteRenderer>() : null;
+            if (bodyRenderer == null || bodyRenderer.sprite == null) return 1f;
+            return bodyRenderer.sprite.bounds.size.y;
+        }
+    }
+
+    // Called by external animators (e.g. SitPoseAnimator) while IsExternallyAnimated is true.
+    // Silently ignored when the gate is off, so runaway calls can't corrupt the normal pipeline.
+    public void SetExternalDeform(Vector3 localScale, Vector3 localPosition, float asymmetry, float chargeDip)
+    {
+        if (!isExternallyAnimated) return;
+        if (body != null)
+        {
+            body.localScale = localScale;
+            body.localPosition = localPosition;
+        }
+        // Face position is left to UpdateFaceOffset (still running under the external gate).
+        if (bodyRenderer != null && mpb != null)
+        {
+            bodyRenderer.GetPropertyBlock(mpb);
+            mpb.SetFloat(AsymmetryID, asymmetry);
+            mpb.SetFloat(ChargeDipID, chargeDip);
+            mpb.SetFloat(DipCenterUID, 0f);
+            bodyRenderer.SetPropertyBlock(mpb);
+        }
     }
 
     private void ResetDeformationState()
