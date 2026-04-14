@@ -30,6 +30,8 @@ Don't use Comment when using `exec` commands. It returns error.
 
 If a newly-written `.cs` file fails to compile with "type could not be found" AND `CompilationPipeline.GetAssemblies()` doesn't list it under Assembly-CSharp, Unity's AssetDatabase has a stuck import entry — `refresh_unity` / `AssetDatabase.Refresh` / `ImportAsset(ForceUpdate)` won't fix it. Delete both `.cs` and `.cs.meta`, refresh, then rewrite the file to force a fresh import.
 
+**NEVER block Unity's main thread inside `unity-cli exec`.** Code passed to `exec` runs on the Unity main thread, so `Thread.Sleep`, spin-waits, or `while (EditorApplication.isCompiling) { ... }` loops will freeze Unity — the editor can't make compile/asset-import progress while your loop holds the thread, HTTP responses stop, and the only recovery is force-killing Unity (losing unsaved scene/editor state). If you need to wait for compilation or asset import, send a fire-and-forget `refresh_unity` (or the trigger call) and return immediately; then issue a **separate** `exec` later to check `EditorApplication.isCompiling` / read console logs. One exec call = one non-blocking snapshot.
+
 
 ### Coding Convention
 - Use `rb.position` instead of `transform.position`

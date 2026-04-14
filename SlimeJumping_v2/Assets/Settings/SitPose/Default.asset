@@ -15,14 +15,16 @@ MonoBehaviour:
   sitScale: {x: 1.05, y: 0.99, z: 1}
   sitDuration: 0.4
   sitOvershoot: 5
-  sitAsymmetry: 0.15
-  sitChargeDip: -0.3
-  breathAmplitude: 0
-  breathFrequency: 0.4
+  sitAsymmetry: -0.02
+  sitChargeDip: -0.1
+  breathFrequency: 0.2
   amplitudeVariation: 1
+  breathAmplitude: 0
   verticalAnchor: 1
-  anticipationScale: {x: 0.85, y: 1.25, z: 0.85}
-  anticipationDuration: 0.12
-  settleDuration: 0.35
+  bobAmplitude: 0.1
+  topSwellAmplitude: 0
+  anticipationScale: {x: 0.85, y: 1.2, z: 0.85}
+  anticipationDuration: 0.2
+  settleDuration: 0.5
   settleElasticity: 1.1
-  settlePeriod: 0.35
+  settlePeriod: 0.4

@@ -14,6 +14,9 @@ namespace SlimeJumping.Controller
         /// </summary>
         private void FinalizeAirborneExit()
         {
+            if (currentRope != null)
+                currentRope.NotifyLaunchRebound(rb.position);
+
             ClearPlatformEffect();
             surfaceMod = SurfaceModifiers.Default;
             launchSpeed = velocity.magnitude;

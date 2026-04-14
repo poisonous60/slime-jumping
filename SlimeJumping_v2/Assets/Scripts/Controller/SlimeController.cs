@@ -178,6 +178,9 @@ namespace SlimeJumping.Controller
         // --- Platform effect ---
         private IPlatformEffect activePlatformEffect;
 
+        // --- Rope coupling (#4) ---
+        private Rope currentRope;
+
         // --- Environmental zone flags ---
         // Set by zones (e.g. WaterZone) to block landing while inside.
         // Counter-based: multiple overlapping zones stack correctly.
@@ -322,6 +325,14 @@ namespace SlimeJumping.Controller
                 if (carrier != null) carrier.Attach(surfaceCollider);
                 UpdateSurfaceModifiers(surfaceCollider);
             }
+
+            // Rope reference tracks the touched surface regardless of state, so the
+            // Airborne→Attached landing frame (carrier.Attach happens inside the
+            // Airborne handler, not here) correctly registers the rope too.
+            // ReportRiderContact itself is gated on state==Attached.
+            if (surfaceCollider != prevSurfaceCollider)
+                UpdateRopeReference(surfaceCollider);
+
             prevSurfaceCollider = surfaceCollider;
 
             switch (currentState)
@@ -339,6 +350,13 @@ namespace SlimeJumping.Controller
                     FixedUpdateStunned(dt);
                     break;
             }
+
+            // Rope rider contact — only while attached and on a rope surface.
+            // Fires after state dispatch so position/velocity are final for this frame.
+            // Rope consumes the buffer on its next FixedUpdate (execution order -100),
+            // giving the designed 1-frame lag.
+            if (currentRope != null && currentState == SlimeState.Attached)
+                currentRope.ReportRiderContact(surfaceCollider, rb.position, rb.mass, velocity);
 
             // External forces (wind, conveyor, etc.)
             if (externalDeltaV.sqrMagnitude > 0.0001f)
@@ -362,6 +380,27 @@ namespace SlimeJumping.Controller
         {
             var tag = col != null ? col.GetComponentInParent<SurfaceTag>() : null;
             surfaceMod = tag != null ? tag.GetModifiers() : SurfaceModifiers.Default;
+        }
+
+        // Rope reference cache. Called on surface change; handles freeze handover when
+        // the slime migrates between ropes mid-charge.
+        private void UpdateRopeReference(Collider2D col)
+        {
+            Rope newRope = col != null ? col.GetComponentInParent<Rope>() : null;
+            if (newRope == currentRope) return;
+
+            // Unfreeze the old rope if we're leaving it mid-charge.
+            if (currentRope != null && currentState == SlimeState.Charging)
+                currentRope.SetFrozen(false);
+
+            currentRope = newRope;
+
+            if (currentRope != null)
+            {
+                currentRope.NotifyFirstAttach(rb.position);
+                if (currentState == SlimeState.Charging)
+                    currentRope.SetFrozen(true);
+            }
         }
 
         // --- Drag Zone API (called by DragZone.cs) ---
@@ -430,6 +469,15 @@ namespace SlimeJumping.Controller
         private void ChangeState(SlimeState newState, bool intentional = false)
         {
             if (currentState == newState) return;
+
+            // Rope freeze transitions: hold rope sag during Charging, release on exit.
+            if (currentRope != null)
+            {
+                if (currentState == SlimeState.Charging && newState != SlimeState.Charging)
+                    currentRope.SetFrozen(false);
+                else if (currentState != SlimeState.Charging && newState == SlimeState.Charging)
+                    currentRope.SetFrozen(true);
+            }
 
             if (intentional)
                 attachToggleCount = 0;
