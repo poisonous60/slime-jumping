@@ -1011,6 +1011,17 @@ IPlatformEffect 구현. `OnSlimeStay`에서 `AddExternalVelocity`. 터미널 스
 EnvironmentalZone 구현. 진입/탈출 속도 배율, 드래그(곱셈), 부력(가산), 낙하 캡, attach 차단.
 `blockAttach` 카운터 기반 — Airborne 착지 차단 + Attached/Charging에서 즉시 분리. Air control은 유지 (벽에서 A/D로 이탈 가능).
 
+### WaterZone_v2 (동적 폴리곤 물)
+
+같은 EnvironmentalZone 계약 + 외곽선이 파도치는 폐곡선 폴리곤. 파일 분리: `WaterZone_v2.cs`(physics), `.Shape.cs`, `.Simulation.cs`, `.Mesh.cs`, `.Interaction.cs`.
+
+- **파도 물리**: 각 outline 포인트의 `displacement`/`velocity`를 Hooke 스프링+댐퍼+이웃 전파로 루프 전체 파동. 슬라임 진입 시 속도를 법선으로 투영해 가장 가까운 점에 impulse, `spreadNeighbors`만큼 falloff 전파.
+- **Visual**: Fan 메쉬(중심+Catmull-Rom perimeter). vertex color는 중심 deep / 외곽 shallow (A=0→1 그라디언트). 전용 HLSL 셰이더 `Assets/Art/Shader/Water_v2.shader` (URP Universal2D 패스):
+  - Depth tint: vertex color 선형 보간.
+  - Scrolling noise + sparkle: 2장 noise를 world-space UV로 반대 방향 스크롤, `step(_SparkleThreshold, nA*nB)`로 반짝이.
+  - Rim glow: `pow(color.a, _RimPower) * _RimColor`.
+- 머티리얼: `Mat_Water_v2.mat` (noise = `Tex_WaveNoise.png`).
+
 ### 외부 속도 Two-Channel Model
 
 - **가산**: `AddExternalVelocity(deltaV)` — 바람, 부력, 컨베이어.

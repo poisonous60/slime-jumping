@@ -49,7 +49,10 @@ namespace SlimeJumping.Mechanisms
         [Range(0f, 0.99f)] [SerializeField] float spreadFalloff = 0.5f;
 
         [Header("Visual")]
-        [SerializeField] Color waterColor = new Color(0.2f, 0.6f, 1f, 0.6f);
+        [Tooltip("Center vertex color (deep interior). Interpolated to edgeColor toward the perimeter.")]
+        [SerializeField] Color centerColor = new Color(0.05f, 0.25f, 0.55f, 1f);
+        [Tooltip("Edge vertex color (shallow/surface). Alpha acts as rim-glow strength in the Water_v2 shader.")]
+        [SerializeField] Color edgeColor   = new Color(0.45f, 0.85f, 1.00f, 1f);
         [SerializeField] LineRenderer outlineLine;
 
         Vector2 centerLocal;

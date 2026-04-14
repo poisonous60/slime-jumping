@@ -59,7 +59,13 @@ namespace SlimeJumping.Mechanisms
                 meshTris[i * 3 + 1] = ((i + 1) % perim) + 1;
                 meshTris[i * 3 + 2] = i + 1;
             }
-            for (int i = 0; i < perim + 1; i++) meshColors[i] = waterColor;
+            // meshColors[0] = center (deep, A=0 = no rim).
+            // meshColors[1..perim] = edge (shallow, A=1 = full rim).
+            // The Water_v2 shader uses color.rgb as depth tint and color.a as rim factor;
+            // fan-mesh interpolation produces a center→edge gradient for free.
+            meshColors[0] = new Color(centerColor.r, centerColor.g, centerColor.b, 0f);
+            for (int i = 1; i < perim + 1; i++)
+                meshColors[i] = new Color(edgeColor.r, edgeColor.g, edgeColor.b, 1f);
         }
 
         [ContextMenu("Rebuild Mesh")]
