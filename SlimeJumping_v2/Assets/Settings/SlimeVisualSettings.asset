@@ -17,7 +17,7 @@ MonoBehaviour:
   deformAxisSlerpSpeed: 15
   deformScaleMin: 0.4
   deformScaleMax: 2
-  surfaceSquashIntensity: 0.01
+  surfaceSquashIntensity: 0.06
   surfaceSquashAsymmetry: 0.1
   gravitySagDistance: 1
   impactSquashIntensity: 0.25
@@ -125,3 +125,4 @@ MonoBehaviour:
   blinkIntervalMin: 3
   blinkIntervalMax: 7
   visualClearanceSkin: 0.02
+  groundCompensationStrength: 0.5

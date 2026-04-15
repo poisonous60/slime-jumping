@@ -12,14 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 998d75af7420df24291a0b07a695ca58, type: 3}
   m_Name: Default
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Interaction.SitPoseProfile
-  sitScale: {x: 1.05, y: 0.99, z: 1}
+  sitScale: {x: 1, y: 0.9, z: 1}
   sitDuration: 0.4
   sitOvershoot: 5
   sitAsymmetry: -0.02
   sitChargeDip: -0.1
   breathFrequency: 0.2
   amplitudeVariation: 1
-  breathAmplitude: 0
+  breathAmplitude: 0.01
   verticalAnchor: 1
   bobAmplitude: 0.1
   topSwellAmplitude: 0
