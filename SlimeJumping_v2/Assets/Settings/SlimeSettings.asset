@@ -12,14 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 60f3adbcd38b21a4ca86bdc61ae75dba, type: 3}
   m_Name: SlimeSettings
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSettings
-  crawlSpeed: 3
+  crawlSpeed: 4
   crawlAcceleration: 8
   crawlDeceleration: 8
   crawlOverspeedDeceleration: 15
-  slideGravityScale: 0.4
-  slideThreshold: 3
-  slideResistance: 4
-  groundDashImpulse: 2
+  slideGravityScale: 0.45
+  slideThreshold: 2
+  slideResistance: 3.5
+  groundDashImpulse: 3
   groundDashCooldown: 0.34
   groundDashInputBuffer: 0.1
   groundDashAngleMin: 60
@@ -55,8 +55,8 @@ MonoBehaviour:
   attachToggleLockoutThreshold: 10
   attachLockoutDuration: 0.1
   initialConversionRate: 1.2
-  subsequentConversionRate: 0.9
-  notJumpConversionBonus: 1.05
+  subsequentConversionRate: 0.92
+  notJumpConversionBonus: 1.2
   aimDriftRadiusScale: 0.7
   minStickDuration: 0.1
   maxStickDuration: 0.1

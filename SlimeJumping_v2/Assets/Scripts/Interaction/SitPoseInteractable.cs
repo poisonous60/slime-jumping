@@ -18,7 +18,6 @@ namespace SlimeJumping.Interaction
         private SlimeInputReader boundReader;
         private SlimeVisual boundVisual;
         private SitPoseAnimator boundAnimator;
-        private float originalVisualZ;
 
         protected override void OnInteract(SlimeController slime)
         {
@@ -48,21 +47,22 @@ namespace SlimeJumping.Interaction
             // constraint on slime, so rotation is a no-op at physics level — skip it.
             var rb = slime.GetComponent<Rigidbody2D>();
             if (rb != null) rb.position = sitAnchor.position;
-            // Move only the VISUAL child to the anchor's Z depth (not the slime root) so
-            // camera-follow on the slime transform isn't pulled along with the sit depth shift.
-            if (boundVisual != null)
-            {
-                var vt = boundVisual.transform;
-                var vp = vt.position;
-                originalVisualZ = vp.z;
-                vp.z = sitAnchor.position.z;
-                vt.position = vp;
-            }
 
             if (boundAnimator != null)
             {
                 // Gate must open BEFORE BeginSitPose so its immediate t=0 PushDeform lands.
-                if (boundVisual != null) boundVisual.IsExternallyAnimated = true;
+                // Order matters: set gate first (triggers ResetDeformationState which writes
+                // body3d.localPosition = rest), THEN ApplySitDepthShift so the Z write survives
+                // into the first SetExternalDeform call (which preserves body3d.localPosition.z).
+                if (boundVisual != null)
+                {
+                    boundVisual.IsExternallyAnimated = true;
+                    // Force world-up surface normal so the 3D shader dip faces into the seat.
+                    boundVisual.SetExternalSurfaceNormal(Vector2.up);
+                    // Depth shift covers both SlimeVisual (face sprites) and body3d (sibling
+                    // mesh) so the 3D mesh and face stay Z-aligned during the sit.
+                    boundVisual.ApplySitDepthShift(sitAnchor.position.z);
+                }
                 boundAnimator.OnFullyReleased += HandleFullyReleased;
                 boundAnimator.BeginSitPose(profile);
             }
@@ -78,15 +78,10 @@ namespace SlimeJumping.Interaction
         {
             if (boundReader != null) boundReader.OnVerticalUpPressed -= HandleVerticalUpPressed;
             if (boundAnimator != null) boundAnimator.OnFullyReleased -= HandleFullyReleased;
-            if (boundVisual != null) boundVisual.IsExternallyAnimated = false;
-
-            // Restore visual Z (only the visual child was shifted on take).
             if (boundVisual != null)
             {
-                var vt = boundVisual.transform;
-                var vp = vt.position;
-                vp.z = originalVisualZ;
-                vt.position = vp;
+                boundVisual.IsExternallyAnimated = false;
+                boundVisual.RestoreSitDepthShift();
             }
 
             boundSlime = null;

@@ -95,6 +95,19 @@ public class SlimeVisual : MonoBehaviour
     // its rest scale has always been (1,1,1) by construction.
     private Vector3 body3dRestScale = Vector3.one;
     private Vector3 body3dRestPosition;
+    private Quaternion body3dRestRotation = Quaternion.identity;
+    // Rest-only cached mesh height (world units) and SlimeVisual's rest lossyScale.y.
+    // BodyNativeHeight divides these to produce a SlimeVisual-local value without
+    // reading live-deformed state, avoiding a per-frame feedback loop with PushDeform.
+    private float body3dNativeHeightRest;
+    private float transformRestLossyScaleY = 1f;
+
+    // Sit-pose depth shift bookkeeping. World-space Z of SlimeVisual + body3d at
+    // shift time; restored on release. Assumes Slime root's world Z is invariant
+    // during the sit (project design: root stays at Z=0, only visual Z moves).
+    private bool sitDepthShiftActive;
+    private float sitDepthOriginalVisualZ;
+    private float sitDepthOriginalBody3dZ;
 
     // External animation gate — when true, body is externally driven; face keeps its own pipeline.
     // Used by IExternalController implementers (sit-pose, firework recoil, pipe transit, etc.).
@@ -122,6 +135,7 @@ public class SlimeVisual : MonoBehaviour
         nextBlinkTime = Time.time + Random.Range(2f, 5f);
         mpb = new MaterialPropertyBlock();
         bodyRenderer = body.GetComponent<SpriteRenderer>();
+        transformRestLossyScaleY = transform.lossyScale.y;
         // The 3D mesh now lives on a sibling subtree (Slime/SlimeVisual3d/...)
         // rather than under the 2D body. Walk that subtree to cache the
         // renderer + filter. Stays null if body3d isn't wired, in which case
@@ -132,6 +146,12 @@ public class SlimeVisual : MonoBehaviour
             bodyMeshFilter = body3d.GetComponentInChildren<MeshFilter>();
             body3dRestScale = body3d.localScale;
             body3dRestPosition = body3d.localPosition;
+            body3dRestRotation = body3d.localRotation;
+            if (bodyMeshFilter != null && bodyMeshFilter.sharedMesh != null)
+            {
+                body3dNativeHeightRest = bodyMeshFilter.sharedMesh.bounds.size.y
+                                       * bodyMeshFilter.transform.lossyScale.y;
+            }
         }
     }
 
@@ -255,8 +275,13 @@ public class SlimeVisual : MonoBehaviour
                 bulkScale.x - smoothedVelStr.x,
                 bulkScale.y - smoothedVelStr.y,
                 bulkScale.z);
-            body3d.localRotation = body.localRotation;
+            // Compose surface alignment (body.localRotation) over designer's rest
+            // rotation (body3dRestRotation). For p in mesh-local:
+            //   p_final = surfaceRot * (restRot * p_mesh) = (surfaceRot * restRot) * p_mesh.
+            // Assumes SlimeVisual.transform.localRotation == identity (C-1 tenet).
+            body3d.localRotation = body.localRotation * body3dRestRotation;
             body3d.localScale    = Vector3.Scale(body3dRestScale, bulkScale3D);
+            // Depth shift lives on world Z; bulkPosition contributes only X/Y.
             body3d.localPosition = body3dRestPosition + Vector3.Scale(transform.localScale, bulkPosition);
         }
 
@@ -339,16 +364,72 @@ public class SlimeVisual : MonoBehaviour
         prevState = slimeController.CurrentState;
     }
 
-    // Body sprite's native height in local units. Used by external animators to compute
-    // pivot-compensation offsets (sprite pivot is centered, so pure scale lifts/drops both edges).
+    // Native body height in SlimeVisual-local units. Used by external animators to
+    // compute pivot-compensation offsets for body.localPosition.y (body is a child of
+    // SlimeVisual). Rest-only values — never reads live-deformed bounds/lossyScale,
+    // which would create a feedback loop with per-frame PushDeform.
     public float BodyNativeHeight
     {
         get
         {
+            if (bodyMeshFilter != null)
+            {
+                return body3dNativeHeightRest / Mathf.Max(1e-6f, transformRestLossyScaleY);
+            }
             if (bodyRenderer == null) bodyRenderer = body != null ? body.GetComponent<SpriteRenderer>() : null;
             if (bodyRenderer == null || bodyRenderer.sprite == null) return 1f;
             return bodyRenderer.sprite.bounds.size.y;
         }
+    }
+
+    // Shifts the visual (face/eyes/mouth via SlimeVisual transform AND the sibling
+    // body3d subtree) to a target world Z, so both 2D-sorted face sprites and the
+    // 3D mesh stay depth-aligned relative to each other during a sit pose.
+    // World-space Z is used (not localPosition.z) because SetExternalDeform rewrites
+    // body3d.localPosition every frame. Assumes Slime root world Z is invariant.
+    public void ApplySitDepthShift(float worldZ)
+    {
+        if (sitDepthShiftActive) return;
+        sitDepthShiftActive = true;
+
+        Vector3 p = transform.position;
+        sitDepthOriginalVisualZ = p.z;
+        p.z = worldZ;
+        transform.position = p;
+
+        if (body3d != null)
+        {
+            Vector3 bp = body3d.position;
+            sitDepthOriginalBody3dZ = bp.z;
+            bp.z = worldZ;
+            body3d.position = bp;
+        }
+    }
+
+    public void RestoreSitDepthShift()
+    {
+        if (!sitDepthShiftActive) return;
+        sitDepthShiftActive = false;
+
+        Vector3 p = transform.position;
+        p.z = sitDepthOriginalVisualZ;
+        transform.position = p;
+
+        if (body3d != null)
+        {
+            Vector3 bp = body3d.position;
+            bp.z = sitDepthOriginalBody3dZ;
+            body3d.position = bp;
+        }
+    }
+
+    // Explicit per-feature API for external controllers that need a specific surface
+    // normal for the shader (sit pose wants world-up). Other IExternalController
+    // users (firework recoil, pipe transit) are unaffected unless they call this.
+    public void SetExternalSurfaceNormal(Vector2 normal)
+    {
+        if (normal.sqrMagnitude > 1e-6f)
+            lastSurfaceNormal = normal.normalized;
     }
 
     // Called by external animators (e.g. SitPoseAnimator) while IsExternallyAnimated is true.
@@ -363,9 +444,13 @@ public class SlimeVisual : MonoBehaviour
         }
         if (body3d != null)
         {
-            body3d.localRotation = body.localRotation;
+            // Sit pose skips surface alignment — apply rest rotation only.
+            body3d.localRotation = body3dRestRotation;
             body3d.localScale = Vector3.Scale(body3dRestScale, localScale);
-            body3d.localPosition = body3dRestPosition + Vector3.Scale(transform.localScale, localPosition);
+            // Preserve existing localPosition.z so ApplySitDepthShift's world-Z
+            // shift isn't wiped every frame. Only X/Y come from localPosition.
+            Vector3 target = body3dRestPosition + Vector3.Scale(transform.localScale, localPosition);
+            body3d.localPosition = new Vector3(target.x, target.y, body3d.localPosition.z);
         }
         // Face position is left to UpdateFaceOffset (still running under the external gate).
         if (bodyRenderer != null && mpb != null)
@@ -422,7 +507,12 @@ public class SlimeVisual : MonoBehaviour
         {
             body3d.localScale = body3dRestScale;
             body3d.localPosition = body3dRestPosition;
+            body3d.localRotation = body3dRestRotation;
         }
+        // prevGravityUp freezes during the external gate (updated only inside
+        // UpdateDeformAxis). Use the controller's live GravityUp as the fresh
+        // source of truth; normal LateUpdate overwrites this on the next frame.
+        lastSurfaceNormal = slimeController != null ? slimeController.GravityUp : Vector2.up;
 
         if (bodyRenderer != null && mpb != null)
         {
