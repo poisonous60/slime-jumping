@@ -9,6 +9,11 @@ public class SlimeVisual : MonoBehaviour
     [SerializeField] private SlimeSettings slimeSettings;
     [SerializeField] private CircleCollider2D slimeCollider;
     [SerializeField] private Transform body;
+    // Sibling root of the 3D mesh subtree. Lives at Slime/SlimeVisual3d (next
+    // to this SlimeVisual GO). Receives the same localScale/localPosition writes
+    // body does, so bulk squash/stretch propagates to the mesh. May be null
+    // during the migration window before the user wires it.
+    [SerializeField] private Transform body3d;
     [SerializeField] private Transform face;
     [SerializeField] private SpriteRenderer eyesRenderer;
     [SerializeField] private Sprite eyesOpen;
@@ -51,12 +56,29 @@ public class SlimeVisual : MonoBehaviour
 
     // Shader asymmetry
     private SpriteRenderer bodyRenderer;
+    // 3D mesh renderer mirror — dual-pushed alongside the SpriteRenderer through
+    // the migration's step-5 comparison window. After the SpriteRenderer is
+    // disabled at step 6, the dual-push collapses to the mesh path only.
+    private MeshRenderer bodyMeshRenderer;
+    private MeshFilter bodyMeshFilter;
     private MaterialPropertyBlock mpb;
     private static readonly int AsymmetryID = Shader.PropertyToID("_Asymmetry");
     private static readonly int ChargeDipID = Shader.PropertyToID("_ChargeDip");
     private static readonly int DipCenterUID = Shader.PropertyToID("_DipCenterU");
+    // _SurfaceNormalWS / _DipDirWS feed SlimeDeform.hlsl. The "WS" suffix is
+    // the contract with the HLSL signature — both vectors are world-space.
+    private static readonly int SurfaceNormalWSID = Shader.PropertyToID("_SurfaceNormalWS");
+    private static readonly int DipDirWSID = Shader.PropertyToID("_DipDirWS");
     private float smoothedSquashStrength;
     private float squashStrengthVel;
+
+    // body3d rest transform captured in Start. Per-frame deformation values from
+    // the bulk pipeline (assumed in a "1.0 = rest" convention) are multiplied
+    // onto these baselines so the user's hand-tuned SlimeVisual3d transform in
+    // the Scene survives Play. body itself doesn't need this treatment because
+    // its rest scale has always been (1,1,1) by construction.
+    private Vector3 body3dRestScale = Vector3.one;
+    private Vector3 body3dRestPosition;
 
     // External animation gate — when true, body is externally driven; face keeps its own pipeline.
     // Used by IExternalController implementers (sit-pose, firework recoil, pipe transit, etc.).
@@ -84,6 +106,17 @@ public class SlimeVisual : MonoBehaviour
         nextBlinkTime = Time.time + Random.Range(2f, 5f);
         mpb = new MaterialPropertyBlock();
         bodyRenderer = body.GetComponent<SpriteRenderer>();
+        // The 3D mesh now lives on a sibling subtree (Slime/SlimeVisual3d/...)
+        // rather than under the 2D body. Walk that subtree to cache the
+        // renderer + filter. Stays null if body3d isn't wired, in which case
+        // the mesh-side dual-push short-circuits.
+        if (body3d != null)
+        {
+            bodyMeshRenderer = body3d.GetComponentInChildren<MeshRenderer>();
+            bodyMeshFilter = body3d.GetComponentInChildren<MeshFilter>();
+            body3dRestScale = body3d.localScale;
+            body3dRestPosition = body3d.localPosition;
+        }
     }
 
     private void LateUpdate()
@@ -161,30 +194,75 @@ public class SlimeVisual : MonoBehaviour
             }
         }
 
-        body.localScale = new Vector3(appliedScale.x, appliedScale.y, 1f);
-        body.localPosition = new Vector3(appliedOffset.x, appliedOffset.y, 0f);
+        var bulkScale    = new Vector3(appliedScale.x, appliedScale.y, 1f);
+        var bulkPosition = new Vector3(appliedOffset.x, appliedOffset.y, 0f);
+        body.localScale    = bulkScale;
+        body.localPosition = bulkPosition;
+        if (body3d != null)
+        {
+            // bulkPosition is authored in body's parent-frame (SlimeVisual's
+            // local space). body3d lives directly under the Slime root, a
+            // frame scaled differently from SlimeVisual. Convert by this
+            // transform's localScale so the world-space offset matches body's.
+            // Scale already multiplies onto body3dRestScale so no conversion
+            // needed — lossyScale equivalence is preserved when rest matches.
+            // Rotation: body rotates so local Y = surface normal (UpdateDeformAxis).
+            // Mirror that so bulkScale.y compresses along surface normal on the
+            // mesh too — otherwise the squash always points along world Y and
+            // looks wrong on walls/ceilings.
+            body3d.localRotation = body.localRotation;
+            body3d.localScale    = Vector3.Scale(body3dRestScale, bulkScale);
+            body3d.localPosition = body3dRestPosition + Vector3.Scale(transform.localScale, bulkPosition);
+        }
 
-        // Shader properties
+        // Shader properties — computed once, dual-pushed below to both the
+        // SpriteRenderer (legacy 2D shader) and the MeshRenderer (new 3D
+        // shader) so the two visuals stay in lock-step during the migration's
+        // comparison window.
+        float asymmetry = -smoothedSquashStrength * settings.surfaceSquashAsymmetry;
+        float chargeDip = chargingCurve * settings.chargingDipMax;
+
+        float dipCenterU = 0f;
+        if (slimeController.CurrentState == SlimeController.SlimeState.Charging)
+        {
+            Vector2 aim = slimeController.AimDirection;
+            Vector2 tangent = new Vector2(-lastSurfaceNormal.y, lastSurfaceNormal.x);
+            float aimTangent = Vector2.Dot(aim, tangent);
+            dipCenterU = aimTangent * settings.chargingDipLateralShift;
+        }
+
         if (bodyRenderer != null)
         {
-            float asymmetry = -smoothedSquashStrength * settings.surfaceSquashAsymmetry;
-
-            float chargeDip = chargingCurve * settings.chargingDipMax;
-
-            float dipCenterU = 0f;
-            if (slimeController.CurrentState == SlimeController.SlimeState.Charging)
-            {
-                Vector2 aim = slimeController.AimDirection;
-                Vector2 tangent = new Vector2(-lastSurfaceNormal.y, lastSurfaceNormal.x);
-                float aimTangent = Vector2.Dot(aim, tangent);
-                dipCenterU = aimTangent * settings.chargingDipLateralShift;
-            }
-
             bodyRenderer.GetPropertyBlock(mpb);
             mpb.SetFloat(AsymmetryID, asymmetry);
             mpb.SetFloat(ChargeDipID, chargeDip);
             mpb.SetFloat(DipCenterUID, dipCenterU);
             bodyRenderer.SetPropertyBlock(mpb);
+        }
+
+        // Mesh dual-push: same scalars + new world-space vectors for SlimeDeform.hlsl.
+        // _DipDirWS reuses the dipCenterU scalar (= aimTangent * lateralShift)
+        // as the lateral bias along the surface tangent.
+        if (bodyMeshRenderer != null && mpb != null)
+        {
+            Vector3 surfaceNormalWS = new Vector3(lastSurfaceNormal.x, lastSurfaceNormal.y, 0f);
+            // Dip lands on the slime's outward face (TOP, away from the
+            // surface) — same convention as the 2D shader's V=top dip.
+            // Lateral term biases it along the surface tangent based on aim.
+            Vector3 dipDirWS = surfaceNormalWS;
+            if (dipCenterU != 0f)
+            {
+                Vector2 tangent = new Vector2(-lastSurfaceNormal.y, lastSurfaceNormal.x);
+                dipDirWS += new Vector3(tangent.x, tangent.y, 0f) * dipCenterU;
+            }
+            if (dipDirWS.sqrMagnitude > 1e-6f) dipDirWS.Normalize();
+
+            bodyMeshRenderer.GetPropertyBlock(mpb);
+            mpb.SetFloat(AsymmetryID, asymmetry);
+            mpb.SetFloat(ChargeDipID, chargeDip);
+            mpb.SetVector(SurfaceNormalWSID, surfaceNormalWS);
+            mpb.SetVector(DipDirWSID, dipDirWS);
+            bodyMeshRenderer.SetPropertyBlock(mpb);
         }
 
         UpdateFaceOffset();
@@ -215,6 +293,12 @@ public class SlimeVisual : MonoBehaviour
             body.localScale = localScale;
             body.localPosition = localPosition;
         }
+        if (body3d != null)
+        {
+            body3d.localRotation = body.localRotation;
+            body3d.localScale = Vector3.Scale(body3dRestScale, localScale);
+            body3d.localPosition = body3dRestPosition + Vector3.Scale(transform.localScale, localPosition);
+        }
         // Face position is left to UpdateFaceOffset (still running under the external gate).
         if (bodyRenderer != null && mpb != null)
         {
@@ -223,6 +307,23 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetFloat(ChargeDipID, chargeDip);
             mpb.SetFloat(DipCenterUID, 0f);
             bodyRenderer.SetPropertyBlock(mpb);
+        }
+        // Mesh dual-push under the external-animation gate. Surface normal
+        // tracks the most recent grounded value; dipDir defaults to the
+        // anti-normal direction (no lateral aim under sit pose / firework
+        // recoil / pipe transit).
+        if (bodyMeshRenderer != null && mpb != null)
+        {
+            Vector3 surfaceNormalWS = new Vector3(lastSurfaceNormal.x, lastSurfaceNormal.y, 0f);
+            Vector3 dipDirWS = -surfaceNormalWS;
+            if (dipDirWS.sqrMagnitude > 1e-6f) dipDirWS.Normalize();
+
+            bodyMeshRenderer.GetPropertyBlock(mpb);
+            mpb.SetFloat(AsymmetryID, asymmetry);
+            mpb.SetFloat(ChargeDipID, chargeDip);
+            mpb.SetVector(SurfaceNormalWSID, surfaceNormalWS);
+            mpb.SetVector(DipDirWSID, dipDirWS);
+            bodyMeshRenderer.SetPropertyBlock(mpb);
         }
     }
 
@@ -243,6 +344,11 @@ public class SlimeVisual : MonoBehaviour
             body.localScale = Vector3.one;
             body.localPosition = Vector3.zero;
         }
+        if (body3d != null)
+        {
+            body3d.localScale = body3dRestScale;
+            body3d.localPosition = body3dRestPosition;
+        }
 
         if (bodyRenderer != null && mpb != null)
         {
@@ -251,6 +357,15 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetFloat(ChargeDipID, 0f);
             mpb.SetFloat(DipCenterUID, 0f);
             bodyRenderer.SetPropertyBlock(mpb);
+        }
+        if (bodyMeshRenderer != null && mpb != null)
+        {
+            bodyMeshRenderer.GetPropertyBlock(mpb);
+            mpb.SetFloat(AsymmetryID, 0f);
+            mpb.SetFloat(ChargeDipID, 0f);
+            mpb.SetVector(SurfaceNormalWSID, Vector3.up);
+            mpb.SetVector(DipDirWSID, Vector3.up);
+            bodyMeshRenderer.SetPropertyBlock(mpb);
         }
     }
 
