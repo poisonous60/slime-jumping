@@ -37,6 +37,16 @@ namespace SlimeJumping.Settings
         [Min(0.1f)] public float velocityStretchCurvePower = 2f;
         [Min(0f)] public float velocityStretchCrossDamping = 0.3f;
 
+        [Header("Velocity Stretch 3D (shader vertex displacement)")]
+        [Tooltip("Below this speed (m/s), no 3D shader stretch. Used to normalize the X axis of the curve.")]
+        public float velocityStretch3DSpeedMin = 0f;
+        [Tooltip("At this speed (m/s), the curve samples x=1. Speeds beyond clamp to the curve's rightmost value.")]
+        public float velocityStretch3DSpeedMax = 15f;
+        [Tooltip("X axis: normalized speed (0 at speedMin, 1 at speedMax). Y axis: stretch amount s (typical 0..0.3). s=0 no stretch, s=0.3 = 30% elongation with √(1/(1+s)) perpendicular compression. Graph editor lets you pick any shape.")]
+        public AnimationCurve velocityStretch3DCurve = new AnimationCurve(
+            new Keyframe(0f, 0f, 0f, 0.1f),
+            new Keyframe(1f, 0.25f, 0.4f, 0f));
+
         [Header("Charging Curve")]
         public float chargingSpeedMin = 3f;
         public float chargingSpeedMax = 15f;
@@ -77,6 +87,11 @@ namespace SlimeJumping.Settings
 
         [Header("Visual Clearance")]
         public float visualClearanceSkin = 0.02f;
+
+        [Header("Ground Compensation")]
+        [Range(0f, 1f)]
+        [Tooltip("Pushes body toward the attached surface to counteract body.localScale.y compression (charging, surface squash, impact, breath). Without this, symmetric Y scale around body center lifts the surface-touching edge off the ground. 0.5 = geometrically correct for a unit-radius body (surface edge stays exactly planted). 0 = disabled, surface edge lifts with scale. 1 = over-compensation (slime visually sinks into surface). Applied AFTER visualClearanceSkin clamp.")]
+        public float groundCompensationStrength = 0.5f;
 
         private void OnValidate()
         {

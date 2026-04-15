@@ -40,6 +40,15 @@ public class SlimeVisual : MonoBehaviour
     private Vector2 smoothedScale = Vector2.one;
     private Vector2 scaleVelocity;
 
+    // Parallel smoothing of just the velocity-stretch contribution so we can
+    // subtract it from body3d's applied scale. The 3D mesh handles velocity
+    // stretch in the shader (volume-preserving, rotated-ellipse along world
+    // velocity) instead of through body.localScale's axis-aligned scale,
+    // which can't express a diagonal rugby ball. body (archived 2D sprite)
+    // still receives full scale including velStr — no regression there.
+    private Vector2 smoothedVelStr;
+    private Vector2 velStrSmoothVel;
+
     // Offset pipeline
     private Vector2 smoothedOffset;
     private Vector2 offsetVelocity;
@@ -69,6 +78,13 @@ public class SlimeVisual : MonoBehaviour
     // the contract with the HLSL signature — both vectors are world-space.
     private static readonly int SurfaceNormalWSID = Shader.PropertyToID("_SurfaceNormalWS");
     private static readonly int DipDirWSID = Shader.PropertyToID("_DipDirWS");
+    // xyz = normalized world-space velocity, w = speed normalized to velocityStretchSpeedRef.
+    // Drives the teardrop front-hemisphere compression in SlimeDeform.hlsl.
+    private static readonly int VelocityDirWSID = Shader.PropertyToID("_VelocityDirWS");
+    // Stretch amount pre-evaluated from velocityStretch3DCurve every frame.
+    // Pushing the result (instead of raw speed + curve) keeps the shader
+    // simple: just one scalar, no piecewise math in HLSL.
+    private static readonly int VelocityStretchAmountID = Shader.PropertyToID("_VelocityStretchAmount");
     private float smoothedSquashStrength;
     private float squashStrengthVel;
 
@@ -143,6 +159,10 @@ public class SlimeVisual : MonoBehaviour
         Vector2 chargeSq = ComputeChargingSquash();
         Vector2 targetScale = Vector2.one + surfSq + velStr + chargeSq;
         smoothedScale = SmoothDampV2(smoothedScale, targetScale, ref scaleVelocity, settings.deformSmoothTime);
+        // Parallel-smooth the velStr contribution alone at the same rate; used
+        // to subtract velStr from body3d's applied scale below. Linear because
+        // SmoothDampV2 passes maxSpeed=Infinity internally.
+        smoothedVelStr = SmoothDampV2(smoothedVelStr, velStr, ref velStrSmoothVel, settings.deformSmoothTime);
 
         // Scale: fast layer
         Vector2 impact = ComputeImpactOverlay();
@@ -194,6 +214,22 @@ public class SlimeVisual : MonoBehaviour
             }
         }
 
+        // Ground compensation — body.localScale.y < 1 shrinks the visual symmetrically
+        // around body center, lifting the surface-touching edge off the ground. Push
+        // body toward the attached surface by (1-scale.y) * strength so the edge
+        // stays planted. Applied AFTER visualClearance clamp because it compensates
+        // a mathematical artifact of symmetric scaling, not a corner penetration —
+        // the clamp would otherwise zero this out on flat ground (clearance = collider
+        // radius, maxReach = 0, ratio = 0).
+        if (slimeController.CurrentState != SlimeController.SlimeState.Airborne)
+        {
+            float yCompress = Mathf.Max(0f, 1f - appliedScale.y);
+            if (yCompress > 0f)
+            {
+                appliedOffset += -lastSurfaceNormal * yCompress * settings.groundCompensationStrength;
+            }
+        }
+
         var bulkScale    = new Vector3(appliedScale.x, appliedScale.y, 1f);
         var bulkPosition = new Vector3(appliedOffset.x, appliedOffset.y, 0f);
         body.localScale    = bulkScale;
@@ -210,8 +246,17 @@ public class SlimeVisual : MonoBehaviour
             // Mirror that so bulkScale.y compresses along surface normal on the
             // mesh too — otherwise the squash always points along world Y and
             // looks wrong on walls/ceilings.
+            //
+            // Subtract smoothedVelStr so the velocity-stretch contribution is
+            // NOT applied here; the shader's volume-preserving stretch (5b in
+            // SlimeDeform.hlsl) handles it along world velocity direction.
+            // This avoids the diagonal-ball issue caused by axis-aligned scale.
+            var bulkScale3D = new Vector3(
+                bulkScale.x - smoothedVelStr.x,
+                bulkScale.y - smoothedVelStr.y,
+                bulkScale.z);
             body3d.localRotation = body.localRotation;
-            body3d.localScale    = Vector3.Scale(body3dRestScale, bulkScale);
+            body3d.localScale    = Vector3.Scale(body3dRestScale, bulkScale3D);
             body3d.localPosition = body3dRestPosition + Vector3.Scale(transform.localScale, bulkPosition);
         }
 
@@ -257,11 +302,34 @@ public class SlimeVisual : MonoBehaviour
             }
             if (dipDirWS.sqrMagnitude > 1e-6f) dipDirWS.Normalize();
 
+            // Teardrop front-compression needs world velocity direction + speed norm.
+            // Reuse velocityStretchSpeedRef as the "full speed" normalizer so this
+            // ramps up on the same curve as the body.localScale velocity stretch.
+            float rawSpeed = cachedVelocity.magnitude;
+            float speedNorm = Mathf.Clamp01(rawSpeed / Mathf.Max(0.01f, settings.velocityStretchSpeedRef));
+            Vector2 velDir = cachedVelocity.sqrMagnitude > 0.01f ? cachedVelocity.normalized : Vector2.zero;
+            Vector4 velocityDirWS = new Vector4(velDir.x, velDir.y, 0f, speedNorm);
+
+            // 3D velocity-stretch amount: remap rawSpeed so speedMin→0 and
+            // speedMax→1 on the AnimationCurve's X axis, then sample.
+            // speedMin/Max define the *reference* anchors, NOT hard clamps —
+            // speeds beyond them still sample the curve at extrapolated x, so
+            // designers can draw keys past x=1 to make stretch keep growing
+            // at high speeds. Unity's default ClampForever WrapMode takes
+            // over at the curve's actual leftmost/rightmost keys.
+            float stretchDenom = Mathf.Max(0.01f, settings.velocityStretch3DSpeedMax - settings.velocityStretch3DSpeedMin);
+            float stretchT = (rawSpeed - settings.velocityStretch3DSpeedMin) / stretchDenom;
+            float velocityStretchAmount = settings.velocityStretch3DCurve != null
+                ? settings.velocityStretch3DCurve.Evaluate(stretchT)
+                : 0f;
+
             bodyMeshRenderer.GetPropertyBlock(mpb);
             mpb.SetFloat(AsymmetryID, asymmetry);
             mpb.SetFloat(ChargeDipID, chargeDip);
             mpb.SetVector(SurfaceNormalWSID, surfaceNormalWS);
             mpb.SetVector(DipDirWSID, dipDirWS);
+            mpb.SetVector(VelocityDirWSID, velocityDirWS);
+            mpb.SetFloat(VelocityStretchAmountID, velocityStretchAmount);
             bodyMeshRenderer.SetPropertyBlock(mpb);
         }
 
@@ -323,6 +391,10 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetFloat(ChargeDipID, chargeDip);
             mpb.SetVector(SurfaceNormalWSID, surfaceNormalWS);
             mpb.SetVector(DipDirWSID, dipDirWS);
+            // External animators (sit pose, firework recoil, pipe transit) don't
+            // have meaningful velocity — zero out so front-compress + stretch are inert.
+            mpb.SetVector(VelocityDirWSID, Vector4.zero);
+            mpb.SetFloat(VelocityStretchAmountID, 0f);
             bodyMeshRenderer.SetPropertyBlock(mpb);
         }
     }
@@ -331,6 +403,8 @@ public class SlimeVisual : MonoBehaviour
     {
         smoothedScale = Vector2.one;
         scaleVelocity = Vector2.zero;
+        smoothedVelStr = Vector2.zero;
+        velStrSmoothVel = Vector2.zero;
         smoothedOffset = Vector2.zero;
         offsetVelocity = Vector2.zero;
         impactTimer = -1f;
@@ -365,6 +439,8 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetFloat(ChargeDipID, 0f);
             mpb.SetVector(SurfaceNormalWSID, Vector3.up);
             mpb.SetVector(DipDirWSID, Vector3.up);
+            mpb.SetVector(VelocityDirWSID, Vector4.zero);
+            mpb.SetFloat(VelocityStretchAmountID, 0f);
             bodyMeshRenderer.SetPropertyBlock(mpb);
         }
     }
