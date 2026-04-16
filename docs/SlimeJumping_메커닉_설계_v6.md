@@ -8,7 +8,9 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 **장르 지향**: 점프킹, Egging On, 셀레스트, 구구피자 계열의 정밀 플랫포머.  
 조작 반응성과 예측 가능성이 최우선. 소프트바디 비주얼은 게임플레이에 영향을 주지 않는다.
 
-> **비주얼 레이어 (2026-04):** 슬라임 본체는 3D 메쉬 기반(Icosphere + [SlimeBody3D.shader](../SlimeJumping_v2/Assets/Art/Shader/SlimeBody3D.shader)). 기존 2D 스프라이트 구성은 아카이브로 보존(비활성). 물리/상태머신/게임플레이 로직은 비주얼 전환과 무관하게 동일.
+> **비주얼 레이어 (2026-04):** 슬라임 본체는 3D 메쉬(Icosphere/Sphere) 기반. 기존 2D 스프라이트 구성은 아카이브로 보존(비활성). 물리/상태머신/게임플레이 로직은 비주얼 전환과 무관하게 동일.
+>
+> **셰이더 스택 (2026-04-16):** [SlimeBody_Quibli.shader](../SlimeJumping_v2/Assets/Art/Shader/SlimeBody_Quibli.shader) = Quibli `StylizedLit` 라이팅 + [SlimeDeform.hlsl](../SlimeJumping_v2/Assets/Art/Shader/SlimeDeform.hlsl) 5-스테이지 정점 변형을 ForwardLit/ShadowCaster pass 에 주입. Ground 가 Quibli 로 전환되며 조명 톤 일치 목적. 원본 [SlimeBody3D.shader](../SlimeJumping_v2/Assets/Art/Shader/SlimeBody3D.shader) 는 롤백 보존.
 
 ---
 
