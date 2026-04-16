@@ -18,6 +18,7 @@ public class SlimeVisual : MonoBehaviour
     [SerializeField] private SpriteRenderer eyesRenderer;
     [SerializeField] private Sprite eyesOpen;
     [SerializeField] private Sprite eyesClosed;
+    [SerializeField] private Sprite eyesStun;
 
     // Face tracking
     private Vector2 currentFaceOffset;
@@ -813,6 +814,20 @@ public class SlimeVisual : MonoBehaviour
     private void UpdateBlink()
     {
         if (eyesRenderer == null || eyesClosed == null) return;
+
+        if (slimeController.IsStunned)
+        {
+            if (eyesStun != null) eyesRenderer.sprite = eyesStun;
+            // Keep deferring nextBlinkTime so blink doesn't fire the instant stun ends
+            nextBlinkTime = Time.time + settings.blinkDuration
+                          + Random.Range(settings.blinkIntervalMin, settings.blinkIntervalMax);
+            return;
+        }
+
+        // Recovery: stun branch leaves sprite on eyesStun; restore eyesOpen immediately
+        // rather than waiting for the next blink cycle (would otherwise linger 3-7s).
+        if (eyesRenderer.sprite == eyesStun)
+            eyesRenderer.sprite = eyesOpen;
 
         float time = Time.time;
         if (time >= blinkEndTime && eyesRenderer.sprite == eyesClosed)
