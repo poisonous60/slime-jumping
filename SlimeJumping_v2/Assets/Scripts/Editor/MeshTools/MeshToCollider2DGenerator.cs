@@ -30,14 +30,32 @@ namespace SlimeJumping.EditorTools
             }
 
             var mesh = mf.sharedMesh;
-            var bounds = mesh.bounds;
-            if (bounds.min.z > 0f || bounds.max.z < 0f)
+
+            // Cut at the WORLD Z=0 plane (so moving the GameObject in Z changes the slice).
+            // Express that plane in the mesh's local space.
+            var tr = go.transform;
+            Vector3 localOrigin = tr.InverseTransformPoint(Vector3.zero);
+            Vector3 localNormal = tr.InverseTransformDirection(Vector3.forward).normalized;
+
+            // World-space bounds check: does the mesh actually straddle world Z=0?
+            var worldBounds = TransformBounds(tr, mesh.bounds);
+            if (worldBounds.min.z > 0f || worldBounds.max.z < 0f)
             {
                 EditorUtility.DisplayDialog("No Intersection",
-                    $"Mesh does not intersect Z=0 in local space.\n" +
-                    $"Mesh Z range: [{bounds.min.z:F3}, {bounds.max.z:F3}]", "OK");
+                    $"Mesh does not intersect world Z=0.\n" +
+                    $"World Z range: [{worldBounds.min.z:F3}, {worldBounds.max.z:F3}]\n\n" +
+                    "Move the GameObject in Z until the slice plane crosses the mesh.", "OK");
                 return;
             }
+
+            // For 2.5D usage, objects usually face straight (local +Z aligned with world +Z).
+            // If not, the (localX, localY) projection we use for PolygonCollider2D points
+            // will distort the polygon shape.
+            float zAlignment = Mathf.Abs(Vector3.Dot(tr.forward, Vector3.forward));
+            if (zAlignment < 0.999f)
+                Debug.LogWarning(
+                    "[MeshToCollider2D] Object's local Z axis is not aligned with world Z axis. " +
+                    "The generated PolygonCollider2D may be distorted. Reset X/Y rotation for accurate results.");
 
             // Unity forbids mixing 3D colliders with 2D colliders on the same GameObject.
             // Just gather consent here — actual destruction happens after the cut succeeds,
@@ -56,8 +74,10 @@ namespace SlimeJumping.EditorTools
             // ── Convert Unity Mesh → DMesh3 ───────────────────────────────
             var dmesh = ToDMesh3(mesh);
 
-            // ── Cut at Z=0 plane ──────────────────────────────────────────
-            var cut = new MeshPlaneCut(dmesh, Vector3d.Zero, Vector3d.AxisZ)
+            // ── Cut at the world-Z=0 plane (in local coordinates) ─────────
+            var cut = new MeshPlaneCut(dmesh,
+                new Vector3d(localOrigin.x, localOrigin.y, localOrigin.z),
+                new Vector3d(localNormal.x, localNormal.y, localNormal.z))
             {
                 CollapseDegenerateEdgesOnCut = true
             };
@@ -154,8 +174,24 @@ namespace SlimeJumping.EditorTools
             if (go == null) return false;
             var mf = go.GetComponent<MeshFilter>();
             if (mf == null || mf.sharedMesh == null) return false;
-            var b = mf.sharedMesh.bounds;
-            return b.min.z <= 0f && b.max.z >= 0f;
+            var wb = TransformBounds(go.transform, mf.sharedMesh.bounds);
+            return wb.min.z <= 0f && wb.max.z >= 0f;
+        }
+
+        // Converts a local-space AABB to a world-space AABB (axis-aligned in world).
+        private static Bounds TransformBounds(Transform t, Bounds local)
+        {
+            var m = t.localToWorldMatrix;
+            Vector3 center = m.MultiplyPoint3x4(local.center);
+            Vector3 ex = local.extents;
+            Vector3 wx = m.MultiplyVector(new Vector3(ex.x, 0f, 0f));
+            Vector3 wy = m.MultiplyVector(new Vector3(0f, ex.y, 0f));
+            Vector3 wz = m.MultiplyVector(new Vector3(0f, 0f, ex.z));
+            Vector3 worldExtents = new Vector3(
+                Mathf.Abs(wx.x) + Mathf.Abs(wy.x) + Mathf.Abs(wz.x),
+                Mathf.Abs(wx.y) + Mathf.Abs(wy.y) + Mathf.Abs(wz.y),
+                Mathf.Abs(wx.z) + Mathf.Abs(wy.z) + Mathf.Abs(wz.z));
+            return new Bounds(center, worldExtents * 2f);
         }
 
         // ─────────────────────────────────────────────────────────────────
