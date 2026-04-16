@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class GravityFieldTestSetup
     {
-        [MenuItem("SlimeJumping/Setup GravityField Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup GravityField Test")]
         public static void SetupGravityFieldTest()
         {
             var root = new GameObject("GravityFieldTest");

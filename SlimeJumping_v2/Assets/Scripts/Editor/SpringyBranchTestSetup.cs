@@ -7,7 +7,7 @@ namespace SlimeJumping.Editor
 {
     public static class SpringyBranchTestSetup
     {
-        [MenuItem("SlimeJumping/Setup SpringyBranch Test")]
+        [MenuItem("SlimeJumping/Platform/Setup SpringyBranch Test")]
         public static void SetupSpringyBranchTest()
         {
             var root = new GameObject("SpringyBranchTest");

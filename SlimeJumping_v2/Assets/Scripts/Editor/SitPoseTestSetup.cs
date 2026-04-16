@@ -10,7 +10,7 @@ namespace SlimeJumping.Editor
         const int InteractableLayer = 10;
         const string DefaultProfilePath = "Assets/Settings/SitPose/Default.asset";
 
-        [MenuItem("SlimeJumping/Setup SitPose Test")]
+        [MenuItem("SlimeJumping/Interaction/Setup SitPose Test")]
         public static void Setup()
         {
             var existing = GameObject.Find("SitPoseTest");

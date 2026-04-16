@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class PortalTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Portal Fling Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup Portal Fling Test")]
         public static void SetupPortalFlingTest()
         {
             // --- Container ---

@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class RollingDiskPlatformTestSetup
     {
-        [MenuItem("SlimeJumping/Setup RollingDiskPlatform Test")]
+        [MenuItem("SlimeJumping/Platform/Setup RollingDiskPlatform Test")]
         public static void SetupRollingDiskTest()
         {
             var root = new GameObject("RollingDiskPlatformTest");

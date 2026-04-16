@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class PushDoorTestSetup
     {
-        [MenuItem("SlimeJumping/Setup PushDoor Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup PushDoor Test")]
         public static void Setup()
         {
             var root = new GameObject("PushDoorTest");

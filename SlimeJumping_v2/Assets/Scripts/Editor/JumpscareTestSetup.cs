@@ -9,7 +9,7 @@ namespace SlimeJumping.Editor
 {
     public static class JumpscareTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Jumpscare Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup Jumpscare Test")]
         public static void Setup()
         {
             var existing = GameObject.Find("JumpscareTest");

@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class SandPlatformTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Sand Volume Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup Sand Volume Test")]
         public static void Setup()
         {
             int dragVolumeLayer = LayerMask.NameToLayer("DragVolume");

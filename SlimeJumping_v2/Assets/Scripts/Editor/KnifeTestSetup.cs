@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class KnifeTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Knife Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup Knife Test")]
         public static void Setup()
         {
             var existing = GameObject.Find("KnifeTest");

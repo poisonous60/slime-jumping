@@ -10,7 +10,7 @@ namespace SlimeJumping.Editor
     {
         const int InteractableLayer = 10;
 
-        [MenuItem("SlimeJumping/Setup Firework Test")]
+        [MenuItem("SlimeJumping/Interaction/Setup Firework Test")]
         public static void Setup()
         {
             var existing = GameObject.Find("FireworkTest");

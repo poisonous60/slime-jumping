@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class SawBladeTestSetup
     {
-        [MenuItem("SlimeJumping/Setup SawBlade Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup SawBlade Test")]
         public static void Setup()
         {
             var existing = GameObject.Find("SawBladeTest");

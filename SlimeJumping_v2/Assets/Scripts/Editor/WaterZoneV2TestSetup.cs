@@ -9,7 +9,7 @@ namespace SlimeJumping.Editor
     {
         const int GroundLayer = 7;
 
-        [MenuItem("SlimeJumping/Setup WaterZone v2 Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup WaterZone v2 Test")]
         public static void Setup()
         {
             var root = new GameObject("WaterZoneV2_Test");

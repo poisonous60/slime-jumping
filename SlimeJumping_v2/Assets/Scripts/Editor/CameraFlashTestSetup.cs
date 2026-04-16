@@ -11,7 +11,7 @@ namespace SlimeJumping.Editor
 {
     public static class CameraFlashTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Camera Flash Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup Camera Flash Test")]
         public static void Setup()
         {
             var existing = GameObject.Find("CameraFlashTest");

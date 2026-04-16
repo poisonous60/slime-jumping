@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class WaterZoneTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Water Zone Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup Water Zone Test")]
         public static void SetupWaterZoneTest()
         {
             var root = new GameObject("WaterZoneTest");

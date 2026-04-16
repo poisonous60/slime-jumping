@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class SpikeTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Spike Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup Spike Test")]
         public static void SetupSpikeTest()
         {
             var root = new GameObject("SpikeTest");

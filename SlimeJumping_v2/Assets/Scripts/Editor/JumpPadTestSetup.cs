@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class JumpPadTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Jump Pad Test")]
+        [MenuItem("SlimeJumping/Platform/Setup Jump Pad Test")]
         public static void SetupJumpPadTest()
         {
             var root = new GameObject("JumpPadTest");

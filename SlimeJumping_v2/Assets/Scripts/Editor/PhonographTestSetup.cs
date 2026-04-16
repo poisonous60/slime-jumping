@@ -8,7 +8,7 @@ namespace SlimeJumping.Editor
     {
         const int InteractableLayer = 10;
 
-        [MenuItem("SlimeJumping/Setup Phonograph Test")]
+        [MenuItem("SlimeJumping/Interaction/Setup Phonograph Test")]
         public static void Setup()
         {
             var existing = GameObject.Find("PhonographTest");

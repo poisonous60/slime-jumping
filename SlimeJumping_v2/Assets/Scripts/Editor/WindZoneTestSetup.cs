@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class WindZoneTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Wind Zone Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup Wind Zone Test")]
         public static void SetupWindZoneTest()
         {
             var root = new GameObject("WindZoneTest");

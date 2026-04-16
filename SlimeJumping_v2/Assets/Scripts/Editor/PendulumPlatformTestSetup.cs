@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class PendulumPlatformTestSetup
     {
-        [MenuItem("SlimeJumping/Setup PendulumPlatform Test")]
+        [MenuItem("SlimeJumping/Platform/Setup PendulumPlatform Test")]
         public static void SetupPendulumTest()
         {
             var root = new GameObject("PendulumPlatformTest");

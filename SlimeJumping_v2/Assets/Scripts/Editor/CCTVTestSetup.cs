@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class CCTVTestSetup
     {
-        [MenuItem("SlimeJumping/Setup CCTV Test")]
+        [MenuItem("SlimeJumping/Mechanism/Setup CCTV Test")]
         public static void Setup()
         {
             var existing = GameObject.Find("CCTVTest");

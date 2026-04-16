@@ -6,7 +6,7 @@ namespace SlimeJumping.Editor
 {
     public static class ConveyorTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Conveyor Test")]
+        [MenuItem("SlimeJumping/Platform/Setup Conveyor Test")]
         public static void SetupConveyorTest()
         {
             var root = new GameObject("ConveyorTest");

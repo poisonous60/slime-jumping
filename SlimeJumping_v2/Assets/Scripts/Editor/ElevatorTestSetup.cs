@@ -7,7 +7,7 @@ namespace SlimeJumping.Editor
 {
     public static class ElevatorTestSetup
     {
-        [MenuItem("SlimeJumping/Setup Elevator Test")]
+        [MenuItem("SlimeJumping/Platform/Setup Elevator Test")]
         public static void Setup()
         {
             var root = new GameObject("ElevatorTest");

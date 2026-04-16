@@ -8,7 +8,7 @@ namespace SlimeJumping.Editor
     {
         const int InteractableLayer = 10;
 
-        [MenuItem("SlimeJumping/Setup Media TV Test")]
+        [MenuItem("SlimeJumping/Interaction/Setup Media TV Test")]
         public static void Setup()
         {
             var existing = GameObject.Find("MediaTVTest");

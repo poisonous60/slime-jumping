@@ -60,7 +60,7 @@ namespace SlimeJumping.Editor
             visualSubdivisions = 3,
         };
 
-        [MenuItem("SlimeJumping/Setup Rope Test (Stage 1)")]
+        [MenuItem("SlimeJumping/Mechanism/Setup Rope Test (Stage 1)")]
         public static void SetupStage1()
         {
             var root = new GameObject("RopeTest_Stage1");
@@ -76,7 +76,7 @@ namespace SlimeJumping.Editor
             Finish(root, "Stage 1: Verlet sag only. Arrow keys on Rope_Telephone push middle nodes.");
         }
 
-        [MenuItem("SlimeJumping/Setup Rope Test (All Stages)")]
+        [MenuItem("SlimeJumping/Mechanism/Setup Rope Test (All Stages)")]
         public static void SetupAllStages()
         {
             var root = new GameObject("RopeTest_AllStages");

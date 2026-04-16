@@ -8,7 +8,7 @@ namespace SlimeJumping.Editor
     {
         const int InteractableLayer = 10;
 
-        [MenuItem("SlimeJumping/Setup Washing Test")]
+        [MenuItem("SlimeJumping/Interaction/Setup Washing Test")]
         public static void Setup()
         {
             var existing = GameObject.Find("WashingTest");
