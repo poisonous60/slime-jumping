@@ -1133,4 +1133,44 @@ EnvironmentalZone 구현. 진입/탈출 속도 배율, 드래그(곱셈), 부력
 8. **플레이어 조절 중력**: W/S로 중력 스케일 조절. 에너지 전환은 에너지 보존 공식으로 정규화.
 9. **마찰 해체**: 이동 속도, 관성, 미끄러짐을 독립 파라미터로 분리.
 10. **시스템 분리**: 중력 → 접선 분해. 에어 컨트롤 → 방향 회전. 차징 → 판정원 내부. 드리프트 → 표면 법선. 각각 독립.
+
+---
+
+## 12. 진행 트레일 (Progress Trail)
+
+"항아리 게임" 스타일의 진행 시각화 — 슬라임이 지나간 경로가 지면에 녹색 자국으로 누적돼서, 플레이어가 떨어져도 이전 도달 지점이 보임. 수십 시간 등반 세션에서도 성능 저하 없이 유지.
+
+구현 상세는 [프로토타입_구현_현황.md §진행 트레일](프로토타입_구현_현황.md#진행-트레일-progress-trail).
+
+### 핵심 규칙
+
+- **순수 비주얼**: 충돌, 물리, 표면 판정, 슬라임 상태 머신에 일절 영향 없음. 트레일 스크립트/셰이더를 **전부 제거해도 게임플레이는 픽셀 단위로 동일**해야 함. 이 불변식을 깨는 커플링은 금지.
+- **무한 누적, 고정 비용**: 개별 오브젝트/데칼/스프라이트 풀로 표현하지 않음. 월드 크기에 비례한 **고정 크기 RenderTexture** 하나에 R8 마스크 누적. 스탬프가 아무리 쌓여도 메모리/프레임 비용 불변.
+- **2D 투영**: Z=0 고정 게임플레이이므로 XY 평면 하나로 모든 표면 커버. 벽, 경사, 오버행 — 표면 각 프래그먼트의 월드 XY 가 있는 한 자동으로 샘플링. Z 페이드로 배경 산/전경 장식에 leak 방지.
+- **정적과 동적 분리**: 정적 지면은 월드 좌표 기준 단일 RT (XY 샘플), 움직이는/회전하는 플랫폼은 객체 공간 per-renderer RT — 플랫폼이 회전/이동해도 트레일이 정확히 따라감.
+
+### 강도 규칙
+
+- **착지 강도**: `ImpactNormalSpeed` (표면 법선 방향 임팩트 속도, 플랫폼 상대) 를 정규화해 두 `AnimationCurve` (radius, strength) 샘플. 수직으로 세게 부딪힐수록 큰/짙은 자국. 살짝 미끄러져 닿으면 작은 자국.
+- **누적**: 같은 지점 반복 착지 시 additive blend 로 짙어지다 `_TrailMaxMask` 에서 시각적 포화. 커브와 cap 둘 다 artist tunable.
+- **연속 크롤 (옵션)**: 기본은 **착지만** 기록. 특정 연출/레벨에서 Attached/Charging 슬라이딩 중에도 자취 남기고 싶으면 `stampOnCrawl` 토글로 활성화. interpolation 간격 튜닝 가능.
+
+### 영속성
+
+- **자동 저장**: 세션 중 일정 간격 백그라운드 저장. 메인 스레드 stall 없음 (AsyncGPUReadback + worker-thread write + atomic rename).
+- **씬별 분리**: SaveKey 에 씬 식별자 포함. buildIndex 기반 기본값 + `sceneKeyOverride` 필드로 씬 복사/빌드 세팅 변경 대비.
+- **불일치 거부**: bounds / resolution 변경 시 이전 저장 거부하고 새로 시작. 침묵 재스케일링 금지 — 의도치 않은 misalignment 원천 차단. 커스텀 인스펙터에서 Clear Save / Revert Bounds 버튼 제공.
+- **앱 종료 처리**: OnApplicationQuit/Pause 에서 동기 flush. 종료 직전 새 스탬프 유실 방지.
+
+### 튜닝 표면
+
+- **월드 매니저**: 월드 bounds, 픽셀/단위, 트레일 컬러 + 알파, 채도 상한 (`_TrailMaxMask`), Z 페이드 (center/near/far), 자동 저장 간격, Ground Layers (Fit Bounds 스캔용), Scene Key Override.
+- **슬라임 Stamper**: landingSpeedMin/Max, landingRadiusCurve, landingStrengthCurve, teleportCutoff, stampOnCrawl 및 크롤 파라미터, logLandings (속도/커브 샘플링 디버그 로그).
+- **플랫폼 Local Receiver**: localMin/localSize (객체 공간 rect), pixelsPerUnit, contactCollider, overrideId.
+
+### 금지 사항
+
+- **Gameplay → Trail 결합 금지**: "트레일 있는 곳은 더 미끄럽다", "자주 지나간 곳은 충돌 변화" 같은 반영은 설계 경계 위반. 만약 그런 기능이 필요하면 별도 데이터 구조로 구현하고 트레일 RT 에 피기백하지 않음.
+- **RT 를 gameplay 상태로 읽기 금지**: 트레일 RT 는 write-only from gameplay 관점. 읽는 건 오로지 지면 셰이더만.
+- **공유 브러시 material 에셋 수정 금지**: Material 은 Awake 에 인스턴스 복제 필수. 에셋 자체 수정 시 세션 누적으로 에디터 성능 저하.
 11. **상호작용 오브젝트 비주얼은 물리에서 유도**: 플레이어와 상호작용하는 오브젝트의 비주얼 변형은 Transform 이동, 수학 기반 변형, 스프링-댐퍼 3가지로만 표현한다. 외부 애니메이션 클립(rig+keyframe)은 AI 캐릭터, 배경 장식, 시네마틱에만 허용.

@@ -11,6 +11,11 @@ namespace SlimeJumping.Rendering
     {
         public static WorldTrailManager Instance { get; private set; }
 
+        // With "Enter Play Mode → Reload Domain" disabled, statics persist across Play sessions.
+        // Reset so the previous session's fake-null reference can't shadow the new manager.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics() => Instance = null;
+
         [Header("World bounds")]
         [Tooltip("Bottom-left XY corner of the world trail rectangle.")]
         [SerializeField] private Vector2 worldMin = new Vector2(-50f, -50f);
@@ -29,6 +34,14 @@ namespace SlimeJumping.Rendering
         [SerializeField] private float trailMaxMask = 0.75f;
         [Tooltip("Material instantiated from Hidden/SlimeJumping/TrailBrush. Required.")]
         [SerializeField] private Material brushMaterial;
+
+        [Header("Z-plane fade (avoid tinting background/foreground geometry)")]
+        [Tooltip("World Z of the gameplay plane. Trail is 2D-projected; this defines the plane around which the fade is centered.")]
+        [SerializeField] private float trailZCenter = 0f;
+        [Tooltip("Surfaces within this Z distance of the center receive the full trail. Raise if ground has noticeable Z thickness.")]
+        [SerializeField] private float trailZNear = 0.5f;
+        [Tooltip("Surfaces beyond this Z distance receive no trail. Fade is linear between Near and Far.")]
+        [SerializeField] private float trailZFar = 2.0f;
 
         [Header("Scene tooling")]
         [Tooltip("Used by Tools > Trail > Fit Bounds to Scene Ground to pick which renderers count as ground.")]
@@ -49,6 +62,10 @@ namespace SlimeJumping.Rendering
         private TrailPersistence persistence;
         private Vector2Int resolution;
         private bool dirty;
+        // Runtime clone of the shared brush material asset. We SetFloat + SetPass every stamp,
+        // which on the asset itself would mark it dirty and make Unity re-serialize the .mat
+        // file on every Play-exit. Cloning keeps the asset pristine.
+        private Material brushInstance;
 
         // -------------------- Inspector-facing accessors (read-only) --------------------
 
@@ -126,7 +143,10 @@ namespace SlimeJumping.Rendering
             Instance = this;
 
             resolution = PlannedResolution;
-            rt = new RenderTexture(resolution.x, resolution.y, 0, RenderTextureFormat.R8)
+            // Linear readWrite: RenderTextureFormat.R8 defaults to sRGB interpretation, which isn't
+            // a supported GPU format and silently falls back to RGBA32 sRGB (4× the memory we budgeted).
+            // We're storing a mask, not a color, so linear R8 is the correct intent.
+            rt = new RenderTexture(resolution.x, resolution.y, 0, RenderTextureFormat.R8, RenderTextureReadWrite.Linear)
             {
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear,
@@ -136,6 +156,9 @@ namespace SlimeJumping.Rendering
             };
             rt.Create();
             Graphics.Blit(Texture2D.blackTexture, rt);
+
+            if (brushMaterial != null)
+                brushInstance = new Material(brushMaterial) { name = brushMaterial.name + " (Instance)", hideFlags = HideFlags.HideAndDontSave };
 
             persistence = new TrailPersistence(autoSaveInterval);
             persistence.Register(this);
@@ -190,6 +213,16 @@ namespace SlimeJumping.Rendering
             if (Instance == this) Instance = null;
             if (persistence != null) { persistence.Cancel(); persistence = null; }
             if (rt != null) { rt.Release(); Object.Destroy(rt); rt = null; }
+            if (brushInstance != null) { Object.Destroy(brushInstance); brushInstance = null; }
+
+            // Neutralize trail globals so materials in other scenes / material previews
+            // don't keep sampling a freed RT (Unity falls back to the default white texture,
+            // which would leave every trail-receiver material tinted).
+            Shader.SetGlobalTexture("_TrailMask", Texture2D.blackTexture);
+            Shader.SetGlobalVector("_TrailWorldMin",  Vector4.zero);
+            Shader.SetGlobalVector("_TrailWorldSize", Vector4.zero);
+            Shader.SetGlobalColor ("_TrailColor", new Color(0f, 0f, 0f, 0f));
+            Shader.SetGlobalFloat ("_TrailMaxMask", 0f);
         }
 
         private void PublishGlobals()
@@ -199,6 +232,9 @@ namespace SlimeJumping.Rendering
             Shader.SetGlobalVector("_TrailWorldSize", new Vector4(worldSize.x, worldSize.y, 0f, 0f));
             Shader.SetGlobalColor ("_TrailColor", trailColor);
             Shader.SetGlobalFloat ("_TrailMaxMask", Mathf.Clamp(trailMaxMask, 0.01f, 1f));
+            Shader.SetGlobalFloat ("_TrailZCenter", trailZCenter);
+            Shader.SetGlobalFloat ("_TrailZNear",   Mathf.Max(0f, trailZNear));
+            Shader.SetGlobalFloat ("_TrailZFar",    Mathf.Max(trailZNear + 0.01f, trailZFar));
         }
 
         private void OnValidate()
@@ -231,16 +267,16 @@ namespace SlimeJumping.Rendering
         /// Shared GL.QUADS brush draw reused by LocalTrailReceiver.
         public void BlitToTarget(RenderTexture target, Vector2 centerUV, Vector2 radiusUV, float strength)
         {
-            if (target == null || brushMaterial == null) return;
+            if (target == null || brushInstance == null) return;
 
-            brushMaterial.SetFloat("_Strength", strength);
+            brushInstance.SetFloat("_Strength", strength);
 
             var prev = RenderTexture.active;
             RenderTexture.active = target;
             GL.PushMatrix();
             GL.LoadOrtho();
 
-            brushMaterial.SetPass(0);
+            brushInstance.SetPass(0);
 
             float x0 = centerUV.x - radiusUV.x;
             float x1 = centerUV.x + radiusUV.x;
@@ -310,44 +346,55 @@ namespace SlimeJumping.Rendering
         private void DrawBoundsGizmo(bool selected)
         {
 #if UNITY_EDITOR
-            Vector3 bl = new Vector3(worldMin.x,               worldMin.y,               0f);
-            Vector3 br = new Vector3(worldMin.x + worldSize.x, worldMin.y,               0f);
-            Vector3 tr = new Vector3(worldMin.x + worldSize.x, worldMin.y + worldSize.y, 0f);
-            Vector3 tl = new Vector3(worldMin.x,               worldMin.y + worldSize.y, 0f);
+            if (gizmoCorners == null) gizmoCorners = new Vector3[4];
+            gizmoCorners[0] = new Vector3(worldMin.x,               worldMin.y,               0f);
+            gizmoCorners[1] = new Vector3(worldMin.x + worldSize.x, worldMin.y,               0f);
+            gizmoCorners[2] = new Vector3(worldMin.x + worldSize.x, worldMin.y + worldSize.y, 0f);
+            gizmoCorners[3] = new Vector3(worldMin.x,               worldMin.y + worldSize.y, 0f);
 
-            Color fill    = selected ? new Color(0.25f, 1f, 0.3f, 0.12f) : new Color(0.25f, 1f, 0.3f, 0.05f);
-            Color outline = selected ? new Color(0.25f, 1f, 0.3f, 1f)    : new Color(0.25f, 1f, 0.3f, 0.6f);
+            Color fill    = selected ? gizmoFillSelected    : gizmoFillUnselected;
+            Color outline = selected ? gizmoOutlineSelected : gizmoOutlineUnselected;
 
             // Filled translucent quad so the paintable region reads at any zoom.
-            UnityEditor.Handles.DrawSolidRectangleWithOutline(new[] { bl, br, tr, tl }, fill, outline);
+            UnityEditor.Handles.DrawSolidRectangleWithOutline(gizmoCorners, fill, outline);
 
-            // Corner ticks for precise alignment against the play area.
-            float tick = Mathf.Max(worldSize.x, worldSize.y) * 0.01f;
-            UnityEditor.Handles.color = outline;
-            UnityEditor.Handles.DrawLine(bl, bl + new Vector3( tick,  tick, 0));
-            UnityEditor.Handles.DrawLine(br, br + new Vector3(-tick,  tick, 0));
-            UnityEditor.Handles.DrawLine(tr, tr + new Vector3(-tick, -tick, 0));
-            UnityEditor.Handles.DrawLine(tl, tl + new Vector3( tick, -tick, 0));
-
-            // Label with size + RT resolution + memory; only when selected to avoid clutter.
+            // Label with size + RT resolution + memory; only when selected.
+            // Skipped during Scene-view continuous repaint because Handles.Label is an IMGUI
+            // path that allocates and invokes text rendering every call — it's the single
+            // most expensive thing in this method.
             if (selected)
             {
-                var res = PlannedResolution;
-                long bytes = PlannedMemoryBytes;
-                string mem = bytes < 1024 * 1024 ? (bytes / 1024f).ToString("0.0") + " KB" : (bytes / 1024f / 1024f).ToString("0.0") + " MB";
-                string txt = $"Trail World Bounds\n{worldSize.x:0.#} × {worldSize.y:0.#}  ·  RT {res.x}×{res.y}  ·  {mem}";
                 if (gizmoLabelStyle == null)
                 {
                     gizmoLabelStyle = new GUIStyle(UnityEditor.EditorStyles.helpBox) { alignment = TextAnchor.MiddleCenter, fontSize = 11 };
                     gizmoLabelStyle.normal.textColor = Color.white;
                 }
-                UnityEditor.Handles.Label((bl + tr) * 0.5f, txt, gizmoLabelStyle);
+                // Regenerate label text only when the values that compose it changed, instead
+                // of once per scene-view repaint.
+                var res = PlannedResolution;
+                if (res != gizmoLabelCachedRes || !Mathf.Approximately(worldSize.x, gizmoLabelCachedSize.x) || !Mathf.Approximately(worldSize.y, gizmoLabelCachedSize.y))
+                {
+                    long bytes = PlannedMemoryBytes;
+                    string mem = bytes < 1024 * 1024 ? (bytes / 1024f).ToString("0.0") + " KB" : (bytes / 1024f / 1024f).ToString("0.0") + " MB";
+                    gizmoLabelText = $"Trail World Bounds\n{worldSize.x:0.#} × {worldSize.y:0.#}  ·  RT {res.x}×{res.y}  ·  {mem}";
+                    gizmoLabelCachedRes = res;
+                    gizmoLabelCachedSize = worldSize;
+                }
+                UnityEditor.Handles.Label((gizmoCorners[0] + gizmoCorners[2]) * 0.5f, gizmoLabelText, gizmoLabelStyle);
             }
 #endif
         }
 
 #if UNITY_EDITOR
         private static GUIStyle gizmoLabelStyle;
+        private static readonly Color gizmoFillSelected    = new Color(0.25f, 1f, 0.3f, 0.12f);
+        private static readonly Color gizmoFillUnselected  = new Color(0.25f, 1f, 0.3f, 0.05f);
+        private static readonly Color gizmoOutlineSelected = new Color(0.25f, 1f, 0.3f, 1f);
+        private static readonly Color gizmoOutlineUnselected = new Color(0.25f, 1f, 0.3f, 0.6f);
+        private Vector3[] gizmoCorners;
+        private string gizmoLabelText;
+        private Vector2Int gizmoLabelCachedRes;
+        private Vector2 gizmoLabelCachedSize;
 #endif
     }
 }

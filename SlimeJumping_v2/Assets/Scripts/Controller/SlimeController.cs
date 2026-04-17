@@ -30,6 +30,16 @@ namespace SlimeJumping.Controller
         public Vector2 SurfaceNormal => surfaceNormal;
         public Vector2 Position => rb.position;
         public Vector2 Velocity => velocity;
+        /// Tangential component of the platform-relative impact velocity recorded at the most
+        /// recent landing. Already computed for the energy-conversion logic (Charging/Attached
+        /// slide decay); OnLanded subscribers can read this to drive impact-scaled effects
+        /// without a second velocity capture.
+        public float ImpactTangentSpeed => impactTangentSpeed;
+        /// Normal (surface-perpendicular) component of the platform-relative impact velocity
+        /// recorded at the most recent landing. This is the "how hard the slime slammed into
+        /// the surface" reading — good for landing-impact effects (dust burst, trail splat).
+        /// Always non-negative (absolute value).
+        public float ImpactNormalSpeed => impactNormalSpeed;
         public void AddExternalVelocity(Vector2 deltaV) { externalDeltaV += deltaV; }
         public float CoyoteTimer => coyoteTimer;
         public float StickTimer => stickTimer;
@@ -104,6 +114,7 @@ namespace SlimeJumping.Controller
         private Vector2 externalDeltaV;
         // Signed scalar along surfaceTangent; negative = against tangent direction
         private float impactTangentSpeed;
+        private float impactNormalSpeed;   // platform-relative perpendicular impact speed, always ≥ 0
         private float stickDeccelTimer;
         private Vector2 prevSurfaceNormal;
 

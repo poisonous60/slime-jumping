@@ -93,6 +93,7 @@ namespace SlimeJumping.Controller
                     float tangentSpeed = Vector2.Dot(relativeVel, surfaceTangent);
                     float normalSpeed = Mathf.Abs(Vector2.Dot(relativeVel, surfaceNormal));
                     impactTangentSpeed = tangentSpeed;
+                    impactNormalSpeed = normalSpeed;
                     stickDeccelTimer = 0f;
 
                     if (carrier != null) carrier.Attach(surfaceCollider);
@@ -146,6 +147,7 @@ namespace SlimeJumping.Controller
                     float tangentSpeed = Vector2.Dot(relativeVel, surfaceTangent);
                     float normalSpeed = Mathf.Abs(Vector2.Dot(relativeVel, surfaceNormal));
                     impactTangentSpeed = tangentSpeed;
+                    impactNormalSpeed = normalSpeed;
                     stickDeccelTimer = 0f;
 
                     if (carrier != null) carrier.Attach(surfaceCollider);

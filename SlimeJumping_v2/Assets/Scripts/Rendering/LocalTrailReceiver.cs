@@ -99,7 +99,8 @@ namespace SlimeJumping.Rendering
             if (rend == null) rend = GetComponent<Renderer>();
 
             resolution = PlannedResolution;
-            rt = new RenderTexture(resolution.x, resolution.y, 0, RenderTextureFormat.R8)
+            // See WorldTrailManager for the rationale on RenderTextureReadWrite.Linear.
+            rt = new RenderTexture(resolution.x, resolution.y, 0, RenderTextureFormat.R8, RenderTextureReadWrite.Linear)
             {
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear,
@@ -256,27 +257,41 @@ namespace SlimeJumping.Rendering
         private static GUIStyle gizmoLabelStyle;
         private void OnDrawGizmosSelected()
         {
+            if (gizmoCorners == null) gizmoCorners = new Vector3[4];
             // Compute world-space corners of the local rect so Handles (which use world space) align.
-            Vector3 bl = transform.TransformPoint(new Vector3(localMin.x,               localMin.y,               0f));
-            Vector3 br = transform.TransformPoint(new Vector3(localMin.x + localSize.x, localMin.y,               0f));
-            Vector3 tr = transform.TransformPoint(new Vector3(localMin.x + localSize.x, localMin.y + localSize.y, 0f));
-            Vector3 tl = transform.TransformPoint(new Vector3(localMin.x,               localMin.y + localSize.y, 0f));
+            gizmoCorners[0] = transform.TransformPoint(new Vector3(localMin.x,               localMin.y,               0f));
+            gizmoCorners[1] = transform.TransformPoint(new Vector3(localMin.x + localSize.x, localMin.y,               0f));
+            gizmoCorners[2] = transform.TransformPoint(new Vector3(localMin.x + localSize.x, localMin.y + localSize.y, 0f));
+            gizmoCorners[3] = transform.TransformPoint(new Vector3(localMin.x,               localMin.y + localSize.y, 0f));
 
-            Color fill    = new Color(0.3f, 0.8f, 1f, 0.15f);
-            Color outline = new Color(0.3f, 0.8f, 1f, 1f);
-            UnityEditor.Handles.DrawSolidRectangleWithOutline(new[] { bl, br, tr, tl }, fill, outline);
+            UnityEditor.Handles.DrawSolidRectangleWithOutline(gizmoCorners, gizmoFill, gizmoOutline);
 
+            // Regenerate label text only when bounds change; Handles.Label is IMGUI-expensive
+            // per call — at least avoid allocating the string every scene-view repaint.
             var res = PlannedResolution;
-            long bytes = (long)res.x * res.y;
-            string mem = bytes < 1024 ? bytes + " B" : (bytes / 1024f).ToString("0.0") + " KB";
-            string txt = $"Local Trail\n{localSize.x:0.##} × {localSize.y:0.##}  ·  RT {res.x}×{res.y}  ·  {mem}";
+            if (res != gizmoLabelCachedRes || !Mathf.Approximately(localSize.x, gizmoLabelCachedSize.x) || !Mathf.Approximately(localSize.y, gizmoLabelCachedSize.y))
+            {
+                long bytes = (long)res.x * res.y;
+                string mem = bytes < 1024 ? bytes + " B" : (bytes / 1024f).ToString("0.0") + " KB";
+                gizmoLabelText = $"Local Trail\n{localSize.x:0.##} × {localSize.y:0.##}  ·  RT {res.x}×{res.y}  ·  {mem}";
+                gizmoLabelCachedRes = res;
+                gizmoLabelCachedSize = localSize;
+            }
+
             if (gizmoLabelStyle == null)
             {
                 gizmoLabelStyle = new GUIStyle(UnityEditor.EditorStyles.helpBox) { alignment = TextAnchor.MiddleCenter, fontSize = 10 };
                 gizmoLabelStyle.normal.textColor = Color.white;
             }
-            UnityEditor.Handles.Label((bl + tr) * 0.5f, txt, gizmoLabelStyle);
+            UnityEditor.Handles.Label((gizmoCorners[0] + gizmoCorners[2]) * 0.5f, gizmoLabelText, gizmoLabelStyle);
         }
+
+        private static readonly Color gizmoFill    = new Color(0.3f, 0.8f, 1f, 0.15f);
+        private static readonly Color gizmoOutline = new Color(0.3f, 0.8f, 1f, 1f);
+        private Vector3[] gizmoCorners;
+        private string gizmoLabelText;
+        private Vector2Int gizmoLabelCachedRes;
+        private Vector2 gizmoLabelCachedSize;
 #endif
 
         private static readonly List<string> pathScratch = new List<string>(8);

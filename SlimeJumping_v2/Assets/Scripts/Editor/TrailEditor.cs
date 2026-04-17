@@ -241,17 +241,22 @@ namespace SlimeJumping.EditorTools
                         if (mgr.Rt != null) Graphics.Blit(Texture2D.blackTexture, mgr.Rt);
                         mgr.MarkDirty();
                     }
-                    if (GUILayout.Button("Clear All (World + Locals)"))
+                }
+                // Clear All works in both modes:
+                //  - Play: blit black over live RTs + mark dirty so auto-save overwrites files.
+                //  - Edit: delete all world + local save files for this scene key (no live RTs to clear).
+                string clearAllLabel = Application.isPlaying ? "Clear All (World + Locals)" : "Delete All Scene Saves";
+                if (GUILayout.Button(clearAllLabel))
+                {
+                    if (Application.isPlaying)
                     {
                         if (mgr.Rt != null) Graphics.Blit(Texture2D.blackTexture, mgr.Rt);
                         mgr.MarkDirty();
                         foreach (var rc in Object.FindObjectsByType<LocalTrailReceiver>(FindObjectsSortMode.None))
                             rc.ClearTrail();
                     }
-                }
-                if (GUILayout.Button("Delete Saved File"))
-                {
-                    LocalTrailReceiverEditor.DeleteSaveFile(mgr.SaveKey);
+                    // Always also delete save files so the next load is clean.
+                    DeleteAllSceneSaves(mgr);
                 }
             }
 
@@ -259,16 +264,48 @@ namespace SlimeJumping.EditorTools
             DrawDefaultInspector();
         }
 
-        private static void DrawSaveMismatchWarning(WorldTrailManager mgr)
+        // Cached save-meta read so we don't hit disk every OnInspectorGUI. The inspector repaints
+        // continuously in some editor states (scene view hover, animation curve preview, etc.)
+        // and File.ReadAllText per repaint is a significant cost.
+        private WorldTrailManager cachedMgr;
+        private string cachedSaveKey;
+        private double cachedAtTime;
+        private bool cachedMismatch;
+        private TrailTargetMeta cachedSaved;
+        private const double cacheTtlSec = 0.5;  // re-read meta at most twice per second
+
+        private void DrawSaveMismatchWarning(WorldTrailManager mgr)
         {
             string basePath = Path.Combine(Application.persistentDataPath, "trail", Sanitize(mgr.SaveKey));
-            if (!File.Exists(basePath + ".meta")) return;
+            bool stale = cachedMgr != mgr
+                      || cachedSaveKey != mgr.SaveKey
+                      || (UnityEditor.EditorApplication.timeSinceStartup - cachedAtTime) > cacheTtlSec;
+
+            if (stale)
+            {
+                cachedMgr = mgr;
+                cachedSaveKey = mgr.SaveKey;
+                cachedAtTime = UnityEditor.EditorApplication.timeSinceStartup;
+                cachedMismatch = false;
+
+                if (File.Exists(basePath + ".meta"))
+                {
+                    try
+                    {
+                        cachedSaved = JsonUtility.FromJson<TrailTargetMeta>(File.ReadAllText(basePath + ".meta"));
+                        var expectedProbe = mgr.BuildMeta();
+                        cachedMismatch = !MetaMatches(cachedSaved, expectedProbe);
+                    }
+                    catch { cachedMismatch = false; }
+                }
+            }
+
+            if (!cachedMismatch) return;
 
             try
             {
-                var saved = JsonUtility.FromJson<TrailTargetMeta>(File.ReadAllText(basePath + ".meta"));
+                var saved = cachedSaved;
                 var expected = mgr.BuildMeta();
-                if (MetaMatches(saved, expected)) return;
 
                 EditorGUILayout.HelpBox(
                     "An existing save for this scene will be ignored on next Play Mode due to bounds/resolution mismatch.\n" +
@@ -293,6 +330,36 @@ namespace SlimeJumping.EditorTools
                 }
             }
             catch { /* unreadable meta — ignore, next Play rewrites it */ }
+        }
+
+        private static void DeleteAllSceneSaves(WorldTrailManager mgr)
+        {
+            string root = Path.Combine(Application.persistentDataPath, "trail");
+            if (!Directory.Exists(root)) { Debug.Log("[Trail] No save folder to clean."); return; }
+
+            // Delete the world save for this key.
+            string worldBase = Path.Combine(root, Sanitize(mgr.SaveKey));
+            int deleted = 0;
+            foreach (var suffix in new[] { ".dat", ".meta" })
+            {
+                string p = worldBase + suffix;
+                if (File.Exists(p)) { File.Delete(p); deleted++; }
+            }
+
+            // Delete every local_<sceneKey>_... for the active LocalTrailReceivers; we can derive
+            // per-target SaveKey by querying the live components (more reliable than pattern-matching
+            // on disk).
+            foreach (var rc in Object.FindObjectsByType<LocalTrailReceiver>(FindObjectsSortMode.None))
+            {
+                string localBase = Path.Combine(root, Sanitize(rc.SaveKey));
+                foreach (var suffix in new[] { ".dat", ".meta" })
+                {
+                    string p = localBase + suffix;
+                    if (File.Exists(p)) { File.Delete(p); deleted++; }
+                }
+            }
+
+            Debug.Log($"[Trail] Deleted {deleted} save file(s) for scene key '{mgr.SaveKey}'.");
         }
 
         private static void FitBoundsToSceneGround(WorldTrailManager mgr)

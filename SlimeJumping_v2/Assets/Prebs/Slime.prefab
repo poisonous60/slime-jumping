@@ -19,6 +19,11 @@ GameObject:
   - component: {fileID: 3880301101601810712}
   - component: {fileID: 8217003107874226040}
   - component: {fileID: 8760190312234880352}
+  - component: {fileID: 2947269497058592342}
+  - component: {fileID: 974610108970728557}
+  - component: {fileID: 8411979575088587100}
+  - component: {fileID: 9086750496525282109}
+  - component: {fileID: 5587718173598793022}
   m_Layer: 0
   m_Name: Slime
   m_TagString: Untagged
@@ -35,7 +40,7 @@ Transform:
   m_GameObject: {fileID: 2150085247480545756}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -36.13, y: 49.46, z: 0}
+  m_LocalPosition: {x: -2.68, y: 2.73, z: 0}
   m_LocalScale: {x: 2, y: 2, z: 2}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -237,6 +242,166 @@ MonoBehaviour:
   slimeController: {fileID: 175102409996259547}
   dustPrefab: {fileID: 5911743663151647118, guid: 614a977c154d7be4fae12b257a550a03, type: 3}
   cooldown: 0.15
+--- !u!114 &2947269497058592342
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2150085247480545756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f11bb698f69c6542aebd411b0bf7e1b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Interaction.SitPoseAnimator
+  slimeVisual: {fileID: 0}
+--- !u!114 &974610108970728557
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2150085247480545756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f9241f83c9252345ad471e39a45eada, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Debugging.MouseClickTeleportDebugger
+  slimeController: {fileID: 175102409996259547}
+  targetCamera: {fileID: 0}
+  useRightButton: 1
+--- !u!114 &8411979575088587100
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2150085247480545756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4165aaf7d5fb4144f9b2d832242fb1c6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Debugging.TeleportDebugger
+  slimeController: {fileID: 175102409996259547}
+  saveKey: 19
+  recallKey: 51
+  resetCountKey: 31
+  gizmoColor: {r: 0.2, g: 1, b: 0.4, a: 0.9}
+  gizmoRadius: 0.4
+  showRetryUI: 0
+  fontSize: 22
+  topMargin: 16
+  uiColor: {r: 1, g: 0.85, b: 0.2, a: 1}
+--- !u!114 &9086750496525282109
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2150085247480545756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f11bb698f69c6542aebd411b0bf7e1b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Interaction.SitPoseAnimator
+  slimeVisual: {fileID: 0}
+--- !u!114 &5587718173598793022
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2150085247480545756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a237eefa3264ec449ecbd6331404658, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Rendering.TrailStamper
+  slimeController: {fileID: 175102409996259547}
+  slimeCollider: {fileID: 5934579160698062196}
+  stampOnCrawl: 0
+  moveStep: 0.4
+  moveRadius: 0.1
+  moveStrength: 0.001
+  landingSpeedMin: 0
+  landingSpeedMax: 30
+  landingRadiusCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0.01403293
+      value: 0.14962159
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.09957756
+      value: 0.15764996
+      inSlope: 0.3313176
+      outSlope: 0.3313176
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.08913712
+    - serializedVersion: 3
+      time: 0.993555
+      value: 0.5056889
+      inSlope: 0.40068057
+      outSlope: 0.40068057
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.06786213
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  landingStrengthCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0.00020096973
+      value: 0.008506493
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.10025644
+      value: 0.009350644
+      inSlope: 0.0021745514
+      outSlope: 0.0021745514
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.50148463
+      value: 0.074270666
+      inSlope: 0.45740467
+      outSlope: 0.45740467
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.070850156
+      outWeight: 0.2414148
+    - serializedVersion: 3
+      time: 1.0002072
+      value: 0.29718798
+      inSlope: 0.5203491
+      outSlope: 0.5203491
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.15977219
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  teleportCutoff: 3
+  logLandings: 0
 --- !u!1 &3217969592835310414
 GameObject:
   m_ObjectHideFlags: 0
@@ -293,6 +458,7 @@ MonoBehaviour:
   eyesRenderer: {fileID: 6943131201450664474}
   eyesOpen: {fileID: 21300000, guid: 2bbe226fda02475439cf69ea8af21dd0, type: 3}
   eyesClosed: {fileID: 21300000, guid: 14139ced50364db4c8d7b58a329f6fe6, type: 3}
+  eyesStun: {fileID: 21300000, guid: 7888da6c2cb37c6478bf4344e19ecfa7, type: 3}
 --- !u!1 &3731364693674745572
 GameObject:
   m_ObjectHideFlags: 0
@@ -318,8 +484,8 @@ Transform:
   m_GameObject: {fileID: 3731364693674745572}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0.05, y: 0, z: -0.2}
+  m_LocalScale: {x: 1.03, y: 1.03, z: 1.03}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 5264545353690500065}
@@ -392,7 +558,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a33be983010dec44a92f499b483f32cc, type: 2}
+  - {fileID: 2100000, guid: c534cf9b8dcbb1c45b91fe9ad332e224, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -432,7 +598,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &4637232691298175605
 Transform:
   m_ObjectHideFlags: 0
@@ -623,8 +789,8 @@ Transform:
   m_GameObject: {fileID: 7827760023869453774}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0.5}
-  m_LocalScale: {x: 0.1, y: 0.1, z: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 0.26, y: 0.26, z: 0.26}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1945036719575593016}
