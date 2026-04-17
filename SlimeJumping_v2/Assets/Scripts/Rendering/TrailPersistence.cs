@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -19,9 +20,10 @@ namespace SlimeJumping.Rendering
         private readonly float autoSaveInterval;
         private readonly string root;             // Application.persistentDataPath + "/trail"
         private readonly List<ITrailTarget> targets = new List<ITrailTarget>();
+        private readonly Dictionary<ITrailTarget, byte[]> readbackBuffers = new Dictionary<ITrailTarget, byte[]>();
 
         private float timer;
-        private bool saveInFlight;
+        private volatile bool saveInFlight;
         private bool cancelled;
         private int rrIndex;
 
@@ -43,6 +45,7 @@ namespace SlimeJumping.Rendering
         {
             if (target == null) return;
             targets.Remove(target);
+            readbackBuffers.Remove(target);
         }
 
         public void Cancel() => cancelled = true;
@@ -158,29 +161,57 @@ namespace SlimeJumping.Rendering
         {
             saveInFlight = true;
             t.ClearDirty();
-            // Capture target & key locally — target may unregister during readback.
-            var capturedTarget = t;
+            // Capture meta/path locally — target may unregister during readback.
             var capturedMeta = JsonUtility.ToJson(t.BuildMeta());
             var capturedPath = PathFor(t.SaveKey);
-            AsyncGPUReadback.Request(t.Rt, 0, TextureFormat.R8, req => OnReadback(req, capturedMeta, capturedPath));
+            int needed = t.Resolution.x * t.Resolution.y;
+            if (!readbackBuffers.TryGetValue(t, out var buffer) || buffer.Length != needed)
+            {
+                buffer = new byte[needed];
+                readbackBuffers[t] = buffer;
+            }
+            var capturedBuffer = buffer;
+            AsyncGPUReadback.Request(t.Rt, 0, TextureFormat.R8, req => OnReadback(req, capturedMeta, capturedPath, capturedBuffer));
         }
 
-        private void OnReadback(AsyncGPUReadbackRequest req, string metaJson, string basePath)
+        private void OnReadback(AsyncGPUReadbackRequest req, string metaJson, string basePath, byte[] buffer)
         {
+            if (cancelled) { saveInFlight = false; return; }
+            if (req.hasError)
+            {
+                Debug.LogWarning("[Trail] Async readback reported error.");
+                saveInFlight = false;
+                return;
+            }
+
+            // Must copy out of the NativeArray before it is disposed next frame.
+            var data = req.GetData<byte>();
+            int n = Mathf.Min(data.Length, buffer.Length);
+            NativeArray<byte>.Copy(data, buffer, n);
+            Task.Run(() =>
+            {
+                try { WriteAtomic(basePath, buffer, metaJson); }
+                catch (Exception e) { Debug.LogWarning("[Trail] Worker-thread save failed: " + e.Message); }
+                finally { saveInFlight = false; }
+            });
+        }
+
+        /// Synchronously save a single target to its canonical path. Used for teardown flushes
+        /// where the named-slot snapshot API would silently write to the wrong location.
+        public void SaveSync(ITrailTarget t)
+        {
+            if (cancelled || t == null) return;
             try
             {
-                if (cancelled) return;
-                if (req.hasError) { Debug.LogWarning("[Trail] Async readback reported error."); return; }
-
-                // Must copy out of the NativeArray before it is disposed next frame.
-                byte[] bytes = req.GetData<byte>().ToArray();
-                Task.Run(() =>
-                {
-                    try { WriteAtomic(basePath, bytes, metaJson); }
-                    catch (Exception e) { Debug.LogWarning("[Trail] Worker-thread save failed: " + e.Message); }
-                });
+                t.ClearDirty();
+                byte[] bytes = ReadPixelsSync(t);
+                string meta = JsonUtility.ToJson(t.BuildMeta());
+                WriteAtomic(PathFor(t.SaveKey), bytes, meta);
             }
-            finally { saveInFlight = false; }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Trail] SaveSync failed for '{t.SaveKey}': {e.Message}");
+            }
         }
 
         public void FlushSync()
@@ -188,6 +219,11 @@ namespace SlimeJumping.Rendering
             if (cancelled) return;
             // Drain any in-flight readbacks so their callbacks don't run post-shutdown on a torn-down state.
             AsyncGPUReadback.WaitAllRequests();
+
+            // The readback callback kicks off a worker-thread Task for the actual file write.
+            // Spin until it finishes so quit doesn't leave .tmp files lingering.
+            int guard = 500;
+            while (saveInFlight && guard-- > 0) System.Threading.Thread.Sleep(10);
 
             for (int i = 0; i < targets.Count; i++)
             {

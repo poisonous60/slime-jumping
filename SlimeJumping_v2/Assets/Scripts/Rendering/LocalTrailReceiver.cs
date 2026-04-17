@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -136,7 +137,7 @@ namespace SlimeJumping.Rendering
                 // Final flush on teardown — don't lose recorded progress when a platform is destroyed.
                 if (dirty)
                 {
-                    try { mgr.Persistence.SaveNamedSlotSync(this, "final"); } catch { /* best-effort */ }
+                    try { mgr.Persistence.SaveSync(this); } catch { /* best-effort */ }
                 }
                 mgr.Persistence.Unregister(this);
             }
@@ -252,6 +253,7 @@ namespace SlimeJumping.Rendering
             ClearTrail();
         }
 
+        private static GUIStyle gizmoLabelStyle;
         private void OnDrawGizmosSelected()
         {
             // Compute world-space corners of the local rect so Handles (which use world space) align.
@@ -268,21 +270,25 @@ namespace SlimeJumping.Rendering
             long bytes = (long)res.x * res.y;
             string mem = bytes < 1024 ? bytes + " B" : (bytes / 1024f).ToString("0.0") + " KB";
             string txt = $"Local Trail\n{localSize.x:0.##} × {localSize.y:0.##}  ·  RT {res.x}×{res.y}  ·  {mem}";
-            var style = new GUIStyle(UnityEditor.EditorStyles.helpBox) { alignment = TextAnchor.MiddleCenter, fontSize = 10 };
-            style.normal.textColor = Color.white;
-            UnityEditor.Handles.Label((bl + tr) * 0.5f, txt, style);
+            if (gizmoLabelStyle == null)
+            {
+                gizmoLabelStyle = new GUIStyle(UnityEditor.EditorStyles.helpBox) { alignment = TextAnchor.MiddleCenter, fontSize = 10 };
+                gizmoLabelStyle.normal.textColor = Color.white;
+            }
+            UnityEditor.Handles.Label((bl + tr) * 0.5f, txt, gizmoLabelStyle);
         }
 #endif
 
+        private static readonly List<string> pathScratch = new List<string>(8);
         private static string HierarchyPath(Transform t)
         {
+            pathScratch.Clear();
+            for (var p = t; p != null; p = p.parent) pathScratch.Add(p.name);
             var buf = new System.Text.StringBuilder(64);
-            buf.Append(t.name);
-            var p = t.parent;
-            while (p != null)
+            for (int i = pathScratch.Count - 1; i >= 0; i--)
             {
-                buf.Insert(0, p.name + "/");
-                p = p.parent;
+                if (i < pathScratch.Count - 1) buf.Append('/');
+                buf.Append(pathScratch[i]);
             }
             return buf.ToString();
         }

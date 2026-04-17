@@ -12,6 +12,12 @@ namespace SlimeJumping.Rendering
         private static readonly Dictionary<Collider2D, LocalTrailReceiver> map
             = new Dictionary<Collider2D, LocalTrailReceiver>();
 
+        // With "Enter Play Mode → Reload Domain" disabled, statics survive across Play sessions
+        // and leak fake-null Collider2D keys from the previous session. SubsystemRegistration runs
+        // at the very start of each Play entry, before any Awake.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics() => map.Clear();
+
         public static void Register(Collider2D collider, LocalTrailReceiver receiver)
         {
             if (collider == null || receiver == null) return;

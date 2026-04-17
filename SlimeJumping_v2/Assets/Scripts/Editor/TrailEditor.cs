@@ -58,7 +58,8 @@ namespace SlimeJumping.EditorTools
                 if (mat.shader == to) { alreadyOnTrail++; continue; }
                 if (mat.shader != from)
                 {
-                    Debug.LogWarning($"[Trail] Skipping '{mat.name}': shader is '{mat.shader?.name}', expected '{fromShaderName}'.", mat);
+                    string shaderName = mat.shader != null ? mat.shader.name : "(null)";
+                    Debug.LogWarning($"[Trail] Skipping '{mat.name}': shader is '{shaderName}', expected '{fromShaderName}'.", mat);
                     skipped++;
                     continue;
                 }
@@ -101,9 +102,9 @@ namespace SlimeJumping.EditorTools
                 if (mat == null || mat.shader == null) continue;
 
                 bool isLocal = mat.shader == localShader;
-                var receiver = r.GetComponent<LocalTrailReceiver>()
-                               ?? r.GetComponentInParent<LocalTrailReceiver>()
-                               ?? r.GetComponentInChildren<LocalTrailReceiver>();
+                var receiver = r.GetComponent<LocalTrailReceiver>();
+                if (receiver == null) receiver = r.GetComponentInParent<LocalTrailReceiver>();
+                if (receiver == null) receiver = r.GetComponentInChildren<LocalTrailReceiver>();
 
                 if (isLocal && receiver == null)
                 {

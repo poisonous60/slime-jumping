@@ -282,7 +282,7 @@ namespace SlimeJumping.Rendering
         private void DebugSaveSnapshotA()
         {
             if (!Application.isPlaying) { Debug.LogWarning("[Trail] Play Mode only."); return; }
-            persistence?.SaveNamedSlotSync(this, "A");
+            if (persistence != null) persistence.SaveNamedSlotSync(this, "A");
             Debug.Log("[Trail] Snapshot 'A' saved.");
         }
 
@@ -336,11 +336,18 @@ namespace SlimeJumping.Rendering
                 long bytes = PlannedMemoryBytes;
                 string mem = bytes < 1024 * 1024 ? (bytes / 1024f).ToString("0.0") + " KB" : (bytes / 1024f / 1024f).ToString("0.0") + " MB";
                 string txt = $"Trail World Bounds\n{worldSize.x:0.#} × {worldSize.y:0.#}  ·  RT {res.x}×{res.y}  ·  {mem}";
-                var style = new GUIStyle(UnityEditor.EditorStyles.helpBox) { alignment = TextAnchor.MiddleCenter, fontSize = 11 };
-                style.normal.textColor = Color.white;
-                UnityEditor.Handles.Label((bl + tr) * 0.5f, txt, style);
+                if (gizmoLabelStyle == null)
+                {
+                    gizmoLabelStyle = new GUIStyle(UnityEditor.EditorStyles.helpBox) { alignment = TextAnchor.MiddleCenter, fontSize = 11 };
+                    gizmoLabelStyle.normal.textColor = Color.white;
+                }
+                UnityEditor.Handles.Label((bl + tr) * 0.5f, txt, gizmoLabelStyle);
             }
 #endif
         }
+
+#if UNITY_EDITOR
+        private static GUIStyle gizmoLabelStyle;
+#endif
     }
 }
