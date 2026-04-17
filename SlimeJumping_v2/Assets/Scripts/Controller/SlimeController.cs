@@ -58,6 +58,10 @@ namespace SlimeJumping.Controller
         public float ChargingProgress => activeChargeRadius > 0.0001f
             ? aimOffset.magnitude / activeChargeRadius
             : 0f;
+        public bool IsAtChargeFullAim => chargeFullAimTimer > 0f;
+        public float ChargeFullAimProgress => settings.chargeFullAimTime > 0.0001f
+            ? Mathf.Clamp01(chargeFullAimTimer / settings.chargeFullAimTime)
+            : (chargeFullAimTimer > 0f ? 1f : 0f);
         public float ChargingLaunchSpeed
         {
             get
@@ -126,6 +130,17 @@ namespace SlimeJumping.Controller
 
         // Full-charge aim grace timer
         private float chargeFullAimTimer;
+
+        // Energy-conversion coyote: on no-Space landing, the spawn distance that
+        // a Space-held landing would have granted is stashed here. If the player
+        // presses Space before energyCoyoteTimer expires, HandleSurfaceChargeEntry
+        // consumes these values instead of using the default chargeRadius.
+        private float energyCoyoteTimer;
+        private float pendingEnergyChargeRadius;
+        // True when the deferred floor conversionCount=0 reset is owed on pending expiry.
+        // The reset is deferred because consuming pending continues the chain (matching
+        // the Space-held branch, which doesn't reset conversionCount on floor landings).
+        private bool pendingFloorReset;
 
         // Stick timer (delay before slide starts)
         private float stickTimer;
@@ -486,6 +501,20 @@ namespace SlimeJumping.Controller
             surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
         }
 
+        // Clears pending energy-conversion coyote state. Pass executeDeferredReset=true
+        // when the pending is being discarded (timer expired, chain abandoned) so the
+        // floor landing's deferred conversionCount=0 reset takes effect. Pass false
+        // when consuming the pending (HandleSurfaceChargeEntry) or when the caller has
+        // already reset conversionCount for other reasons (stun, teleport, state loss).
+        private void ClearPendingEnergyConversion(bool executeDeferredReset)
+        {
+            if (executeDeferredReset && pendingFloorReset)
+                conversionCount = 0;
+            pendingEnergyChargeRadius = 0f;
+            energyCoyoteTimer = 0f;
+            pendingFloorReset = false;
+        }
+
         private void ChangeState(SlimeState newState, bool intentional = false)
         {
             if (currentState == newState) return;
@@ -601,6 +630,7 @@ namespace SlimeJumping.Controller
             aimOffset = Vector2.zero;
             chargeFullAimTimer = 0f;
             coyoteTimer = 0f;
+            ClearPendingEnergyConversion(executeDeferredReset: false);
             stickTimer = 0f;
             stickDeccelTimer = 0f;
             slideRampTimer = 0f;
@@ -680,6 +710,10 @@ namespace SlimeJumping.Controller
             blockAttachCount = 0;
             inFluidCount = 0;
             stunTimer = 0f;
+            // Pending energy-conversion coyote would otherwise survive the override
+            // (timer only ticks in FixedUpdateAttached) and fire a spurious energy
+            // conversion on the next Attached landing after release.
+            ClearPendingEnergyConversion(executeDeferredReset: false);
 
             // Unity doesn't fire OnTriggerExit2D after override — clear stale candidates
             interactionDetector.ClearCandidates();

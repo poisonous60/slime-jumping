@@ -40,7 +40,23 @@ namespace SlimeJumping.Controller
             wasStuck = true;
             velocity = surfaceTangent * impactTangentSpeed;
 
-            activeChargeRadius = settings.chargeRadius;
+            // Energy-conversion coyote: consume the pending spawn distance stashed
+            // by the no-Space landing branch (Airborne.cs) if it's still live.
+            // Space-held landings leave chargeEntryCrawl=0 (Launch zeroed it on the prior
+            // flight exit, and the Airborne→Charging branch doesn't re-seed it from the
+            // post-landing crawl) — zero it here too so coyote doesn't grant a strictly
+            // better hyper-dash tangent inheritance than holding Space at the landing frame.
+            if (energyCoyoteTimer > 0f && pendingEnergyChargeRadius > settings.chargeRadius)
+            {
+                activeChargeRadius = pendingEnergyChargeRadius;
+                conversionCount++;
+                chargeEntryCrawl = 0f;
+            }
+            else
+            {
+                activeChargeRadius = settings.chargeRadius;
+            }
+            ClearPendingEnergyConversion(executeDeferredReset: false);
             chargeFullAimTimer = 0f;
 
             SnapToSurface();

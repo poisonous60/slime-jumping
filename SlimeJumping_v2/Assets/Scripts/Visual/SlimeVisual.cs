@@ -735,17 +735,29 @@ public class SlimeVisual : MonoBehaviour
 
     private Vector2 ComputeChargingTremor()
     {
-        if (chargingCurve < 0.001f)
-            return Vector2.zero;
+        Vector2 result = Vector2.zero;
 
-        float speed = slimeController.ChargingLaunchSpeed;
-        float range = settings.chargingSpeedMax - settings.chargingTremorThreshold;
-        float t = Mathf.Clamp01((speed - settings.chargingTremorThreshold) / Mathf.Max(0.01f, range));
-        float tremor = Mathf.Sin(Time.time * settings.chargingTremorFrequency * 2f * Mathf.PI)
-                     * t * t
-                     * settings.chargingTremorMax;
+        if (chargingCurve >= 0.001f)
+        {
+            float speed = slimeController.ChargingLaunchSpeed;
+            float range = settings.chargingSpeedMax - settings.chargingTremorThreshold;
+            float t = Mathf.Clamp01((speed - settings.chargingTremorThreshold) / Mathf.Max(0.01f, range));
+            float tremor = Mathf.Sin(Time.time * settings.chargingTremorFrequency * 2f * Mathf.PI)
+                         * t * t
+                         * settings.chargingTremorMax;
+            result = new Vector2(tremor, -tremor);
+        }
 
-        return new Vector2(tremor, -tremor);
+        if (slimeController.CurrentState == SlimeController.SlimeState.Charging
+            && slimeController.IsAtChargeFullAim
+            && settings.fullAimTremorAmplitude > 0f)
+        {
+            float fa = Mathf.Sin(Time.time * settings.fullAimTremorFrequency * 2f * Mathf.PI)
+                     * settings.fullAimTremorAmplitude;
+            result += new Vector2(fa, -fa);
+        }
+
+        return result;
     }
 
     // --- Charging offset (surface push — slow layer) ---

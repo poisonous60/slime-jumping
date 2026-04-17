@@ -22,6 +22,7 @@ namespace SlimeJumping.Controller
             aimOffset = Vector2.zero;
             chargeFullAimTimer = 0f;
             coyoteTimer = 0f;
+            ClearPendingEnergyConversion(executeDeferredReset: false);
             activeChargeRadius = settings.chargeRadius;
             driftDirection = Vector2.zero;
             surfaceProbeMissFrames = 0;

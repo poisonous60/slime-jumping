@@ -78,6 +78,8 @@ namespace SlimeJumping.Settings
         public float subsequentConversionRate = 0.9f;
         public float notJumpConversionBonus = 1.3f;
         public float aimDriftRadiusScale = 0.7f;
+        [Tooltip("Grace window (seconds) after a no-Space landing during which pressing Space still grants energy conversion, as if Space had been held on the landing frame. 0 disables.")]
+        [Min(0f)] public float energyConversionCoyoteTime = 0.12f;
 
         [Header("Stick")]
         public float minStickDuration = 0.3f;

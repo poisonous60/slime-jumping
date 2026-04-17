@@ -61,6 +61,9 @@ namespace SlimeJumping.Settings
         public float chargingTremorFrequency = 25f;
         public float chargingTremorMax = 0.03f;
         public float chargingTremorThreshold = 9f;
+        [Tooltip("Extra scale-tremor amplitude applied while aim is held at charge-radius edge (chargeFullAimTime grace window). Adds on top of chargingTremorMax.")]
+        public float fullAimTremorAmplitude = 0.05f;
+        public float fullAimTremorFrequency = 45f;
 
         [Header("Breathing (C-6)")]
         public float breathAmplitude = 0.02f;

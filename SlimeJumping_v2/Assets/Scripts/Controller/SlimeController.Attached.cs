@@ -19,11 +19,19 @@ namespace SlimeJumping.Controller
                 launchPosition = rb.position;
                 slideRampTimer = 0f;
                 conversionCount = 0;
+                ClearPendingEnergyConversion(executeDeferredReset: false);
                 if (carrier != null) carrier.Detach();
                 ClearPlatformEffect();
                 surfaceMod = SurfaceModifiers.Default;
                 ChangeState(SlimeState.Airborne);
                 return;
+            }
+
+            if (energyCoyoteTimer > 0f)
+            {
+                energyCoyoteTimer -= dt;
+                if (energyCoyoteTimer <= 0f)
+                    ClearPendingEnergyConversion(executeDeferredReset: true);
             }
 
             // Reset slide ramp when stick expires (smooth transition)

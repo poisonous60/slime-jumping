@@ -165,11 +165,43 @@ namespace SlimeJumping.Controller
                     crawlVelocity = ComputeLandingCrawlVelocity(effectiveTangent, landingAngle);
                     velocity = Vector2.zero;
 
+                    // Energy-conversion coyote: compute the spawn distance a Space-held
+                    // landing would have granted and stash it. If the player presses
+                    // Space within energyConversionCoyoteTime, HandleSurfaceChargeEntry
+                    // consumes this to grant the same expanded charge radius.
+                    bool isFloorLanding = surfaceUp >= settings.stickSlopeThreshold;
+                    bool coyoteArmed = false;
+                    if (settings.energyConversionCoyoteTime > 0f)
+                    {
+                        float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
+                        float shadowSpeedSq = launchSpeed * launchSpeed
+                            + 2f * Mathf.Abs(settings.gravity) * heightDelta;
+                        float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
+                        float speedRatio = Mathf.Sqrt(settings.initialConversionRate);
+                        float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
+                        float spawnDistance = impactSpeed * effectiveRate;
+                        float conversionScale = (conversionCount == 0) ? 1f : settings.subsequentConversionRate;
+                        spawnDistance *= conversionScale;
+                        if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
+
+                        float candidate = Mathf.Max(spawnDistance, settings.chargeRadius);
+                        if (candidate > settings.chargeRadius)
+                        {
+                            pendingEnergyChargeRadius = candidate;
+                            energyCoyoteTimer = settings.energyConversionCoyoteTime;
+                            pendingFloorReset = isFloorLanding;
+                            coyoteArmed = true;
+                        }
+                    }
+
                     // conversionCount resets on floor landing only. Wall chains keep subsequentConversionRate — intentional.
-                    if (surfaceUp >= settings.stickSlopeThreshold)
+                    // When coyote is armed on a floor landing, the reset is deferred to pending expiry
+                    // so a coyote-consumed conversion continues the chain (matches Space-held branch).
+                    if (isFloorLanding)
                     {
                         stickTimer = 0f;
-                        conversionCount = 0;
+                        if (!coyoteArmed)
+                            conversionCount = 0;
                     }
                     else
                         stickTimer = CalculateStickDuration(landingSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);

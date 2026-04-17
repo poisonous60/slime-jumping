@@ -55,6 +55,11 @@ namespace SlimeJumping.Controller
                 settings.groundLayer);
 
             conversionCount = 0;
+            // conversionCount already zeroed above, so skip the deferred floor reset —
+            // otherwise the pending from the prior no-Space landing would leak into the
+            // next flight (timer only decrements in FixedUpdateAttached) and eventually
+            // fire ClearPendingEnergyConversion(true) mid-chain for the wrong landing.
+            ClearPendingEnergyConversion(executeDeferredReset: false);
             FinalizeAirborneExit();
         }
 
@@ -113,6 +118,9 @@ namespace SlimeJumping.Controller
             // after velocity = surfaceTangent * (slideSpeed + crawlVelocity).
             // During stick, velocity holds impact decel residual — start from zero.
             // During normal operation, velocity = surfaceTangent * (slide + crawl) — preserve it.
+            // Hop abandons the charge chain, so discard any pending coyote conversion
+            // and apply the deferred floor reset that the no-Space landing skipped.
+            ClearPendingEnergyConversion(executeDeferredReset: true);
             chargeEntryCrawl = crawlVelocity;
             float angle = GetSurfaceAngle();
             float hopT = Mathf.InverseLerp(settings.hopMinAngle, settings.hopMaxAngle, angle);
