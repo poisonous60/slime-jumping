@@ -231,6 +231,30 @@ namespace SlimeJumping.EditorTools
             }
 
             EditorGUILayout.Space();
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                using (new EditorGUI.DisabledScope(!Application.isPlaying))
+                {
+                    if (GUILayout.Button("Clear World Trail (Play)"))
+                    {
+                        if (mgr.Rt != null) Graphics.Blit(Texture2D.blackTexture, mgr.Rt);
+                        mgr.MarkDirty();
+                    }
+                    if (GUILayout.Button("Clear All (World + Locals)"))
+                    {
+                        if (mgr.Rt != null) Graphics.Blit(Texture2D.blackTexture, mgr.Rt);
+                        mgr.MarkDirty();
+                        foreach (var rc in Object.FindObjectsByType<LocalTrailReceiver>(FindObjectsSortMode.None))
+                            rc.ClearTrail();
+                    }
+                }
+                if (GUILayout.Button("Delete Saved File"))
+                {
+                    LocalTrailReceiverEditor.DeleteSaveFile(mgr.SaveKey);
+                }
+            }
+
+            EditorGUILayout.Space();
             DrawDefaultInspector();
         }
 
@@ -368,7 +392,48 @@ namespace SlimeJumping.EditorTools
                     MessageType.Warning);
             }
 
+            EditorGUILayout.Space();
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                using (new EditorGUI.DisabledScope(!Application.isPlaying))
+                {
+                    if (GUILayout.Button("Clear Trail (Play)"))
+                    {
+                        rc.ClearTrail();
+                    }
+                }
+                if (GUILayout.Button("Delete Saved File"))
+                {
+                    DeleteSaveFile(rc.SaveKey);
+                }
+            }
+
             DrawDefaultInspector();
+        }
+
+        public static void DeleteSaveFile(string saveKey)
+        {
+            string basePath = System.IO.Path.Combine(Application.persistentDataPath, "trail", Sanitize(saveKey));
+            int deleted = 0;
+            foreach (var suffix in new[] { ".dat", ".meta" })
+            {
+                var p = basePath + suffix;
+                if (System.IO.File.Exists(p)) { System.IO.File.Delete(p); deleted++; }
+            }
+            Debug.Log($"[Trail] Deleted {deleted} file(s) for '{saveKey}'. (Trail in memory is unaffected — next Play starts fresh.)");
+        }
+
+        private static string Sanitize(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "unnamed";
+            var buf = new System.Text.StringBuilder(s.Length);
+            foreach (char c in s)
+            {
+                if (char.IsLetterOrDigit(c) || c == '_' || c == '-' || c == '.') buf.Append(c);
+                else buf.Append('_');
+            }
+            if (buf.Length > 120) buf.Length = 120;
+            return buf.ToString();
         }
     }
 }
