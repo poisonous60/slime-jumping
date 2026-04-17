@@ -5,10 +5,11 @@ namespace SlimeJumping.Mechanisms
 {
     public partial class WaterZone_v2
     {
-        void ApplySlimeImpulse(SlimeController slime, float dt)
+        void ApplySlimeImpulse(SlimeController slime, float dt, bool isEntry = false)
         {
             if (points == null || points.Length < 2 || dt <= 0f) return;
-            if (impulseFactor <= 0f || contactRadius <= 0f) return;
+            if (impulseFactor <= 0f) return;
+            if (!isEntry && contactRadius <= 0f) return;
 
             Vector2 sWorld = slime.Position;
             Vector2 sVel   = slime.Velocity;
@@ -35,27 +36,46 @@ namespace SlimeJumping.Mechanisms
             }
 
             float bestDist = Mathf.Sqrt(bestDSq);
-            if (bestDist > contactRadius) return;
-
             int j = (best + 1) % n;
 
             // Blend rest normals along edge, then rotate to world.
             Vector2 nLocal = Vector2.Lerp(points[best].restNormal, points[j].restNormal, bestT).normalized;
             Vector2 nWorld = transform.TransformDirection(nLocal);
 
-            // Which side of the surface is the slime on? +1 outside (normal side), -1 inside.
-            float sideSign = Mathf.Sign(Vector2.Dot(sWorld - bestProj, nWorld));
-            if (sideSign == 0f) sideSign = 1f;
+            float impactSpeed;
+            float attenuation;
 
-            float impactSpeed = Vector2.Dot(sVel, nWorld);
+            if (isEntry)
+            {
+                // Fast entry can tunnel across the surface in a single physics step: the slime
+                // center may already be inside and beyond contactRadius when OnTriggerEnter fires.
+                // Skip the contactRadius gate and the "approach side" test (both assume the slime
+                // is still on its pre-entry side). Use |velocity · normal| directly — any inward
+                // motion produces a splash proportional to impact speed.
+                float inwardSpeed = -Vector2.Dot(sVel, nWorld);
+                if (inwardSpeed <= 0f) return;
+                impactSpeed = -inwardSpeed; // negative = dip, matches downstream sign convention
+                attenuation = 1f;
+            }
+            else
+            {
+                if (bestDist > contactRadius) return;
 
-            // Only push when slime is approaching the surface from its current side.
-            //   Outside (sideSign +1) + moving inward (impactSpeed < 0) => approach
-            //   Inside  (sideSign -1) + moving outward (impactSpeed > 0) => approach
-            // sideSign * impactSpeed < 0 means approach. Moving away => let the spring restore.
-            if (sideSign * impactSpeed >= 0f) return;
+                // Which side of the surface is the slime on? +1 outside (normal side), -1 inside.
+                float sideSign = Mathf.Sign(Vector2.Dot(sWorld - bestProj, nWorld));
+                if (sideSign == 0f) sideSign = 1f;
 
-            float attenuation = 1f - (bestDist / contactRadius);
+                impactSpeed = Vector2.Dot(sVel, nWorld);
+
+                // Only push when slime is approaching the surface from its current side.
+                //   Outside (sideSign +1) + moving inward (impactSpeed < 0) => approach
+                //   Inside  (sideSign -1) + moving outward (impactSpeed > 0) => approach
+                // sideSign * impactSpeed < 0 means approach. Moving away => let the spring restore.
+                if (sideSign * impactSpeed >= 0f) return;
+
+                attenuation = 1f - (bestDist / contactRadius);
+            }
+
             float baseImpulse = impactSpeed * impulseFactor * attenuation * dt;
 
             points[best].velocity += baseImpulse * (1f - bestT);

@@ -117,10 +117,10 @@ namespace SlimeJumping.Controller
             float angle = GetSurfaceAngle();
             float hopT = Mathf.InverseLerp(settings.hopMinAngle, settings.hopMaxAngle, angle);
             float power = Mathf.Lerp(settings.hopPower, settings.hopPowerMin, hopT);
+            Vector2 hopDir = settings.hopAlongSurfaceNormal ? surfaceNormal : gravityUp;
             if (stickTimer > 0f)
             {
-                // Always hop in gravity-up direction, not along surfaceNormal
-                velocity = gravityUp * power;
+                velocity = hopDir * power;
             }
             else
             {
@@ -135,8 +135,7 @@ namespace SlimeJumping.Controller
                                               settings.hopMomentumMaxSpeed);
                     velocity += surfaceTangent * (inputSign * boosted - tangentSpeed);
                 }
-                // Always hop in gravity-up direction, not along surfaceNormal
-                velocity += gravityUp * power;
+                velocity += hopDir * power;
             }
             crawlVelocity = 0f;
             stickTimer = 0f;

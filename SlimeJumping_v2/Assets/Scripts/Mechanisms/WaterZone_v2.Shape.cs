@@ -125,6 +125,22 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
+        [ContextMenu("Generate Line Points")]
+        public void GenerateLinePointsDefault() => GenerateLinePoints(pointCount, radius * 0.5f);
+
+        public void GenerateLinePoints(int count, float spacing)
+        {
+            count = Mathf.Max(2, count);
+            float totalWidth = (count - 1) * spacing;
+            float depth = spacing;
+            if (restPointsLocal == null) restPointsLocal = new List<Vector2>();
+            restPointsLocal.Clear();
+            for (int i = 0; i < count; i++)
+                restPointsLocal.Add(new Vector2(-totalWidth * 0.5f + i * spacing, 0f));
+            restPointsLocal.Add(new Vector2( totalWidth * 0.5f, -depth));
+            restPointsLocal.Add(new Vector2(-totalWidth * 0.5f, -depth));
+        }
+
         [ContextMenu("Clear Points")]
         public void ClearPoints()
         {

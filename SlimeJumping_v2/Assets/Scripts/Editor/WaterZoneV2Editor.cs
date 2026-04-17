@@ -10,6 +10,9 @@ namespace SlimeJumping.Editor
         const float HandleScreenSize = 0.08f;
         const float PickDist = 0.25f;
 
+        int   _lineCount   = 8;
+        float _lineSpacing = 0.5f;
+
         public override void OnInspectorGUI()
         {
             DrawDefaultInspector();
@@ -39,6 +42,22 @@ namespace SlimeJumping.Editor
                 {
                     Undo.RecordObject(wz, "Clear Points");
                     wz.ClearPoints();
+                    ApplyShapeChange(wz);
+                }
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Generate Line", EditorStyles.boldLabel);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.LabelField("Count", GUILayout.Width(50));
+                _lineCount = Mathf.Max(2, EditorGUILayout.IntField(_lineCount, GUILayout.Width(50)));
+                EditorGUILayout.LabelField("Spacing", GUILayout.Width(55));
+                _lineSpacing = Mathf.Max(0.01f, EditorGUILayout.FloatField(_lineSpacing, GUILayout.Width(50)));
+                if (GUILayout.Button("Generate Line"))
+                {
+                    Undo.RecordObject(wz, "Generate Line");
+                    wz.GenerateLinePoints(_lineCount, _lineSpacing);
                     ApplyShapeChange(wz);
                 }
             }

@@ -112,6 +112,13 @@ namespace SlimeJumping.Mechanisms
 
         protected override void OnSlimeEnter(SlimeController slime)
         {
+            // Splash with the pre-entry velocity. OnTriggerEnter2D fires mid-physics-step,
+            // so by the next FixedUpdate the entryMultiplier below has already drained the
+            // impact velocity — fast slams would otherwise read as gentle taps. isEntry also
+            // bypasses the contactRadius + approach-side checks, which both break when the
+            // slime tunnels fully across the surface in a single fixed step.
+            ApplySlimeImpulse(slime, Time.fixedDeltaTime, isEntry: true);
+
             slime.MultiplyVelocity(entryMultiplier);
             if (blockAttach) slime.PushBlockAttach();
             slime.PushInFluid();

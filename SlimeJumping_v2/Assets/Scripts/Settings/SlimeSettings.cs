@@ -25,6 +25,8 @@ namespace SlimeJumping.Settings
         public float dashFalloffEnd = 13f;
 
         [Header("Hop")]
+        [Tooltip("If true, hop along the surface normal (tangent-based). If false, hop in world-up (gravity-up) direction.")]
+        public bool hopAlongSurfaceNormal = true;
         public float hopPower = 2.25f;
         [Tooltip("Minimum hop power at hopMaxAngle.")]
         public float hopPowerMin = 1.125f;
