@@ -151,7 +151,11 @@ namespace SlimeJumping.EditorTools
             for (int i = 0; i < loops.Count; i++)
                 col.SetPath(i, loops[i].ToArray());
 
+            Undo.RecordObject(go, "Set Environment layer");
+            go.layer = 7;
+
             EditorUtility.SetDirty(col);
+            EditorUtility.SetDirty(go);
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             Undo.CollapseUndoOperations(undoGroup);
 
