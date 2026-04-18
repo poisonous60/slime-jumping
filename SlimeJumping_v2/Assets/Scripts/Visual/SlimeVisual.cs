@@ -2,6 +2,8 @@ using UnityEngine;
 using SlimeJumping.Controller;
 using SlimeJumping.Settings;
 
+public enum EyesForceState { None, Open, Closed }
+
 public class SlimeVisual : MonoBehaviour
 {
     [SerializeField] private SlimeController slimeController;
@@ -110,6 +112,16 @@ public class SlimeVisual : MonoBehaviour
     private float sitDepthOriginalVisualZ;
     private float sitDepthOriginalBody3dZ;
 
+    // External overrides applied while IsExternallyAnimated (BoxSleepAnimator etc.).
+    // All cleared on the gate toggle so stale state can't leak between sessions.
+    private EyesForceState _eyesForceState = EyesForceState.None;
+    private Quaternion? _externalRotationOverride;
+    // Face offset is a DELTA from the inspector-set rest position (captured in Start).
+    // When set, replaces UpdateFaceOffset's per-frame write entirely — drift/saccade
+    // pause while the override is active.
+    private Vector3? _externalFaceOffset;
+    private Vector3 faceRestLocalPosition;
+
     // External animation gate — when true, body is externally driven; face keeps its own pipeline.
     // Used by IExternalController implementers (sit-pose, firework recoil, pipe transit, etc.).
     private bool isExternallyAnimated;
@@ -137,6 +149,9 @@ public class SlimeVisual : MonoBehaviour
         mpb = new MaterialPropertyBlock();
         bodyRenderer = body.GetComponent<SpriteRenderer>();
         transformRestLossyScaleY = transform.lossyScale.y;
+        // Capture the inspector-set face position as the rest baseline. Done in Start
+        // (before any LateUpdate) so UpdateFaceOffset's per-frame writes don't taint it.
+        if (face != null) faceRestLocalPosition = face.localPosition;
         // The 3D mesh now lives on a sibling subtree (Slime/SlimeVisual3d/...)
         // rather than under the 2D body. Walk that subtree to cache the
         // renderer + filter. Stays null if body3d isn't wired, in which case
@@ -164,6 +179,7 @@ public class SlimeVisual : MonoBehaviour
             // (drift + blink) keeps running so the slime feels alive while sitting.
             CacheVelocity();
             UpdateFaceOffset();
+            ApplyExternalFaceOffset();
             UpdateBlink();
             return;
         }
@@ -360,6 +376,7 @@ public class SlimeVisual : MonoBehaviour
         }
 
         UpdateFaceOffset();
+        ApplyExternalFaceOffset();
         UpdateBlink();
 
         prevState = slimeController.CurrentState;
@@ -433,6 +450,38 @@ public class SlimeVisual : MonoBehaviour
             lastSurfaceNormal = normal.normalized;
     }
 
+    // Force the eye sprite regardless of blink scheduler. Stun still wins.
+    // Pass EyesForceState.None to release back to normal blink behavior.
+    public void SetEyesForced(EyesForceState state)
+    {
+        _eyesForceState = state;
+    }
+
+    // Composes a full XYZ rotation (Euler-driven on the caller side) onto body3d's
+    // rest rotation inside SetExternalDeform. Pass null to clear. Caller is responsible
+    // for clearing once the animation completes — leaving an override active will keep
+    // body3d rotated even after the gate closes (ResetDeformationState clears it as a
+    // safety net on IsExternallyAnimated toggle).
+    public void SetExternalRotation(Quaternion? rotation)
+    {
+        _externalRotationOverride = rotation;
+    }
+
+    // Sets a delta from the inspector-set rest position of the face transform
+    // (captured in Start). When set, REPLACES UpdateFaceOffset's per-frame write —
+    // natural drift/saccade pause while the override is active. Pass null to clear
+    // and let UpdateFaceOffset resume control.
+    public void SetExternalFaceOffset(Vector3? offset)
+    {
+        _externalFaceOffset = offset;
+    }
+
+    private void ApplyExternalFaceOffset()
+    {
+        if (!_externalFaceOffset.HasValue || face == null) return;
+        face.localPosition = faceRestLocalPosition + _externalFaceOffset.Value;
+    }
+
     // Called by external animators (e.g. SitPoseAnimator) while IsExternallyAnimated is true.
     // Silently ignored when the gate is off, so runaway calls can't corrupt the normal pipeline.
     public void SetExternalDeform(Vector3 localScale, Vector3 localPosition, float asymmetry, float chargeDip)
@@ -445,8 +494,14 @@ public class SlimeVisual : MonoBehaviour
         }
         if (body3d != null)
         {
-            // Sit pose skips surface alignment — apply rest rotation only.
-            body3d.localRotation = body3dRestRotation;
+            // Sit pose skips surface alignment — apply rest rotation only, unless an
+            // external animator (e.g. BoxSleepAnimator) provided an explicit override.
+            // Override is composed on the LEFT so it acts as a world-space pre-rotation
+            // (project tenet C-1: SlimeVisual.transform.localRotation == identity, so
+            // body3d local axes equal world axes).
+            body3d.localRotation = _externalRotationOverride.HasValue
+                ? _externalRotationOverride.Value * body3dRestRotation
+                : body3dRestRotation;
             body3d.localScale = Vector3.Scale(body3dRestScale, localScale);
             // Preserve existing localPosition.z so ApplySitDepthShift's world-Z
             // shift isn't wiped every frame. Only X/Y come from localPosition.
@@ -498,6 +553,12 @@ public class SlimeVisual : MonoBehaviour
         chargingCurve = 0f;
         smoothedSquashStrength = 0f;
         squashStrengthVel = 0f;
+
+        // Clear external overrides so stale state from a previous override session
+        // (e.g. SitPose followed by BoxSleep) can't leak into the next.
+        _eyesForceState = EyesForceState.None;
+        _externalRotationOverride = null;
+        _externalFaceOffset = null;
 
         if (body != null)
         {
@@ -831,6 +892,17 @@ public class SlimeVisual : MonoBehaviour
         {
             if (eyesStun != null) eyesRenderer.sprite = eyesStun;
             // Keep deferring nextBlinkTime so blink doesn't fire the instant stun ends
+            nextBlinkTime = Time.time + settings.blinkDuration
+                          + Random.Range(settings.blinkIntervalMin, settings.blinkIntervalMax);
+            return;
+        }
+
+        // External force override (BoxSleepAnimator etc.). Stun above still wins.
+        // Defers nextBlinkTime so the natural blink doesn't fire the instant force releases.
+        if (_eyesForceState != EyesForceState.None)
+        {
+            if (eyesRenderer.sprite == eyesStun) eyesRenderer.sprite = eyesOpen;
+            eyesRenderer.sprite = _eyesForceState == EyesForceState.Closed ? eyesClosed : eyesOpen;
             nextBlinkTime = Time.time + settings.blinkDuration
                           + Random.Range(settings.blinkIntervalMin, settings.blinkIntervalMax);
             return;

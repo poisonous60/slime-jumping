@@ -40,13 +40,36 @@ namespace SlimeJumping.Rendering
         public int PixelsPerUnit => pixelsPerUnit;
         public string OverrideId => overrideId;
 
+        // Per-platform RTs should stay small; ground-sized RTs belong on WorldTrailManager.
+        // 512² R8 ≈ 256 KB per platform — a reasonable upper bound.
+        public const int MaxResolutionPerSide = 512;
+
         public Vector2Int PlannedResolution
         {
             get
             {
-                int w = Mathf.CeilToInt(localSize.x * pixelsPerUnit);
-                int h = Mathf.CeilToInt(localSize.y * pixelsPerUnit);
-                return new Vector2Int(Mathf.Clamp(w, 1, 4096), Mathf.Clamp(h, 1, 4096));
+                // pixelsPerUnit is "pixels per world unit". The shader samples in object space,
+                // so the RT must cover localSize * lossyScale world units at the requested density —
+                // otherwise a scaled parent stretches a tiny RT across a large visible area.
+                Vector3 ls = transform.lossyScale;
+                int w = Mathf.CeilToInt(localSize.x * Mathf.Abs(ls.x) * pixelsPerUnit);
+                int h = Mathf.CeilToInt(localSize.y * Mathf.Abs(ls.y) * pixelsPerUnit);
+                return new Vector2Int(
+                    Mathf.Clamp(w, 1, MaxResolutionPerSide),
+                    Mathf.Clamp(h, 1, MaxResolutionPerSide));
+            }
+        }
+
+        // Unclamped, pre-cap dimensions — used by OnValidate to detect and warn when the
+        // clamp is silently throwing away resolution.
+        public Vector2Int RawPlannedResolution
+        {
+            get
+            {
+                Vector3 ls = transform.lossyScale;
+                int w = Mathf.CeilToInt(localSize.x * Mathf.Abs(ls.x) * pixelsPerUnit);
+                int h = Mathf.CeilToInt(localSize.y * Mathf.Abs(ls.y) * pixelsPerUnit);
+                return new Vector2Int(Mathf.Max(1, w), Mathf.Max(1, h));
             }
         }
 
@@ -162,7 +185,15 @@ namespace SlimeJumping.Rendering
             // Skip stamps whose center is well outside this platform's local rect.
             if (uv.x < -0.1f || uv.x > 1.1f || uv.y < -0.1f || uv.y > 1.1f) return;
 
-            Vector2 radiusUV = new Vector2(worldRadius / localSize.x, worldRadius / localSize.y);
+            // worldRadius is world-space; localSize is unscaled-local. Convert through
+            // lossyScale — otherwise a scaled parent chain (e.g. Branch_Bouncy's ×3 × ×100)
+            // makes each stamp cover most of the RT.
+            Vector3 ls = transform.lossyScale;
+            float sx = Mathf.Max(1e-4f, Mathf.Abs(ls.x));
+            float sy = Mathf.Max(1e-4f, Mathf.Abs(ls.y));
+            Vector2 radiusUV = new Vector2(
+                worldRadius / (localSize.x * sx),
+                worldRadius / (localSize.y * sy));
             mgr.BlitToTarget(rt, uv, radiusUV, strength);
             dirty = true;
         }
@@ -184,11 +215,13 @@ namespace SlimeJumping.Rendering
                 // Auto-wire on first setup so common case is zero-click.
                 contactCollider = GetComponentInParent<Collider2D>();
             }
-            var planned = PlannedResolution;
-            if (planned.x > 256 || planned.y > 256)
+            var raw = RawPlannedResolution;
+            if (raw.x > MaxResolutionPerSide || raw.y > MaxResolutionPerSide)
             {
-                Debug.LogWarning($"[Trail] LocalTrailReceiver on '{name}' resolves to {planned.x}x{planned.y} — " +
-                                 "that's unusually large for a platform. Consider the world RT for big static surfaces.", this);
+                Debug.LogWarning($"[Trail] LocalTrailReceiver on '{name}' wants {raw.x}x{raw.y} " +
+                                 $"(localSize × lossyScale × PPU) but is clamped to {MaxResolutionPerSide}². " +
+                                 "Reduce pixelsPerUnit, or bake the parent scale into the mesh (Blender Ctrl+A) " +
+                                 "so lossyScale approaches 1.", this);
             }
         }
 
@@ -200,21 +233,18 @@ namespace SlimeJumping.Rendering
 
             UnityEditor.Undo.RecordObject(this, "Trail: auto-fit bounds");
 
-            // Renderer.bounds is world-space AABB. Transform corners back to local space and envelope.
-            Bounds wb = r.bounds;
-            Vector3[] corners = new Vector3[8];
-            corners[0] = new Vector3(wb.min.x, wb.min.y, wb.min.z);
-            corners[1] = new Vector3(wb.max.x, wb.min.y, wb.min.z);
-            corners[2] = new Vector3(wb.min.x, wb.max.y, wb.min.z);
-            corners[3] = new Vector3(wb.max.x, wb.max.y, wb.min.z);
-            corners[4] = new Vector3(wb.min.x, wb.min.y, wb.max.z);
-            corners[5] = new Vector3(wb.max.x, wb.min.y, wb.max.z);
-            corners[6] = new Vector3(wb.min.x, wb.max.y, wb.max.z);
-            corners[7] = new Vector3(wb.max.x, wb.max.y, wb.max.z);
+            // Source preference: contactCollider.bounds > mesh.bounds (object-space, transformed)
+            // > renderer.bounds. SkinnedMeshRenderer.bounds is the bone-sweep envelope, which
+            // way overshoots the rest-pose silhouette for rig-driven meshes like SpringyBranchVisual.
+            if (!TryGetAutoFitWorldCorners(r, out var corners))
+            {
+                Debug.LogWarning($"[Trail] Auto-fit: no usable bounds source on '{name}'.", this);
+                return;
+            }
 
             Vector2 lmin = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
             Vector2 lmax = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < corners.Length; i++)
             {
                 Vector3 lp = transform.InverseTransformPoint(corners[i]);
                 if (lp.x < lmin.x) lmin.x = lp.x;
@@ -223,13 +253,69 @@ namespace SlimeJumping.Rendering
                 if (lp.y > lmax.y) lmax.y = lp.y;
             }
 
-            const float pad = 0.2f;
-            lmin -= new Vector2(pad, pad);
-            lmax += new Vector2(pad, pad);
+            // 0.2 world-unit padding → local units via lossyScale so heavily scaled parents
+            // don't blow the paintable rect out by 300× the intended margin.
+            Vector3 ls = transform.lossyScale;
+            float padX = 0.2f / Mathf.Max(1e-4f, Mathf.Abs(ls.x));
+            float padY = 0.2f / Mathf.Max(1e-4f, Mathf.Abs(ls.y));
+            lmin -= new Vector2(padX, padY);
+            lmax += new Vector2(padX, padY);
             localMin = lmin;
             localSize = lmax - lmin;
 
             UnityEditor.EditorUtility.SetDirty(this);
+        }
+
+        private bool TryGetAutoFitWorldCorners(Renderer r, out Vector3[] corners)
+        {
+            // 1. Prefer the contact collider: it's the exact surface the slime can touch,
+            //    so the paintable rect matches the physically reachable region.
+            if (contactCollider != null)
+            {
+                FillCorners(contactCollider.bounds, out corners);
+                return true;
+            }
+
+            // 2. Mesh bounds in object space, transformed to world via this receiver's
+            //    transform. Avoids SkinnedMeshRenderer.bounds' bone-sweep inflation.
+            Mesh mesh = null;
+            if (r is SkinnedMeshRenderer smr) mesh = smr.sharedMesh;
+            else if (TryGetComponent<MeshFilter>(out var mf)) mesh = mf.sharedMesh;
+
+            if (mesh != null)
+            {
+                var mb = mesh.bounds;
+                Vector3[] os = new Vector3[8];
+                os[0] = new Vector3(mb.min.x, mb.min.y, mb.min.z);
+                os[1] = new Vector3(mb.max.x, mb.min.y, mb.min.z);
+                os[2] = new Vector3(mb.min.x, mb.max.y, mb.min.z);
+                os[3] = new Vector3(mb.max.x, mb.max.y, mb.min.z);
+                os[4] = new Vector3(mb.min.x, mb.min.y, mb.max.z);
+                os[5] = new Vector3(mb.max.x, mb.min.y, mb.max.z);
+                os[6] = new Vector3(mb.min.x, mb.max.y, mb.max.z);
+                os[7] = new Vector3(mb.max.x, mb.max.y, mb.max.z);
+                corners = new Vector3[8];
+                for (int i = 0; i < 8; i++) corners[i] = transform.TransformPoint(os[i]);
+                return true;
+            }
+
+            // 3. Fallback: renderer.bounds. On SkinnedMeshRenderer this is bone-sweep;
+            //    warn so the user knows why the rect might overshoot.
+            FillCorners(r.bounds, out corners);
+            return true;
+        }
+
+        private static void FillCorners(Bounds wb, out Vector3[] corners)
+        {
+            corners = new Vector3[8];
+            corners[0] = new Vector3(wb.min.x, wb.min.y, wb.min.z);
+            corners[1] = new Vector3(wb.max.x, wb.min.y, wb.min.z);
+            corners[2] = new Vector3(wb.min.x, wb.max.y, wb.min.z);
+            corners[3] = new Vector3(wb.max.x, wb.max.y, wb.min.z);
+            corners[4] = new Vector3(wb.min.x, wb.min.y, wb.max.z);
+            corners[5] = new Vector3(wb.max.x, wb.min.y, wb.max.z);
+            corners[6] = new Vector3(wb.min.x, wb.max.y, wb.max.z);
+            corners[7] = new Vector3(wb.max.x, wb.max.y, wb.max.z);
         }
 
         [ContextMenu("Trail / Generate Stable ID")]

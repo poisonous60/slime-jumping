@@ -62,8 +62,8 @@ MonoBehaviour:
   hopConversionEnergyBonus: 0
   aimDriftRadiusScale: 0.7
   energyConversionCoyoteTime: 0.12
-  minStickDuration: 0.1
-  maxStickDuration: 0.1
+  minStickDuration: 0.3
+  maxStickDuration: 0.3
   stickSpeedScale: 0.1
   stickDecelerationTime: 0.2
   stickSlopeThreshold: 0.7
@@ -82,7 +82,7 @@ MonoBehaviour:
   diveGravityScaleFalling: 1.3
   risingGravityScale: 1
   fallingGravityScale: 1.15
-  apexThreshold: 2
+  apexThreshold: 30
   postLaunchAirControlLockTime: 0.15
   floatGravityScaleInFluid: 0.7
   diveGravityScaleInFluid: 1.3

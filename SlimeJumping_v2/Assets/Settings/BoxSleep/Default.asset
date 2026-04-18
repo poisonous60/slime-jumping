@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cbb1915f87c78a641b5257ec25822810, type: 3}
+  m_Name: Default
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Interaction.BoxSleepProfile
+  settleDuration: 0.4
+  sleepScale: {x: 1.2, y: 0.82, z: 1.3}
+  sleepAsymmetry: 0.25
+  sleepDip: -0
+  sleepOvershoot: 1.4
+  sleepEulerAngles: {x: 0, y: 0, z: 0}
+  sleepFaceOffset: {x: 0, y: 0, z: 0}
+  breathFrequency: 0.45
+  breathAmplitude: 0.04
+  verticalAnchor: 1
+  amplitudeVariation: 0.015
+  zSpawnInterval: 0.9
+  zSpawnLocalOffset: {x: 0.15, y: 0.6, z: -0.5}
+  zColor: {r: 0.7, g: 0.85, b: 1, a: 1}
+  zFontSize: 4
+  wakeAnticipationScale: {x: 0.85, y: 1.25, z: 0.85}
+  wakeAnticipationDuration: 0.12
+  wakeSettleDuration: 0.35
+  wakeSettleElasticity: 1.1
+  wakeSettlePeriod: 0.35

@@ -37,7 +37,7 @@ namespace SlimeJumping.Interaction
                 return;
             }
             _profile = profile;
-            _breathing.Configure(profile);
+            _breathing.Configure(profile.breathAmplitude, profile.breathFrequency, profile.amplitudeVariation);
             _pendingGetUp = false;
             EnterState(State.SittingDown);
             // Push t=0 immediately to prevent a one-frame (1,1,1) flicker
@@ -216,52 +216,5 @@ namespace SlimeJumping.Interaction
                    * Mathf.Sin((t - s) * (2f * Mathf.PI) / period) + 1f;
         }
 
-        // --- Spring-Damper breathing ---
-
-        [Serializable]
-        private class Breathing
-        {
-            private float _amplitude, _frequency, _variation;
-            private float _position, _curAmp;
-            // Accumulated values instead of Time.time so sin() / interval comparisons
-            // don't lose precision over long play sessions.
-            private float _phase, _elapsed, _nextVarTime;
-
-            public float Value => _position;
-            // Raw sine phase in [-1, +1], shared driver for bob/swell methods (no jitter applied).
-            public float RawSin => Mathf.Sin(_phase);
-
-            public void Configure(SitPoseProfile p)
-            {
-                _amplitude = p.breathAmplitude;
-                _frequency = p.breathFrequency;
-                _variation = p.amplitudeVariation;
-            }
-
-            public void Reset()
-            {
-                _position = 0f;
-                _curAmp = _amplitude;
-                _phase = 0f;
-                _elapsed = 0f;
-                _nextVarTime = UnityEngine.Random.Range(2f, 5f);
-            }
-
-            public void Tick(float dt)
-            {
-                _elapsed += dt;
-                if (_elapsed > _nextVarTime)
-                {
-                    // Clamp variation to amplitude so _curAmp never flips sign
-                    // (sign flip causes a phase discontinuity visible as a sudden jump).
-                    float maxVar = Mathf.Min(_variation, _amplitude);
-                    _curAmp = _amplitude + UnityEngine.Random.Range(-maxVar, maxVar);
-                    _nextVarTime = _elapsed + UnityEngine.Random.Range(2f, 5f);
-                }
-                _phase += dt * _frequency * Mathf.PI * 2f;
-                if (_phase > Mathf.PI * 2f) _phase -= Mathf.PI * 2f;
-                _position = Mathf.Sin(_phase) * _curAmp;
-            }
-        }
     }
 }
