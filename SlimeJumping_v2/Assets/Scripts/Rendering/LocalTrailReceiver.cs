@@ -4,14 +4,18 @@ using UnityEngine.SceneManagement;
 
 namespace SlimeJumping.Rendering
 {
-    /// One per moving/rotating platform. Owns a small object-space RT, pushes it into the
-    /// renderer's MaterialPropertyBlock, and routes stamps from world space into object
-    /// space so the trail follows the platform through translation/rotation/tilt.
-    [RequireComponent(typeof(Renderer))]
+    /// One per moving/rotating platform. Owns a small local-space RT, pushes it into the
+    /// target renderer's MaterialPropertyBlock, and routes stamps from world space into the
+    /// receiver's local frame so the trail follows translation/rotation/tilt.
+    ///
+    /// Paint frame is the RECEIVER'S transform, not the renderer's — so for a 3D-tilted
+    /// mesh, put this component on an unrotated parent/sibling GameObject to keep the paint
+    /// plane aligned with world XY. (If receiver and renderer share a GameObject, the two
+    /// matrices coincide and behavior matches the original object-space design.)
     [AddComponentMenu("Rendering/Trail/Local Trail Receiver")]
     public class LocalTrailReceiver : MonoBehaviour, ITrailTarget
     {
-        [Header("Object-space bounds (padded ~0.2 beyond visible platform)")]
+        [Header("Local-space bounds (padded ~0.2 beyond visible platform)")]
         [SerializeField] private Vector2 localMin  = new Vector2(-1.5f, -0.5f);
         [SerializeField] private Vector2 localSize = new Vector2(3.0f, 1.0f);
         [Range(4, 80)]
@@ -23,18 +27,26 @@ namespace SlimeJumping.Rendering
                  "Left empty → auto-resolved via GetComponentInParent on Awake/OnValidate.")]
         [SerializeField] private Collider2D contactCollider;
 
+        [Tooltip("Renderer that receives the trail mask via MaterialPropertyBlock. Leave empty " +
+                 "to auto-resolve (GetComponent, then GetComponentInChildren). Must exist before OnEnable.")]
+        [SerializeField] private Renderer targetRenderer;
+
         [Header("Persistence")]
         [Tooltip("Optional stable GUID. Empty = save key derived from hierarchy path (fragile across renames). " +
                  "Set via context menu 'Trail / Generate Stable ID' for shipping platforms.")]
         [SerializeField] private string overrideId = "";
 
         private RenderTexture rt;
-        private Renderer rend;
         private MaterialPropertyBlock mpb;
         private Vector2Int resolution;
         private bool dirty;
+        private static readonly int IdLocalTrailMask = Shader.PropertyToID("_LocalTrailMask");
+        private static readonly int IdLocalTrailMin  = Shader.PropertyToID("_LocalTrailMin");
+        private static readonly int IdLocalTrailSize = Shader.PropertyToID("_LocalTrailSize");
+        private static readonly int IdLocalTrailW2L  = Shader.PropertyToID("_LocalTrailW2L");
 
         public Collider2D ContactCollider => contactCollider;
+        public Renderer TargetRenderer => targetRenderer;
         public Vector2 LocalMin => localMin;
         public Vector2 LocalSize => localSize;
         public int PixelsPerUnit => pixelsPerUnit;
@@ -113,13 +125,19 @@ namespace SlimeJumping.Rendering
 
         private void Awake()
         {
-            rend = GetComponent<Renderer>();
+            ResolveTargetRenderer();
             if (contactCollider == null) contactCollider = GetComponentInParent<Collider2D>();
         }
 
         private void OnEnable()
         {
-            if (rend == null) rend = GetComponent<Renderer>();
+            ResolveTargetRenderer();
+            if (targetRenderer == null)
+            {
+                Debug.LogError($"[Trail] LocalTrailReceiver on '{name}' has no targetRenderer. Disabling.", this);
+                enabled = false;
+                return;
+            }
 
             resolution = PlannedResolution;
             // See WorldTrailManager for the rationale on RenderTextureReadWrite.Linear.
@@ -135,11 +153,15 @@ namespace SlimeJumping.Rendering
             Graphics.Blit(Texture2D.blackTexture, rt);
 
             mpb = new MaterialPropertyBlock();
-            rend.GetPropertyBlock(mpb);
-            mpb.SetTexture("_LocalTrailMask", rt);
-            mpb.SetVector("_LocalTrailMin",  new Vector4(localMin.x,  localMin.y,  0f, 0f));
-            mpb.SetVector("_LocalTrailSize", new Vector4(localSize.x, localSize.y, 0f, 0f));
-            rend.SetPropertyBlock(mpb);
+            targetRenderer.GetPropertyBlock(mpb);
+            mpb.SetTexture(IdLocalTrailMask, rt);
+            mpb.SetVector (IdLocalTrailMin,  new Vector4(localMin.x,  localMin.y,  0f, 0f));
+            mpb.SetVector (IdLocalTrailSize, new Vector4(localSize.x, localSize.y, 0f, 0f));
+            mpb.SetMatrix (IdLocalTrailW2L,  transform.worldToLocalMatrix);
+            targetRenderer.SetPropertyBlock(mpb);
+            // First push primes the matrix; LateUpdate keeps it fresh if either this transform
+            // or the renderer's parent chain moves. hasChanged is set by the engine on any TRS edit.
+            transform.hasChanged = false;
 
             TrailColliderRegistry.Register(contactCollider, this);
 
@@ -169,6 +191,26 @@ namespace SlimeJumping.Rendering
             if (rt != null) { rt.Release(); Object.Destroy(rt); rt = null; }
         }
 
+        private void LateUpdate()
+        {
+            // Keep the receiver's world→local matrix fresh for the shader when the paint
+            // frame moves. Unity updates unity_WorldToObject for the renderer automatically,
+            // but _LocalTrailW2L belongs to a possibly-separate transform, so we push on change.
+            if (targetRenderer == null || mpb == null) return;
+            if (!transform.hasChanged) return;
+            targetRenderer.GetPropertyBlock(mpb);
+            mpb.SetMatrix(IdLocalTrailW2L, transform.worldToLocalMatrix);
+            targetRenderer.SetPropertyBlock(mpb);
+            transform.hasChanged = false;
+        }
+
+        private void ResolveTargetRenderer()
+        {
+            if (targetRenderer != null) return;
+            targetRenderer = GetComponent<Renderer>();
+            if (targetRenderer == null) targetRenderer = GetComponentInChildren<Renderer>();
+        }
+
         // -------------------- Stamp API --------------------
 
         public void StampAt(Vector2 worldPos, float worldRadius, float strength)
@@ -176,7 +218,9 @@ namespace SlimeJumping.Rendering
             var mgr = WorldTrailManager.Instance;
             if (mgr == null || rt == null) return;
 
-            // World → object-space XY. InverseTransformPoint handles rotation and scale.
+            // World → receiver-local XY. InverseTransformPoint handles rotation and scale.
+            // Must use the RECEIVER's transform (same one pushed to the shader as _LocalTrailW2L)
+            // — not the renderer's — so stamps land where the shader samples.
             Vector3 lp = transform.InverseTransformPoint(new Vector3(worldPos.x, worldPos.y, 0f));
             Vector2 uv = new Vector2(
                 (lp.x - localMin.x) / localSize.x,
@@ -215,6 +259,7 @@ namespace SlimeJumping.Rendering
                 // Auto-wire on first setup so common case is zero-click.
                 contactCollider = GetComponentInParent<Collider2D>();
             }
+            if (targetRenderer == null) ResolveTargetRenderer();
             var raw = RawPlannedResolution;
             if (raw.x > MaxResolutionPerSide || raw.y > MaxResolutionPerSide)
             {
@@ -228,7 +273,8 @@ namespace SlimeJumping.Rendering
         [ContextMenu("Trail / Auto-fit to Renderer Bounds")]
         private void AutoFitBounds()
         {
-            var r = GetComponent<Renderer>();
+            if (targetRenderer == null) ResolveTargetRenderer();
+            var r = targetRenderer;
             if (r == null) return;
 
             UnityEditor.Undo.RecordObject(this, "Trail: auto-fit bounds");
@@ -276,11 +322,12 @@ namespace SlimeJumping.Rendering
                 return true;
             }
 
-            // 2. Mesh bounds in object space, transformed to world via this receiver's
-            //    transform. Avoids SkinnedMeshRenderer.bounds' bone-sweep inflation.
+            // 2. Mesh bounds in object space, transformed to world via the RENDERER's
+            //    transform (not the receiver's — they can differ). Avoids
+            //    SkinnedMeshRenderer.bounds' bone-sweep inflation.
             Mesh mesh = null;
             if (r is SkinnedMeshRenderer smr) mesh = smr.sharedMesh;
-            else if (TryGetComponent<MeshFilter>(out var mf)) mesh = mf.sharedMesh;
+            else if (r.TryGetComponent<MeshFilter>(out var mf)) mesh = mf.sharedMesh;
 
             if (mesh != null)
             {
@@ -295,7 +342,8 @@ namespace SlimeJumping.Rendering
                 os[6] = new Vector3(mb.min.x, mb.max.y, mb.max.z);
                 os[7] = new Vector3(mb.max.x, mb.max.y, mb.max.z);
                 corners = new Vector3[8];
-                for (int i = 0; i < 8; i++) corners[i] = transform.TransformPoint(os[i]);
+                var rt = r.transform;
+                for (int i = 0; i < 8; i++) corners[i] = rt.TransformPoint(os[i]);
                 return true;
             }
 

@@ -117,11 +117,11 @@ namespace SlimeJumping.EditorTools
             for (int i = 0; i < receivers.Length; i++)
             {
                 var rc = receivers[i];
-                var r = rc.GetComponent<Renderer>();
+                var r = rc.TargetRenderer;
                 if (r == null || r.sharedMaterial == null) continue;
                 if (r.sharedMaterial.shader != localShader)
                 {
-                    Debug.LogWarning($"[Trail Validate] LocalTrailReceiver on '{rc.name}' but its renderer material '{r.sharedMaterial.name}' is not on the local variant shader.", rc);
+                    Debug.LogWarning($"[Trail Validate] LocalTrailReceiver on '{rc.name}' but its target renderer material '{r.sharedMaterial.name}' is not on the local variant shader.", rc);
                     issues++;
                 }
 
@@ -439,17 +439,25 @@ namespace SlimeJumping.EditorTools
             string mem = bytes < 1024 ? bytes + " B" : (bytes / 1024f).ToString("0.0") + " KB";
             EditorGUILayout.HelpBox($"Local RT: {res.x} × {res.y}  ·  {mem}  (R8)", MessageType.None);
 
-            // Material-variant check.
-            var rend = rc.GetComponent<Renderer>();
+            // Material-variant check against the target renderer (which may live on a child,
+            // not this GameObject, now that the receiver is decoupled from the renderer).
+            var rend = rc.TargetRenderer;
             if (rend != null && rend.sharedMaterial != null && rend.sharedMaterial.shader != null)
             {
                 if (rend.sharedMaterial.shader.name != "Quibli/Stylized Lit (Trail Receiver Local)")
                 {
                     EditorGUILayout.HelpBox(
-                        "This renderer's material is NOT on the local-variant shader.\n" +
+                        "The target renderer's material is NOT on the local-variant shader.\n" +
                         "Trail will not appear on this platform. Migrate via Tools > Trail.",
                         MessageType.Warning);
                 }
+            }
+            else if (rend == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "No target Renderer found. Assign one below, or place this component on a " +
+                    "GameObject whose self/children has a Renderer.",
+                    MessageType.Warning);
             }
 
             if (rc.ContactCollider == null)
