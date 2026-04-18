@@ -25,13 +25,34 @@ namespace SlimeJumping.Rendering
         [Range(4, 80)]
         [SerializeField] private int pixelsPerUnit = 20;
 
-        [Header("Appearance")]
-        [SerializeField] private Color trailColor = new Color(0.3f, 0.9f, 0.3f, 1f);
+        [Header("Appearance — Trail Color (A: by intensity)")]
+        [Tooltip("Color sampled by trail intensity. Mask=0 → leftmost stop (light/new), mask=1 → rightmost stop " +
+                 "(heavy/saturated). Per-stop alpha drives blend strength so the start can fade in.")]
+        [GradientUsage(true)]
+        [SerializeField] private Gradient trailGradient;
         [Tooltip("Visual saturation cap. Brush writes additively and the RT value can reach 1.0; " +
                  "this caps the lerp factor at render time so the ground stays legible even after many passes. " +
                  "1.0 = no cap (full tint at saturation); 0.6 = max 60% tint visible.")]
         [Range(0.1f, 1f)]
-        [SerializeField] private float trailMaxMask = 0.75f;
+        [SerializeField] private float trailMaxMask = 0.95f;
+
+        [Header("Appearance — Position Gradient (B: by world position, optional)")]
+        [Tooltip("If on, multiplies the trail color (A) by a second gradient sampled by world XY position. " +
+                 "Use this to vary trail hue across the level (e.g. cool at the bottom, warm at the top).")]
+        [SerializeField] private bool positionGradientEnabled = false;
+        [Tooltip("Color tint sampled by world position along the configured axis.")]
+        [GradientUsage(true)]
+        [SerializeField] private Gradient positionGradient;
+        [Tooltip("World-space midpoint of the gradient (t = 0.5 here).")]
+        [SerializeField] private Vector2 positionGradientCenter = Vector2.zero;
+        [Tooltip("Width in world units across which the gradient spans from 0 to 1.")]
+        [Min(0.01f)]
+        [SerializeField] private float positionGradientSize = 20f;
+        [Tooltip("Rotation in degrees. 0 = vertical (gradient runs along world Y). 90 = horizontal (along X).")]
+        [Range(0f, 360f)]
+        [SerializeField] private float positionGradientAngle = 0f;
+
+        [Header("Brush")]
         [Tooltip("Material instantiated from Hidden/SlimeJumping/TrailBrush. Required.")]
         [SerializeField] private Material brushMaterial;
 
@@ -67,12 +88,17 @@ namespace SlimeJumping.Rendering
         // file on every Play-exit. Cloning keeps the asset pristine.
         private Material brushInstance;
 
+        // 1D ramp textures baked from the inspector Gradients. RGBAHalf so HDR gradient stops
+        // (intensity > 1) survive without clipping. Hidden from saves; rebuilt on OnValidate.
+        private Texture2D bakedTrailGradient;
+        private Texture2D bakedPositionGradient;
+        private const int GradientResolution = 256;
+
         // -------------------- Inspector-facing accessors (read-only) --------------------
 
         public Vector2 WorldMin => worldMin;
         public Vector2 WorldSize => worldSize;
         public int PixelsPerUnit => pixelsPerUnit;
-        public Color TrailColor => trailColor;
         public LayerMask GroundLayers => groundLayers;
         public bool ShowBoundsGizmo => showBoundsGizmo;
         public TrailPersistence Persistence => persistence;
@@ -214,33 +240,105 @@ namespace SlimeJumping.Rendering
             if (persistence != null) { persistence.Cancel(); persistence = null; }
             if (rt != null) { rt.Release(); Object.Destroy(rt); rt = null; }
             if (brushInstance != null) { Object.Destroy(brushInstance); brushInstance = null; }
+            if (bakedTrailGradient != null) { Object.Destroy(bakedTrailGradient); bakedTrailGradient = null; }
+            if (bakedPositionGradient != null) { Object.Destroy(bakedPositionGradient); bakedPositionGradient = null; }
 
             // Neutralize trail globals so materials in other scenes / material previews
             // don't keep sampling a freed RT (Unity falls back to the default white texture,
             // which would leave every trail-receiver material tinted).
-            Shader.SetGlobalTexture("_TrailMask", Texture2D.blackTexture);
-            Shader.SetGlobalVector("_TrailWorldMin",  Vector4.zero);
-            Shader.SetGlobalVector("_TrailWorldSize", Vector4.zero);
-            Shader.SetGlobalColor ("_TrailColor", new Color(0f, 0f, 0f, 0f));
-            Shader.SetGlobalFloat ("_TrailMaxMask", 0f);
+            Shader.SetGlobalTexture("_TrailMask",         Texture2D.blackTexture);
+            Shader.SetGlobalTexture("_TrailGradient",     Texture2D.blackTexture);
+            Shader.SetGlobalTexture("_TrailPosGradient",  Texture2D.whiteTexture);
+            Shader.SetGlobalVector ("_TrailWorldMin",     Vector4.zero);
+            Shader.SetGlobalVector ("_TrailWorldSize",    Vector4.zero);
+            Shader.SetGlobalVector ("_TrailPosGradientParams", Vector4.zero);
+            Shader.SetGlobalFloat  ("_TrailPosGradientEnabled", 0f);
+            Shader.SetGlobalFloat  ("_TrailMaxMask",      0f);
         }
 
         private void PublishGlobals()
         {
-            Shader.SetGlobalTexture("_TrailMask", rt);
-            Shader.SetGlobalVector("_TrailWorldMin",  new Vector4(worldMin.x,  worldMin.y,  0f, 0f));
-            Shader.SetGlobalVector("_TrailWorldSize", new Vector4(worldSize.x, worldSize.y, 0f, 0f));
-            Shader.SetGlobalColor ("_TrailColor", trailColor);
-            Shader.SetGlobalFloat ("_TrailMaxMask", Mathf.Clamp(trailMaxMask, 0.01f, 1f));
-            Shader.SetGlobalFloat ("_TrailZCenter", trailZCenter);
-            Shader.SetGlobalFloat ("_TrailZNear",   Mathf.Max(0f, trailZNear));
-            Shader.SetGlobalFloat ("_TrailZFar",    Mathf.Max(trailZNear + 0.01f, trailZFar));
+            BakeGradients();
+
+            Shader.SetGlobalTexture("_TrailMask",        rt);
+            Shader.SetGlobalTexture("_TrailGradient",    bakedTrailGradient != null ? (Texture)bakedTrailGradient : Texture2D.whiteTexture);
+            Shader.SetGlobalTexture("_TrailPosGradient", bakedPositionGradient != null ? (Texture)bakedPositionGradient : Texture2D.whiteTexture);
+            Shader.SetGlobalVector ("_TrailWorldMin",    new Vector4(worldMin.x,  worldMin.y,  0f, 0f));
+            Shader.SetGlobalVector ("_TrailWorldSize",   new Vector4(worldSize.x, worldSize.y, 0f, 0f));
+            Shader.SetGlobalVector ("_TrailPosGradientParams", new Vector4(
+                positionGradientCenter.x,
+                positionGradientCenter.y,
+                Mathf.Max(0.01f, positionGradientSize),
+                positionGradientAngle));
+            Shader.SetGlobalFloat  ("_TrailPosGradientEnabled", positionGradientEnabled ? 1f : 0f);
+            Shader.SetGlobalFloat  ("_TrailMaxMask",     Mathf.Clamp(trailMaxMask, 0.01f, 1f));
+            Shader.SetGlobalFloat  ("_TrailZCenter",     trailZCenter);
+            Shader.SetGlobalFloat  ("_TrailZNear",       Mathf.Max(0f, trailZNear));
+            Shader.SetGlobalFloat  ("_TrailZFar",        Mathf.Max(trailZNear + 0.01f, trailZFar));
+        }
+
+        private void BakeGradients()
+        {
+            BakeOne(ref bakedTrailGradient,    trailGradient,    "TrailGradient");
+            BakeOne(ref bakedPositionGradient, positionGradient, "TrailPosGradient");
+        }
+
+        private static void BakeOne(ref Texture2D tex, Gradient g, string label)
+        {
+            if (g == null) return;
+            if (tex == null)
+            {
+                tex = new Texture2D(GradientResolution, 1, TextureFormat.RGBAHalf, false, true)
+                {
+                    wrapMode   = TextureWrapMode.Clamp,
+                    filterMode = FilterMode.Bilinear,
+                    name       = "Baked_" + label,
+                    hideFlags  = HideFlags.HideAndDontSave,
+                };
+            }
+            for (int i = 0; i < GradientResolution; i++)
+            {
+                float t = (float)i / (GradientResolution - 1);
+                tex.SetPixel(i, 0, g.Evaluate(t));
+            }
+            tex.Apply(false, false);
         }
 
         private void OnValidate()
         {
             // Re-publish in Edit Mode so inspector tweaks preview live (only meaningful in Play).
             if (Application.isPlaying && rt != null) PublishGlobals();
+        }
+
+        private void Reset()
+        {
+            // Sensible defaults for a fresh component. Existing scene data with the legacy
+            // `trailColor` field stays at Unity's default white→white Gradient on first load —
+            // click "Reset" in the inspector to apply these defaults, or set the gradient manually.
+            trailGradient = new Gradient();
+            trailGradient.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(new Color(0.55f, 1.00f, 0.55f), 0f),
+                    new GradientColorKey(new Color(0.20f, 0.55f, 0.20f), 1f),
+                },
+                new[]
+                {
+                    new GradientAlphaKey(0.50f, 0f),
+                    new GradientAlphaKey(1.00f, 1f),
+                });
+            positionGradient = new Gradient();
+            positionGradient.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(Color.white, 0f),
+                    new GradientColorKey(Color.white, 1f),
+                },
+                new[]
+                {
+                    new GradientAlphaKey(1f, 0f),
+                    new GradientAlphaKey(1f, 1f),
+                });
         }
 
         // -------------------- Public stamp API --------------------
