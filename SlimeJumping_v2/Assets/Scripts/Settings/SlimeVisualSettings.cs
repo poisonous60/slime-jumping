@@ -96,6 +96,36 @@ namespace SlimeJumping.Settings
         [Tooltip("Pushes body toward the attached surface to counteract body.localScale.y compression (charging, surface squash, impact, breath). Without this, symmetric Y scale around body center lifts the surface-touching edge off the ground. 0.5 = geometrically correct for a unit-radius body (surface edge stays exactly planted). 0 = disabled, surface edge lifts with scale. 1 = over-compensation (slime visually sinks into surface). Applied AFTER visualClearanceSkin clamp.")]
         public float groundCompensationStrength = 0.5f;
 
+        [Header("Charge Ring (debug)")]
+        [Tooltip("Debug-only floor-ellipse charge ring. Off by default — turn on to visualize charging progress/grace window during development.")]
+        public bool chargeRingEnabled = false;
+        [Tooltip("Multiplier on ActiveChargeRadius for the visual ring radius. 1.0 = same as physics judgment radius.")]
+        public float chargeRingRadiusScale = 1.0f;
+        [Tooltip("Ring line thickness in world units. Target ~slimeRadius/15 to /20 so it reads as a line, not a band.")]
+        public float chargeRingThickness = 0.025f;
+        [Tooltip("Base tint — keep close to map tone to minimize gaze pull. Accent color (fullAim) carries the grace-window signal.")]
+        public Color chargeRingBaseColor = new Color(0.78f, 0.82f, 0.9f, 0.4f);
+        [Tooltip("Warm-tone tick color shown during the chargeFullAimTime grace window.")]
+        public Color chargeRingFullAimColor = new Color(1.0f, 0.88f, 0.7f, 0.85f);
+        [Tooltip("Fallback foot offset (from slime center along -SurfaceNormal). Overridden at runtime by slimeSettings.slimeRadius when wired.")]
+        public float chargeRingFootOffsetFallback = 0.4f;
+        [Tooltip("Fade-in time — kept short so the ring appears punchy.")]
+        public float chargeRingFadeInTime = 0.05f;
+        [Tooltip("Fade-out time — kept short so consecutive charges don't leave a lingering trail.")]
+        public float chargeRingFadeOutTime = 0.05f;
+        [Tooltip("Thickness multiplier peak at grace-entry pulse. Kept mild (~0.2 = 1.2x) so color shift carries most of the signal.")]
+        public float chargeRingFullAimPulseAmount = 0.2f;
+        public float chargeRingFullAimPulseDuration = 0.08f;
+        [Min(2)] public int chargeRingPosterizeSteps = 2;
+        [Tooltip("Slerp rate (rad/s) for the ring's rotation to follow surface-normal changes while sliding. Prevents snap on angle breaks.")]
+        public float chargeRingNormalFollowSpeed = 20f;
+        [Tooltip("Alpha multiplier for the occluded-silhouette pass (ring drawn behind terrain).")]
+        [Range(0f, 1f)] public float chargeRingOccludedAlpha = 0.35f;
+        [Tooltip("Euler angles (degrees) applied as a LOCAL tilt before the surface-normal spin. X leans the ring front/back into the surface (foreshortening). Y skews left/right. Z rotates in the ring's face plane (mostly invisible since the ring is symmetric). Default (55, 0, 0) produces a strong floor-ellipse under perspective camera.")]
+        public Vector3 chargeRingSurfaceTiltEuler = new Vector3(55f, 0f, 0f);
+        [Tooltip("Soft-edge width for the ring annulus (UV units). Higher = softer, reads as energy imprint rather than a drawn line.")]
+        [Range(0f, 0.05f)] public float chargeRingEdgeSoftness = 0.015f;
+
         private void OnValidate()
         {
             if (chargingSpeedMax <= chargingSpeedMin)

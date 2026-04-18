@@ -31,8 +31,18 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - 표면 squash, 충격 squash, 속도 stretch, 호흡, 차징 변형을 slow/fast 2-layer SmoothDamp로 합성.
 - **Visual Clearance Clamp**: 적용 직전 sag 방향 레이캐스트로 인접 표면 거리 측정 → offset과 scale을 ratio 기반 축소. 벽-바닥/천장-벽 코너에서 비주얼 침범 방지. smoothing target은 수정하지 않아 코너 이탈 시 자연 복구.
 - 비대칭 셰이더(`_Asymmetry`, `_ChargeDip`, `_DipCenterU`)로 달걀 모양 + 차징 인덴트 표현.
-- Controller가 노출하는 읽기 전용 API: `Velocity`, `SurfaceNormal`, `CurrentState`, `AimDirection`, `ChargingProgress`, `ChargingLaunchSpeed`.
+- Controller가 노출하는 읽기 전용 API: `Velocity`, `SurfaceNormal`, `CurrentState`, `AimDirection`, `ChargingProgress`, `ChargingLaunchSpeed`, `ActiveChargeRadius`, `IsAtChargeFullAim`, `ChargeFullAimProgress`.
 - 상세 사양은 `슬라임_비주얼_진행현황_및_계획.md` 참조.
+
+#### Charge Ring (차징 진행도 링 — 디버그용)
+차징 중 접촉점 주변에 foreshortened 타원 링을 그려 진행도를 전달. **기본 비활성** — 최종 시각 표현으로는 채택하지 않고 디버그 토글(`SlimeVisualSettings.chargeRingEnabled`)로 남김. 판정원의 모양/방향은 노출하지 않음.
+
+- `SlimeChargeRingVisual.cs` (`Assets/Scripts/Visual/`) — LateUpdate에서 Controller 상태를 읽어 MeshRenderer의 transform과 MaterialPropertyBlock에만 기록. 물리 무관.
+- 셰이더: `SlimeChargeRing_Unlit.shader` (+ `SlimeChargeRingCore.hlsl`). Visible 패스(`ZTest LEqual`) + OccludedSilhouette 패스(`ZTest Greater`, `LightMode=SRPDefaultUnlit`) 2-pass 구조. 지형지물에 가려도 실루엣으로 읽힘 (슬라임 본체의 가림 실루엣과 동일 기법).
+- 방향 표현 안 함: 호는 항상 표면 outward(+Y local)에서 CW로 채움. 시작점 위치가 표면 방향을 간접 전달할 뿐, aim 방향은 눈/몸 기울기로만.
+- 플랫 판정원 UI로 오인되지 않도록 local-X(접선) 축 주위로 `chargeRingSurfaceTiltDegrees`(기본 55°) 기울여 perspective 카메라가 foreshortened 타원으로 렌더링. 벽에서는 타원이 벽 면과 평행 방향으로 회전.
+- 차징 중 슬라이드로 표면 각도가 바뀌어도 링 회전은 `chargeRingNormalFollowSpeed` Slerp로 보간 → 각도 전환 순간 순간이동 없음.
+- 시선 분산 최소화: 대비는 맵 톤과 가깝게, 페이드 인/아웃 ≈0.05s, 두께는 슬라임 반경의 ~1/15 수준. 풀차지 유예(`chargeFullAimTime`) 순간에만 warm tone으로 틱. `SlimeVisualSettings` 하위에 전 파라미터 노출.
 
 ### Phase 2: 소프트바디 비주얼 오버레이 (후순위, 미구현)
 

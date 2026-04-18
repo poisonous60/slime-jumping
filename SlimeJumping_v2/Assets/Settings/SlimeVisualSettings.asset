@@ -109,8 +109,8 @@ MonoBehaviour:
   chargingTremorFrequency: 25
   chargingTremorMax: 0.03
   chargingTremorThreshold: 9
-  fullAimTremorAmplitude: 0.04
-  fullAimTremorFrequency: 15
+  fullAimTremorAmplitude: 0.03
+  fullAimTremorFrequency: 25
   breathAmplitude: 0.02
   breathFrequency: 0.4
   faceOffsetScale: 0.1
@@ -128,3 +128,18 @@ MonoBehaviour:
   blinkIntervalMax: 7
   visualClearanceSkin: 0.02
   groundCompensationStrength: 0.5
+  chargeRingEnabled: 0
+  chargeRingRadiusScale: 0.15
+  chargeRingThickness: 0.025
+  chargeRingBaseColor: {r: 0.78, g: 0.82, b: 0.9, a: 0.4}
+  chargeRingFullAimColor: {r: 1, g: 0.88, b: 0.7, a: 0.85}
+  chargeRingFootOffsetFallback: 0.4
+  chargeRingFadeInTime: 0.05
+  chargeRingFadeOutTime: 0
+  chargeRingFullAimPulseAmount: 0.2
+  chargeRingFullAimPulseDuration: 0.08
+  chargeRingPosterizeSteps: 3
+  chargeRingNormalFollowSpeed: 1
+  chargeRingOccludedAlpha: 0.35
+  chargeRingSurfaceTiltEuler: {x: 80, y: 0, z: 0}
+  chargeRingEdgeSoftness: 0.015

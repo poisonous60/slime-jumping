@@ -16,11 +16,11 @@ MonoBehaviour:
   crawlAcceleration: 8
   crawlDeceleration: 8
   crawlOverspeedDeceleration: 15
-  slideGravityScale: 0.7
+  slideGravityScale: 0.4
   slideThreshold: 2
   slideResistance: 2
   groundDashImpulse: 5
-  groundDashCooldown: 0.34
+  groundDashCooldown: 0.2
   groundDashInputBuffer: 0.1
   groundDashAngleMin: 60
   groundDashAngleMax: 150
@@ -55,11 +55,11 @@ MonoBehaviour:
   attachToggleWindow: 0.1
   attachToggleLockoutThreshold: 10
   attachLockoutDuration: 0.1
-  initialConversionRate: 1.2
+  initialConversionRate: 1.3
   subsequentConversionRate: 1
-  notJumpConversionBonus: 1.2
+  notJumpConversionBonus: 1.3
   hopConversionBonus: 1
-  hopConversionEnergyBonus: 0
+  hopConversionEnergyBonus: 0.3
   aimDriftRadiusScale: 0.7
   energyConversionCoyoteTime: 0.12
   minStickDuration: 0.3
@@ -77,9 +77,9 @@ MonoBehaviour:
   airAcceleration: 3
   airDeceleration: 5
   floatGravityScaleRising: 1
-  floatGravityScaleFalling: 0.7
-  diveGravityScaleRising: 1
-  diveGravityScaleFalling: 1.3
+  floatGravityScaleFalling: 1
+  diveGravityScaleRising: 1.15
+  diveGravityScaleFalling: 1.15
   risingGravityScale: 1
   fallingGravityScale: 1.15
   apexThreshold: 30
@@ -91,6 +91,7 @@ MonoBehaviour:
   surfaceCheckDistance: 0.05
   contactSkin: 0.02
   depenetrationSkin: 0.01
+  primaryContactHysteresis: 0.005
   attachedCheckMultiplier: 4
   airborneCheckMultiplier: 1
   groundLayer:

@@ -58,6 +58,7 @@ namespace SlimeJumping.Controller
         public float ChargingProgress => activeChargeRadius > 0.0001f
             ? aimOffset.magnitude / activeChargeRadius
             : 0f;
+        public float ActiveChargeRadius => activeChargeRadius;
         public bool IsAtChargeFullAim => chargeFullAimTimer > 0f;
         public float ChargeFullAimProgress => settings.chargeFullAimTime > 0.0001f
             ? Mathf.Clamp01(chargeFullAimTimer / settings.chargeFullAimTime)
