@@ -13,6 +13,7 @@ SlimeJumping_v2/Assets/Inguz Media Studio/
 SlimeJumping_v2/Assets/Prebs/
 SlimeJumping_v2/Assets/Sound/
 SlimeJumping_v2/Assets/Plugins/
+SlimeJumping_v2/Assets/Tools/
 
 # ===========================
 # Unity generated
@@ -71,3 +72,4 @@ SlimeJumping_v2/Screenshots/
 *.aab
 *.unitypackage
 *.app
+**/FR2_Cache.asset*

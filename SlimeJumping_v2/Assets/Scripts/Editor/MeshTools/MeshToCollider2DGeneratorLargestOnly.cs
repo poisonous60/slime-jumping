@@ -22,14 +22,15 @@ namespace SlimeJumping.EditorTools
             if (go == null) return;
 
             int pathsBefore = 0;
-            var existingPc = go.GetComponent<PolygonCollider2D>();
+            // After the first run, the existing collider lives on the wrapper parent ({name}_Collider2D).
+            var wrapperCandidate = go.transform.parent;
+            PolygonCollider2D existingPc = null;
+            if (wrapperCandidate != null && wrapperCandidate.name == go.name + "_Collider2D")
+                existingPc = wrapperCandidate.GetComponent<PolygonCollider2D>();
             if (existingPc != null) pathsBefore = existingPc.pathCount;
 
-            MeshToCollider2DGenerator.Generate();
-
-            var pc = go.GetComponent<PolygonCollider2D>();
+            var pc = MeshToCollider2DGenerator.Generate();
             if (pc == null) return; // generator bailed out (no intersection, user cancelled, etc.)
-
             if (pc.pathCount <= 1) return;
 
             KeepLargestPath(pc, pathsBefore);
