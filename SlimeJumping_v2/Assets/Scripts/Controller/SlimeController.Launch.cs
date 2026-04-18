@@ -21,6 +21,7 @@ namespace SlimeJumping.Controller
             surfaceMod = SurfaceModifiers.Default;
             launchSpeed = velocity.magnitude;
             launchPosition = rb.position;
+            launchedByHop = false;
             ChangeState(SlimeState.Airborne, intentional: true);
             postLaunchTimer = settings.postLaunchIgnoreTime;
         }
@@ -109,6 +110,7 @@ namespace SlimeJumping.Controller
 
             isVolumeCharging = false;
             FinalizeAirborneExit();
+            postLaunchAirControlLockTimer = settings.postLaunchAirControlLockTime;
             if (chargeVisual != null) chargeVisual.Hide();
         }
 
@@ -162,6 +164,7 @@ namespace SlimeJumping.Controller
             hopCooldownTimer = settings.hopCooldown;
             preserveLandingVelocity = true;
             FinalizeAirborneExit();
+            launchedByHop = true;
         }
 
         private void ApplyGroundDash(float inputSign)

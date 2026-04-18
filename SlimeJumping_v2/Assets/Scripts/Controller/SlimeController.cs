@@ -83,6 +83,9 @@ namespace SlimeJumping.Controller
         // Post-launch input ignore
         private float postLaunchTimer;
 
+        // Post-charged-launch air control lockout (not set by Hop/ForceAirborneWithVelocity)
+        private float postLaunchAirControlLockTimer;
+
         // Launch surface ignore
         private IgnoredColliderList ignoredColliderList;
 
@@ -166,6 +169,9 @@ namespace SlimeJumping.Controller
         // Energy-based conversion normalization (stored at launch)
         private float launchSpeed;
         private Vector2 launchPosition;
+        // True when the current airborne flight was started by Hop (not Launch / walk-off / ForceAirborne).
+        // Consumed by the landing energy-conversion formula to apply hopConversionBonus / hopConversionEnergyBonus.
+        private bool launchedByHop;
 
         // Charging coyote time (grace period after leaving surface)
         private float coyoteTimer;
@@ -638,6 +644,7 @@ namespace SlimeJumping.Controller
             hopBufferTimer = 0f;
             dashBufferTimer = 0f;
             postLaunchTimer = 0f;
+            postLaunchAirControlLockTimer = 0f;
             wasStuck = false;
             preserveLandingVelocity = false;
             blockAttachCount = 0;
@@ -648,6 +655,7 @@ namespace SlimeJumping.Controller
             lastDamageType = effect.damageType;
             launchSpeed = 0f;
             launchPosition = rb.position;
+            launchedByHop = false;
             conversionCount = 0;
             ignoredColliderList.RegisterOverlapping(
                 rb.position,
@@ -746,6 +754,7 @@ namespace SlimeJumping.Controller
             // Resume as Airborne
             launchSpeed = 0f;
             launchPosition = rb.position;
+            launchedByHop = false;
             conversionCount = 0;
             stunTimer = 0f;
             ChangeState(SlimeState.Airborne, intentional: true);

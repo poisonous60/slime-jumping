@@ -44,6 +44,7 @@ namespace SlimeJumping.Controller
             crawlVelocity = 0f;
             chargeEntryCrawl = 0f;
             postLaunchTimer = 0f;
+            postLaunchAirControlLockTimer = 0f;
             hopRequested = false;
             hopBufferTimer = 0f;
             dashBufferTimer = 0f;
@@ -62,6 +63,7 @@ namespace SlimeJumping.Controller
             // Energy tracking
             launchSpeed = newVelocity.magnitude;
             launchPosition = worldPos;
+            launchedByHop = false;
             conversionCount = 0;
 
             // Unity doesn't fire OnTriggerExit2D after teleport — clear stale candidates

@@ -13,27 +13,41 @@ namespace SlimeJumping.Controller
         {
             if (attachLockoutTimer > 0f)
                 attachLockoutTimer -= dt;
+            if (postLaunchAirControlLockTimer > 0f)
+                postLaunchAirControlLockTimer -= dt;
 
             // Apex threshold locks air control while rising hard. In a fluid medium
             // (water etc.) the upward velocity comes from buoyancy, not a launch —
             // the player should still be able to steer. Bypass the apex gate while submerged.
             bool airControlActive = InFluid
-                || Vector2.Dot(velocity, gravityUp) <= settings.apexThreshold;
+                || (postLaunchAirControlLockTimer <= 0f
+                    && Vector2.Dot(velocity, gravityUp) <= settings.apexThreshold);
 
             // Gravity
+            // W/S scale picks rising vs falling variant by actual velocity direction —
+            // independent of airControlActive, so steering still works while above apex.
+            // In fluid: intentionally ignore velocity sign and use the dedicated in-fluid
+            // values instead. Water movement is buoyancy-driven and has no clean apex, so
+            // a rising/falling split would make submerged steering feel inconsistent.
             float gravityScale = 1f;
-            float asymScale;
-            if (airControlActive)
+            float inputYRaw = inputReader.LastInputMove.y;
+            if (InFluid)
             {
-                float inputY = inputReader.LastInputMove.y;
-                if (inputY > 0.1f) gravityScale = settings.floatGravityScale;
-                else if (inputY < -0.1f) gravityScale = settings.diveGravityScale;
-                asymScale = settings.fallingGravityScale;
+                if (inputYRaw > 0.1f) gravityScale = settings.floatGravityScaleInFluid;
+                else if (inputYRaw < -0.1f) gravityScale = settings.diveGravityScaleInFluid;
             }
             else
             {
-                asymScale = settings.risingGravityScale;
+                bool isRisingByVelocity = Vector2.Dot(velocity, gravityUp) > 0f;
+                if (inputYRaw > 0.1f)
+                    gravityScale = isRisingByVelocity ? settings.floatGravityScaleRising : settings.floatGravityScaleFalling;
+                else if (inputYRaw < -0.1f)
+                    gravityScale = isRisingByVelocity ? settings.diveGravityScaleRising : settings.diveGravityScaleFalling;
             }
+
+            // Asymmetric gravity uses the existing airControlActive split (apex-gated),
+            // unchanged from before so rising/falling multipliers behave identically.
+            float asymScale = airControlActive ? settings.fallingGravityScale : settings.risingGravityScale;
             velocity += -gravityUp * Mathf.Abs(settings.gravity) * gravityScale * asymScale * dt;
 
             // Land on any surface
@@ -80,6 +94,8 @@ namespace SlimeJumping.Controller
                     float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
                     float shadowSpeedSq = launchSpeed * launchSpeed
                         + 2f * Mathf.Abs(settings.gravity) * heightDelta;
+                    if (launchedByHop)
+                        shadowSpeedSq += settings.hopConversionEnergyBonus * settings.baseLaunchPower * settings.baseLaunchPower;
                     float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
                     float speedRatio = Mathf.Sqrt(settings.initialConversionRate);
                     float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
@@ -87,6 +103,7 @@ namespace SlimeJumping.Controller
                     float conversionScale = (conversionCount == 0) ? 1f : settings.subsequentConversionRate;
                     spawnDistance *= conversionScale;
                     if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
+                    if (launchedByHop) spawnDistance *= settings.hopConversionBonus;
                     conversionCount++;
 
                     Vector2 relativeVel = velocity - landingPlatformVel;
@@ -176,6 +193,8 @@ namespace SlimeJumping.Controller
                         float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
                         float shadowSpeedSq = launchSpeed * launchSpeed
                             + 2f * Mathf.Abs(settings.gravity) * heightDelta;
+                        if (launchedByHop)
+                            shadowSpeedSq += settings.hopConversionEnergyBonus * settings.baseLaunchPower * settings.baseLaunchPower;
                         float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
                         float speedRatio = Mathf.Sqrt(settings.initialConversionRate);
                         float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
@@ -183,6 +202,7 @@ namespace SlimeJumping.Controller
                         float conversionScale = (conversionCount == 0) ? 1f : settings.subsequentConversionRate;
                         spawnDistance *= conversionScale;
                         if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
+                        if (launchedByHop) spawnDistance *= settings.hopConversionBonus;
 
                         float candidate = Mathf.Max(spawnDistance, settings.chargeRadius);
                         if (candidate > settings.chargeRadius)

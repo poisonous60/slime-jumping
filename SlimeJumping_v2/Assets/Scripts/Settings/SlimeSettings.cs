@@ -77,6 +77,10 @@ namespace SlimeJumping.Settings
         [Range(0f, 1f)]
         public float subsequentConversionRate = 0.9f;
         public float notJumpConversionBonus = 1.3f;
+        [Tooltip("Multiplicative bonus on spawnDistance when the flight originated from a hop. 1 = no bonus.")]
+        [Min(0f)] public float hopConversionBonus = 1f;
+        [Tooltip("Additive bonus on landing shadow v², expressed as a fraction of a full charge jump's v² (baseLaunchPower²). Applied only when the flight originated from a hop.")]
+        [Min(0f)] public float hopConversionEnergyBonus = 0f;
         public float aimDriftRadiusScale = 0.7f;
         [Tooltip("Grace window (seconds) after a no-Space landing during which pressing Space still grants energy conversion, as if Space had been held on the landing frame. 0 disables.")]
         [Min(0f)] public float energyConversionCoyoteTime = 0.12f;
@@ -107,11 +111,25 @@ namespace SlimeJumping.Settings
         public float airMaxHorizontalSpeed = 5f;
         public float airAcceleration = 20f;
         public float airDeceleration = 15f;
-        public float floatGravityScale = 0.5f;
-        public float diveGravityScale = 2.0f;
+        [Tooltip("W-hold gravity scale while rising (velocity along gravityUp > 0).")]
+        public float floatGravityScaleRising = 1f;
+        [Tooltip("W-hold gravity scale while falling.")]
+        public float floatGravityScaleFalling = 0.5f;
+        [Tooltip("S-hold gravity scale while rising.")]
+        public float diveGravityScaleRising = 1f;
+        [Tooltip("S-hold gravity scale while falling.")]
+        public float diveGravityScaleFalling = 2.0f;
         public float risingGravityScale = 1f;
         public float fallingGravityScale = 1f;
         public float apexThreshold = 0f;
+        [Tooltip("Seconds after a charged launch (not hop) during which air control is disabled.")]
+        public float postLaunchAirControlLockTime = 0.15f;
+
+        [Header("Air Control — In Fluid")]
+        [Tooltip("W-hold gravity scale while submerged. Applied regardless of vertical direction — buoyancy-driven motion has no clean apex.")]
+        public float floatGravityScaleInFluid = 0.5f;
+        [Tooltip("S-hold gravity scale while submerged. Applied regardless of vertical direction — buoyancy-driven motion has no clean apex.")]
+        public float diveGravityScaleInFluid = 2.0f;
 
         [Header("Physics")]
         public float gravity = -20f;

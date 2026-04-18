@@ -17,6 +17,7 @@ namespace SlimeJumping.Controller
                 crawlVelocity = 0f;
                 launchSpeed = 0f;
                 launchPosition = rb.position;
+                launchedByHop = false;
                 slideRampTimer = 0f;
                 conversionCount = 0;
                 ClearPendingEnergyConversion(executeDeferredReset: false);

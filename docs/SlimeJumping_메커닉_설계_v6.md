@@ -378,6 +378,8 @@ activeDriftSpeed = autoDriftSpeed * lerp(1, radiusRatio, aimDriftRadiusScale)
 
 **`velocity.y <= apexThreshold`**(기본 0)일 때만 에어 컨트롤 활성. 상승 중에는 W/S 중력 조절과 A/D 수평 조작이 모두 비활성.
 
+추가로, 차징 발사 직후 **`postLaunchAirControlLockTime`**(기본 0.15초) 동안 에어 컨트롤이 비활성. Hop / JumpPad 등 `ForceAirborneWithVelocity`로 진입한 비행에는 적용되지 않음 — 오직 `Launch()` 경로에서만 타이머가 설정된다. 유체(`InFluid`) 중에는 Apex 게이트와 마찬가지로 이 잠금도 우회된다.
+
 ### 에어 컨트롤 — A/D 수평 가감속
 
 A/D로 수평 속도를 가감속. 발사 속도가 상한보다 빠르면 감속(반대 방향)만 허용.
@@ -392,13 +394,23 @@ else → MoveTowards(velocity.x, targetVx, accel/decel * dt)
 
 W/S로 비행 중 체감 중력을 조절하여 궤적 형태를 변경.
 
+W/S 중력 배율은 현재 수직 속도 부호에 따라 상승/하강용을 분리해서 적용한다 (apex 게이트와 무관하게 동작 — A/D 수평 제어만 apex 게이트에 묶임).
+
 ```
-W 홀드: gravityScale = floatGravityScale (기본 0.5)  → 넓고 평평한 궤적
-S 홀드: gravityScale = diveGravityScale (기본 2.0)  → 빠르게 꽂히는 궤적
-미입력:  gravityScale = 1.0                          → 기본 포물선
+isRising = dot(velocity, gravityUp) > 0
+
+W 홀드: gravityScale = isRising ? floatGravityScaleRising (기본 1.0)
+                                : floatGravityScaleFalling (기본 0.5)  → 넓고 평평한 궤적
+S 홀드: gravityScale = isRising ? diveGravityScaleRising (기본 1.0)
+                                : diveGravityScaleFalling (기본 2.0)  → 빠르게 꽂히는 궤적
+미입력:  gravityScale = 1.0                                              → 기본 포물선
 
 실제 적용 중력: gravity * gravityScale
 ```
+
+Rising 기본값을 1.0으로 두면 기존처럼 "상승 중엔 W/S 효과 없음" 동작이 유지되고, 값을 바꾸면 상승 페이즈에서도 중력 제어가 가능해진다.
+
+**유체 내부(`InFluid`)**: 부력 구동 이동은 뚜렷한 apex가 없어서 상승/하강 분기가 조작감을 해친다. 그래서 수중에서는 수직 속도 부호와 무관하게 전용 값 `floatGravityScaleInFluid` / `diveGravityScaleInFluid`만 사용한다.
 
 - 플레이어 본인이 조작하므로 예측 가능성 유지.
 - S로 빠르게 꽂으면 에어 컨트롤 시간 감소, W로 길게 뜨면 착지점 세밀 조절 가능. 속도 vs 정밀도 트레이드오프.
@@ -705,6 +717,8 @@ BranchPivot   (월드 고정 위치, 회전만 함. Rigidbody2D + SpringyBranchP
 | 파라미터 | 기본값 | 설명 |
 |---------|--------|------|
 | heightRestorationRatio | 2.25 | 에너지 전환 복원 비율 (effectiveRate = sqrt(ratio) * chargeRadius / baseLaunchPower) |
+| hopConversionBonus | 1.0 | Hop 비행 착지 시 spawnDistance 배율 (기본 1 = 보너스 없음) |
+| hopConversionEnergyBonus | 0.0 | Hop 비행 착지 시 `shadowSpeedSq`에 가산되는 에너지 비율 (풀 차징 점프 v² = baseLaunchPower² 기준, sqrt 적용 전) |
 | aimDriftRadiusScale | 0.7 | 확장 시 드리프트 보상 (1.0=시간 동일, 0.0=시간 비례 증가) |
 
 ### Stick
@@ -742,11 +756,16 @@ BranchPivot   (월드 고정 위치, 회전만 함. Rigidbody2D + SpringyBranchP
 | airMaxHorizontalSpeed | 5 | A/D 수평 최대 속도 |
 | airAcceleration | 20 | 수평 가속 |
 | airDeceleration | 15 | 수평 감속 |
-| floatGravityScale | 0.5 | W 홀드 시 중력 배율 |
-| diveGravityScale | 2.0 | S 홀드 시 중력 배율 |
+| floatGravityScaleRising | 1.0 | W 홀드, 상승 중 중력 배율 |
+| floatGravityScaleFalling | 0.5 | W 홀드, 하강 중 중력 배율 |
+| diveGravityScaleRising | 1.0 | S 홀드, 상승 중 중력 배율 |
+| diveGravityScaleFalling | 2.0 | S 홀드, 하강 중 중력 배율 |
+| floatGravityScaleInFluid | 0.5 | 수중 W 홀드 중력 배율 (수직 속도 무관) |
+| diveGravityScaleInFluid | 2.0 | 수중 S 홀드 중력 배율 (수직 속도 무관) |
 | risingGravityScale | 1 | 상승 중 중력 배율 |
 | fallingGravityScale | 1 | 하강 중 중력 배율 |
 | apexThreshold | 0 | 이 이하 velocity.y에서만 에어 컨트롤 활성 |
+| postLaunchAirControlLockTime | 0.15 | 차징 발사 직후 에어 컨트롤 비활성 시간 (Hop/ForceAirborneWithVelocity 제외) |
 
 ### Physics
 

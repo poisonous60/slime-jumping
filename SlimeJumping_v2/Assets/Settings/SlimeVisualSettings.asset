@@ -109,6 +109,8 @@ MonoBehaviour:
   chargingTremorFrequency: 25
   chargingTremorMax: 0.03
   chargingTremorThreshold: 9
+  fullAimTremorAmplitude: 0.04
+  fullAimTremorFrequency: 15
   breathAmplitude: 0.02
   breathFrequency: 0.4
   faceOffsetScale: 0.1

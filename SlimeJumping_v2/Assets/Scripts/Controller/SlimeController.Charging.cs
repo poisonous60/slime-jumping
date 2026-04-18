@@ -222,6 +222,7 @@ namespace SlimeJumping.Controller
             chargeFullAimTimer = 0f;
             launchSpeed = 0f;
             launchPosition = rb.position;
+            launchedByHop = false;
             slideRampTimer = 0f;
             conversionCount = 0;
             if (carrier != null) carrier.Detach();
