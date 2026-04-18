@@ -17,8 +17,10 @@ MonoBehaviour:
   sleepAsymmetry: 0.25
   sleepDip: -0
   sleepOvershoot: 1.4
-  sleepEulerAngles: {x: 0, y: 0, z: 0}
-  sleepFaceOffset: {x: 0, y: 0, z: 0}
+  sleepEulerAngles: {x: 0, y: 20, z: 0}
+  sleepFaceOffset: {x: 0.2, y: 0, z: 0}
+  faceFollowRatio: 0.7
+  faceFollowSmoothTime: 0.08
   breathFrequency: 0.45
   breathAmplitude: 0.04
   verticalAnchor: 1

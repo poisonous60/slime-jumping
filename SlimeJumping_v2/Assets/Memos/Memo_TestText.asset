@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5984567f4d471a54b900532ebcab2223, type: 3}
+  m_Name: Memo_TestText
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Interaction.MemoProfile
+  layoutPrefab: {fileID: 4982033389204969035, guid: 1e44e42a2e9f9bd428791df538bad7f5, type: 3}
+  backgroundSprite: {fileID: 0}
+  backgroundTint: {r: 1, g: 1, b: 1, a: 1}
+  titleText: 
+  bodyText: Follow this path down. There is soft water below.
+  illustration: {fileID: 0}
+  fadeInDuration: 0.4
+  fadeOutDuration: 0.3
+  followStrength: 0.1
+  maxFollowOffset: 0.4
+  followSmoothing: 8

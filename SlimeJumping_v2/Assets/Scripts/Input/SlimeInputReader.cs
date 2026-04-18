@@ -19,11 +19,13 @@ namespace SlimeJumping.Input
         public event Action OnJumpReleased;
         public event Action OnVerticalUpPressed;
         public event Action OnVerticalDownPressed;
+        public event Action OnInteractPressed;
 
         private InputAction aimAction;
         private InputAction jumpAction;
         private InputAction verticalUpAction;
         private InputAction verticalDownAction;
+        private InputAction interactAction;
 
         // Last-input-wins tracking
         private bool prevLeft, prevRight, prevUp, prevDown;
@@ -36,11 +38,13 @@ namespace SlimeJumping.Input
             jumpAction = playerMap.FindAction("Jump");
             verticalUpAction = playerMap.FindAction("VerticalUp");
             verticalDownAction = playerMap.FindAction("VerticalDown");
+            interactAction = playerMap.FindAction("Interact");
 
             jumpAction.started += HandleJumpStarted;
             jumpAction.canceled += HandleJumpCanceled;
             verticalUpAction.started += HandleVerticalUpStarted;
             verticalDownAction.started += HandleVerticalDownStarted;
+            interactAction.started += HandleInteractStarted;
 
             playerMap.Enable();
         }
@@ -51,6 +55,7 @@ namespace SlimeJumping.Input
             jumpAction.canceled -= HandleJumpCanceled;
             verticalUpAction.started -= HandleVerticalUpStarted;
             verticalDownAction.started -= HandleVerticalDownStarted;
+            interactAction.started -= HandleInteractStarted;
 
             inputActionAsset.FindActionMap("Player").Disable();
         }
@@ -99,6 +104,11 @@ namespace SlimeJumping.Input
         private void HandleVerticalDownStarted(InputAction.CallbackContext ctx)
         {
             OnVerticalDownPressed?.Invoke();
+        }
+
+        private void HandleInteractStarted(InputAction.CallbackContext ctx)
+        {
+            OnInteractPressed?.Invoke();
         }
     }
 }

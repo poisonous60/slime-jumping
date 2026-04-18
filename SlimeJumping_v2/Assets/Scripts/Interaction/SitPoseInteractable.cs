@@ -71,12 +71,12 @@ namespace SlimeJumping.Interaction
                 Debug.LogError($"[SitPoseInteractable] Slime has no SitPoseAnimator component; attach it to the slime prefab.", this);
             }
 
-            if (boundReader != null) boundReader.OnVerticalUpPressed += HandleVerticalUpPressed;
+            if (boundReader != null) boundReader.OnInteractPressed += HandleInteractPressed;
         }
 
         public void OnReleaseControl(SlimeController slime)
         {
-            if (boundReader != null) boundReader.OnVerticalUpPressed -= HandleVerticalUpPressed;
+            if (boundReader != null) boundReader.OnInteractPressed -= HandleInteractPressed;
             if (boundAnimator != null) boundAnimator.OnFullyReleased -= HandleFullyReleased;
             if (boundVisual != null)
             {
@@ -100,7 +100,7 @@ namespace SlimeJumping.Interaction
             if (freezePhysics) slime.OverrideVelocity(Vector2.zero);
         }
 
-        private void HandleVerticalUpPressed()
+        private void HandleInteractPressed()
         {
             if (boundAnimator != null) boundAnimator.RequestGetUp();
         }

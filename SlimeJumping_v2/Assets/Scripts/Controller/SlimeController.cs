@@ -288,6 +288,7 @@ namespace SlimeJumping.Controller
             inputReader.OnJumpReleased += HandleJumpReleased;
             inputReader.OnVerticalDownPressed += HandleVerticalDownPressed;
             inputReader.OnVerticalUpPressed += HandleVerticalUpPressed;
+            inputReader.OnInteractPressed += HandleInteractPressed;
         }
 
         private void OnDisable()
@@ -296,6 +297,7 @@ namespace SlimeJumping.Controller
             inputReader.OnJumpReleased -= HandleJumpReleased;
             inputReader.OnVerticalDownPressed -= HandleVerticalDownPressed;
             inputReader.OnVerticalUpPressed -= HandleVerticalUpPressed;
+            inputReader.OnInteractPressed -= HandleInteractPressed;
         }
 
         private void Update()

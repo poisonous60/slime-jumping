@@ -40,6 +40,11 @@ namespace SlimeJumping.Interaction
         private Quaternion _lastRotation = Quaternion.identity;
         private Vector3 _lastFaceOffset = Vector3.zero;
 
+        // SmoothDamp state for face follow. _smoothedFaceOffset is what we actually
+        // push to SlimeVisual; the per-frame target adds body-pivot Y * ratio.
+        private Vector3 _smoothedFaceOffset;
+        private Vector3 _faceVelocity;
+
         private void Awake()
         {
             if (slimeVisual == null) slimeVisual = GetComponentInChildren<SlimeVisual>();
@@ -57,6 +62,8 @@ namespace SlimeJumping.Interaction
             _profile = profile;
             _breathing.Configure(profile.breathAmplitude, profile.breathFrequency, profile.amplitudeVariation);
             _pendingWake = false;
+            _smoothedFaceOffset = Vector3.zero;
+            _faceVelocity = Vector3.zero;
             EnterState(State.Settling);
             // Push t=0 immediately to prevent a one-frame (1,1,1) flicker between
             // IsExternallyAnimated reset and the next Update().
@@ -220,15 +227,24 @@ namespace SlimeJumping.Interaction
 
             if (slimeVisual == null) return;
 
+            // Pivot-compensation: keep anchored edge planted when scale.y deviates from 1.
+            // Computed first because the face-follow target adds it as a Y delta.
+            float halfHeight = slimeVisual.BodyNativeHeight * 0.5f;
+            float anchorBias = (_profile.verticalAnchor * 2f) - 1f;
+            float bodyPivotY = halfHeight * (scale.y - 1f) * anchorBias;
+            Vector3 localPos = new Vector3(0f, bodyPivotY, 0f);
+
+            // Face follows body's vertical pivot motion at faceFollowRatio.
+            // SmoothDamp gives the lag/softness — applied universally so transitions
+            // (settle/wake) also pick up a touch of softness, not just sleep idle.
+            Vector3 faceTarget = faceOffset + new Vector3(0f, bodyPivotY * _profile.faceFollowRatio, 0f);
+            _smoothedFaceOffset = Vector3.SmoothDamp(
+                _smoothedFaceOffset, faceTarget, ref _faceVelocity, _profile.faceFollowSmoothTime);
+
             // Rotation + face offset overrides BEFORE SetExternalDeform so the next
             // LateUpdate composes them with the latest scale/asym/dip values.
             slimeVisual.SetExternalRotation(rot);
-            slimeVisual.SetExternalFaceOffset(faceOffset);
-
-            // Pivot-compensation: keep anchored edge planted when scale.y deviates from 1.
-            float halfHeight = slimeVisual.BodyNativeHeight * 0.5f;
-            float anchorBias = (_profile.verticalAnchor * 2f) - 1f;
-            Vector3 localPos = new Vector3(0f, halfHeight * (scale.y - 1f) * anchorBias, 0f);
+            slimeVisual.SetExternalFaceOffset(_smoothedFaceOffset);
 
             slimeVisual.SetExternalDeform(scale, localPos, asym, dip);
         }

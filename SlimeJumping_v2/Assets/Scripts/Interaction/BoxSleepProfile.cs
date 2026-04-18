@@ -17,6 +17,12 @@ namespace SlimeJumping.Interaction
         [Tooltip("Face position offset (XYZ delta from rest) at the sleep pose. Same lifecycle as sleepEulerAngles. Replaces face drift/saccade while active.")]
         public Vector3 sleepFaceOffset = Vector3.zero;
 
+        [Header("Face follows body breathing")]
+        [Tooltip("How much of the body's vertical pivot movement (from breathing scale.y) the face mirrors. 0 = face stays at sleepFaceOffset; 1 = face moves the full body amount.")]
+        [Range(0f, 1.5f)] public float faceFollowRatio = 0.7f;
+        [Tooltip("SmoothDamp time for face position. Higher = laggier/softer follow. Applied universally so settle/wake transitions are also softened slightly.")]
+        [Min(0f)] public float faceFollowSmoothTime = 0.08f;
+
         [Header("Sleeping — same breathing as SitPose Idle")]
         public float breathFrequency = 0.45f;
         public float breathAmplitude = 0.04f;

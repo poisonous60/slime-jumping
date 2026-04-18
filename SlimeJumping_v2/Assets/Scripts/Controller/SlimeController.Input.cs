@@ -110,14 +110,6 @@ namespace SlimeJumping.Controller
         {
             if (_override != null || currentState == SlimeState.Stunned) return;
 
-            // Interaction takes priority over hop when a valid interactable is in range
-            if (interactionDetector.HasInteractable
-                && currentState == SlimeState.Attached)
-            {
-                interactionDetector.TryInteract();
-                return;
-            }
-
             if (currentState == SlimeState.Attached)
             {
                 if (postLaunchTimer > 0f) return;
@@ -127,6 +119,17 @@ namespace SlimeJumping.Controller
             else if (currentState == SlimeState.Airborne)
             {
                 hopBufferTimer = settings.hopBufferDuration;
+            }
+        }
+
+        private void HandleInteractPressed()
+        {
+            if (_override != null || currentState == SlimeState.Stunned) return;
+
+            if (interactionDetector.HasInteractable
+                && currentState == SlimeState.Attached)
+            {
+                interactionDetector.TryInteract();
             }
         }
     }
