@@ -358,8 +358,12 @@ namespace SlimeJumping.Controller
             float surfaceMultiplier = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 ? settings.attachedCheckMultiplier : settings.airborneCheckMultiplier;
             float inputX = (currentState == SlimeState.Charging) ? 0f : inputReader.LastInputMove.x;
-            isTouchingSurface = surfaceProbe.CheckSurface(out surfaceNormal, out surfaceCollider, surfaceMultiplier, inputX, surfaceCollider, gravityUp, gravityRight);
+            Vector2 primaryNormal;
+            isTouchingSurface = surfaceProbe.CheckSurface(out primaryNormal, out surfaceCollider, surfaceMultiplier, inputX, surfaceCollider, gravityUp, gravityRight);
 
+            // Aggregate normal for slide/crawl/aim/impact continuity. `surfaceCollider`
+            // still carries primary identity for carrier/surfaceMod/effect attribution.
+            surfaceNormal = isTouchingSurface ? surfaceProbe.EffectiveNormal : gravityUp;
             surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
 
             if (isTouchingSurface && surfaceCollider != prevSurfaceCollider

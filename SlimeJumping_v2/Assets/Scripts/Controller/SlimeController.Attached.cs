@@ -126,10 +126,10 @@ namespace SlimeJumping.Controller
             float finalTangent = slideSpeed + crawlVelocity;
             velocity = surfaceTangent * finalTangent;
 
-            // Cancel velocity into surface
-            float normalVel = Vector2.Dot(velocity, surfaceNormal);
-            if (normalVel < 0f)
-                velocity -= surfaceNormal * normalVel;
+            // Cancel velocity into all active contacts (multi-constraint). At concave
+            // corners this zeroes velocity into every tangent surface, avoiding the
+            // Phase-A-pushes-back rubber-banding of the single-normal clip.
+            surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
 
             SnapToSurface();
 

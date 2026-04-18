@@ -187,9 +187,7 @@ namespace SlimeJumping.Controller
                     float finalTangent = slideSpeed + crawlVelocity;
                     velocity = surfaceTangent * finalTangent;
 
-                    float normalVel = Vector2.Dot(velocity, surfaceNormal);
-                    if (normalVel < 0f)
-                        velocity -= surfaceNormal * normalVel;
+                    surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
 
                     SnapToSurface();
 

@@ -74,8 +74,7 @@ namespace SlimeJumping.Settings
 
         [Header("Energy Conversion")]
         [Min(0f)] public float initialConversionRate = 2.25f;
-        [Range(0f, 1f)]
-        public float subsequentConversionRate = 0.9f;
+        [Min(0f)] public float subsequentConversionRate = 0.9f;
         public float notJumpConversionBonus = 1.3f;
         [Tooltip("Multiplicative bonus on spawnDistance when the flight originated from a hop. 1 = no bonus.")]
         [Min(0f)] public float hopConversionBonus = 1f;
@@ -137,6 +136,8 @@ namespace SlimeJumping.Settings
         public float surfaceCheckDistance = 0.05f;
         public float contactSkin = 0.02f;
         public float depenetrationSkin = 0.01f;
+        [Tooltip("Min penetration advantage another contact needs to steal primary from the previous primary. Damps frame-to-frame flipping at concave corners.")]
+        public float primaryContactHysteresis = 0.005f;
         public float attachedCheckMultiplier = 3f;
         public float airborneCheckMultiplier = 1f;
         public LayerMask groundLayer;

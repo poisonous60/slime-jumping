@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using SlimeJumping.Settings;
+using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Physics
 {
@@ -25,6 +26,11 @@ namespace SlimeJumping.Physics
         private int selectedIdx = -1;
         private int phaseAIterCount;
         private float phaseARemainPen;
+
+        // Cached gravity/ceiling context from last CheckSurface (used by EffectiveNormal
+        // and ProjectVelocityAgainstContacts — they run after CheckSurface in the same frame).
+        private Vector2 lastGravityUp = Vector2.up;
+        private float lastCeilingThreshold;
 
         // Diagnostic accessors
         public int ContactCount => contactCount;
@@ -56,6 +62,9 @@ namespace SlimeJumping.Physics
             float contactSkin = settings.contactSkin;
             LayerMask mask = settings.groundLayer;
             Vector2 pos = rb.position;
+
+            lastGravityUp = gravityUp;
+            lastCeilingThreshold = settings.ceilingThreshold;
 
             normal = gravityUp;
             col = null;
@@ -170,7 +179,63 @@ namespace SlimeJumping.Physics
                 }
             }
 
-            // Step 2: Penetration wins — deepest penetrating contact
+            // Step 1.7: IPlatformEffect priority — if exactly one active non-ceiling
+            // contact has an effect on its parent, pick it so effects (JumpPad etc.) fire
+            // even when a floor contact is tied or deeper. Multiple effects fall through
+            // to normal selection to avoid arbitrary choice between them.
+            {
+                int effectCount = 0;
+                int effectIdx = -1;
+                for (int i = 0; i < contactCount; i++)
+                {
+                    if (!contactActive[i]) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
+                    Collider2D c = contactColliders[i];
+                    if (c != null && c.GetComponentInParent<IPlatformEffect>() != null)
+                    {
+                        effectCount++;
+                        effectIdx = i;
+                    }
+                }
+                if (effectCount == 1) return effectIdx;
+            }
+
+            // Step 2: Continuity with penetration guard — if prev primary is still in the
+            // active non-ceiling set AND no other contact beats it in penetration by more
+            // than primaryContactHysteresis, keep it. Eliminates frame-to-frame primary
+            // flipping at corners without letting the primary lock onto a losing surface.
+            float hysteresis = settings.primaryContactHysteresis;
+            if (prevCollider != null)
+            {
+                int prevIdx = -1;
+                float prevPen = 0f;
+                for (int i = 0; i < contactCount; i++)
+                {
+                    if (!contactActive[i]) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
+                    if (contactColliders[i] == prevCollider)
+                    {
+                        prevIdx = i;
+                        prevPen = radius - contactDistances[i];
+                        break;
+                    }
+                }
+                if (prevIdx >= 0)
+                {
+                    float maxOtherPen = float.MinValue;
+                    for (int i = 0; i < contactCount; i++)
+                    {
+                        if (i == prevIdx) continue;
+                        if (!contactActive[i]) continue;
+                        if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
+                        float pen = radius - contactDistances[i];
+                        if (pen > maxOtherPen) maxOtherPen = pen;
+                    }
+                    if (maxOtherPen - prevPen <= hysteresis) return prevIdx;
+                }
+            }
+
+            // Step 3: Penetration wins — deepest penetrating contact
             int deepestIdx = -1;
             float deepestPen = 0f;
             for (int i = 0; i < contactCount; i++)
@@ -186,7 +251,7 @@ namespace SlimeJumping.Physics
             }
             if (deepestIdx >= 0 && deepestPen > 0.001f) return deepestIdx;
 
-            // Step 3: Input tiebreaker — surface slime is pressing into
+            // Step 4: Input tiebreaker — surface slime is pressing into
             if (Mathf.Abs(inputX) > 0.01f)
             {
                 Vector2 inputDir = (gravityRight * inputX).normalized;
@@ -214,18 +279,8 @@ namespace SlimeJumping.Physics
                 if (bestIdx >= 0 && bestDot - secondDot > 0.01f) return bestIdx;
             }
 
-            // Step 4: Continuity — prevCollider if in active set
-            if (prevCollider != null)
-            {
-                for (int i = 0; i < contactCount; i++)
-                {
-                    if (!contactActive[i]) continue;
-                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
-                    if (contactColliders[i] == prevCollider) return i;
-                }
-            }
-
             // Step 5: Gravity alignment — most floor-like
+            // (Continuity check from previous design is now handled by Step 2 hysteresis.)
             {
                 int bestIdx = firstActive;
                 float bestGrav = float.MinValue;
@@ -241,6 +296,62 @@ namespace SlimeJumping.Physics
                     }
                 }
                 return bestIdx;
+            }
+        }
+
+        /// <summary>
+        /// Penetration-weighted average of active non-ceiling contact normals.
+        /// Used as the slide/crawl/aim axis — smooth across polygon vertices and
+        /// concave corners where primary selection would flip frame-to-frame.
+        /// Returns the fallback (last good normal, typically the primary) when:
+        /// no active non-ceiling contacts, or weighted sum ≈ 0 (opposing walls).
+        /// </summary>
+        public Vector2 EffectiveNormal
+        {
+            get
+            {
+                if (activeCount == 0) return lastGoodNormal;
+
+                float radius = settings.slimeRadius;
+                float contactSkin = settings.contactSkin;
+                Vector2 sum = Vector2.zero;
+                for (int i = 0; i < contactCount; i++)
+                {
+                    if (!contactActive[i]) continue;
+                    if (Vector2.Dot(contactNormals[i], lastGravityUp) < lastCeilingThreshold) continue;
+                    float w = radius + contactSkin - contactDistances[i];
+                    if (w < 0f) w = 0f;
+                    sum += contactNormals[i] * w;
+                }
+                if (sum.sqrMagnitude < 1e-6f) return lastGoodNormal;
+                return sum.normalized;
+            }
+        }
+
+        /// <summary>
+        /// Multi-constraint velocity clipping: for each active contact (including
+        /// ceilings, to prevent pass-through), remove the velocity component pointing
+        /// into that contact. Two Gauss-Seidel passes converge for typical 2-3 contact
+        /// corners. When no active contacts, falls back to clipping against the provided
+        /// fallback normal — used by Charging's surface-probe grace period.
+        /// </summary>
+        public void ProjectVelocityAgainstContacts(ref Vector2 v, Vector2 fallbackNormal, int passes = 2)
+        {
+            if (activeCount == 0)
+            {
+                float vn = Vector2.Dot(v, fallbackNormal);
+                if (vn < 0f) v -= fallbackNormal * vn;
+                return;
+            }
+            for (int pass = 0; pass < passes; pass++)
+            {
+                for (int i = 0; i < contactCount; i++)
+                {
+                    if (!contactActive[i]) continue;
+                    Vector2 n = contactNormals[i];
+                    float vn = Vector2.Dot(v, n);
+                    if (vn < 0f) v -= n * vn;
+                }
             }
         }
 

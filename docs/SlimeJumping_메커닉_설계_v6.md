@@ -197,15 +197,28 @@ else
 
 `rb.position` 직접 설정 (velocity 제어와의 충돌 방지).
 
-### 표면 선택 (Geometric Primary Selection)
+### 표면 선택 (Primary + Constraints 모델)
 
-`OverlapCircleNonAlloc` + `ClosestPoint`로 active contacts (distance ≤ slimeRadius + contactSkin)를 수집한 뒤, 5-step fallback으로 primary 결정:
-1. 단일 contact → 그것 (99% 케이스)
-1.5. **천장 프리필터**: active contact에 천장(`surfaceUp < ceilingThreshold`)과 비천장이 혼재하면, 천장을 step 2-5 후보에서 제외. 전부 천장이면 필터 미적용.
-2. 침투된 contact가 있으면 가장 깊은 것 (motion-aware, weight 없음)
-3. 입력 방향 tiebreaker: `-normal · inputDir` 최대값
-4. continuity: prevCollider가 active set에 있으면 유지
-5. gravity alignment: `normal · up` 최대값 (fresh landing)
+두 계층으로 분리:
+
+**Primary (identity, sticky)** — `surfaceCollider` + 해당 normal을 결정. 아래 fallback으로 1개 선택:
+1. 단일 active contact → 그것 (~99% 케이스)
+1.5. **천장 프리필터**: active에 천장(`surfaceUp < ceilingThreshold`)과 비천장 혼재 시 천장을 후속 단계에서 제외
+1.7. **IPlatformEffect 우선권**: 비천장 active 중 정확히 1개가 effect(JumpPad 등)를 가지면 그것. JumpPad 옆 바닥 동시 착지 시 effect 발동 누락 방지
+2. **연속성 히스테리시스**: 이전 primary가 active 비천장 집합에 있고, 다른 contact가 침투량에서 `primaryContactHysteresis`(기본 0.005) 이상 앞서지 않으면 유지. 프레임간 flip 캐스케이드 제거
+3. 가장 깊은 침투 contact (> 0.001m)
+4. 입력 방향 tiebreaker
+5. gravity alignment (fallback)
+
+Primary는 `surfaceCollider` / `surfaceMod` / `carrier` / `IPlatformEffect` attribution / `OnLanded` collider 인자에만 사용.
+
+**Effective normal (continuous physics)** — slide/crawl 축, aim 회전, hop 방향, impact 속도 계산에 사용. 공식:
+```
+effectiveNormal = Σ(n_i × max(0, radius + contactSkin − dist_i))  [active 비천장]
+```
+정규화. 분모 ≈ 0 (마주보는 벽) 또는 비천장 active 0개면 primary normal로 fallback. 단일 contact에서는 primary == effective → 기존 동작 동일.
+
+**Multi-constraint velocity clipping** — `ProjectVelocityAgainstContacts(ref v, fallback)`: active contact 전부(천장 포함)에 대해 `v -= n · max(0, -v·n)`을 2-pass Gauss-Seidel. 코너에서 "바닥 법선만 상쇄 → Phase A가 매 프레임 벽에서 밀어냄" 러버밴딩을 근본 해결. active가 없으면 fallback normal 단일 clip (Charging 표면 프로브 grace 대응).
 
 ---
 
@@ -1116,7 +1129,7 @@ EnvironmentalZone 구현. 진입/탈출 속도 배율, 드래그(곱셈), 부력
 
 ### Tier 1 인터랙터블 (명세 #002 묶음 B)
 
-`InteractableBase` 상속, W 입력으로 발동. `InteractionDetector`가 broad-phase + narrow-phase(slime body overlap) 조합으로 후보 선택. `ReleaseOverride.Rescan`으로 override 해제 후 동일 trigger 재등록.
+`InteractableBase` 상속, **S 입력**(Interact 액션, Gamepad: buttonWest)으로 발동. `InteractionDetector`가 broad-phase + narrow-phase(slime body overlap) 조합으로 후보 선택. `ReleaseOverride.Rescan`으로 override 해제 후 동일 trigger 재등록. (Interact 액션은 VerticalUp/Hop(W)과 분리되어 있어 W는 hop 전용. S는 VerticalDown과 동일 키를 공유하지만 Interact는 HasInteractable 게이트로만 발화.)
 
 - `SitPoseInteractable` (IExternalController) — 침대/벤치/신사/화톳불 옆자리. 물리 동결 + anchor 텔레포트만 담당. 앉기 애니메이션은 **슬라임에 정적 부착된 `SitPoseAnimator`** 컴포넌트가 구동(코드 기반, 외부 튠 라이브러리 없음): 4단계 상태머신(`SittingDown` OutBack squash → `Idle` Spring-Damper breathing → `GettingUp` anticipation+OutElastic settle → `Released`). 가구별 튜닝은 `SitPoseProfile` ScriptableObject. 비주얼 쓰기는 `SlimeVisual.SetExternalDeform(scale, asymmetry, chargeDip)` — `IsExternallyAnimated` 게이트 준수, MPB 경유로 SRP Batcher 호환 유지. 일어나기 완료는 `SitPoseAnimator.OnFullyReleased` 이벤트로 통지되어 Interactable이 그 시점에 `ReleaseOverride` 호출(get-up 중 물리 동결 유지).
 - `MediaInteractable_TV` — 화면 머티리얼 + 오디오 토글
@@ -1137,6 +1150,17 @@ EnvironmentalZone 구현. 진입/탈출 속도 배율, 드래그(곱셈), 부력
 - `ImpulseEmitter` — Cinemachine 3.x `CinemachineImpulseSource` 래퍼
 - `FullscreenEffectCanvas` / `FullscreenOverlayCanvas` — 풀스크린 이펙트 공용 베이스
 - `SliceEffect` (prefab + MonoBehaviour) — Knife/Saw 공통 베임 피드백. `Spawn(prefab, contactPoint, signedTangent)` 정적 팩토리. `signedTangent`는 local +Y로 cone 회전 정렬. `ParticlePaletteBinder`로 `VFXType.Slice` 팔레트 색 자동 주입. 수명은 `max(particleLife, audioClip.length) + 0.1s`로 자체 관리 — SFX 잘림 방지. `DamageType.Slice`로 해저드 식별.
+
+### 메모 / 내레이션 (Memo)
+
+트리거 영역 진입 시 자동으로 월드 스페이스 종이쪽지 UI가 페이드인, 이탈 시 페이드아웃. 입력 없이 "지나가면서 본다"는 UX — 플레이 리듬을 끊지 않음.
+
+- **시간 독립성**: 모든 페이드·패럴럭스 보간은 `Time.unscaledDeltaTime`. `Time.timeScale` 변경(향후 일시정지/슬로우모 추가 대비)에도 메모 연출 타이밍이 고정.
+- **데이터 주도**: `MemoProfile` ScriptableObject가 콘텐츠(배경·Title·Body·일러스트·페이드/패럴럭스 튜닝)를, `layoutPrefab`(프리팹 배리언트)이 크기·폰트·슬롯 배치를 책임. 같은 레이아웃으로 콘텐츠만 바꾸거나, 같은 콘텐츠를 다른 레이아웃에 올리는 것 모두 에셋 재생성 없이 가능.
+- **살짝 따라오기(Parallax)**: 패널의 기준 위치는 트리거의 anchor(씬 고정). 매 프레임 `offset = clamp((slime − anchor) × followStrength, maxFollowOffset)`를 더해 슬라임 방향으로 약간 쏠림. 카메라를 쫓는 게 아니라 씬에 박힌 채 미세하게 반응 — "종이를 자석처럼 살짝 당기는" 느낌.
+- **기존 Interaction과의 분리**: 버튼 인터랙션(`IInteractable` + `InteractionDetector`)과 별개 파이프라인. 메모는 `Collider2D(isTrigger)`만 사용하며 `OnTriggerEnter2D`에서 `GetComponentInParent<SlimeController>()`로 슬라임을 판정. 같은 Collider idiom이지만 자동 연출이라 버튼 큐/narrow-phase가 불필요.
+
+구현 상세는 [프로토타입_구현_현황.md §메모 시스템](프로토타입_구현_현황.md#메모-시스템-memo--23).
 
 ---
 

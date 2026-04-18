@@ -139,6 +139,11 @@ namespace SlimeJumping.Rendering
         private Vector2 ComputeContactPoint()
         {
             Vector2 center = slimeController.Position;
+            // Primary collider's closest point matches where the stamp routes to, and
+            // stays correct at concave corners where SurfaceNormal is the aggregate
+            // bisector (which would place `center - n*r` in mid-air between surfaces).
+            Collider2D primary = slimeController.SurfaceCollider;
+            if (primary != null) return primary.ClosestPoint(center);
             if (slimeCollider == null) return center;
             float r = slimeCollider.radius * slimeCollider.transform.lossyScale.x;
             return center - slimeController.SurfaceNormal * r;

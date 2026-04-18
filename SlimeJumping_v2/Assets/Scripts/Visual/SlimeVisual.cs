@@ -233,9 +233,12 @@ public class SlimeVisual : MonoBehaviour
             float scaleExt = Mathf.Max(0f, (appliedScale.x - 1f) * colliderWorldRadius);
             float desiredReach = offsetMag + scaleExt;
 
-            // Uses transform.position (interpolated) intentionally: visual-only check in LateUpdate
+            // Use slimeController.Position (rb.position, physics-step coords) instead of
+            // the interpolated transform.position. Physics2D.Raycast queries the platform's
+            // collider in physics-step space; if the origin is interpolated, the clearance
+            // distance drifts between physics steps on moving platforms and chatters the clamp.
             float clearance = QueryClearance(
-                (Vector2)transform.position, sagDir,
+                slimeController.Position, sagDir,
                 colliderWorldRadius + desiredReach + settings.visualClearanceSkin);
 
             float maxReach = Mathf.Max(0f, clearance - colliderWorldRadius - settings.visualClearanceSkin);

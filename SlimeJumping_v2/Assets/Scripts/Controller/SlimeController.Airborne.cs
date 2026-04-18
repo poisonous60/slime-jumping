@@ -58,18 +58,14 @@ namespace SlimeJumping.Controller
                 // Ceiling: don't attach, just cancel normal velocity and stay airborne
                 if (surfaceUp < settings.ceilingReattachThreshold)
                 {
-                    float normalVel = Vector2.Dot(velocity, surfaceNormal);
-                    if (normalVel < 0f)
-                        velocity -= surfaceNormal * normalVel;
+                    surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
                     return;
                 }
 
                 // Attach debounce: block landing during lockout, cancel normal velocity only
                 if (attachLockoutTimer > 0f)
                 {
-                    float normalVel2 = Vector2.Dot(velocity, surfaceNormal);
-                    if (normalVel2 < 0f)
-                        velocity -= surfaceNormal * normalVel2;
+                    surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
                     return;
                 }
 
@@ -77,9 +73,7 @@ namespace SlimeJumping.Controller
                 // Don't return — fall through to air control so slime can move away.
                 if (blockAttachCount > 0)
                 {
-                    float normalVel3 = Vector2.Dot(velocity, surfaceNormal);
-                    if (normalVel3 < 0f)
-                        velocity -= surfaceNormal * normalVel3;
+                    surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
                 }
                 else
                 {
@@ -97,11 +91,10 @@ namespace SlimeJumping.Controller
                     if (launchedByHop)
                         shadowSpeedSq += settings.hopConversionEnergyBonus * settings.baseLaunchPower * settings.baseLaunchPower;
                     float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
-                    float speedRatio = Mathf.Sqrt(settings.initialConversionRate);
+                    float rate = (conversionCount == 0) ? settings.initialConversionRate : settings.subsequentConversionRate;
+                    float speedRatio = Mathf.Sqrt(rate);
                     float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
                     float spawnDistance = impactSpeed * effectiveRate;
-                    float conversionScale = (conversionCount == 0) ? 1f : settings.subsequentConversionRate;
-                    spawnDistance *= conversionScale;
                     if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
                     if (launchedByHop) spawnDistance *= settings.hopConversionBonus;
                     conversionCount++;
@@ -196,11 +189,10 @@ namespace SlimeJumping.Controller
                         if (launchedByHop)
                             shadowSpeedSq += settings.hopConversionEnergyBonus * settings.baseLaunchPower * settings.baseLaunchPower;
                         float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
-                        float speedRatio = Mathf.Sqrt(settings.initialConversionRate);
+                        float rate = (conversionCount == 0) ? settings.initialConversionRate : settings.subsequentConversionRate;
+                        float speedRatio = Mathf.Sqrt(rate);
                         float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
                         float spawnDistance = impactSpeed * effectiveRate;
-                        float conversionScale = (conversionCount == 0) ? 1f : settings.subsequentConversionRate;
-                        spawnDistance *= conversionScale;
                         if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
                         if (launchedByHop) spawnDistance *= settings.hopConversionBonus;
 
