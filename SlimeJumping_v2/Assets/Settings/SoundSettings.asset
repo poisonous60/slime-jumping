@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8cbc25de809b0b248b948f059cfe69b7, type: 3}
+  m_Name: SoundSettings
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundSettings
+  mixer: {fileID: 24100000, guid: f5c4b4cbe33287f46a2b3ebe1665485f, type: 2}
+  bgmGroup: {fileID: -392418750002537481, guid: f5c4b4cbe33287f46a2b3ebe1665485f, type: 2}
+  sfxSlimeGroup: {fileID: -2295287683633025529, guid: f5c4b4cbe33287f46a2b3ebe1665485f, type: 2}
+  sfxEnvironmentGroup: {fileID: -4415963532216631265, guid: f5c4b4cbe33287f46a2b3ebe1665485f, type: 2}
+  sfxObjectGroup: {fileID: -8096883690708781132, guid: f5c4b4cbe33287f46a2b3ebe1665485f, type: 2}
+  uiGroup: {fileID: -6803755028139578274, guid: f5c4b4cbe33287f46a2b3ebe1665485f, type: 2}
+  masterVolumeParam: MasterVolume
+  bgmVolumeParam: BGMVolume
+  sfxVolumeParam: SFXVolume
+  uiVolumeParam: UIVolume
+  poolSizePerCategory: 8
+  default3DMinDistance: 3
+  default3DMaxDistance: 20
+  default3DRolloff: 1

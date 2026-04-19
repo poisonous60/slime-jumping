@@ -102,6 +102,7 @@ MonoBehaviour:
   chargingSpeedMax: 15
   chargingCurvePower: 1
   chargingSquashMax: 0.2
+  energyChargingShrinkStrength: 0.005
   chargingDipMax: 0.2
   chargingPushMax: 0.1
   bodyChargingAimPull: 0.15
@@ -109,8 +110,8 @@ MonoBehaviour:
   chargingTremorFrequency: 25
   chargingTremorMax: 0.03
   chargingTremorThreshold: 9
-  fullAimTremorAmplitude: 0.03
-  fullAimTremorFrequency: 25
+  fullAimTremorAmplitude: 0.04
+  fullAimTremorFrequency: 20
   breathAmplitude: 0.02
   breathFrequency: 0.4
   faceOffsetScale: 0.1

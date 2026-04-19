@@ -20,7 +20,7 @@ MonoBehaviour:
   slideThreshold: 2
   slideResistance: 2
   groundDashImpulse: 5
-  groundDashCooldown: 0.2
+  groundDashCooldown: 0.34
   groundDashInputBuffer: 0.1
   groundDashAngleMin: 60
   groundDashAngleMax: 150
@@ -41,13 +41,13 @@ MonoBehaviour:
   hyperDashConversionDampingMin: 1.2
   hyperDashConversionDampingMax: 2
   chargeRadius: 2
-  autoDriftSpeed: 4
-  inputAcceleration: 3
+  autoDriftSpeed: 3
+  inputAcceleration: 1
   baseLaunchPower: 9
   minLaunchPower: 3
   chargeCurveExponent: 0.7
-  chargeFullAimTime: 0.3
-  maxAimAngularSpeed: 40
+  chargeFullAimTime: 0.1
+  maxAimAngularSpeed: 180
   chargeNormalFollowSpeed: 5
   chargingCoyoteTime: 0.2
   coyoteGraceTime: 0.1
@@ -55,10 +55,10 @@ MonoBehaviour:
   attachToggleWindow: 0.1
   attachToggleLockoutThreshold: 10
   attachLockoutDuration: 0.1
-  initialConversionRate: 1.3
-  subsequentConversionRate: 1
-  notJumpConversionBonus: 1.3
-  hopConversionBonus: 1
+  initialConversionRate: 1
+  subsequentConversionRate: 0.9
+  notJumpConversionBonus: 1.2
+  hopConversionBonus: 1.1
   hopConversionEnergyBonus: 0.3
   aimDriftRadiusScale: 0.7
   energyConversionCoyoteTime: 0.12

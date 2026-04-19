@@ -54,6 +54,8 @@ namespace SlimeJumping.Settings
 
         [Header("Charging Effects")]
         public float chargingSquashMax = 0.2f;
+        [Tooltip("Extra squash added when energy conversion expands the judgment circle. Scales with (activeChargeRadius/chargeRadius - 1), so 0 at base radius and grows linearly with expansion. Feeds into the same (+X, -Y) squash axis as chargingSquashMax.")]
+        [Min(0f)] public float energyChargingShrinkStrength = 0.15f;
         public float chargingDipMax = 0.2f;
         public float chargingPushMax = 0.1f;
         public float bodyChargingAimPull = 0.15f;

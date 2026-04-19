@@ -83,8 +83,9 @@ namespace SlimeJumping.Controller
 
                 if (inputReader.IsJumpHeld)
                 {
-                    // Energy conversion: use energy conservation (v² = v₀² + 2gh)
-                    // so W/S gravity control doesn't inflate/deflate conversion
+                    // Energy conversion: invert the launch curve so rate=1 preserves height.
+                    // Launch: power = (aim/chargeRadius)^chargeCurveExponent * baseLaunchPower
+                    // Inverse: aim = chargeRadius * (impactSpeed/baseLaunchPower)^(1/exponent)
                     float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
                     float shadowSpeedSq = launchSpeed * launchSpeed
                         + 2f * Mathf.Abs(settings.gravity) * heightDelta;
@@ -92,9 +93,10 @@ namespace SlimeJumping.Controller
                         shadowSpeedSq += settings.hopConversionEnergyBonus * settings.baseLaunchPower * settings.baseLaunchPower;
                     float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
                     float rate = (conversionCount == 0) ? settings.initialConversionRate : settings.subsequentConversionRate;
-                    float speedRatio = Mathf.Sqrt(rate);
-                    float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
-                    float spawnDistance = impactSpeed * effectiveRate;
+                    float speedRatio = impactSpeed / settings.baseLaunchPower;
+                    float spawnDistance = settings.chargeRadius
+                        * Mathf.Pow(speedRatio, 1f / settings.chargeCurveExponent)
+                        * rate;
                     if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
                     if (launchedByHop) spawnDistance *= settings.hopConversionBonus;
                     conversionCount++;
@@ -190,9 +192,10 @@ namespace SlimeJumping.Controller
                             shadowSpeedSq += settings.hopConversionEnergyBonus * settings.baseLaunchPower * settings.baseLaunchPower;
                         float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
                         float rate = (conversionCount == 0) ? settings.initialConversionRate : settings.subsequentConversionRate;
-                        float speedRatio = Mathf.Sqrt(rate);
-                        float effectiveRate = speedRatio * (settings.chargeRadius / settings.baseLaunchPower);
-                        float spawnDistance = impactSpeed * effectiveRate;
+                        float speedRatio = impactSpeed / settings.baseLaunchPower;
+                        float spawnDistance = settings.chargeRadius
+                            * Mathf.Pow(speedRatio, 1f / settings.chargeCurveExponent)
+                            * rate;
                         if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
                         if (launchedByHop) spawnDistance *= settings.hopConversionBonus;
 

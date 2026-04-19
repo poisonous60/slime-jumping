@@ -52,6 +52,15 @@ namespace SlimeJumping.Rendering
         [Range(0f, 360f)]
         [SerializeField] private float positionGradientAngle = 0f;
 
+        [Header("Appearance — Angle Gradient (C: by surface slope, optional)")]
+        [Tooltip("If on, multiplies the trail color by a gradient sampled by the surface's slope relative to world up. " +
+                 "Lets you give floors, walls, and ceilings distinct trail hues. Layers with (B) position gradient.")]
+        [SerializeField] private bool angleGradientEnabled = false;
+        [Tooltip("Color tint sampled by surface slope. t=0 is a perfectly horizontal floor (normal pointing up), " +
+                 "t=0.5 is a vertical wall (normal horizontal), t=1 is an overhang/ceiling (normal pointing down).")]
+        [GradientUsage(true)]
+        [SerializeField] private Gradient angleGradient;
+
         [Header("Brush")]
         [Tooltip("Material instantiated from Hidden/SlimeJumping/TrailBrush. Required.")]
         [SerializeField] private Material brushMaterial;
@@ -92,6 +101,7 @@ namespace SlimeJumping.Rendering
         // (intensity > 1) survive without clipping. Hidden from saves; rebuilt on OnValidate.
         private Texture2D bakedTrailGradient;
         private Texture2D bakedPositionGradient;
+        private Texture2D bakedAngleGradient;
         private const int GradientResolution = 256;
 
         // -------------------- Inspector-facing accessors (read-only) --------------------
@@ -242,36 +252,41 @@ namespace SlimeJumping.Rendering
             if (brushInstance != null) { Object.Destroy(brushInstance); brushInstance = null; }
             if (bakedTrailGradient != null) { Object.Destroy(bakedTrailGradient); bakedTrailGradient = null; }
             if (bakedPositionGradient != null) { Object.Destroy(bakedPositionGradient); bakedPositionGradient = null; }
+            if (bakedAngleGradient != null) { Object.Destroy(bakedAngleGradient); bakedAngleGradient = null; }
 
             // Neutralize trail globals so materials in other scenes / material previews
             // don't keep sampling a freed RT (Unity falls back to the default white texture,
             // which would leave every trail-receiver material tinted).
-            Shader.SetGlobalTexture("_TrailMask",         Texture2D.blackTexture);
-            Shader.SetGlobalTexture("_TrailGradient",     Texture2D.blackTexture);
-            Shader.SetGlobalTexture("_TrailPosGradient",  Texture2D.whiteTexture);
-            Shader.SetGlobalVector ("_TrailWorldMin",     Vector4.zero);
-            Shader.SetGlobalVector ("_TrailWorldSize",    Vector4.zero);
+            Shader.SetGlobalTexture("_TrailMask",          Texture2D.blackTexture);
+            Shader.SetGlobalTexture("_TrailGradient",      Texture2D.blackTexture);
+            Shader.SetGlobalTexture("_TrailPosGradient",   Texture2D.whiteTexture);
+            Shader.SetGlobalTexture("_TrailAngleGradient", Texture2D.whiteTexture);
+            Shader.SetGlobalVector ("_TrailWorldMin",      Vector4.zero);
+            Shader.SetGlobalVector ("_TrailWorldSize",     Vector4.zero);
             Shader.SetGlobalVector ("_TrailPosGradientParams", Vector4.zero);
-            Shader.SetGlobalFloat  ("_TrailPosGradientEnabled", 0f);
-            Shader.SetGlobalFloat  ("_TrailMaxMask",      0f);
+            Shader.SetGlobalFloat  ("_TrailPosGradientEnabled",   0f);
+            Shader.SetGlobalFloat  ("_TrailAngleGradientEnabled", 0f);
+            Shader.SetGlobalFloat  ("_TrailMaxMask",       0f);
         }
 
         private void PublishGlobals()
         {
             BakeGradients();
 
-            Shader.SetGlobalTexture("_TrailMask",        rt);
-            Shader.SetGlobalTexture("_TrailGradient",    bakedTrailGradient != null ? (Texture)bakedTrailGradient : Texture2D.whiteTexture);
-            Shader.SetGlobalTexture("_TrailPosGradient", bakedPositionGradient != null ? (Texture)bakedPositionGradient : Texture2D.whiteTexture);
-            Shader.SetGlobalVector ("_TrailWorldMin",    new Vector4(worldMin.x,  worldMin.y,  0f, 0f));
-            Shader.SetGlobalVector ("_TrailWorldSize",   new Vector4(worldSize.x, worldSize.y, 0f, 0f));
+            Shader.SetGlobalTexture("_TrailMask",          rt);
+            Shader.SetGlobalTexture("_TrailGradient",      bakedTrailGradient    != null ? (Texture)bakedTrailGradient    : Texture2D.whiteTexture);
+            Shader.SetGlobalTexture("_TrailPosGradient",   bakedPositionGradient != null ? (Texture)bakedPositionGradient : Texture2D.whiteTexture);
+            Shader.SetGlobalTexture("_TrailAngleGradient", bakedAngleGradient    != null ? (Texture)bakedAngleGradient    : Texture2D.whiteTexture);
+            Shader.SetGlobalVector ("_TrailWorldMin",      new Vector4(worldMin.x,  worldMin.y,  0f, 0f));
+            Shader.SetGlobalVector ("_TrailWorldSize",     new Vector4(worldSize.x, worldSize.y, 0f, 0f));
             Shader.SetGlobalVector ("_TrailPosGradientParams", new Vector4(
                 positionGradientCenter.x,
                 positionGradientCenter.y,
                 Mathf.Max(0.01f, positionGradientSize),
                 positionGradientAngle));
-            Shader.SetGlobalFloat  ("_TrailPosGradientEnabled", positionGradientEnabled ? 1f : 0f);
-            Shader.SetGlobalFloat  ("_TrailMaxMask",     Mathf.Clamp(trailMaxMask, 0.01f, 1f));
+            Shader.SetGlobalFloat  ("_TrailPosGradientEnabled",   positionGradientEnabled ? 1f : 0f);
+            Shader.SetGlobalFloat  ("_TrailAngleGradientEnabled", angleGradientEnabled    ? 1f : 0f);
+            Shader.SetGlobalFloat  ("_TrailMaxMask",       Mathf.Clamp(trailMaxMask, 0.01f, 1f));
             Shader.SetGlobalFloat  ("_TrailZCenter",     trailZCenter);
             Shader.SetGlobalFloat  ("_TrailZNear",       Mathf.Max(0f, trailZNear));
             Shader.SetGlobalFloat  ("_TrailZFar",        Mathf.Max(trailZNear + 0.01f, trailZFar));
@@ -281,6 +296,7 @@ namespace SlimeJumping.Rendering
         {
             BakeOne(ref bakedTrailGradient,    trailGradient,    "TrailGradient");
             BakeOne(ref bakedPositionGradient, positionGradient, "TrailPosGradient");
+            BakeOne(ref bakedAngleGradient,    angleGradient,    "TrailAngleGradient");
         }
 
         private static void BakeOne(ref Texture2D tex, Gradient g, string label)
@@ -329,6 +345,21 @@ namespace SlimeJumping.Rendering
                 });
             positionGradient = new Gradient();
             positionGradient.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(Color.white, 0f),
+                    new GradientColorKey(Color.white, 1f),
+                },
+                new[]
+                {
+                    new GradientAlphaKey(1f, 0f),
+                    new GradientAlphaKey(1f, 1f),
+                });
+            // Angle gradient default is pure white → identity multiplier, so enabling the
+            // toggle without tuning the gradient leaves the trail unchanged. Author-tune
+            // from the inspector: e.g. warm floors (t=0) → cool walls (t=0.5) → accent ceilings (t=1).
+            angleGradient = new Gradient();
+            angleGradient.SetKeys(
                 new[]
                 {
                     new GradientColorKey(Color.white, 0f),
