@@ -39,25 +39,40 @@ namespace SlimeJumping.Editor
 
             so.FindProperty("streamLine").objectReferenceValue = stream.GetComponent<LineRenderer>();
             so.FindProperty("splash").objectReferenceValue     = splash.GetComponent<ParticleSystem>();
+
+            var targetsProp = so.FindProperty("targetColliders");
+            targetsProp.arraySize = 0;
             if (wheel != null)
             {
                 var col = wheel.GetComponent<Collider2D>();
                 if (col != null)
-                    so.FindProperty("targetCollider").objectReferenceValue = col;
+                {
+                    targetsProp.arraySize = 1;
+                    targetsProp.GetArrayElementAtIndex(0).objectReferenceValue = col;
+                }
             }
-            so.FindProperty("rayDirection").vector2Value = Vector2.down;
-            so.FindProperty("maxDistance").floatValue    = 25f;
-            so.FindProperty("streamColor").colorValue    = new Color(0.45f, 0.85f, 1f, 1f);
-            so.FindProperty("splashColor").colorValue    = new Color(0.45f, 0.85f, 1f, 1f);
-            so.FindProperty("streamZOffset").floatValue  = -0.5f;
+            so.FindProperty("rayDirection").vector2Value  = Vector2.down;
+            so.FindProperty("maxDistance").floatValue     = 25f;
+            so.FindProperty("maxHits").intValue           = 4;
+            so.FindProperty("streamColor").colorValue     = new Color(0.45f, 0.85f, 1f, 1f);
+            so.FindProperty("splashColor").colorValue     = new Color(0.45f, 0.85f, 1f, 1f);
+            so.FindProperty("streamZOffset").floatValue   = 0.5f;
+            so.FindProperty("splashZOffset").floatValue   = -0.5f;
+            // URP/Unlit 기본 재질은 _BaseColor 를 쓰므로 MPB 틴팅 키도 맞춰둔다.
+            so.FindProperty("streamColorProperty").stringValue = "_BaseColor";
+            so.FindProperty("streamMaterialOverride").objectReferenceValue = null;
             so.ApplyModifiedProperties();
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             Selection.activeGameObject = root;
 
             Debug.Log($"[WaterfallImpactVFX] Created '{RootName}' at {rootWorld}. " +
-                      (wheel != null ? "Target wired to Object_4_Collider2D. " : "Target collider not auto-found — set manually. ") +
-                      "씬뷰에서 노란 핸들로 경로 편집 (shift-click 삽입, ctrl-click 삭제).");
+                      (wheel != null ? "targetColliders[0] wired to Object_4_Collider2D. " : "targetColliders is empty — add wheel/floor colliders manually. ") +
+                      "씬뷰에서 노란 핸들로 경로 편집 (shift-click 삽입, ctrl-click 삭제). " +
+                      "여러 wheel 을 태우려면 targetColliders 리스트에 순서 상관없이 추가. " +
+                      "Stream 재질: URP/Unlit Transparent (_BaseColor 틴팅). " +
+                      "Quibli StylizedLit·Realistic Water VFX 등 다른 셰이더로 바꾸려면 " +
+                      "LineRenderer Material 슬롯에 드래그 + streamColorProperty 를 해당 셰이더의 컬러 프로퍼티 이름으로 조정.");
         }
 
         static GameObject CreateStream(Transform parent)
@@ -78,8 +93,29 @@ namespace SlimeJumping.Editor
             lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             lr.receiveShadows   = false;
             lr.sortingOrder     = 10;
-            lr.sharedMaterial   = MakeSpriteDefaultMaterial("M_WaterStream");
+            lr.sharedMaterial   = MakeStreamMaterial("M_WaterStream_Translucent");
             return go;
+        }
+
+        static Material MakeStreamMaterial(string name)
+        {
+            var shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null)
+            {
+                Debug.LogWarning("[WaterfallImpactVFX] 'Universal Render Pipeline/Unlit' not found. Falling back to Sprites/Default.");
+                return MakeSpriteDefaultMaterial(name);
+            }
+            var mat = new Material(shader) { name = name };
+            mat.SetFloat("_Surface", 1f);     // 0 Opaque, 1 Transparent
+            mat.SetFloat("_Blend", 0f);       // Alpha blend
+            mat.SetFloat("_ZWrite", 0f);
+            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            mat.SetColor("_BaseColor", new Color(0.45f, 0.85f, 1f, 1f));
+            return mat;
         }
 
         static GameObject CreateSplash(Transform parent)
