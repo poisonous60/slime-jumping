@@ -14,13 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Interaction.BoxSleepProfile
   settleDuration: 0.4
   sleepScale: {x: 1.2, y: 0.82, z: 1.3}
-  sleepAsymmetry: 0.25
-  sleepDip: -0
-  sleepOvershoot: 1.4
+  sleepAsymmetry: 0.04
+  sleepDip: 0.31
+  sleepOvershoot: 0
   sleepEulerAngles: {x: 0, y: 20, z: 0}
-  sleepFaceOffset: {x: 0.2, y: 0, z: 0}
-  faceFollowRatio: 0.7
-  faceFollowSmoothTime: 0.08
+  sleepFaceOffset: {x: 0.32, y: 0, z: 0}
+  faceFollowRatio: 0
+  faceFollowSmoothTime: 0
   breathFrequency: 0.45
   breathAmplitude: 0.04
   verticalAnchor: 1

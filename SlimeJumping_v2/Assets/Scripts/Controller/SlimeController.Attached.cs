@@ -44,7 +44,11 @@ namespace SlimeJumping.Controller
             }
             if (stickTimer > 0f) wasStuck = true;
 
-            // Stick: delay before slide starts, with optional deceleration
+            // Stick: delay before slide starts, with optional deceleration.
+            // Decel target is crawlVelocity (landingVelocityRetention * effectiveTangent), not 0.
+            // Why: without retention crawlVelocity is 0 so this matches old behavior, but with
+            // SurfaceTag retention > 0, post-decel stick frames set velocity = surfaceTangent *
+            // crawlVelocity via the crawl path — a 0-target lerp endpoint would jump up to it.
             if (stickTimer > 0f)
             {
                 stickTimer -= dt;
@@ -52,7 +56,7 @@ namespace SlimeJumping.Controller
                 {
                     stickDeccelTimer += dt;
                     float t = stickDeccelTimer / settings.stickDecelerationTime;
-                    velocity = surfaceTangent * Mathf.Lerp(impactTangentSpeed, 0f, t);
+                    velocity = surfaceTangent * Mathf.Lerp(impactTangentSpeed, crawlVelocity, t);
                     SnapToSurface();
                     return;
                 }

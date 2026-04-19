@@ -18,28 +18,33 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   crawlSpeedMultiplier:
-    baseValue: 0.5
-    fullValue: 0.5
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   crawlAccelerationMultiplier:
-    baseValue: 0.5
-    fullValue: 0.5
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   crawlDecelerationMultiplier:
-    baseValue: 2
-    fullValue: 2
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  crawlOverspeedDecelerationMultiplier:
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   slideResistanceMultiplier:
-    baseValue: 3
-    fullValue: 3
+    baseValue: 1.3
+    fullValue: 1.3
     angleMin: 0
     angleMax: 90
   slideGravityMultiplier:
-    baseValue: 0.5
-    fullValue: 0.5
+    baseValue: 0.6
+    fullValue: 0.6
     angleMin: 0
     angleMax: 90
   slideRampUpTime:
@@ -48,8 +53,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   landingVelocityRetention:
-    baseValue: 0
-    fullValue: 0
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   stickDurationMultiplier:
@@ -58,12 +63,17 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   impactRedirectRatio:
-    baseValue: 0
-    fullValue: 0
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  groundDashScale:
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   wallAttachSpeedDampen:
-    baseValue: 1
-    fullValue: 1
+    baseValue: 0
+    fullValue: 0
     angleMin: 0
     angleMax: 90
