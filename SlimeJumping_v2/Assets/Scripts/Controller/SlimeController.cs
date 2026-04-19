@@ -1,6 +1,6 @@
 using UnityEngine;
 using SlimeJumping.Settings;
-using SlimeJumping.Input;
+using SlimeJumping.InputHandling;
 using SlimeJumping.Debugging;
 using SlimeJumping.Physics;
 using SlimeJumping.Platforms;

@@ -1,6 +1,6 @@
 using UnityEngine;
 using SlimeJumping.Controller;
-using SlimeJumping.Input;
+using SlimeJumping.InputHandling;
 using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Interaction

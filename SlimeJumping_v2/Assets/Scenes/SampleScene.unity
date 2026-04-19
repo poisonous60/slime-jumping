@@ -5940,7 +5940,13 @@ MonoBehaviour:
   localSize: {x: 4.399999, y: 0.90000075}
   pixelsPerUnit: 20
   contactCollider: {fileID: 207423254}
+  targetRenderer: {fileID: 207423256}
   overrideId: 
+--- !u!23 &207423256 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 2694498766642870447, guid: 5c792b9b120acca4b951040426505be5, type: 3}
+  m_PrefabInstance: {fileID: 207423252}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &209023685 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6486147180468846753, guid: 4cabe99058f6ad942ba5708ec05d7eec, type: 3}
@@ -8996,8 +9002,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -9094,7 +9102,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
@@ -15716,8 +15724,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -15814,7 +15824,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
@@ -29389,6 +29399,53 @@ Rigidbody2D:
   m_SleepingMode: 1
   m_CollisionDetection: 0
   m_Constraints: 0
+--- !u!1 &975465372
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 975465374}
+  - component: {fileID: 975465373}
+  m_Layer: 0
+  m_Name: CameraProjectionToggle
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &975465373
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 975465372}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0bbf29407a98d1849a820bea67572c65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Camera.CameraProjectionToggle
+  vcam: {fileID: 1047283149}
+  orthographicSize: 10
+  perspectiveFov: 40
+--- !u!4 &975465374
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 975465372}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &976560564
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -32272,7 +32329,7 @@ Transform:
   m_GameObject: {fileID: 1047283147}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -66.06, y: 3.63, z: -12}
+  m_LocalPosition: {x: -70.36, y: 1.57, z: -12}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -32301,7 +32358,7 @@ MonoBehaviour:
     AmplitudeGain: 1
     FrequencyGain: 1
     Duration: 1
-    m_NoiseOffsets: {x: 0, y: 0, z: 0}
+    m_NoiseOffsets: {x: 640.5256, y: 139.23682, z: 279.53098}
 --- !u!1 &1050918725
 GameObject:
   m_ObjectHideFlags: 0
@@ -33908,8 +33965,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -34006,7 +34065,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.4, g: 0.6, b: 0.9, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 0.39999998, g: 0.6, b: 0.9, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
@@ -65303,6 +65362,7 @@ MonoBehaviour:
   localSize: {x: 1.3999968, y: 1.4000001}
   pixelsPerUnit: 20
   contactCollider: {fileID: 1934273142}
+  targetRenderer: {fileID: 3390225687150116257}
   overrideId: 
 --- !u!1 &1941914091
 GameObject:
@@ -68096,6 +68156,37 @@ MonoBehaviour:
   positionGradientCenter: {x: 0, y: 0}
   positionGradientSize: 20
   positionGradientAngle: 0
+  angleGradientEnabled: 0
+  angleGradient:
+    serializedVersion: 2
+    key0: {r: 1, g: 1, b: 1, a: 1}
+    key1: {r: 1, g: 1, b: 1, a: 1}
+    key2: {r: 0, g: 0, b: 0, a: 0}
+    key3: {r: 0, g: 0, b: 0, a: 0}
+    key4: {r: 0, g: 0, b: 0, a: 0}
+    key5: {r: 0, g: 0, b: 0, a: 0}
+    key6: {r: 0, g: 0, b: 0, a: 0}
+    key7: {r: 0, g: 0, b: 0, a: 0}
+    ctime0: 0
+    ctime1: 65535
+    ctime2: 0
+    ctime3: 0
+    ctime4: 0
+    ctime5: 0
+    ctime6: 0
+    ctime7: 0
+    atime0: 0
+    atime1: 65535
+    atime2: 0
+    atime3: 0
+    atime4: 0
+    atime5: 0
+    atime6: 0
+    atime7: 0
+    m_Mode: 0
+    m_ColorSpace: -1
+    m_NumColorKeys: 2
+    m_NumAlphaKeys: 2
   brushMaterial: {fileID: 2100000, guid: 6abef1d3ad903e74dbdd5ce23b40ea7d, type: 2}
   trailZCenter: 0
   trailZNear: 0.5
@@ -72089,11 +72180,11 @@ PrefabInstance:
       objectReference: {fileID: 2024885086}
     - target: {fileID: 8532548522434120602, guid: 4cabe99058f6ad942ba5708ec05d7eec, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -66.06
+      value: -70.36
       objectReference: {fileID: 0}
     - target: {fileID: 8532548522434120602, guid: 4cabe99058f6ad942ba5708ec05d7eec, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 3.13
+      value: 1.07
       objectReference: {fileID: 0}
     - target: {fileID: 8532548522434120602, guid: 4cabe99058f6ad942ba5708ec05d7eec, type: 3}
       propertyPath: m_LocalPosition.z
@@ -72702,6 +72793,11 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 1934273145}
   m_SourcePrefab: {fileID: 100100000, guid: 158ee802022b376428fb0921d35fb8b5, type: 3}
+--- !u!23 &3390225687150116257 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 8561266796099975557, guid: 158ee802022b376428fb0921d35fb8b5, type: 3}
+  m_PrefabInstance: {fileID: 3390225687150116256}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &3523106870116374653
 Transform:
   m_ObjectHideFlags: 0
@@ -73130,11 +73226,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5673357541614942774, guid: fd767c7bc5558de4caf29fee89b42760, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -66.06
+      value: -70.36
       objectReference: {fileID: 0}
     - target: {fileID: 5673357541614942774, guid: fd767c7bc5558de4caf29fee89b42760, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 3.63
+      value: 1.57
       objectReference: {fileID: 0}
     - target: {fileID: 5673357541614942774, guid: fd767c7bc5558de4caf29fee89b42760, type: 3}
       propertyPath: m_LocalPosition.z
@@ -73210,7 +73306,7 @@ MonoBehaviour:
   UpdateMethod: 2
   BlendUpdateMethod: 1
   LensModeOverride:
-    Enabled: 0
+    Enabled: 1
     DefaultMode: 2
   DefaultBlend:
     Style: 1
@@ -74131,6 +74227,7 @@ SceneRoots:
   m_Roots:
   - {fileID: 5598588262365959229}
   - {fileID: 1047283150}
+  - {fileID: 975465374}
   - {fileID: 1944167533}
   - {fileID: 410087041}
   - {fileID: 832575519}

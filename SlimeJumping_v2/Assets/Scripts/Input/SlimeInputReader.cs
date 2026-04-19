@@ -2,7 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-namespace SlimeJumping.Input
+namespace SlimeJumping.InputHandling
 {
     public class SlimeInputReader : MonoBehaviour
     {

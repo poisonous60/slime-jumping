@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEditor;
 using SlimeJumping.Settings;
-using SlimeJumping.Input;
+using SlimeJumping.InputHandling;
 using SlimeJumping.Controller;
 using SlimeJumping.Debugging;
 
