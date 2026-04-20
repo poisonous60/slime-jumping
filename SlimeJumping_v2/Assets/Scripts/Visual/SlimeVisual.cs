@@ -205,7 +205,8 @@ public class SlimeVisual : MonoBehaviour
         Vector2 impact = ComputeImpactOverlay();
         Vector2 breath = ComputeBreathing();
         Vector2 chargeTremor = ComputeChargingTremor();
-        Vector2 finalScale = smoothedScale + impact + breath + chargeTremor;
+        Vector2 coyoteSq = ComputeCoyoteSquash();
+        Vector2 finalScale = smoothedScale + impact + breath + chargeTremor + coyoteSq;
         finalScale.x = Mathf.Clamp(finalScale.x, settings.deformScaleMin, settings.deformScaleMax);
         finalScale.y = Mathf.Clamp(finalScale.y, settings.deformScaleMin, settings.deformScaleMax);
 
@@ -718,6 +719,22 @@ public class SlimeVisual : MonoBehaviour
                     * Mathf.Cos(settings.impactOscFreq * Mathf.PI * t);
         float squash = curve * impactMagnitude * settings.impactSquashIntensity;
         return new Vector2(squash, -squash);
+    }
+
+    // --- Coyote squash (energy-conversion window) ---
+
+    private Vector2 ComputeCoyoteSquash()
+    {
+        if (slimeSettings == null) return Vector2.zero;
+        float duration = slimeSettings.energyConversionCoyoteTime;
+        if (duration <= 0f) return Vector2.zero;
+
+        float timer = slimeController.EnergyCoyoteTimer;
+        if (timer <= 0f) return Vector2.zero;
+
+        float progress = Mathf.Clamp01(1f - timer / duration);
+        float magnitude = settings.coyoteSquashCurve.Evaluate(progress) * settings.coyoteSquashIntensity;
+        return new Vector2(magnitude, -magnitude);
     }
 
     // --- Velocity stretch (C-4) ---

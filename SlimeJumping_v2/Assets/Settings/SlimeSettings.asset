@@ -52,6 +52,8 @@ MonoBehaviour:
   chargingCoyoteTime: 0.3
   coyoteGraceTime: 0.1
   chargingSurfaceProbeGraceFrames: 3
+  chargeInputBuffer: 0.2
+  allowChargeAirHold: 0
   attachToggleWindow: 0.1
   attachToggleLockoutThreshold: 10
   attachLockoutDuration: 0.1

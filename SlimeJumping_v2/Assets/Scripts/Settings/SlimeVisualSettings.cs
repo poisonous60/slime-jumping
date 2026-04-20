@@ -25,6 +25,15 @@ namespace SlimeJumping.Settings
         public float impactSpeedReference = 20f;
         public float impactMinThreshold = 0.05f;
 
+        [Header("Coyote Squash (energy-conversion window)")]
+        [Tooltip("Peak X-stretch / Y-compress magnitude applied while the energy-conversion coyote window is active. Signals to the player that the landing's bonus charge is still available.")]
+        public float coyoteSquashIntensity = 0.12f;
+        [Tooltip("X axis: elapsed fraction of the coyote window (0 = landing instant, 1 = expiry). Y axis: squash magnitude multiplier (0 = rest, 1 = full intensity). Default shape rises quickly and decays back to 0.")]
+        public AnimationCurve coyoteSquashCurve = new AnimationCurve(
+            new Keyframe(0f, 0f),
+            new Keyframe(0.3f, 1f),
+            new Keyframe(1f, 0f));
+
         [Header("Velocity Stretch (C-4)")]
         public float velocityStretchIntensityX = 0.15f;
         public float velocityStretchIntensityY = 0.15f;

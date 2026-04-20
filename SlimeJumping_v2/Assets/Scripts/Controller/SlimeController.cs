@@ -42,6 +42,7 @@ namespace SlimeJumping.Controller
         public float ImpactNormalSpeed => impactNormalSpeed;
         public void AddExternalVelocity(Vector2 deltaV) { externalDeltaV += deltaV; }
         public float CoyoteTimer => coyoteTimer;
+        public float EnergyCoyoteTimer => energyCoyoteTimer;
         public float StickTimer => stickTimer;
         public Collider2D SurfaceCollider => surfaceCollider;
         public int AttachToggleCount => attachToggleCount;
@@ -577,6 +578,18 @@ namespace SlimeJumping.Controller
         /// ApplyDragFactor remains as alias for DragZone compatibility.
         /// </summary>
         public void MultiplyVelocity(float factor) { velocity *= factor; }
+
+        /// Resets the airborne energy reference to the current velocity and position.
+        /// Call when an external event (water exit, etc.) constitutes a new launch for
+        /// the purpose of energy-conversion on the next landing.
+        public void ResetLaunchReference()
+        {
+            launchSpeed = velocity.magnitude;
+            launchPosition = rb.position;
+            launchedByHop = false;
+            conversionCount = 0;
+            ClearPendingEnergyConversion(executeDeferredReset: false);
+        }
 
         // --- Platform Effect ---
 

@@ -52,6 +52,7 @@ namespace SlimeJumping.Mechanisms
             if (blockAttach)
                 slime.PopBlockAttach();
             slime.PopInFluid();
+            slime.ResetLaunchReference();
         }
 
         protected override void ApplyEffect(SlimeController slime, float dt)

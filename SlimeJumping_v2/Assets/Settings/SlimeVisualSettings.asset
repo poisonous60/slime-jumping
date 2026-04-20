@@ -26,6 +26,40 @@ MonoBehaviour:
   impactOscFreq: 2.5
   impactSpeedReference: 20
   impactMinThreshold: 0.05
+  coyoteSquashIntensity: 0.12
+  coyoteSquashCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.3
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   velocityStretchIntensityX: 0
   velocityStretchIntensityY: 0
   velocityStretchSpeedRef: 10
@@ -107,24 +141,24 @@ MonoBehaviour:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 0
-      outSlope: 0
+      inSlope: 0.17480554
+      outSlope: 0.17480554
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
-      outWeight: 0.33333334
+      outWeight: 0.109255224
     - serializedVersion: 3
-      time: 1.0510101
-      value: 0.18313904
-      inSlope: 0.0023402327
-      outSlope: 0.0023402327
+      time: 1.1439751
+      value: 0.097834006
+      inSlope: 0.0069624553
+      outSlope: 0.0069624553
       tangentMode: 0
       weightedMode: 0
       inWeight: 0.33333334
-      outWeight: 0.105553046
+      outWeight: 0.100366004
     - serializedVersion: 3
-      time: 4.8975096
-      value: 0.21739817
+      time: 5.036456
+      value: 0.12204981
       inSlope: 0.0030098932
       outSlope: 0.0030098932
       tangentMode: 0
