@@ -70,6 +70,16 @@ namespace SlimeJumping.Platforms
         }
 
         /// <summary>
+        /// Effective velocity scaled by VelocityTransferScale. Use only at launch/hop
+        /// to bake platform momentum into the slime's internal velocity.
+        /// </summary>
+        public Vector2 GetLaunchVelocity()
+        {
+            if (currentPlatform == null) return Vector2.zero;
+            return GetEffectiveVelocity() * currentPlatform.VelocityTransferScale;
+        }
+
+        /// <summary>
         /// Translate the rider by the platform's position delta this frame, plus the
         /// rotational displacement of the rider's arm around the platform pivot.
         /// Carries the rider as a position offset rather than baking platform velocity

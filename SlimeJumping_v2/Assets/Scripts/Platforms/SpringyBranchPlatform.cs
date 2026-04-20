@@ -34,6 +34,8 @@ namespace SlimeJumping.Platforms
         [Header("Ceiling")]
         [Tooltip("Hard cap on tip linear speed (|angularVel| × branchLength). The maximum carrier boost designers can rely on.")]
         [SerializeField, Min(0f)] float maxTipSpeed = 18f;
+        [Tooltip("Scale applied to the full effective velocity (Velocity + arm×ω) transferred to the slime at launch/hop.")]
+        [SerializeField, Range(0f, 2f)] float velocityTransferScale = 1f;
 
         [Header("Re-entry Guards")]
         [SerializeField, Min(0f)] float slamMinDownSpeed = 3f;
@@ -63,6 +65,7 @@ namespace SlimeJumping.Platforms
         }
 
         public float CurrentDeflectionDeg => currentAngle;
+        public override float VelocityTransferScale => velocityTransferScale;
 
         (float stiffness, float damping, float ITotal) ComputeSpringCoeffs()
         {

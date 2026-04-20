@@ -475,7 +475,7 @@ namespace SlimeJumping.Rendering
         private void DrawBoundsGizmo(bool selected)
         {
 #if UNITY_EDITOR
-            if (gizmoCorners == null) gizmoCorners = new Vector3[4];
+            if (gizmoCorners == null || gizmoCorners.Length != 4) gizmoCorners = new Vector3[4];
             gizmoCorners[0] = new Vector3(worldMin.x,               worldMin.y,               0f);
             gizmoCorners[1] = new Vector3(worldMin.x + worldSize.x, worldMin.y,               0f);
             gizmoCorners[2] = new Vector3(worldMin.x + worldSize.x, worldMin.y + worldSize.y, 0f);

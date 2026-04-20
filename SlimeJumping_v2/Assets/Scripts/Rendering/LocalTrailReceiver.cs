@@ -391,7 +391,7 @@ namespace SlimeJumping.Rendering
         private static GUIStyle gizmoLabelStyle;
         private void OnDrawGizmosSelected()
         {
-            if (gizmoCorners == null) gizmoCorners = new Vector3[4];
+            if (gizmoCorners == null || gizmoCorners.Length != 4) gizmoCorners = new Vector3[4];
             // Compute world-space corners of the local rect so Handles (which use world space) align.
             gizmoCorners[0] = transform.TransformPoint(new Vector3(localMin.x,               localMin.y,               0f));
             gizmoCorners[1] = transform.TransformPoint(new Vector3(localMin.x + localSize.x, localMin.y,               0f));

@@ -60,6 +60,11 @@ public class SlimeVisual : MonoBehaviour
     private float impactTimer = -1f;
     private float impactMagnitude;
 
+    // Coyote squash recovery phase (runs after EnergyCoyoteTimer reaches 0)
+    private float coyoteRecoveryTimer = -1f;
+    private float coyoteRecoveryStartMagnitude;
+    private float prevCoyoteTimer;
+
     // Breathing (C-6)
     private float breathPhase;
 
@@ -727,13 +732,59 @@ public class SlimeVisual : MonoBehaviour
     {
         if (slimeSettings == null) return Vector2.zero;
         float duration = slimeSettings.energyConversionCoyoteTime;
-        if (duration <= 0f) return Vector2.zero;
+        if (duration <= 0f)
+        {
+            coyoteRecoveryTimer = -1f;
+            prevCoyoteTimer = 0f;
+            return Vector2.zero;
+        }
 
         float timer = slimeController.EnergyCoyoteTimer;
-        if (timer <= 0f) return Vector2.zero;
+        float speedRef = Mathf.Max(0.01f, settings.coyoteSquashSpeedRef);
+        float normalizedSpeed = Mathf.Clamp01(slimeController.ImpactNormalSpeed / speedRef);
+        float intensity = settings.coyoteSquashSpeedCurve.Evaluate(normalizedSpeed);
+        float magnitude = 0f;
 
-        float progress = Mathf.Clamp01(1f - timer / duration);
-        float magnitude = settings.coyoteSquashCurve.Evaluate(progress) * settings.coyoteSquashIntensity;
+        if (timer > 0f)
+        {
+            // Compression phase: peak reached when coyote window expires (progress = 1).
+            coyoteRecoveryTimer = -1f;
+            float progress = Mathf.Clamp01(1f - timer / duration);
+            magnitude = settings.coyoteSquashCurve.Evaluate(progress) * intensity;
+            coyoteRecoveryStartMagnitude = magnitude;
+        }
+        else
+        {
+            if (prevCoyoteTimer > 0f)
+            {
+                // Rising edge of recovery: coyote window just ended this frame.
+                coyoteRecoveryTimer = 0f;
+            }
+
+            if (coyoteRecoveryTimer >= 0f)
+            {
+                float recoveryDuration = settings.coyoteSquashRecoveryTime;
+                if (recoveryDuration <= 0f)
+                {
+                    coyoteRecoveryTimer = -1f;
+                }
+                else
+                {
+                    coyoteRecoveryTimer += Time.deltaTime;
+                    float p = coyoteRecoveryTimer / recoveryDuration;
+                    if (p >= 1f)
+                    {
+                        coyoteRecoveryTimer = -1f;
+                    }
+                    else
+                    {
+                        magnitude = settings.coyoteSquashRecoveryCurve.Evaluate(p) * coyoteRecoveryStartMagnitude;
+                    }
+                }
+            }
+        }
+
+        prevCoyoteTimer = timer;
         return new Vector2(magnitude, -magnitude);
     }
 

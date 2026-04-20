@@ -242,6 +242,11 @@ namespace SlimeJumping.Controller
         // --- Landing event (for VFX, sound, etc.) ---
         public event System.Action<Vector2, Vector2> OnLanded; // (contactPoint, surfaceNormal)
 
+        // --- Launch event (for sound, etc.) ---
+        // Fires from player-intentional launches only: Launch() and Hop(). External-force paths
+        // (JumpPad, Catapult) go through ForceAirborneWithVelocity and should raise their own cue.
+        public event System.Action<Vector2, Vector2, bool> OnLaunch; // (position, velocity, wasHop)
+
         private void Awake()
         {
             Debug.Assert(interactionDetector != null, "[SlimeController] InteractionDetector is required on Slime prefab");

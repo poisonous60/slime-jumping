@@ -99,7 +99,7 @@ namespace SlimeJumping.Controller
                 velocity += lastSurfaceTangent * Mathf.Sign(preLaunchCrawl) * excess * settings.tangentInheritanceFactor;
                 if (carrier != null)
                 {
-                    velocity += carrier.GetEffectiveVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
+                    velocity += carrier.GetLaunchVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
                     carrier.Detach();
                 }
             }
@@ -113,6 +113,7 @@ namespace SlimeJumping.Controller
             FinalizeAirborneExit();
             postLaunchAirControlLockTimer = settings.postLaunchAirControlLockTime;
             if (chargeVisual != null) chargeVisual.Hide();
+            OnLaunch?.Invoke(rb.position, velocity, false);
         }
 
         private void Hop()
@@ -159,13 +160,14 @@ namespace SlimeJumping.Controller
 
             if (carrier != null)
             {
-                velocity += carrier.GetEffectiveVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
+                velocity += carrier.GetLaunchVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
                 carrier.Detach();
             }
             hopCooldownTimer = settings.hopCooldown;
             preserveLandingVelocity = true;
             FinalizeAirborneExit();
             launchedByHop = true;
+            OnLaunch?.Invoke(rb.position, velocity, true);
         }
 
         private void ApplyGroundDash(float inputSign)

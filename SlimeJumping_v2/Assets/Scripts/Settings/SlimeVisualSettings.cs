@@ -26,13 +26,23 @@ namespace SlimeJumping.Settings
         public float impactMinThreshold = 0.05f;
 
         [Header("Coyote Squash (energy-conversion window)")]
-        [Tooltip("Peak X-stretch / Y-compress magnitude applied while the energy-conversion coyote window is active. Signals to the player that the landing's bonus charge is still available.")]
-        public float coyoteSquashIntensity = 0.12f;
-        [Tooltip("X axis: elapsed fraction of the coyote window (0 = landing instant, 1 = expiry). Y axis: squash magnitude multiplier (0 = rest, 1 = full intensity). Default shape rises quickly and decays back to 0.")]
+        [Tooltip("Compression phase. X axis: elapsed fraction of the coyote window (0 = landing instant, 1 = coyote expiry / peak). Y axis: squash magnitude multiplier (0 = rest, 1 = peak). Actual peak intensity is further scaled by coyoteSquashSpeedCurve. Default: linear 0→1 so the slime is most compressed right when the coyote window ends.")]
         public AnimationCurve coyoteSquashCurve = new AnimationCurve(
             new Keyframe(0f, 0f),
-            new Keyframe(0.3f, 1f),
+            new Keyframe(1f, 1f));
+        [Tooltip("Recovery phase duration (seconds) after the coyote window ends. Squash eases from peak back to rest over this time, independent of energyConversionCoyoteTime.")]
+        [Min(0f)] public float coyoteSquashRecoveryTime = 0.2f;
+        [Tooltip("Recovery phase. X axis: elapsed fraction of coyoteSquashRecoveryTime (0 = coyote just ended, 1 = recovery complete). Y axis: squash magnitude multiplier (1 = peak still held, 0 = rest). Default: linear 1→0.")]
+        public AnimationCurve coyoteSquashRecoveryCurve = new AnimationCurve(
+            new Keyframe(0f, 1f),
             new Keyframe(1f, 0f));
+        [Tooltip("X axis: impact normal speed normalized by coyoteSquashSpeedRef (0 = no speed, 1 = reference speed). Y axis: peak squash intensity. Low falls → barely squash; high falls → full squash.")]
+        public AnimationCurve coyoteSquashSpeedCurve = new AnimationCurve(
+            new Keyframe(0f, 0f),
+            new Keyframe(0.4f, 0.06f),
+            new Keyframe(1f, 0.18f));
+        [Tooltip("Impact normal speed (m/s) that maps to x=1 on coyoteSquashSpeedCurve.")]
+        public float coyoteSquashSpeedRef = 20f;
 
         [Header("Velocity Stretch (C-4)")]
         public float velocityStretchIntensityX = 0.15f;

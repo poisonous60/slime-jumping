@@ -1,4 +1,5 @@
 using UnityEngine;
+using SlimeJumping.Audio;
 using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
@@ -54,6 +55,29 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Edge vertex color (shallow/surface). Alpha acts as rim-glow strength in the Water_v2 shader.")]
         [SerializeField] Color edgeColor   = new Color(0.45f, 0.85f, 1.00f, 1f);
         [SerializeField] LineRenderer outlineLine;
+
+        [Header("Audio")]
+        [Tooltip("Played on entry when impact speed >= hardEnterThreshold (e.g. fall-splash).")]
+        [SerializeField] AudioClip hardEnterClip;
+        [Tooltip("Played on entry when impact speed < hardEnterThreshold (e.g. gentle dip).")]
+        [SerializeField] AudioClip softEnterClip;
+        [Tooltip("Played once when the slime leaves the water.")]
+        [SerializeField] AudioClip exitClip;
+        [Tooltip("Looped while the slime is submerged. Leave empty to disable the loop.")]
+        [SerializeField] AudioClip underwaterLoopClip;
+
+        [Tooltip("Speed (m/s) at or above which the hard entry clip plays instead of the soft one.")]
+        [Min(0f)] [SerializeField] float hardEnterThreshold = 6f;
+        [Tooltip("Slime speed (m/s) that maps to full one-shot volume. Slower impacts scale down linearly.")]
+        [Min(0.1f)] [SerializeField] float audioRefSpeed = 8f;
+        [Tooltip("Base volume at audioRefSpeed impact for one-shot splashes.")]
+        [Range(0f, 1f)] [SerializeField] float splashVolume = 0.9f;
+        [Tooltip("±random pitch jitter applied to each one-shot.")]
+        [Range(0f, 0.3f)] [SerializeField] float splashPitchJitter = 0.08f;
+        [Tooltip("Volume of the looping underwater ambient sound.")]
+        [Range(0f, 1f)] [SerializeField] float underwaterLoopVolume = 0.7f;
+
+        SoundHandle underwaterLoopHandle;
 
         Vector2 centerLocal;
 
@@ -122,6 +146,9 @@ namespace SlimeJumping.Mechanisms
             slime.MultiplyVelocity(entryMultiplier);
             if (blockAttach) slime.PushBlockAttach();
             slime.PushInFluid();
+
+            PlayEnterSplash(slime);
+            StartUnderwaterLoop(slime);
         }
 
         protected override void OnSlimeExit(SlimeController slime)
@@ -130,6 +157,50 @@ namespace SlimeJumping.Mechanisms
             if (blockAttach) slime.PopBlockAttach();
             slime.PopInFluid();
             slime.ResetLaunchReference();
+
+            StopUnderwaterLoop();
+            PlaySplash(exitClip, slime);
+        }
+
+        void PlayEnterSplash(SlimeController slime)
+        {
+            float speed = slime.Velocity.magnitude;
+            AudioClip clip = speed >= hardEnterThreshold ? hardEnterClip : softEnterClip;
+            PlaySplash(clip, slime, speed);
+        }
+
+        void PlaySplash(AudioClip clip, SlimeController slime)
+        {
+            PlaySplash(clip, slime, slime.Velocity.magnitude);
+        }
+
+        void PlaySplash(AudioClip clip, SlimeController slime, float speed)
+        {
+            if (clip == null) return;
+            float vol = splashVolume * Mathf.Clamp01(speed / audioRefSpeed);
+            if (vol <= 0.001f) return;
+            float pitch = 1f + Random.Range(-splashPitchJitter, splashPitchJitter);
+            SoundService.PlayAt(clip, slime.transform.position,
+                                SoundCategory.SFX_Environment, vol, pitch);
+        }
+
+        void StartUnderwaterLoop(SlimeController slime)
+        {
+            if (underwaterLoopClip == null) return;
+            if (underwaterLoopHandle.IsValid) return;
+            underwaterLoopHandle = SoundService.PlayLooping(
+                underwaterLoopClip,
+                follow: slime.transform,
+                category: SoundCategory.SFX_Environment,
+                volume: underwaterLoopVolume,
+                spatial3D: true);
+        }
+
+        void StopUnderwaterLoop()
+        {
+            if (!underwaterLoopHandle.IsValid) return;
+            SoundService.StopLoop(underwaterLoopHandle);
+            underwaterLoopHandle = default;
         }
 
         protected override void ApplyEffect(SlimeController slime, float dt)
