@@ -791,16 +791,17 @@ public class SlimeVisual : MonoBehaviour
 
     private Vector2 ComputeChargingSquash()
     {
-        float squash = chargingCurve * settings.chargingSquashMax;
+        float x = chargingCurve;
 
         if (slimeController.CurrentState == SlimeController.SlimeState.Charging
             && slimeSettings != null && slimeSettings.chargeRadius > 0.0001f)
         {
             float excess = slimeController.ActiveChargeRadius / slimeSettings.chargeRadius - 1f;
             if (excess > 0f)
-                squash += excess * settings.energyChargingShrinkStrength;
+                x += excess;
         }
 
+        float squash = settings.chargingSquashCurve.Evaluate(x);
         return new Vector2(squash, -squash);
     }
 

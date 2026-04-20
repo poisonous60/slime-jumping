@@ -101,8 +101,39 @@ MonoBehaviour:
   chargingSpeedMin: 3
   chargingSpeedMax: 15
   chargingCurvePower: 1
-  chargingSquashMax: 0.2
-  energyChargingShrinkStrength: 0.005
+  chargingSquashCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1.0510101
+      value: 0.18313904
+      inSlope: 0.0023402327
+      outSlope: 0.0023402327
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.105553046
+    - serializedVersion: 3
+      time: 4.8975096
+      value: 0.21739817
+      inSlope: 0.0030098932
+      outSlope: 0.0030098932
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.1223357
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   chargingDipMax: 0.2
   chargingPushMax: 0.1
   bodyChargingAimPull: 0.15

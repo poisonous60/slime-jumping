@@ -66,6 +66,10 @@ namespace SlimeJumping.Settings
         public float chargingCoyoteTime = 0.2f;
         public float coyoteGraceTime = 0.1f;
         public int chargingSurfaceProbeGraceFrames = 3;
+        [Tooltip("Jump press-to-land buffer (seconds). Pressing Jump this long before landing still triggers charging.")]
+        public float chargeInputBuffer = 0.1f;
+        [Tooltip("If true, merely holding Jump in the air also triggers charging on landing (legacy behavior). If false, only a press within chargeInputBuffer before landing triggers charging — matches hop/ground-dash.")]
+        public bool allowChargeAirHold = false;
 
         [Header("Attach Debounce")]
         public float attachToggleWindow = 0.1f;

@@ -160,6 +160,9 @@ namespace SlimeJumping.Controller
         private float hopBufferTimer;
         private bool hopRequested;
 
+        // Charge input buffer (press-just-before-landing grace)
+        private float chargeBufferTimer;
+
         // Hyper dash: crawl captured at charge entry (immune to charging decel)
         private float chargeEntryCrawl;
 
@@ -313,6 +316,7 @@ namespace SlimeJumping.Controller
             if (hopBufferTimer > 0f) hopBufferTimer -= Time.deltaTime;
             if (dashCooldownTimer > 0f) dashCooldownTimer -= Time.deltaTime;
             if (dashBufferTimer > 0f) dashBufferTimer -= Time.deltaTime;
+            if (chargeBufferTimer > 0f) chargeBufferTimer -= Time.deltaTime;
 
             if (postLaunchTimer > 0f)
             {
@@ -650,6 +654,7 @@ namespace SlimeJumping.Controller
             hopRequested = false;
             hopBufferTimer = 0f;
             dashBufferTimer = 0f;
+            chargeBufferTimer = 0f;
             postLaunchTimer = 0f;
             postLaunchAirControlLockTimer = 0f;
             wasStuck = false;

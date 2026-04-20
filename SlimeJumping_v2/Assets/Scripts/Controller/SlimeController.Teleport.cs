@@ -48,6 +48,7 @@ namespace SlimeJumping.Controller
             hopRequested = false;
             hopBufferTimer = 0f;
             dashBufferTimer = 0f;
+            chargeBufferTimer = 0f;
             wasStuck = false;
             preserveLandingVelocity = false;
             stunTimer = 0f;

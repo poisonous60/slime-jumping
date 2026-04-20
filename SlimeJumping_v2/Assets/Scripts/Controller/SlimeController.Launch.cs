@@ -69,6 +69,7 @@ namespace SlimeJumping.Controller
             preserveLandingVelocity = false;
             hopBufferTimer = 0f;
             dashBufferTimer = 0f;
+            chargeBufferTimer = 0f;
             float preLaunchCrawl = chargeEntryCrawl;
             chargeEntryCrawl = 0f;
             crawlVelocity = 0f;

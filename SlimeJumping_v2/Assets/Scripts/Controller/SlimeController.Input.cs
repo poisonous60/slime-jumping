@@ -20,6 +20,12 @@ namespace SlimeJumping.Controller
             {
                 EnterVolumeCharging();
             }
+            else if (currentState == SlimeState.Airborne)
+            {
+                // Buffer a charge request: lets a press just before landing still
+                // trigger charging, matching hop/ground-dash input buffering.
+                chargeBufferTimer = settings.chargeInputBuffer;
+            }
         }
 
         private void HandleSurfaceChargeEntry()

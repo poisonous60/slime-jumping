@@ -81,7 +81,9 @@ namespace SlimeJumping.Controller
                 // Get landing platform velocity (including angular contribution) before attaching
                 Vector2 landingPlatformVel = GetSurfaceVelocity(surfaceCollider);
 
-                if (inputReader.IsJumpHeld)
+                bool chargeRequested = chargeBufferTimer > 0f
+                    || (settings.allowChargeAirHold && inputReader.IsJumpHeld);
+                if (chargeRequested)
                 {
                     // Energy conversion: invert the launch curve so rate=1 preserves height.
                     // Launch: power = (aim/chargeRadius)^chargeCurveExponent * baseLaunchPower
@@ -118,6 +120,7 @@ namespace SlimeJumping.Controller
                     float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect.Evaluate(landingAngle) * redirectSign * redirectScale;
                     hopBufferTimer = 0f;
                     dashBufferTimer = 0f;
+                    chargeBufferTimer = 0f;
                     crawlVelocity = ComputeLandingCrawlVelocity(effectiveTangent, landingAngle);
                     velocity = Vector2.zero;
 

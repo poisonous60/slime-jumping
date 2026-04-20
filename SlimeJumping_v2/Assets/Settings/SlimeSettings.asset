@@ -19,11 +19,11 @@ MonoBehaviour:
   slideGravityScale: 0.4
   slideThreshold: 2
   slideResistance: 2
-  groundDashImpulse: 5
+  groundDashImpulse: 3
   groundDashCooldown: 0.34
   groundDashInputBuffer: 0.1
-  groundDashAngleMin: 60
-  groundDashAngleMax: 150
+  groundDashAngleMin: 40
+  groundDashAngleMax: 60
   dashFalloffStart: 3
   dashFalloffEnd: 6
   hopAlongSurfaceNormal: 1
@@ -41,22 +41,22 @@ MonoBehaviour:
   hyperDashConversionDampingMin: 1.2
   hyperDashConversionDampingMax: 2
   chargeRadius: 2
-  autoDriftSpeed: 3
-  inputAcceleration: 1
+  autoDriftSpeed: 4
+  inputAcceleration: 2
   baseLaunchPower: 9
   minLaunchPower: 3
-  chargeCurveExponent: 0.7
+  chargeCurveExponent: 0.6
   chargeFullAimTime: 0.1
-  maxAimAngularSpeed: 180
+  maxAimAngularSpeed: 90
   chargeNormalFollowSpeed: 5
-  chargingCoyoteTime: 0.2
+  chargingCoyoteTime: 0.3
   coyoteGraceTime: 0.1
   chargingSurfaceProbeGraceFrames: 3
   attachToggleWindow: 0.1
   attachToggleLockoutThreshold: 10
   attachLockoutDuration: 0.1
-  initialConversionRate: 1
-  subsequentConversionRate: 0.9
+  initialConversionRate: 1.1
+  subsequentConversionRate: 1
   notJumpConversionBonus: 1.2
   hopConversionBonus: 1.1
   hopConversionEnergyBonus: 0.3
@@ -70,11 +70,11 @@ MonoBehaviour:
   stickCrawlMultiplier: 0.2
   stickSlideTransitionRampTime: 0.6
   chargeEntryStickBonus: 0.2
-  chargingSlideGravityScale: 0.3
+  chargingSlideGravityScale: 0.5
   ceilingAngle: 150
   ceilingReattachAngle: 140
   airMaxHorizontalSpeed: 5
-  airAcceleration: 3
+  airAcceleration: 4
   airDeceleration: 5
   floatGravityScaleRising: 1
   floatGravityScaleFalling: 1
@@ -82,7 +82,7 @@ MonoBehaviour:
   diveGravityScaleFalling: 1.15
   risingGravityScale: 1
   fallingGravityScale: 1.15
-  apexThreshold: 30
+  apexThreshold: 2
   postLaunchAirControlLockTime: 0.15
   floatGravityScaleInFluid: 0.7
   diveGravityScaleInFluid: 1.3
