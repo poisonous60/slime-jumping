@@ -352,7 +352,38 @@ namespace SlimeJumping.Platforms
                     if (newX < levels[i].rightCurX) { levels[i].rightCurX = newX; any = true; }
                 }
             }
-            if (any) dirty = true;
+            if (any)
+            {
+                dirty = true;
+                resetting = false; // a fresh impact overrides any in-progress restore
+            }
+        }
+
+        // --- Activation (driven by DeformablePlatformActivator) -------------
+
+        /// <summary>
+        /// Called by the scene's DeformablePlatformActivator via OnTriggerEnter/Exit.
+        /// Exit (slime left the keep-alive range) triggers a reset back to rest.
+        /// Enter is a no-op — an already-running reset finishes on its own, and any
+        /// new impact will abort the reset via ApplyImpactAt.
+        /// </summary>
+        public void SetActiveByManager(bool active)
+        {
+            if (active) return;
+            if (resetting) return;
+            if (!HasAnyDeformation()) return;
+            BeginReset();
+        }
+
+        bool HasAnyDeformation()
+        {
+            if (levels == null) return false;
+            for (int i = 0; i < levels.Length; i++)
+            {
+                if (!Mathf.Approximately(levels[i].leftCurX,  levels[i].leftRestX))  return true;
+                if (!Mathf.Approximately(levels[i].rightCurX, levels[i].rightRestX)) return true;
+            }
+            return false;
         }
 
         // --- Reset ----------------------------------------------------------

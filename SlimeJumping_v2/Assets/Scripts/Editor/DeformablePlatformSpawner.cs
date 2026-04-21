@@ -44,6 +44,42 @@ namespace SlimeJumping.Editor
         static void CreateDome(MenuCommand cmd) =>
             Spawn(cmd, "ClayDome", width: 2f, height: 6f, segments: 22, ShapePreset.DomeTop);
 
+        [MenuItem("GameObject/SlimeJumping/Deformable Platform Activator (Manager)", priority = 60)]
+        static void CreateActivator(MenuCommand cmd)
+        {
+            // Only one per scene — warn instead of silently duplicating.
+            var existing = Object.FindAnyObjectByType<DeformablePlatformActivator>();
+            if (existing != null)
+            {
+                Debug.LogWarning($"[DeformablePlatformSpawner] An activator already exists: '{existing.name}'. " +
+                                 "Only one is needed per scene.", existing);
+                Selection.activeGameObject = existing.gameObject;
+                return;
+            }
+
+            var go = new GameObject("DeformableActivator");
+            Undo.RegisterCreatedObjectUndo(go, "Create DeformableActivator");
+            GameObjectUtility.SetParentAndAlign(go, cmd.context as GameObject);
+            if (cmd.context == null)
+            {
+                var sv = SceneView.lastActiveSceneView;
+                if (sv != null) go.transform.position = sv.pivot;
+            }
+
+            var rb  = go.AddComponent<Rigidbody2D>();
+            var col = go.AddComponent<CircleCollider2D>();
+            go.AddComponent<DeformablePlatformActivator>();
+            // AddComponent in script skips Reset() — apply runtime config explicitly so the
+            // Inspector reflects the intended state before Play.
+            rb.bodyType = RigidbodyType2D.Kinematic;
+            rb.useFullKinematicContacts = true;
+            rb.gravityScale = 0f;
+            col.isTrigger = true;
+            col.radius = 15f;
+
+            Selection.activeGameObject = go;
+        }
+
         // --- Shared spawn pipeline ---------------------------------------------
 
         public enum ShapePreset { Rectangle, Hourglass, Taper, DomeTop }

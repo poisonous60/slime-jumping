@@ -39,6 +39,7 @@ namespace SlimeJumping.Editor
                 preset: DeformablePlatformSpawner.ShapePreset.Rectangle);
 
             EnsureDirectionalLight(root.transform);
+            EnsureActivator(root.transform);
 
             // Shape-variant examples so you can see authoring-driven outlines.
             CreateDeformablePillar("ClayHourglass", root.transform,
@@ -106,6 +107,25 @@ namespace SlimeJumping.Editor
             go.GetComponent<MeshRenderer>().sharedMaterial =
                 new Material(Shader.Find("Universal Render Pipeline/Lit")) { color = new Color(0.35f, 0.35f, 0.38f) };
             return go;
+        }
+
+        static void EnsureActivator(Transform parent)
+        {
+            // One activator per scene — skip if another already exists.
+            if (Object.FindAnyObjectByType<DeformablePlatformActivator>() != null) return;
+
+            var go = new GameObject("DeformableActivator");
+            go.transform.parent = parent;
+            var rb  = go.AddComponent<Rigidbody2D>();
+            var col = go.AddComponent<CircleCollider2D>();
+            go.AddComponent<DeformablePlatformActivator>();
+            // AddComponent in script doesn't fire Reset, so apply the runtime config explicitly
+            // — this way the Inspector reflects the correct state immediately, not only after Play.
+            rb.bodyType = RigidbodyType2D.Kinematic;
+            rb.useFullKinematicContacts = true;
+            rb.gravityScale = 0f;
+            col.isTrigger = true;
+            col.radius = 15f;
         }
 
         static void EnsureDirectionalLight(Transform parent)
