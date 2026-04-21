@@ -76,6 +76,24 @@ namespace SlimeJumping.Platforms
         [Tooltip("Seconds for all levels to lerp back to rest.")]
         [Min(0.01f)] [SerializeField] float resetDuration = 0.6f;
 
+        [Header("Sand VFX — Impact (per-platform)")]
+        [Tooltip("Spawn a short sand-falling VFX burst at the contact point on each new landing impact.")]
+        [SerializeField] bool sandVFXEnabled = false;
+        [Tooltip("One-shot prefabs to spawn on impact — a random entry is picked per hit for variety. " +
+                 "'Sand VFX URP / Sand Falling' non-loop variants fit well. Each spawned instance " +
+                 "auto-destroys when its particle system finishes emitting.")]
+        [SerializeField] GameObject[] sandVFXPrefabs;
+        [Tooltip("Minimum impact speed (m/s) to spawn VFX. Below this, gentle touches stay silent.")]
+        [Min(0f)] [SerializeField] float sandVFXMinImpactSpeed = 1.5f;
+
+        [Header("Sand VFX — Ambient (per-platform)")]
+        [Tooltip("Attach a looping sand-falling VFX to the top of the platform, auto-sized to the rest width.")]
+        [SerializeField] bool ambientSandEnabled = false;
+        [Tooltip("Looping prefab to instantiate as a child. Any '_Loop' variant from the Sand Falling pack works.")]
+        [SerializeField] GameObject ambientSandPrefab;
+        [Tooltip("Extra scale factor on the ambient emitter's width (1 = exactly match rest width).")]
+        [Min(0.01f)] [SerializeField] float ambientSandWidthScale = 1f;
+
         [Header("Debug")]
         [SerializeField] bool drawGizmos = true;
 
@@ -103,6 +121,8 @@ namespace SlimeJumping.Platforms
 
         SlimeController slime;
         bool wasAttachedToMe;
+
+        GameObject ambientSandInstance;
 
         // Scratch lists / buffers reused per rebuild (avoid per-frame GC).
         readonly List<Vector2>    scratchOutline    = new List<Vector2>();
@@ -140,7 +160,7 @@ namespace SlimeJumping.Platforms
                 if (meshFilter == null) meshFilter = GetComponent<MeshFilter>();
                 if (poly == null)       poly       = GetComponent<PolygonCollider2D>();
                 if (levels == null || levels.Length < 3) BuildRuntime();
-                else Rebuild();
+                else { Rebuild(); UpdateAmbientSandVFX(); }
             };
         }
 #endif
@@ -159,9 +179,16 @@ namespace SlimeJumping.Platforms
                                 && slime.SurfaceCollider == poly;
 
             if (attachedToMe && !wasAttachedToMe)
-                ApplyImpactAt(slime.Position, slime.ImpactNormalSpeed);
+            {
+                float impactSpeed = slime.ImpactNormalSpeed;
+                ApplyImpactAt(slime.Position, impactSpeed);
+                if (sandVFXEnabled && impactSpeed >= sandVFXMinImpactSpeed)
+                    SpawnSandVFX(slime.Position);
+            }
             else if (attachedToMe && attachedCreepPerSec > 0f)
+            {
                 ApplyImpactAt(slime.Position, attachedCreepPerSec * Time.fixedDeltaTime);
+            }
 
             wasAttachedToMe = attachedToMe;
 
@@ -209,6 +236,7 @@ namespace SlimeJumping.Platforms
             }
 
             Rebuild();
+            UpdateAmbientSandVFX();
         }
 
         // --- Shape generators (context menu) --------------------------------
@@ -357,6 +385,86 @@ namespace SlimeJumping.Platforms
                 dirty = true;
                 resetting = false; // a fresh impact overrides any in-progress restore
             }
+        }
+
+        // --- Sand VFX -------------------------------------------------------
+
+        /// <summary>
+        /// Overwrites the local <c>sandVFXPrefabs</c> array. Called by
+        /// <see cref="DeformablePlatformActivator.ApplyToAll"/> so all platforms share a
+        /// single VFX list configured in one place (mirrors the WaterZoneAudioManager pattern).
+        /// </summary>
+        public void ApplyImpactVFX(GameObject[] prefabs)
+        {
+            sandVFXPrefabs = prefabs;
+        }
+
+        void SpawnSandVFX(Vector2 worldPos)
+        {
+            if (sandVFXPrefabs == null || sandVFXPrefabs.Length == 0) return;
+            var prefab = sandVFXPrefabs[Random.Range(0, sandVFXPrefabs.Length)];
+            if (prefab == null) return; // user left a slot empty — skip this hit silently
+            var inst = Instantiate(prefab, worldPos, Quaternion.identity);
+            // Drive auto-cleanup for one-shot (non-looping) particle systems so instances
+            // don't pile up in the scene. Looping prefabs are left alone (user's call).
+            foreach (var ps in inst.GetComponentsInChildren<ParticleSystem>(includeInactive: false))
+            {
+                var main = ps.main;
+                if (!main.loop) main.stopAction = ParticleSystemStopAction.Destroy;
+            }
+        }
+
+        /// <summary>
+        /// Ambient loop: (re)instantiate or destroy the looping sand VFX child based on the
+        /// current toggle, and size its emission shape to the platform's rest top width.
+        /// Safe to call any number of times — idempotent.
+        /// </summary>
+        void UpdateAmbientSandVFX()
+        {
+            bool shouldExist = ambientSandEnabled && ambientSandPrefab != null && levels != null && levels.Length >= 2;
+
+            if (!shouldExist)
+            {
+                DestroyAmbientInstance();
+                return;
+            }
+
+            if (ambientSandInstance == null)
+            {
+                ambientSandInstance = Instantiate(ambientSandPrefab, transform);
+                ambientSandInstance.name = ambientSandPrefab.name + " (ambient)";
+                ambientSandInstance.hideFlags = HideFlags.DontSave; // don't serialize a runtime clone into the scene
+            }
+
+            // Position at top-cap midpoint and widen the emission shape to rest width × scale factor.
+            float topY      = levels[0].y;
+            float topLeftX  = levels[0].leftRestX;
+            float topRightX = levels[0].rightRestX;
+            float topWidth  = (topRightX - topLeftX) * ambientSandWidthScale;
+            float centerX   = (topLeftX + topRightX) * 0.5f;
+            ambientSandInstance.transform.localPosition = new Vector3(centerX, topY, 0f);
+            ambientSandInstance.transform.localRotation = Quaternion.identity;
+
+            foreach (var ps in ambientSandInstance.GetComponentsInChildren<ParticleSystem>(includeInactive: true))
+            {
+                var shape = ps.shape;
+                var s = shape.scale;
+                shape.scale = new Vector3(topWidth, s.y, s.z);
+            }
+        }
+
+        void DestroyAmbientInstance()
+        {
+            if (ambientSandInstance == null) return;
+            if (Application.isPlaying) Destroy(ambientSandInstance);
+            else DestroyImmediate(ambientSandInstance);
+            ambientSandInstance = null;
+        }
+
+        void OnDisable()
+        {
+            // Avoid leaking instances when the component is disabled / the scene unloads.
+            DestroyAmbientInstance();
         }
 
         // --- Activation (driven by DeformablePlatformActivator) -------------
