@@ -71,9 +71,9 @@ namespace SlimeJumping.Platforms
         [SerializeField] int frontJitterSeed = 42;
 
         [Header("Reset")]
-        [Tooltip("Slime Y distance below the platform bounds that triggers reset.")]
-        [Min(0f)] [SerializeField] float fallBelowMargin = 1.5f;
-        [Tooltip("Seconds for all levels to lerp back to rest.")]
+        [Tooltip("Seconds for all levels to lerp back to rest when a reset fires. " +
+                 "Reset is triggered by the scene's DeformablePlatformActivator when the " +
+                 "slime leaves its range — no per-platform fall-below check runs here anymore.")]
         [Min(0.01f)] [SerializeField] float resetDuration = 0.6f;
 
         [Header("Sand VFX — Impact (per-platform)")]
@@ -175,7 +175,11 @@ namespace SlimeJumping.Platforms
                 if (slime == null) return;
             }
 
-            bool attachedToMe = slime.CurrentState == SlimeController.SlimeState.Attached
+            // Treat Charging the same as Attached — the slime is still resting on us, and a
+            // land+immediately-charge input would otherwise skip the Attached frame entirely
+            // (Airborne → Attached → Charging in one physics step) and miss the landing impact.
+            bool attachedToMe = (slime.CurrentState == SlimeController.SlimeState.Attached ||
+                                 slime.CurrentState == SlimeController.SlimeState.Charging)
                                 && slime.SurfaceCollider == poly;
 
             if (attachedToMe && !wasAttachedToMe)
@@ -192,15 +196,9 @@ namespace SlimeJumping.Platforms
 
             wasAttachedToMe = attachedToMe;
 
-            if (!resetting)
-            {
-                float localSlimeY = transform.InverseTransformPoint(slime.Position).y;
-                // levels[] is sorted top→bottom, so last level is the lowest authored Y.
-                float bottomY = levels[levels.Length - 1].y;
-                if (localSlimeY < bottomY - fallBelowMargin)
-                    BeginReset();
-            }
-
+            // Reset is driven exclusively by DeformablePlatformActivator.SetActiveByManager —
+            // no local fall-below polling, so a platform whose slime is below-but-still-in-range
+            // won't spuriously revert.
             if (resetting) TickReset(Time.fixedDeltaTime);
         }
 
