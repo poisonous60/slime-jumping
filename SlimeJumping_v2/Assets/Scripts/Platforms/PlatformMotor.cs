@@ -10,8 +10,13 @@ namespace SlimeJumping.Platforms
 
         public Vector2 DeltaPosition { get; private set; }
         public float DeltaRotation { get; private set; }
-        public Vector2 Velocity { get; private set; }
-        public float AngularVelocity { get; private set; }
+
+        // virtual so subclasses whose motion isn't captured by rigid TRS deltas
+        // (e.g. a mesh-deforming branch) can report effective surface velocity
+        // for PlatformCarrier. Base set-path in FixedUpdate still runs; the
+        // override just shadows the getter.
+        public virtual Vector2 Velocity { get; protected set; }
+        public virtual float AngularVelocity { get; protected set; }
 
         Vector2 prevPosition;
         float prevRotation;

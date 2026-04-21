@@ -676,6 +676,10 @@ BranchPivot   (월드 고정 위치, 회전만 함. Rigidbody2D + SpringyBranchP
 - `branchLength` 는 런타임 변경 시 물리는 반영되지만 콜라이더/본 위치는 setup 시점에 박힘 → 런타임 변경 비추.
 - `chargePumpScale` 은 실효성 낮음 — SlimeController 가 Charging 상태에서 `velocity ≈ 0` 으로 유지해 Δp 가 거의 0. 향후 차지 중 자유 이동 메커닉이 추가되면 활성화됨.
 
+### v2 변형 — Bend 구동 (SpringyBranchPlatform_v2) — **사용 안 함 (deprecated)**
+
+MegaFiers Bend 기반으로 재구성한 실험 구현. 코드는 [SpringyBranchPlatform_v2.cs](../SlimeJumping_v2/Assets/Scripts/Platforms/SpringyBranchPlatform_v2.cs) 에 남아 있으나 플레이 느낌 기준에 못 미쳐 폐기. 신규 작업에서 참고하지 말 것 — v1 `SpringyBranchPlatform` 를 사용하거나 새 구현을 고려.
+
 ---
 
 ## 8. 튜닝 파라미터
