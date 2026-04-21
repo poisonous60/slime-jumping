@@ -30,24 +30,26 @@ namespace SlimeJumping.Editor
             CreateDeformablePillar("ClayPillar", root.transform,
                 new Vector3(4f, 0f, 0f),
                 width: 1.5f, height: 7f, segmentCount: 22,
-                preset: ShapePreset.Rectangle);
+                preset: DeformablePlatformSpawner.ShapePreset.Rectangle);
 
             // A wider block at a different height.
             CreateDeformablePillar("ClayBlock", root.transform,
                 new Vector3(1f, 4.5f, 0f),
                 width: 3f, height: 1.5f, segmentCount: 8,
-                preset: ShapePreset.Rectangle);
+                preset: DeformablePlatformSpawner.ShapePreset.Rectangle);
+
+            EnsureDirectionalLight(root.transform);
 
             // Shape-variant examples so you can see authoring-driven outlines.
             CreateDeformablePillar("ClayHourglass", root.transform,
                 new Vector3(8f, 0f, 0f),
                 width: 2f, height: 6f, segmentCount: 22,
-                preset: ShapePreset.Hourglass);
+                preset: DeformablePlatformSpawner.ShapePreset.Hourglass);
 
             CreateDeformablePillar("ClayDome", root.transform,
                 new Vector3(11f, 0f, 0f),
                 width: 2f, height: 6f, segmentCount: 22,
-                preset: ShapePreset.DomeTop);
+                preset: DeformablePlatformSpawner.ShapePreset.DomeTop);
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
                 UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
@@ -58,10 +60,8 @@ namespace SlimeJumping.Editor
                       "- Fall below the pillar to watch it restore.");
         }
 
-        enum ShapePreset { Rectangle, Hourglass, Taper, DomeTop }
-
         static GameObject CreateDeformablePillar(string name, Transform parent, Vector3 pos,
-            float width, float height, int segmentCount, ShapePreset preset)
+            float width, float height, int segmentCount, DeformablePlatformSpawner.ShapePreset preset)
         {
             var go = new GameObject(name);
             go.transform.parent = parent;
@@ -71,27 +71,21 @@ namespace SlimeJumping.Editor
             go.AddComponent<PolygonCollider2D>();
             go.AddComponent<MeshFilter>();
             var mr = go.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = EnsureClayMaterial();
+            mr.sharedMaterial = DeformablePlatformSpawner.EnsureClayMaterial();
 
             var dp = go.AddComponent<DeformablePlatform>();
             var so = new SerializedObject(dp);
             so.FindProperty("genWidth").floatValue = width;
             so.FindProperty("genHeight").floatValue = height;
             so.FindProperty("genSegmentCount").intValue = segmentCount;
-            so.FindProperty("impactToDisplacement").floatValue = 0.04f;
-            so.FindProperty("maxPerHitDisplacement").floatValue = 0.12f;
-            so.FindProperty("falloffYRange").floatValue = 0.8f;
-            so.FindProperty("depth").floatValue = 0.8f;
-            so.FindProperty("fallBelowMargin").floatValue = 1.5f;
-            so.FindProperty("resetDuration").floatValue = 0.6f;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             switch (preset)
             {
-                case ShapePreset.Hourglass: dp.GenerateHourglass(); break;
-                case ShapePreset.Taper:     dp.GenerateTaper();     break;
-                case ShapePreset.DomeTop:   dp.GenerateDomeTop();   break;
-                default:                    dp.GenerateRectangle(); break;
+                case DeformablePlatformSpawner.ShapePreset.Hourglass: dp.GenerateHourglass(); break;
+                case DeformablePlatformSpawner.ShapePreset.Taper:     dp.GenerateTaper();     break;
+                case DeformablePlatformSpawner.ShapePreset.DomeTop:   dp.GenerateDomeTop();   break;
+                default:                                              dp.GenerateRectangle(); break;
             }
             dp.BuildRuntime();
             return go;
@@ -114,35 +108,22 @@ namespace SlimeJumping.Editor
             return go;
         }
 
-        const string ClayMaterialPath = "Assets/Prebs/Platform/Materials/ClayPlatform.mat";
-
-        static Material EnsureClayMaterial()
+        static void EnsureDirectionalLight(Transform parent)
         {
-            EnsureFolder("Assets/Prebs/Platform/Materials");
-            var existing = AssetDatabase.LoadAssetAtPath<Material>(ClayMaterialPath);
-            if (existing != null) return existing;
+            // If the scene already has a directional light, don't add another.
+            foreach (var l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+                if (l.type == LightType.Directional) return;
 
-            // Unlit so it reads as mud-brown regardless of scene lighting
-            // (URP Lit goes nearly black here without a directional light rigged).
-            var shader = Shader.Find("Universal Render Pipeline/Unlit");
-            var mat = new Material(shader) { name = "ClayPlatform" };
-            mat.SetColor("_BaseColor", new Color(0.55f, 0.38f, 0.25f));
-            AssetDatabase.CreateAsset(mat, ClayMaterialPath);
-            return mat;
+            var go = new GameObject("TestDirectionalLight");
+            go.transform.parent = parent;
+            var l2 = go.AddComponent<Light>();
+            l2.type = LightType.Directional;
+            l2.intensity = 1.1f;
+            l2.shadows = LightShadows.Soft;
+            // Warm-ish 3/4 front-left angle so the front-face bumps cast micro-shadows
+            // and the left side face catches light differently from the right.
+            go.transform.rotation = Quaternion.Euler(45f, -30f, 0f);
         }
 
-        static void EnsureFolder(string path)
-        {
-            if (AssetDatabase.IsValidFolder(path)) return;
-            var parts = path.Split('/');
-            string curr = parts[0];
-            for (int i = 1; i < parts.Length; i++)
-            {
-                string next = curr + "/" + parts[i];
-                if (!AssetDatabase.IsValidFolder(next))
-                    AssetDatabase.CreateFolder(curr, parts[i]);
-                curr = next;
-            }
-        }
     }
 }

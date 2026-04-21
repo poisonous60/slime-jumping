@@ -682,6 +682,85 @@ MegaFiers Bend 기반으로 재구성한 실험 구현. 코드는 [SpringyBranch
 
 ---
 
+## 7-5. 변형 플랫폼 (Deformable Platform — 진흙/찰흙)
+
+슬라임이 부딪칠 때마다 형태가 움푹 패이고, 반복 타격으로 결국 구멍이 뚫려 통과 가능해지는 소성(plastic) 지형. 슬라임이 플랫폼 아래로 떨어지면 원래 모양으로 복원. 2.5D 로 3D 깊이감을 갖는 스타일라이즈드 저폴리 메쉬.
+
+### 형상 모델 — 2-chain
+
+폴리곤 outline 이 아니라 **좌·우 두 체인** 이 공유된 Y 사다리(level ladder) 위에서 각자 X 를 가지는 구조. 각 level 은 `(y, leftRestX, rightRestX, leftCurX, rightCurX)` 를 가짐.
+
+- 충격 적용: 슬라임이 왼쪽에서 때리면 해당 Y 근처 level 들의 `leftCurX` 를 오른쪽으로 push. 오른쪽 타격도 대칭. `leftCurX ≥ rightCurX` 가 되는 Y 에서는 material 이 소멸 → 슬라임 통과 가능.
+- 분해(pinch-through): 연속된 non-pinched level 구간을 "piece" 로 묶어 각각 별개의 `PolygonCollider2D` path + mesh island 로 출력. 분리 위치는 슬라임 타격 패턴이 결정 (전용 파라미터 없음).
+- 한계: 각 Y 에서 material 이 **단일 수평 구간** 이어야 함. mushroom / taper / dome 등 monotone-Y shape 는 모두 표현 가능하지만, 같은 높이에 두 기둥이 수평 bar 로 연결된 "π 모양" 은 표현 불가.
+
+### 충격 → 변형 파이프라인
+
+폴링 방식 (SlimeController 미수정). 매 FixedUpdate 에서:
+
+```
+slime.SurfaceCollider == myPoly AND slime.CurrentState == Attached
+└─ 직전 프레임에 부착되지 않았던 경우 → 새 착지
+   └─ ApplyImpactAt(slime.Position, slime.ImpactNormalSpeed)
+      ├─ local 로 변환 → 가장 가까운 level 찾음
+      ├─ 슬라임이 left/right 어느 쪽에 있는지 판정
+      └─ 주변 level (falloffYRange 내) 에 smoothstep 가중 push
+         · push = impactToDisplacement × impactSpeed × w
+         · min(push, maxPerHitDisplacement)
+         · 반대쪽 rest wall 에서 clamp (무한 push 방지)
+```
+
+`maxPerHitDisplacement` 는 슬라임의 `SurfaceProbe` 감지 범위보다 작게 유지 — 한 프레임에 벽이 너무 멀리 움직이면 슬라임이 detach 됨.
+
+### 낙하 → 복원
+
+슬라임의 local-Y 가 플랫폼 최하단 level.y − `fallBelowMargin` 아래로 내려가면 `BeginReset()` → `resetDuration` 동안 모든 level 의 `leftCurX`/`rightCurX` 를 rest 로 smoothstep lerp. reset 중 슬라임이 다시 부착해도 변형은 계속 진행 (hit 은 reset 위에 누적 가능).
+
+### 메쉬 구성 — 3D 저폴리 스타일
+
+piece 마다 독립적으로 emit:
+
+1. **Front face (z = −depth/2)** — strip-grid 구조. 각 level row 마다 `(frontInteriorCols + 2)` 개의 꼭짓점을 배치 (col 0 = 좌체인, col 마지막 = 우체인, 사이는 interior 포인트). interior 포인트는 `frontInteriorJitter` 로 X/Y 에 랜덤 offset, `frontNoiseAmount` × Perlin noise 로 Z 를 카메라 방향(-Z)으로 밀어 돌출. boundary 꼭짓점(좌·우체인 + 상·하 cap 행) 은 절대 변위하지 않아 side strip 과 틈 없이 접합. **`pogo_mud_generator_v1.py`** 의 Delaunay + 내부 점 + Perlin noise 스타일을 chain 구조에 맞게 단순화한 포트.
+2. **Back face (z = +depth/2)** — `rearDeformFactor × (deformedOutline − restOutline) + restOutline` 로 변형량 축소. 0 이면 back 은 늘 rest, 1 이면 front 와 동일. 기본 0.1 → 앞쪽 dent 가 깊고 뒤쪽은 거의 원형 실루엣 유지 → 카메라에서 dent 너머로 원래 면이 비쳐 보이는 3D 느낌.
+3. **Side strip** — 각 outline edge 마다 front ring ↔ back ring 을 연결하는 flat-normal quad. back/front 의 X 가 다르면 자연스럽게 경사진 벽면이 생김.
+
+각 triangle 은 per-tri flat normal 로 emit — 저폴리 페이싯 쉐이딩.
+
+### 재질
+
+prototype 재질은 URP Lit + Cull Off (양면) + Smoothness 0.08 + BaseColor(0.62, 0.42, 0.28). 양면 처리는 procedural mesh winding 이 Unity 의 culling 규약과 일부 면에서 어긋나는 것을 우회 (winding 을 정확히 맞추는 대신 double-sided 로 해결 — 프로토타입 단계의 실용적 선택).
+
+### 작성/편집 워크플로우
+
+- **Hierarchy 우클릭 → `GameObject/SlimeJumping/Deformable Platform/*`** — Rectangle Short/Medium/Tall/Wide Slab, Hourglass, Taper, Dome Top 프리셋으로 즉시 생성.
+- **Inspector 의 `restLevels` 리스트** — 각 level 의 y / leftX / rightX 를 직접 편집.
+- **Scene view handle** — 노란 점(좌체인) / 청록 점(우체인) 을 드래그해 모양 변경. `Shift+클릭` 으로 중간에 level 삽입, `Ctrl/Cmd+클릭` 으로 level 삭제.
+- **Inspector 하단 프리셋 버튼** — `genWidth`/`genHeight`/`genSegmentCount` 를 기반으로 Rectangle/Taper/Hourglass/Dome Top 재생성. 크기·밀도 조정용.
+- **`OnValidate`** + `[ExecuteAlways]` — 에디터에서 파라미터 변경 시 즉시 mesh 재빌드 (Play 모드 아니어도 실시간 반영).
+
+### 파라미터
+
+| 파라미터 | 기본값 | 설명 |
+|---------|--------|------|
+| impactToDisplacement | 0.04 | 충돌 속도(m/s) 당 밀리는 m |
+| maxPerHitDisplacement | 0.12 | 한 hit 으로 밀리는 최대 거리 (슬라임 detach 방지 상한) |
+| falloffYRange | 0.8 | 주변 level 에 영향을 주는 Y 거리 |
+| attachedCreepPerSec | 0 | 부착 중 초당 추가로 들어가는 양 (기본 0) |
+| depth | 0.8 | Z 축 두께 |
+| rearDeformFactor | 0.1 | 뒷면 변형 비율 (0 = 고정, 1 = 앞과 동일) |
+| fallBelowMargin | 1.5 | 이 거리만큼 슬라임이 내려가면 reset 트리거 |
+| resetDuration | 0.6 | reset lerp 시간 (초) |
+| frontInteriorCols | 6 | level row 당 내부 column 수 |
+| frontInteriorJitter | 0.4 | 내부 포인트 X/Y 랜덤 offset (0~1, 1=반 셀폭) |
+| frontNoiseAmount | 0.15 | 내부 포인트 Z 돌출 진폭 (카메라 방향) |
+| frontNoiseScale | 1.5 | Perlin 주파수 |
+
+### SlimeController 연동
+
+다른 플랫폼과 동일하게 **수정 없음**. `slime.SurfaceCollider`/`CurrentState`/`ImpactNormalSpeed`/`Position` 을 폴링. 충돌은 `PolygonCollider2D` (pinch 시 multi-path) 가 표준 2D physics 로 처리.
+
+---
+
 ## 8. 튜닝 파라미터
 
 ### Surface Movement

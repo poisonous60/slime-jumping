@@ -16,6 +16,18 @@ namespace SlimeJumping.Editor
 
             var dp = (DeformablePlatform)target;
             EditorGUILayout.Space();
+
+            EditorGUILayout.LabelField("Shape Presets (reads genWidth / genHeight / genSegmentCount above)",
+                                       EditorStyles.miniBoldLabel);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Rectangle")) ApplyPreset(dp, dp.GenerateRectangle);
+                if (GUILayout.Button("Taper"))     ApplyPreset(dp, dp.GenerateTaper);
+                if (GUILayout.Button("Hourglass")) ApplyPreset(dp, dp.GenerateHourglass);
+                if (GUILayout.Button("Dome Top"))  ApplyPreset(dp, dp.GenerateDomeTop);
+            }
+
+            EditorGUILayout.Space();
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("Rebuild Runtime"))
@@ -37,6 +49,14 @@ namespace SlimeJumping.Editor
                 "Hold Shift and click on a chain edge to insert a new level.\n" +
                 "Hold Ctrl/Cmd and click a dot to delete its level.",
                 MessageType.None);
+        }
+
+        static void ApplyPreset(DeformablePlatform dp, System.Action generator)
+        {
+            Undo.RecordObject(dp, "Apply DeformablePlatform preset");
+            generator();
+            dp.BuildRuntime();
+            EditorUtility.SetDirty(dp);
         }
 
         void OnSceneGUI()

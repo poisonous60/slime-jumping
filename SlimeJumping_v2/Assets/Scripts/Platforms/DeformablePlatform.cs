@@ -17,6 +17,7 @@ namespace SlimeJumping.Platforms
     [RequireComponent(typeof(MeshFilter))]
     [RequireComponent(typeof(MeshRenderer))]
     [RequireComponent(typeof(PolygonCollider2D))]
+    [ExecuteAlways] // lets LateUpdate fire in edit mode so OnValidate changes show live
     public class DeformablePlatform : MonoBehaviour
     {
         [System.Serializable]
@@ -53,6 +54,21 @@ namespace SlimeJumping.Platforms
 
         [Header("3D Extrusion")]
         [Min(0.01f)] [SerializeField] float depth = 0.8f;
+        [Tooltip("Back face deformation as a fraction of front's. 0 = back never moves; 1 = back moves same as front. " +
+                 "Lower values make the near-camera (front) dent look deeper than the far-camera (back) side.")]
+        [Range(0f, 1f)] [SerializeField] float rearDeformFactor = 0.1f;
+
+        [Header("Front Surface Roughness")]
+        [Tooltip("Interior columns per level row in the front face. 0 = no interior points (flat quad strip). 4–8 recommended.")]
+        [Range(0, 16)] [SerializeField] int frontInteriorCols = 6;
+        [Tooltip("Random X/Y offset applied to interior grid points. 0 = pure grid, 1 = full half-cell jitter.")]
+        [Range(0f, 1f)] [SerializeField] float frontInteriorJitter = 0.4f;
+        [Tooltip("Perlin noise amplitude (local Z units). Applied outward (toward camera) on interior front verts only; boundary stays flush with side strip.")]
+        [Min(0f)] [SerializeField] float frontNoiseAmount = 0.15f;
+        [Tooltip("Perlin frequency — higher = finer bumps.")]
+        [Min(0.01f)] [SerializeField] float frontNoiseScale = 1.5f;
+        [Tooltip("Seed for the interior jitter RNG. Change to re-roll the bump pattern.")]
+        [SerializeField] int frontJitterSeed = 42;
 
         [Header("Reset")]
         [Tooltip("Slime Y distance below the platform bounds that triggers reset.")]
@@ -112,8 +128,26 @@ namespace SlimeJumping.Platforms
             BuildRuntime();
         }
 
+#if UNITY_EDITOR
+        void OnValidate()
+        {
+            // Inspector changes at edit time → re-emit mesh/collider so params read live.
+            // Delayed to avoid touching assets during inspector GUI pass.
+            if (Application.isPlaying) { dirty = true; return; }
+            UnityEditor.EditorApplication.delayCall += () =>
+            {
+                if (this == null) return;
+                if (meshFilter == null) meshFilter = GetComponent<MeshFilter>();
+                if (poly == null)       poly       = GetComponent<PolygonCollider2D>();
+                if (levels == null || levels.Length < 3) BuildRuntime();
+                else Rebuild();
+            };
+        }
+#endif
+
         void FixedUpdate()
         {
+            if (!Application.isPlaying) return;
             if (levels == null || levels.Length < 3) return;
             if (slime == null)
             {
@@ -411,90 +445,243 @@ namespace SlimeJumping.Platforms
 
         // Emit a single piece spanning levels [start..end] (inclusive).
         // Appends to scratchPiecePaths (collider), scratchVerts/norms/uvs/tris (mesh).
+        //
+        // Each piece is built as K+1 "rings" along Z. Ring 0 is the front face
+        // (fully deformed). Ring K is the back face (deformation multiplied by
+        // rearDeformFactor). Intermediate rings interpolate. The side strip
+        // stitches consecutive rings so a dent appears deeper from near-camera
+        // than from far-camera — the far side is visible *through* the near dent.
         void EmitPiece(int start, int end)
         {
-            // Build CCW outline: down the left chain, across bottom, up the right chain.
-            // Level i=start is the TOP of this piece (levels generated top→bottom).
+            // 1. Build deformed outline (front-facing) and rest outline (back-facing anchor).
             scratchOutline.Clear();
             for (int i = start; i <= end; i++)
                 scratchOutline.Add(new Vector2(levels[i].leftCurX, levels[i].y));
             for (int i = end; i >= start; i--)
                 scratchOutline.Add(new Vector2(levels[i].rightCurX, levels[i].y));
-
             int n = scratchOutline.Count;
 
-            // -- Collider path (just the 2D outline) --
+            scratchRestOutline.Clear();
+            for (int i = start; i <= end; i++)
+                scratchRestOutline.Add(new Vector2(levels[i].leftRestX, levels[i].y));
+            for (int i = end; i >= start; i--)
+                scratchRestOutline.Add(new Vector2(levels[i].rightRestX, levels[i].y));
+
+            // 2. Collider path (just the deformed 2D outline — z-tapering is purely visual).
             var pathArr = new Vector2[n];
             for (int k = 0; k < n; k++) pathArr[k] = scratchOutline[k];
             scratchPiecePaths.Add(pathArr);
 
-            // -- Mesh: front ring + back ring + side strip (flat-normal per edge) --
-            int vBase = scratchVerts.Count;
+            // 3. Build two Z-rings. Ring 0 is front (full deformation, z=-d/2),
+            //    ring 1 is back (factor=rearDeformFactor, z=+d/2). The side strip is
+            //    a single quad per edge between them — additional Z subdivisions added
+            //    no visible detail so the param was dropped.
+            const int K = 1;
             float zF = -depth * 0.5f;
             float zB = +depth * 0.5f;
 
-            // Front ring (normal -Z)
-            for (int k = 0; k < n; k++)
+            EnsureRingBuffers(K + 1, n);
+            ringZ[0] = zF;
+            ringZ[1] = zB;
+            for (int j = 0; j < n; j++)
             {
-                scratchVerts.Add(new Vector3(scratchOutline[k].x, scratchOutline[k].y, zF));
-                scratchNorms.Add(new Vector3(0f, 0f, -1f));
-                scratchUVs.Add(scratchOutline[k]); // planar XY
-            }
-            // Back ring (normal +Z)
-            for (int k = 0; k < n; k++)
-            {
-                scratchVerts.Add(new Vector3(scratchOutline[k].x, scratchOutline[k].y, zB));
-                scratchNorms.Add(new Vector3(0f, 0f, 1f));
-                scratchUVs.Add(scratchOutline[k]);
-            }
-            // Side strip: 4 verts per edge (flat face normal)
-            int sideBase = vBase + 2 * n;
-            float cursor = 0f;
-            for (int k = 0; k < n; k++)
-            {
-                int kNext = (k + 1) % n;
-                Vector2 a = scratchOutline[k];
-                Vector2 b = scratchOutline[kNext];
-                Vector2 edge = b - a;
-                Vector2 outward = new Vector2(edge.y, -edge.x).normalized; // CCW outline → right-perp outward
-                Vector3 nrm = new Vector3(outward.x, outward.y, 0f);
-
-                scratchVerts.Add(new Vector3(a.x, a.y, zF)); scratchNorms.Add(nrm);
-                scratchVerts.Add(new Vector3(b.x, b.y, zF)); scratchNorms.Add(nrm);
-                scratchVerts.Add(new Vector3(a.x, a.y, zB)); scratchNorms.Add(nrm);
-                scratchVerts.Add(new Vector3(b.x, b.y, zB)); scratchNorms.Add(nrm);
-
-                float u0 = cursor;
-                float u1 = cursor + edge.magnitude;
-                scratchUVs.Add(new Vector2(u0, 0f));
-                scratchUVs.Add(new Vector2(u1, 0f));
-                scratchUVs.Add(new Vector2(u0, 1f));
-                scratchUVs.Add(new Vector2(u1, 1f));
-                cursor = u1;
+                ringOutlines[0][j] = scratchOutline[j]; // front = fully deformed
+                ringOutlines[1][j] = Vector2.Lerp(scratchRestOutline[j], scratchOutline[j], rearDeformFactor);
             }
 
-            // -- Triangles --
-            // Front face: ear-clip the outline. Piece shape is a vertical-ish strip,
-            // always simple (CCW, no self-intersection) because each level has
-            // leftX < rightX and Y is monotonic.
+            // 4. Ear-clip the deformed outline — produces CCW triangle indices usable by any ring.
             EarClip(n);
 
-            // Front (indices into the front ring, which starts at vBase)
-            for (int k = 0; k < scratchEarTris.Count; k++)
-                scratchTris.Add(vBase + scratchEarTris[k]);
-            // Back (reverse winding so it faces +Z; ring starts at vBase + n)
+            // 5. Emit the three face groups.
+            EmitFrontFaceGrid(ringZ[0], start, end);
+            EmitBackFace(ringOutlines[K], ringZ[K], n);
+            EmitSideStrip(K, n);
+        }
+
+        // Per-ring scratch buffers (resized lazily so we don't per-frame-allocate).
+        Vector2[][] ringOutlines;
+        float[]     ringZ;
+        readonly List<Vector2> scratchRestOutline = new List<Vector2>();
+
+        void EnsureRingBuffers(int ringCount, int n)
+        {
+            if (ringOutlines == null || ringOutlines.Length != ringCount)
+                ringOutlines = new Vector2[ringCount][];
+            for (int k = 0; k < ringCount; k++)
+                if (ringOutlines[k] == null || ringOutlines[k].Length != n)
+                    ringOutlines[k] = new Vector2[n];
+            if (ringZ == null || ringZ.Length != ringCount)
+                ringZ = new float[ringCount];
+        }
+
+        // Emit the front face as a strip-grid: each level row has (frontInteriorCols + 2)
+        // vertices — col 0 on the left chain, col (cols-1) on the right chain, and cols
+        // in between as jittered interior points. Interior verts get Perlin Z displacement;
+        // boundary verts stay flush at z=zFront so the side strip meets them cleanly.
+        //
+        // Mirrors pogo_mud_generator_v1.py's "grid of scattered interior points + Delaunay"
+        // approach but uses the chain's Y ladder as the grid row structure (no CDT needed).
+        Vector3[,] frontGrid3D;
+        void EmitFrontFaceGrid(float zFront, int pieceStart, int pieceEnd)
+        {
+            int rowCount = pieceEnd - pieceStart + 1;
+            if (rowCount < 2) return;
+            int cols = Mathf.Max(0, frontInteriorCols) + 2; // +2 for left + right boundary cols
+
+            // Stable RNG so jitter doesn't flicker between rebuilds.
+            var rng = new System.Random(unchecked(frontJitterSeed * 7919 ^ pieceStart * 1337));
+
+            // Resize grid buffer if needed (reused across pieces).
+            if (frontGrid3D == null || frontGrid3D.GetLength(0) < rowCount || frontGrid3D.GetLength(1) < cols)
+                frontGrid3D = new Vector3[Mathf.Max(rowCount, frontGrid3D?.GetLength(0) ?? 0),
+                                          Mathf.Max(cols,     frontGrid3D?.GetLength(1) ?? 0)];
+
+            // Build grid of 3D positions.
+            for (int r = 0; r < rowCount; r++)
+            {
+                int lvlIdx = pieceStart + r;
+                float y     = levels[lvlIdx].y;
+                float leftX = levels[lvlIdx].leftCurX;
+                float rightX= levels[lvlIdx].rightCurX;
+                float width = rightX - leftX;
+                float cellW = width / (cols - 1);
+                // Y cell height: average spacing to neighbors, used for vertical jitter.
+                float cellH = 0f;
+                if (rowCount > 1)
+                {
+                    if (r > 0)            cellH += Mathf.Abs(levels[pieceStart + r].y - levels[pieceStart + r - 1].y);
+                    if (r < rowCount - 1) cellH += Mathf.Abs(levels[pieceStart + r].y - levels[pieceStart + r + 1].y);
+                    cellH *= 0.5f;
+                }
+
+                bool rowIsCap = (r == 0 || r == rowCount - 1); // top cap + bottom cap rows stay flush
+
+                for (int c = 0; c < cols; c++)
+                {
+                    float t = c / (float)(cols - 1);
+                    float x = Mathf.Lerp(leftX, rightX, t);
+                    float yy = y;
+
+                    bool colIsBoundary   = (c == 0 || c == cols - 1);
+                    bool isBoundaryVert  = rowIsCap || colIsBoundary;
+
+                    if (!isBoundaryVert && frontInteriorJitter > 0f)
+                    {
+                        x  += ((float)rng.NextDouble() * 2f - 1f) * cellW * 0.5f * frontInteriorJitter;
+                        yy += ((float)rng.NextDouble() * 2f - 1f) * cellH * 0.5f * frontInteriorJitter;
+                    }
+
+                    float z = zFront;
+                    if (!isBoundaryVert && frontNoiseAmount > 0f)
+                    {
+                        float nv = Mathf.PerlinNoise(x * frontNoiseScale + 13.4f,
+                                                      yy * frontNoiseScale + 71.2f);
+                        z -= nv * frontNoiseAmount; // toward camera (-Z)
+                    }
+
+                    frontGrid3D[r, c] = new Vector3(x, yy, z);
+                }
+            }
+
+            // Triangulate each cell with an alternating diagonal for a balanced pattern.
+            for (int r = 0; r < rowCount - 1; r++)
+            {
+                for (int c = 0; c < cols - 1; c++)
+                {
+                    Vector3 A = frontGrid3D[r,     c    ]; // top-left  (higher Y, lower r)
+                    Vector3 B = frontGrid3D[r,     c + 1]; // top-right
+                    Vector3 C = frontGrid3D[r + 1, c + 1]; // bot-right
+                    Vector3 D = frontGrid3D[r + 1, c    ]; // bot-left
+                    bool altDiag = ((r + c) & 1) == 0;
+                    if (altDiag)
+                    {
+                        // \ diagonal: (A,C) splits quad into (A,B,C) + (A,C,D)
+                        EmitFlatTri(A, B, C);
+                        EmitFlatTri(A, C, D);
+                    }
+                    else
+                    {
+                        // / diagonal: (B,D) splits quad into (A,B,D) + (B,C,D)
+                        EmitFlatTri(A, B, D);
+                        EmitFlatTri(B, C, D);
+                    }
+                }
+            }
+        }
+
+        void EmitFlatTri(Vector3 A, Vector3 B, Vector3 C)
+        {
+            Vector3 nrm = Vector3.Cross(B - A, C - A).normalized;
+            int vBase = scratchVerts.Count;
+            scratchVerts.Add(A); scratchNorms.Add(nrm); scratchUVs.Add(new Vector2(A.x, A.y));
+            scratchVerts.Add(B); scratchNorms.Add(nrm); scratchUVs.Add(new Vector2(B.x, B.y));
+            scratchVerts.Add(C); scratchNorms.Add(nrm); scratchUVs.Add(new Vector2(C.x, C.y));
+            scratchTris.Add(vBase); scratchTris.Add(vBase + 1); scratchTris.Add(vBase + 2);
+        }
+
+        // Emit the back face: single ring outline, flat normal, no subdivision or noise.
+        // Triangle winding is reversed so it faces +Z (away from camera).
+        void EmitBackFace(Vector2[] ring, float zBack, int n)
+        {
+            int vBase = scratchVerts.Count;
+            for (int i = 0; i < n; i++)
+            {
+                scratchVerts.Add(new Vector3(ring[i].x, ring[i].y, zBack));
+                scratchNorms.Add(new Vector3(0f, 0f, 1f));
+                scratchUVs.Add(ring[i]);
+            }
             for (int k = 0; k < scratchEarTris.Count; k += 3)
             {
-                scratchTris.Add(vBase + n + scratchEarTris[k + 0]);
-                scratchTris.Add(vBase + n + scratchEarTris[k + 2]);
-                scratchTris.Add(vBase + n + scratchEarTris[k + 1]);
+                // Reverse winding so back face faces +Z.
+                scratchTris.Add(vBase + scratchEarTris[k + 0]);
+                scratchTris.Add(vBase + scratchEarTris[k + 2]);
+                scratchTris.Add(vBase + scratchEarTris[k + 1]);
             }
-            // Sides
-            for (int k = 0; k < n; k++)
+        }
+
+        // Emit the side strip as a ladder of flat-normal quads, K rings × n edges.
+        // Each edge gets its own set of verts (flat per edge) and every edge-ring-pair
+        // forms one quad. Normals are computed per quad so the taper reads properly lit.
+        void EmitSideStrip(int K, int n)
+        {
+            float perimCursor = 0f;
+            for (int e = 0; e < n; e++)
             {
-                int b0 = sideBase + k * 4;
-                scratchTris.Add(b0 + 0); scratchTris.Add(b0 + 1); scratchTris.Add(b0 + 2);
-                scratchTris.Add(b0 + 1); scratchTris.Add(b0 + 3); scratchTris.Add(b0 + 2);
+                int eNext = (e + 1) % n;
+                // Perimeter-length U so the mud texture tiles consistently around the rim.
+                float edgeLen = Vector2.Distance(scratchOutline[e], scratchOutline[eNext]);
+                float u0 = perimCursor;
+                float u1 = perimCursor + edgeLen;
+                perimCursor = u1;
+
+                for (int k = 0; k < K; k++)
+                {
+                    // 4 verts of the quad (ring k and ring k+1, outline pt e and e+1).
+                    Vector2 a0 = ringOutlines[k][e];
+                    Vector2 b0 = ringOutlines[k][eNext];
+                    Vector2 a1 = ringOutlines[k + 1][e];
+                    Vector2 b1 = ringOutlines[k + 1][eNext];
+                    float zA = ringZ[k];
+                    float zB = ringZ[k + 1];
+
+                    Vector3 A = new Vector3(a0.x, a0.y, zA);
+                    Vector3 B = new Vector3(b0.x, b0.y, zA);
+                    Vector3 C = new Vector3(a1.x, a1.y, zB);
+                    Vector3 D = new Vector3(b1.x, b1.y, zB);
+                    // Tri winding: (A, B, C) and (B, D, C) — same as before, outward for CCW outline.
+                    Vector3 nrm = Vector3.Cross(B - A, C - A).normalized;
+
+                    float v0 = k / (float)K;
+                    float v1 = (k + 1) / (float)K;
+
+                    int vBase = scratchVerts.Count;
+                    scratchVerts.Add(A); scratchNorms.Add(nrm); scratchUVs.Add(new Vector2(u0, v0));
+                    scratchVerts.Add(B); scratchNorms.Add(nrm); scratchUVs.Add(new Vector2(u1, v0));
+                    scratchVerts.Add(C); scratchNorms.Add(nrm); scratchUVs.Add(new Vector2(u0, v1));
+                    scratchVerts.Add(D); scratchNorms.Add(nrm); scratchUVs.Add(new Vector2(u1, v1));
+                    scratchTris.Add(vBase + 0); scratchTris.Add(vBase + 1); scratchTris.Add(vBase + 2);
+                    scratchTris.Add(vBase + 1); scratchTris.Add(vBase + 3); scratchTris.Add(vBase + 2);
+                }
             }
         }
 
