@@ -16,9 +16,9 @@ MonoBehaviour:
   crawlAcceleration: 8
   crawlDeceleration: 8
   crawlOverspeedDeceleration: 15
-  slideGravityScale: 0.4
+  slideGravityScale: 0.5
   slideThreshold: 2
-  slideResistance: 2
+  slideResistance: 1
   groundDashImpulse: 3
   groundDashCooldown: 0.34
   groundDashInputBuffer: 0.1
@@ -72,7 +72,7 @@ MonoBehaviour:
   stickCrawlMultiplier: 0.2
   stickSlideTransitionRampTime: 0.6
   chargeEntryStickBonus: 0.2
-  chargingSlideGravityScale: 0.6
+  chargingSlideGravityScale: 0.8
   ceilingAngle: 150
   ceilingReattachAngle: 140
   airMaxHorizontalSpeed: 5

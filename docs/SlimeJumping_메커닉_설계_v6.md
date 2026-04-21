@@ -1130,6 +1130,7 @@ EnvironmentalZone 구현. 진입/탈출 속도 배율, 드래그(곱셈), 부력
   - Scrolling noise + sparkle: 2장 noise를 world-space UV로 반대 방향 스크롤, `step(_SparkleThreshold, nA*nB)`로 반짝이.
   - Rim glow: `pow(color.a, _RimPower) * _RimColor`.
 - 머티리얼: `Mat_Water_v2.mat` (noise = `Tex_WaveNoise.png`).
+- **오디오 브로드캐스트**: `WaterZoneAudioManager` (씬 단일 GO) 가 `hardEnter/softEnter/exit/underwaterLoop` 4개 클립 + `splashVolume/splashPitchJitter/underwaterLoopVolume` 3개 공용 레벨을 `Awake`(또는 `ContextMenu > Apply To All Water Zones`)에서 씬 내 모든 `WaterZone_v2.ApplyAudioSettings(...)` 로 일괄 주입 → 존 개별 인스펙터 지정 불필요.
 
 ### 외부 속도 Two-Channel Model
 

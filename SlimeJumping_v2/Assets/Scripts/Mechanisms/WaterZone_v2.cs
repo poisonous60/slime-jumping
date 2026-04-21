@@ -70,16 +70,32 @@ namespace SlimeJumping.Mechanisms
         [Min(0f)] [SerializeField] float hardEnterThreshold = 6f;
         [Tooltip("Slime speed (m/s) that maps to full one-shot volume. Slower impacts scale down linearly.")]
         [Min(0.1f)] [SerializeField] float audioRefSpeed = 8f;
-        [Tooltip("Base volume at audioRefSpeed impact for one-shot splashes.")]
-        [Range(0f, 1f)] [SerializeField] float splashVolume = 0.9f;
-        [Tooltip("±random pitch jitter applied to each one-shot.")]
-        [Range(0f, 0.3f)] [SerializeField] float splashPitchJitter = 0.08f;
-        [Tooltip("Volume of the looping underwater ambient sound.")]
-        [Range(0f, 1f)] [SerializeField] float underwaterLoopVolume = 0.7f;
+
+        // Owned by WaterZoneAudioManager — not serialized per-zone. Defaults below are used
+        // only if no manager is present in the scene.
+        float splashVolume = 0.9f;
+        float splashPitchJitter = 0.08f;
+        float underwaterLoopVolume = 0.7f;
 
         SoundHandle underwaterLoopHandle;
 
         Vector2 centerLocal;
+
+        /// <summary>
+        /// Overwrites clips + splash/loop volume params. Used by WaterZoneAudioManager
+        /// to broadcast a shared audio set to every zone in the scene.
+        /// </summary>
+        public void ApplyAudioSettings(AudioClip hardEnter, AudioClip softEnter, AudioClip exit, AudioClip underwaterLoop,
+                                       float splashVolume, float splashPitchJitter, float underwaterLoopVolume)
+        {
+            hardEnterClip = hardEnter;
+            softEnterClip = softEnter;
+            exitClip = exit;
+            underwaterLoopClip = underwaterLoop;
+            this.splashVolume = splashVolume;
+            this.splashPitchJitter = splashPitchJitter;
+            this.underwaterLoopVolume = underwaterLoopVolume;
+        }
 
         protected override void Reset()
         {

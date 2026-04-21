@@ -43,8 +43,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   slideGravityMultiplier:
-    baseValue: 0.6
-    fullValue: 0.6
+    baseValue: 0.2
+    fullValue: 0.2
     angleMin: 0
     angleMax: 90
   slideRampUpTime:

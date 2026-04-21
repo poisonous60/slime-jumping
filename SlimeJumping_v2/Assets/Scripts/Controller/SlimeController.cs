@@ -436,7 +436,15 @@ namespace SlimeJumping.Controller
 
         private void UpdateSurfaceModifiers(Collider2D col)
         {
-            var tag = col != null ? col.GetComponentInParent<SurfaceTag>() : null;
+            SurfaceTag tag = null;
+            if (col != null)
+            {
+                var tags = col.GetComponentsInParent<SurfaceTag>();
+                for (int i = 0; i < tags.Length; i++)
+                {
+                    if (tags[i].enabled) { tag = tags[i]; break; }
+                }
+            }
             surfaceMod = tag != null ? tag.GetModifiers() : SurfaceModifiers.Default;
         }
 
