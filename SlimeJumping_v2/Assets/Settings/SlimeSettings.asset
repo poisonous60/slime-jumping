@@ -71,8 +71,8 @@ MonoBehaviour:
   stickSlopeThreshold: 0.7
   stickCrawlMultiplier: 0.2
   stickSlideTransitionRampTime: 0.6
-  chargeEntryStickBonus: 0.2
-  chargingSlideGravityScale: 0.8
+  chargeEntryStickBonus: 0
+  chargingSlideGravityScale: 0.7
   ceilingAngle: 150
   ceilingReattachAngle: 140
   airMaxHorizontalSpeed: 5

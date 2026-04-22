@@ -97,6 +97,7 @@ namespace SlimeJumping.Editor
             psRenderer.renderMode = ParticleSystemRenderMode.Stretch;
             psRenderer.lengthScale = 3f;
             psRenderer.velocityScale = 0.1f;
+            psRenderer.sharedMaterial = LoadOrCreateWindParticleMaterial();
 
             // Wire particle reference
             soWind = new SerializedObject(wind);
@@ -138,6 +139,37 @@ namespace SlimeJumping.Editor
         {
             var mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             mat.color = color;
+            return mat;
+        }
+
+        const string WindParticleMaterialPath = "Assets/Materials/WindParticle.mat";
+
+        static Material LoadOrCreateWindParticleMaterial()
+        {
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(WindParticleMaterialPath);
+            if (mat != null) return mat;
+
+            if (!AssetDatabase.IsValidFolder("Assets/Materials"))
+                AssetDatabase.CreateFolder("Assets", "Materials");
+
+            var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            mat = new Material(shader) { name = "WindParticle" };
+
+            // Transparent + Additive (SrcAlpha, One)
+            mat.SetFloat("_Surface", 1f);
+            mat.SetFloat("_Blend", 2f);
+            mat.SetFloat("_AlphaClip", 0f);
+            mat.SetFloat("_ZWrite", 0f);
+            mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);
+            mat.renderQueue = 3000;
+            mat.SetOverrideTag("RenderType", "Transparent");
+            mat.DisableKeyword("_SURFACE_TYPE_OPAQUE");
+            mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            mat.SetColor("_BaseColor", Color.white);
+
+            AssetDatabase.CreateAsset(mat, WindParticleMaterialPath);
+            AssetDatabase.SaveAssets();
             return mat;
         }
     }
