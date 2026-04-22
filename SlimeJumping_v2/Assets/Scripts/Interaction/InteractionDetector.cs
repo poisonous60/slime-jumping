@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using System.Collections.Generic;
 using SlimeJumping.Controller;
@@ -26,17 +27,25 @@ namespace SlimeJumping.Interaction
         private CircleCollider2D slimeBody;
 
         public bool HasInteractable => currentTarget != null;
+        public IInteractable CurrentTarget => currentTarget;
+
+        // Fires when the best candidate changes. Args: (previous, next). Either may be null.
+        public event Action<IInteractable, IInteractable> OnTargetChanged;
+        // Fires right after a successful Interact() call on the current target.
+        public event Action<IInteractable> OnInteracted;
 
         public void TryInteract()
         {
             if (currentTarget == null) return;
-            currentTarget.Interact(slime);
+            var fired = currentTarget;
+            fired.Interact(slime);
+            OnInteracted?.Invoke(fired);
         }
 
         public void ClearCandidates()
         {
             candidates.Clear();
-            currentTarget = null;
+            SetCurrentTarget(null);
         }
 
         // Repopulate candidates from current overlaps. Unity doesn't fire OnTriggerEnter2D
@@ -45,7 +54,7 @@ namespace SlimeJumping.Interaction
         public void Rescan()
         {
             candidates.Clear();
-            currentTarget = null;
+            SetCurrentTarget(null);
 
             var myCol = GetComponent<Collider2D>();
             if (myCol == null) return;
@@ -77,36 +86,48 @@ namespace SlimeJumping.Interaction
 
         private void Update()
         {
-            currentTarget = null;
+            IInteractable best = null;
 
-            if (candidates.Count == 0) return;
-
-            if (slimeBody == null) slimeBody = slime.GetComponent<CircleCollider2D>();
-            if (slimeBody == null) return;
-
-            float bestDistSq = float.MaxValue;
-            Vector2 slimePos = slime.Position;
-
-            // Remove destroyed objects and find best candidate
-            candidates.RemoveWhere(c => (c as Object) == null);
-
-            foreach (var candidate in candidates)
+            if (candidates.Count > 0)
             {
-                if (!candidate.CanInteract(slime)) continue;
-
-                var mb = candidate as MonoBehaviour;
-                if (mb == null) continue;
-
-                // Narrow-phase: require slime body to actually touch one of the candidate's colliders.
-                if (!IsSlimeTouching(mb)) continue;
-
-                float distSq = ((Vector2)mb.transform.position - slimePos).sqrMagnitude;
-                if (distSq < bestDistSq)
+                if (slimeBody == null) slimeBody = slime.GetComponent<CircleCollider2D>();
+                if (slimeBody != null)
                 {
-                    bestDistSq = distSq;
-                    currentTarget = candidate;
+                    float bestDistSq = float.MaxValue;
+                    Vector2 slimePos = slime.Position;
+
+                    // Remove destroyed objects and find best candidate
+                    candidates.RemoveWhere(c => (c as UnityEngine.Object) == null);
+
+                    foreach (var candidate in candidates)
+                    {
+                        if (!candidate.CanInteract(slime)) continue;
+
+                        var mb = candidate as MonoBehaviour;
+                        if (mb == null) continue;
+
+                        // Narrow-phase: require slime body to actually touch one of the candidate's colliders.
+                        if (!IsSlimeTouching(mb)) continue;
+
+                        float distSq = ((Vector2)mb.transform.position - slimePos).sqrMagnitude;
+                        if (distSq < bestDistSq)
+                        {
+                            bestDistSq = distSq;
+                            best = candidate;
+                        }
+                    }
                 }
             }
+
+            SetCurrentTarget(best);
+        }
+
+        private void SetCurrentTarget(IInteractable next)
+        {
+            if (ReferenceEquals(currentTarget, next)) return;
+            var prev = currentTarget;
+            currentTarget = next;
+            OnTargetChanged?.Invoke(prev, next);
         }
 
         private bool IsSlimeTouching(MonoBehaviour candidate)

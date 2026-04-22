@@ -1225,7 +1225,7 @@ EnvironmentalZone 구현. 진입/탈출 속도 배율, 드래그(곱셈), 부력
 
 ### Tier 1 인터랙터블 (명세 #002 묶음 B)
 
-`InteractableBase` 상속, **S 입력**(Interact 액션, Gamepad: buttonWest)으로 발동. `InteractionDetector`가 broad-phase + narrow-phase(slime body overlap) 조합으로 후보 선택. `ReleaseOverride.Rescan`으로 override 해제 후 동일 trigger 재등록. (Interact 액션은 VerticalUp/Hop(W)과 분리되어 있어 W는 hop 전용. S는 VerticalDown과 동일 키를 공유하지만 Interact는 HasInteractable 게이트로만 발화.)
+`InteractableBase` 상속, **E 입력**(Interact 액션, Gamepad: buttonWest)으로 발동. `InteractionDetector`가 broad-phase + narrow-phase(slime body overlap) 조합으로 후보 선택 후, `CurrentTarget`/`OnTargetChanged`/`OnInteracted` 이벤트를 `InteractionPromptManager`가 구독해 현재 타깃 상단에 반투명 "E" TMP를 월드 스페이스로 표시. E를 누르거나 범위를 벗어나면 프롬프트가 숨겨지고, 같은 타깃은 슬라임이 범위 밖으로 나갔다 재진입해야 다시 표시된다. `ReleaseOverride.Rescan`으로 override 해제 후 동일 trigger 재등록.
 
 - `SitPoseInteractable` (IExternalController) — 침대/벤치/신사/화톳불 옆자리. 물리 동결 + anchor 텔레포트만 담당. 앉기 애니메이션은 **슬라임에 정적 부착된 `SitPoseAnimator`** 컴포넌트가 구동(코드 기반, 외부 튠 라이브러리 없음): 4단계 상태머신(`SittingDown` OutBack squash → `Idle` Spring-Damper breathing → `GettingUp` anticipation+OutElastic settle → `Released`). 가구별 튜닝은 `SitPoseProfile` ScriptableObject. 비주얼 쓰기는 `SlimeVisual.SetExternalDeform(scale, asymmetry, chargeDip)` — `IsExternallyAnimated` 게이트 준수, MPB 경유로 SRP Batcher 호환 유지. 일어나기 완료는 `SitPoseAnimator.OnFullyReleased` 이벤트로 통지되어 Interactable이 그 시점에 `ReleaseOverride` 호출(get-up 중 물리 동결 유지).
 - `MediaInteractable_TV` — 화면 머티리얼 + 오디오 토글
