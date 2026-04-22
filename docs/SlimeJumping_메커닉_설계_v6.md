@@ -986,6 +986,8 @@ newV     = exit.OutNormal * vIn + exit.Tangent * vTangent
 
 Trigger volume에 들어오면 슬라임에 지속적 가속을 적용하는 환경 기믹. Pogostuck, Egging On 등에서 볼 수 있는 표준 플랫포머 기믹.
 
+**콜라이더 지원**: `BoxCollider2D` (직사각 영역) 또는 `PolygonCollider2D` (임의 모양). 파티클 경계는 두 경우 모두 바람 방향 기준 min/max 투영으로 자동 계산.
+
 **핵심 필드**:
 - `windAcceleration` (Vector2): 바람 방향 + 세기 (units/s²). 방향은 월드 기준.
 - `terminalSpeed` (float): 바람 방향으로의 최대 속도. 도달 시 가속 감쇠. 0이면 무제한.

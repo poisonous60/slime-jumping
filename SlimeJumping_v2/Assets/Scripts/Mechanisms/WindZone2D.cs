@@ -42,8 +42,8 @@ namespace SlimeJumping.Mechanisms
 
         void SyncParticles()
         {
-            var box = GetComponent<BoxCollider2D>();
-            if (box == null || windParticles == null) return;
+            var col = GetComponent<Collider2D>();
+            if (col == null || windParticles == null) return;
 
             float mag = windAcceleration.magnitude;
             if (mag < 0.0001f || particleSpeed < 0.01f) return;
@@ -51,15 +51,14 @@ namespace SlimeJumping.Mechanisms
             Vector2 windDir = windAcceleration / mag;
             Vector2 perpDir = new Vector2(-windDir.y, windDir.x);
 
+            if (!TryGetWindAlignedBounds(col, windDir, perpDir,
+                    out Vector2 localCenter, out float alongWind, out float acrossWind))
+                return;
+
             // Rotate particle transform so local +X = wind direction
             float angle = Mathf.Atan2(windDir.y, windDir.x) * Mathf.Rad2Deg;
             windParticles.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
-            windParticles.transform.localPosition = (Vector3)(Vector2)box.offset;
-
-            // Project box onto wind / perpendicular axes
-            Vector2 s = box.size;
-            float alongWind = Mathf.Abs(s.x * windDir.x) + Mathf.Abs(s.y * windDir.y);
-            float acrossWind = Mathf.Abs(s.x * perpDir.x) + Mathf.Abs(s.y * perpDir.y);
+            windParticles.transform.localPosition = (Vector3)localCenter;
 
             // Lifetime = travel distance / speed
             float lifetime = alongWind / particleSpeed;
@@ -86,6 +85,50 @@ namespace SlimeJumping.Mechanisms
             // Emission proportional to cross-section
             var emis = windParticles.emission;
             emis.rateOverTime = acrossWind * 12f;
+        }
+
+        static bool TryGetWindAlignedBounds(Collider2D col, Vector2 windDir, Vector2 perpDir,
+            out Vector2 localCenter, out float alongWind, out float acrossWind)
+        {
+            localCenter = default;
+            alongWind = 0f;
+            acrossWind = 0f;
+
+            if (col is BoxCollider2D box)
+            {
+                Vector2 s = box.size;
+                alongWind = Mathf.Abs(s.x * windDir.x) + Mathf.Abs(s.y * windDir.y);
+                acrossWind = Mathf.Abs(s.x * perpDir.x) + Mathf.Abs(s.y * perpDir.y);
+                localCenter = box.offset;
+                return alongWind > 0.0001f && acrossWind > 0.0001f;
+            }
+
+            if (col is PolygonCollider2D poly)
+            {
+                float aMin = float.PositiveInfinity, aMax = float.NegativeInfinity;
+                float rMin = float.PositiveInfinity, rMax = float.NegativeInfinity;
+                for (int i = 0; i < poly.pathCount; i++)
+                {
+                    var path = poly.GetPath(i);
+                    for (int k = 0; k < path.Length; k++)
+                    {
+                        Vector2 p = path[k] + poly.offset;
+                        float a = Vector2.Dot(p, windDir);
+                        float r = Vector2.Dot(p, perpDir);
+                        if (a < aMin) aMin = a;
+                        if (a > aMax) aMax = a;
+                        if (r < rMin) rMin = r;
+                        if (r > rMax) rMax = r;
+                    }
+                }
+                if (float.IsInfinity(aMin)) return false;
+                alongWind = aMax - aMin;
+                acrossWind = rMax - rMin;
+                localCenter = windDir * ((aMin + aMax) * 0.5f) + perpDir * ((rMin + rMax) * 0.5f);
+                return alongWind > 0.0001f && acrossWind > 0.0001f;
+            }
+
+            return false;
         }
 
         void OnTriggerEnter2D(Collider2D other)
@@ -159,18 +202,35 @@ namespace SlimeJumping.Mechanisms
             var col = GetComponent<Collider2D>();
             if (col == null) return;
 
-            // Zone fill
-            Gizmos.color = new Color(0.3f, 0.7f, 1f, 0.12f);
+            Color fill = new Color(0.3f, 0.7f, 1f, 0.12f);
+            Color outline = new Color(0.3f, 0.7f, 1f, 0.5f);
+
             if (col is BoxCollider2D box)
             {
                 Matrix4x4 old = Gizmos.matrix;
                 Gizmos.matrix = Matrix4x4.TRS(
                     transform.TransformPoint(box.offset),
                     transform.rotation, transform.lossyScale);
+                Gizmos.color = fill;
                 Gizmos.DrawCube(Vector3.zero, box.size);
-                Gizmos.color = new Color(0.3f, 0.7f, 1f, 0.5f);
+                Gizmos.color = outline;
                 Gizmos.DrawWireCube(Vector3.zero, box.size);
                 Gizmos.matrix = old;
+            }
+            else if (col is PolygonCollider2D poly)
+            {
+                Gizmos.color = outline;
+                for (int i = 0; i < poly.pathCount; i++)
+                {
+                    var path = poly.GetPath(i);
+                    if (path.Length < 2) continue;
+                    for (int k = 0; k < path.Length; k++)
+                    {
+                        Vector3 a = transform.TransformPoint((Vector3)(path[k] + poly.offset));
+                        Vector3 b = transform.TransformPoint((Vector3)(path[(k + 1) % path.Length] + poly.offset));
+                        Gizmos.DrawLine(a, b);
+                    }
+                }
             }
 
             if (windAcceleration.sqrMagnitude < 0.0001f) return;
