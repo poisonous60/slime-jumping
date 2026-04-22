@@ -30,8 +30,14 @@ namespace SlimeJumping.Platforms
         [Header("Shape")]
         [Tooltip("Arc-length spacing between adjacent segment centers (meters).")]
         [Min(0.01f)] [SerializeField] float segmentLength = 1f;
-        [Tooltip("Collider quad width (meters).")]
+        [Tooltip("Head cube placeholder cross-section (meters). No longer feeds the body collider — per-segment collider half-width now tracks bodyRadius * radiusProfile so the collider tapers with the visual tube.")]
         [Min(0.01f)] [SerializeField] float segmentWidth = 0.6f;
+        [Tooltip("Base radius of the tube cross-section at the head (meters). Visual only — 2D collider still uses segmentWidth.")]
+        [Min(0.01f)] [SerializeField] float bodyRadius = 0.3f;
+        [Tooltip("Radius multiplier sampled at i/(N-1): 0 = head-adjacent, 1 = tail. Default 1→0.25 tapers toward the tail.")]
+        [SerializeField] AnimationCurve radiusProfile = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(1f, 0.25f));
+        [Tooltip("Cross-section sides. 8 reads as round at normal camera distances.")]
+        [Range(3, 24)] [SerializeField] int radialSegments = 8;
 
         [Header("Colors")]
         [Tooltip("Head visual tint when the head's collider is on the Z=0 plane (collision active).")]
@@ -91,6 +97,16 @@ namespace SlimeJumping.Platforms
         Vector2[] segXY;
         Vector2[] segPerp;
         bool[]    segOnPlane;
+
+        // 3D tube frames (world-space). Computed per-frame via parallel transport so adjacent
+        // rings share a twist-free basis and the radial UV seam stays coherent along the body.
+        Vector3[] segTangent3D;
+        Vector3[] segNormal3D;
+        Vector3[] segBinormal3D;
+
+        // Per-segment half-width / radius (meters). Drives both the tube ring radius and the
+        // polygon collider's perp extrusion so collider and visual taper together along the body.
+        float[] segHalfW;
 
         // Scratch for poly.SetPath calls — reused per frame.
         readonly List<Vector2[]> scratchPaths = new List<Vector2[]>();
@@ -216,6 +232,16 @@ namespace SlimeJumping.Platforms
                 segPerp = new Vector2[n];
                 segOnPlane = new bool[n];
             }
+            if (segTangent3D == null || segTangent3D.Length != n)
+            {
+                segTangent3D  = new Vector3[n];
+                segNormal3D   = new Vector3[n];
+                segBinormal3D = new Vector3[n];
+            }
+            if (segHalfW == null || segHalfW.Length != n)
+            {
+                segHalfW = new float[n];
+            }
         }
 
         void SeedInitialPose()
@@ -265,6 +291,7 @@ namespace SlimeJumping.Platforms
             }
 
             ComputeSegmentFrames();
+            ComputeSegmentFrames3D();
             WriteVisuals();
             RebuildBodyMesh();
             ApplyBodyMeshColor();
@@ -317,6 +344,7 @@ namespace SlimeJumping.Platforms
             }
 
             ComputeSegmentFrames();
+            ComputeSegmentFrames3D();
             WriteVisuals();
             RebuildBodyMesh();
             ApplyBodyMeshColor();
@@ -442,6 +470,78 @@ namespace SlimeJumping.Platforms
             }
         }
 
+        /// <summary>
+        /// Builds a twist-free orthonormal frame (tangent, normal, binormal) in world space for
+        /// each spine segment. Tangent uses a central-difference in 3D so it honors Z excursions;
+        /// normal/binormal are parallel-transported from the head frame so rings at adjacent
+        /// segments share a coherent radial basis (no flip at sharp bends).
+        /// Called after ComputeSegmentFrames (which produces the 2D perps the collider still needs).
+        /// </summary>
+        void ComputeSegmentFrames3D()
+        {
+            int n = SegmentCount;
+            if (n < 1) return;
+
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 t;
+                if (i == 0)
+                {
+                    t = lastHeadTangent;
+                }
+                else if (i == n - 1)
+                {
+                    // Points head-ward in the 2D code; flip so 3D tangent stays "forward along motion".
+                    t = segPos3D[i - 1] - segPos3D[i];
+                }
+                else
+                {
+                    // Central difference, head-ward convention matches the 2D perp derivation.
+                    t = segPos3D[i - 1] - segPos3D[i + 1];
+                }
+                if (t.sqrMagnitude < 1e-10f) t = lastHeadTangent;
+                if (t.sqrMagnitude < 1e-10f) t = Vector3.right;
+                segTangent3D[i] = t.normalized;
+
+                float profileT = n > 1 ? i / (float)(n - 1) : 0f;
+                segHalfW[i] = Mathf.Max(0.001f, bodyRadius * radiusProfile.Evaluate(profileT));
+            }
+
+            // Initial frame — pick a reference up that isn't parallel to the head tangent.
+            Vector3 refUp = Vector3.up;
+            if (Mathf.Abs(Vector3.Dot(segTangent3D[0], refUp)) > 0.99f) refUp = Vector3.forward;
+            Vector3 b0 = Vector3.Cross(segTangent3D[0], refUp);
+            if (b0.sqrMagnitude < 1e-10f) b0 = Vector3.Cross(segTangent3D[0], Vector3.forward);
+            b0.Normalize();
+            Vector3 n0 = Vector3.Cross(b0, segTangent3D[0]).normalized;
+            segBinormal3D[0] = b0;
+            segNormal3D[0]   = n0;
+
+            // Rotation-minimizing parallel transport.
+            for (int i = 1; i < n; i++)
+            {
+                Vector3 tPrev = segTangent3D[i - 1];
+                Vector3 tCur  = segTangent3D[i];
+                Vector3 axis  = Vector3.Cross(tPrev, tCur);
+                float axisSq = axis.sqrMagnitude;
+                Vector3 nPrev = segNormal3D[i - 1];
+                Vector3 bPrev = segBinormal3D[i - 1];
+                if (axisSq < 1e-8f)
+                {
+                    segNormal3D[i]   = nPrev;
+                    segBinormal3D[i] = bPrev;
+                }
+                else
+                {
+                    float cosA = Mathf.Clamp(Vector3.Dot(tPrev, tCur), -1f, 1f);
+                    float angDeg = Mathf.Acos(cosA) * Mathf.Rad2Deg;
+                    Quaternion q = Quaternion.AngleAxis(angDeg, axis / Mathf.Sqrt(axisSq));
+                    segNormal3D[i]   = (q * nPrev).normalized;
+                    segBinormal3D[i] = (q * bPrev).normalized;
+                }
+            }
+        }
+
         void WriteVisuals()
         {
             int n = SegmentCount;
@@ -467,19 +567,24 @@ namespace SlimeJumping.Platforms
         }
 
         /// <summary>
-        /// Body visual: single dynamic triangle strip sweeping the spine. Vertices sit at segment
-        /// centers (plus a half-segment cap forward of seg 0 and backward of seg N-1); left/right
-        /// vertex is center ± segPerp*halfWidth.
-        /// The ribbon covers ALL segments — on-plane and off-plane — so the whole snake body
-        /// remains visible. Runs are grouped by on-plane state and routed into separate
-        /// submeshes (0 = on-plane, 1 = off-plane), so ApplyBodyMeshColor can tint each side
-        /// independently via per-submesh MaterialPropertyBlocks.
-        /// Only the collider (RebuildCollider) filters by on-plane; the mesh renders everything.
+        /// Body visual: dynamic 3D tube sweeping the spine. Per segment we emit a ring of
+        /// `radialSegments` vertices oriented by that segment's parallel-transported TNB frame,
+        /// at radius = bodyRadius * radiusProfile(i/(N-1)); consecutive rings are bridged with
+        /// two triangles per radial slot. Both ends get a fan cap to a center vertex half a
+        /// segmentLength beyond the end segment along its tangent.
+        /// The tube covers ALL segments — on-plane and off-plane — so the whole body stays
+        /// visible. Band triangles are routed into submesh 0 (on-plane) or submesh 1 (off-plane)
+        /// based on the starting segment's on-plane flag, preserving the two-tone tinting that
+        /// ApplyBodyMeshColor applies. Only RebuildCollider filters by on-plane.
+        /// Vertices are built in world space (using segPos3D, which carries Z) and converted to
+        /// local via InverseTransformPoint, so Z excursions show up as the tube bowing out of
+        /// the XY plane.
         /// </summary>
         void RebuildBodyMesh()
         {
             if (bodyMesh == null) return;
             int n = SegmentCount;
+            int R = Mathf.Max(3, radialSegments);
             scratchVerts.Clear();
             scratchTrisOn.Clear();
             scratchTrisOff.Clear();
@@ -487,42 +592,74 @@ namespace SlimeJumping.Platforms
 
             if (n < 2) { bodyMesh.Clear(); return; }
 
-            float halfW = segmentWidth * 0.5f;
-
-            // Single continuous vertex strip: front cap + every segment + back cap.
-            // Splitting into separate per-state runs (as earlier) left geometric gaps
-            // of ~segmentLength wherever a run ended at seg k and the next started at
-            // seg k+1 — no quad spanned the two anchors. Sharing vertices across the
-            // whole spine eliminates those gaps; the on/off-plane distinction only
-            // affects which submesh a given quad's triangles are routed to.
-            int totalPairs = n + 2;
-
-            Vector2 tan0 = new Vector2(segPerp[0].y, -segPerp[0].x);
-            AddRibbonPair(segXY[0] + tan0 * (segmentLength * 0.5f), segPerp[0], halfW, 0f);
-
+            // Ring vertices: vert index = i*R + r for segment i, radial slot r.
             for (int i = 0; i < n; i++)
             {
-                float u = (i + 1) / (float)(totalPairs - 1);
-                AddRibbonPair(segXY[i], segPerp[i], halfW, u);
+                float profileT = n > 1 ? i / (float)(n - 1) : 0f;
+                float ri = segHalfW[i];
+                Vector3 nrm = segNormal3D[i];
+                Vector3 bin = segBinormal3D[i];
+                Vector3 center = segPos3D[i];
+                float u = profileT;
+                for (int r = 0; r < R; r++)
+                {
+                    float ang = (2f * Mathf.PI * r) / R;
+                    Vector3 offsetWorld = (Mathf.Cos(ang) * bin + Mathf.Sin(ang) * nrm) * ri;
+                    Vector3 local = transform.InverseTransformPoint(center + offsetWorld);
+                    scratchVerts.Add(local);
+                    scratchUVs.Add(new Vector2(u, r / (float)R));
+                }
             }
 
-            Vector2 tanN = new Vector2(segPerp[n - 1].y, -segPerp[n - 1].x);
-            AddRibbonPair(segXY[n - 1] - tanN * (segmentLength * 0.5f), segPerp[n - 1], halfW, 1f);
+            // Cap centers, pushed half a segmentLength past each end along the end tangent.
+            int frontCapIdx = n * R;
+            int backCapIdx  = n * R + 1;
+            Vector3 frontCapWorld = segPos3D[0]     + segTangent3D[0]     * (segmentLength * 0.5f);
+            Vector3 backCapWorld  = segPos3D[n - 1] - segTangent3D[n - 1] * (segmentLength * 0.5f);
+            scratchVerts.Add(transform.InverseTransformPoint(frontCapWorld));
+            scratchUVs.Add(new Vector2(0f, 0.5f));
+            scratchVerts.Add(transform.InverseTransformPoint(backCapWorld));
+            scratchUVs.Add(new Vector2(1f, 0.5f));
 
-            // Emit one quad per consecutive pair. segIdx picks the on-plane flag driving
-            // the tint for that quad; clamped so head/tail caps inherit the end segments.
-            // Winding matches the prior EmitRibbonRun (verified +Z normals under URP Lit).
-            for (int k = 0; k < totalPairs - 1; k++)
+            // Body bands between ring i and ring i+1. Two tris per radial slot, wrapped.
+            for (int i = 0; i < n - 1; i++)
             {
-                int segIdx = Mathf.Clamp(k, 0, n - 1);
-                var tris = segOnPlane[segIdx] ? scratchTrisOn : scratchTrisOff;
+                var tris = segOnPlane[i] ? scratchTrisOn : scratchTrisOff;
+                int ringA = i * R;
+                int ringB = (i + 1) * R;
+                for (int r = 0; r < R; r++)
+                {
+                    int rNext = (r + 1) % R;
+                    int a0 = ringA + r;
+                    int a1 = ringA + rNext;
+                    int b0 = ringB + r;
+                    int b1 = ringB + rNext;
+                    // Outward-facing winding (verified against existing +Z ribbon convention).
+                    tris.Add(a0); tris.Add(b1); tris.Add(b0);
+                    tris.Add(a0); tris.Add(a1); tris.Add(b1);
+                }
+            }
 
-                int aL = k * 2;
-                int aR = k * 2 + 1;
-                int bL = (k + 1) * 2;
-                int bR = (k + 1) * 2 + 1;
-                tris.Add(aL); tris.Add(bR); tris.Add(bL);
-                tris.Add(aL); tris.Add(aR); tris.Add(bR);
+            // Front cap fan — submesh keyed by head segment's on-plane flag.
+            {
+                var tris = segOnPlane[0] ? scratchTrisOn : scratchTrisOff;
+                for (int r = 0; r < R; r++)
+                {
+                    int rNext = (r + 1) % R;
+                    // Wind so the cap faces outward (opposite of a body band from the front side).
+                    tris.Add(frontCapIdx); tris.Add(r); tris.Add(rNext);
+                }
+            }
+
+            // Back cap fan — submesh keyed by tail segment's on-plane flag.
+            {
+                var tris = segOnPlane[n - 1] ? scratchTrisOn : scratchTrisOff;
+                int tailRing = (n - 1) * R;
+                for (int r = 0; r < R; r++)
+                {
+                    int rNext = (r + 1) % R;
+                    tris.Add(backCapIdx); tris.Add(tailRing + rNext); tris.Add(tailRing + r);
+                }
             }
 
             bodyMesh.Clear();
@@ -539,16 +676,6 @@ namespace SlimeJumping.Platforms
                 bodyMesh.RecalculateNormals();
                 bodyMesh.RecalculateBounds();
             }
-        }
-
-        void AddRibbonPair(Vector2 centerLocal, Vector2 perp, float halfW, float u)
-        {
-            Vector2 left  = centerLocal + perp * halfW;
-            Vector2 right = centerLocal - perp * halfW;
-            scratchVerts.Add(new Vector3(left.x,  left.y,  0f));
-            scratchVerts.Add(new Vector3(right.x, right.y, 0f));
-            scratchUVs.Add(new Vector2(u, 1f));
-            scratchUVs.Add(new Vector2(u, 0f));
         }
 
         void ApplyBodyMeshColor()
@@ -574,12 +701,12 @@ namespace SlimeJumping.Platforms
             if (n < 1) { poly.pathCount = 0; return; }
 
             scratchPaths.Clear();
-            float halfW = segmentWidth * 0.5f;
 
             // Walk on-plane runs same as the mesh, emitting a single multi-vertex polygon per
             // run. Caps extend half a segmentLength past head (front) and tail (back), so the
             // collider covers the full footprint of the visual — no more "slime falls off the
-            // front of the head" gap.
+            // front of the head" gap. Per-anchor half-width is read from segHalfW so the
+            // collider tapers along with the visual tube.
             int runStart = -1;
             for (int i = 0; i <= n; i++)
             {
@@ -588,7 +715,7 @@ namespace SlimeJumping.Platforms
                 if (onPlane && runStart < 0) runStart = i;
                 else if ((!onPlane || end) && runStart >= 0)
                 {
-                    EmitColliderRun(runStart, i - 1, halfW);
+                    EmitColliderRun(runStart, i - 1);
                     runStart = -1;
                 }
             }
@@ -597,7 +724,7 @@ namespace SlimeJumping.Platforms
             for (int k = 0; k < scratchPaths.Count; k++) poly.SetPath(k, scratchPaths[k]);
         }
 
-        void EmitColliderRun(int s, int e, float halfW)
+        void EmitColliderRun(int s, int e)
         {
             int count = e - s + 1;
             if (count < 1) return;
@@ -609,6 +736,7 @@ namespace SlimeJumping.Platforms
             int anchorCount = count + (capFront ? 1 : 0) + (capBack ? 1 : 0);
             Vector2[] anchors = new Vector2[anchorCount];
             Vector2[] perps   = new Vector2[anchorCount];
+            float[]   halfWs  = new float[anchorCount];
 
             int slot = 0;
             if (capFront)
@@ -616,12 +744,14 @@ namespace SlimeJumping.Platforms
                 Vector2 tan0 = new Vector2(segPerp[s].y, -segPerp[s].x);
                 anchors[slot] = segXY[s] + tan0 * (segmentLength * 0.5f);
                 perps[slot] = segPerp[s];
+                halfWs[slot] = segHalfW[s];
                 slot++;
             }
             for (int i = s; i <= e; i++)
             {
                 anchors[slot] = segXY[i];
                 perps[slot] = segPerp[i];
+                halfWs[slot] = segHalfW[i];
                 slot++;
             }
             if (capBack)
@@ -629,15 +759,19 @@ namespace SlimeJumping.Platforms
                 Vector2 tanN = new Vector2(segPerp[e].y, -segPerp[e].x);
                 anchors[slot] = segXY[e] - tanN * (segmentLength * 0.5f);
                 perps[slot] = segPerp[e];
+                halfWs[slot] = segHalfW[e];
                 slot++;
             }
 
             // Outline: walk +perp side forward, then -perp side backward. 2*anchorCount points.
             Vector2[] path = new Vector2[anchorCount * 2];
             for (int k = 0; k < anchorCount; k++)
-                path[k] = anchors[k] + perps[k] * halfW;
+                path[k] = anchors[k] + perps[k] * halfWs[k];
             for (int k = 0; k < anchorCount; k++)
-                path[anchorCount + k] = anchors[anchorCount - 1 - k] - perps[anchorCount - 1 - k] * halfW;
+            {
+                int idx = anchorCount - 1 - k;
+                path[anchorCount + k] = anchors[idx] - perps[idx] * halfWs[idx];
+            }
             scratchPaths.Add(path);
         }
 
