@@ -25,12 +25,10 @@ SlimeJumping_v2 is a **2.5D platformer** built in **Unity 6** (6000.3.11f1) wher
 
 Use `unity-cli` command to interact with the Unity Editor.
 Available commands: `list`, `exec`, `run_tests`, `console`, `screenshot`, `refresh_unity`, `manage_editor`, `execute_menu_item`, `reserialize_assets`.
-Don't use Comment when using `exec` commands. It returns error.
-`unity-cli exec` requires a return statement (e.g. `return 1;`). Expressions like `Debug.Log(...)` alone will fail.
 
-If a newly-written `.cs` file fails to compile with "type could not be found" AND `CompilationPipeline.GetAssemblies()` doesn't list it under Assembly-CSharp, Unity's AssetDatabase has a stuck import entry — `refresh_unity` / `AssetDatabase.Refresh` / `ImportAsset(ForceUpdate)` won't fix it. Delete both `.cs` and `.cs.meta`, refresh, then rewrite the file to force a fresh import.
+- Before using `exec`, check if another `unity-cli` command can query/modify/add what you need.
+- After changes, only check the error log. Do not run the game and take a screenshot.
 
-**NEVER block Unity's main thread inside `unity-cli exec`.** Code passed to `exec` runs on the Unity main thread, so `Thread.Sleep`, spin-waits, or `while (EditorApplication.isCompiling) { ... }` loops will freeze Unity — the editor can't make compile/asset-import progress while your loop holds the thread, HTTP responses stop, and the only recovery is force-killing Unity (losing unsaved scene/editor state). If you need to wait for compilation or asset import, send a fire-and-forget `refresh_unity` (or the trigger call) and return immediately; then issue a **separate** `exec` later to check `EditorApplication.isCompiling` / read console logs. One exec call = one non-blocking snapshot.
 
 
 ### Coding Convention

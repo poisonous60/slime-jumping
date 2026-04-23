@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: BackgroundBlurConfig
   m_EditorClassIdentifier: 
   mode: 1
-  radius: 10
-  iteration: 1
+  radius: 15
+  iteration: 0
   strength: 200
   referenceResolution: {x: 1920, y: 1080}
   matchWidthOrHeight: 0

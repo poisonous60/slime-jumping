@@ -12,8 +12,19 @@ namespace SlimeJumping.Mechanisms
         [Header("Visual Toggles")]
         [Tooltip("Draw the filled water body mesh.")]
         [SerializeField] bool showMesh = true;
-        [Tooltip("Draw the outline line. Disable for a fill-only look.")]
+        [Tooltip("Draw the runtime LineRenderer outline. Disable for a fill-only look.")]
         [SerializeField] bool showOutline = true;
+        [Tooltip("Draw the scene-view authoring overlay (blue edges, yellow drag handles, " +
+                 "index labels, OnDrawGizmosSelected gizmos). Disable on mirror/decorative " +
+                 "zones whose points are driven by another system and shouldn't be edited.")]
+        [SerializeField] bool showAuthoringGizmos = true;
+
+        /// <summary>
+        /// When false, the custom editor suppresses its scene-view handles and this
+        /// component suppresses OnDrawGizmosSelected drawing. Runtime rendering
+        /// is unaffected.
+        /// </summary>
+        public bool ShowAuthoringGizmos => showAuthoringGizmos;
 
         Mesh         mesh;
         MeshRenderer cachedMeshRenderer;

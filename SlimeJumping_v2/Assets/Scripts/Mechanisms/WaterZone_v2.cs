@@ -122,6 +122,7 @@ namespace SlimeJumping.Mechanisms
 
         void OnDrawGizmosSelected()
         {
+            if (!ShowAuthoringGizmos) return;
             if (restPointsLocal == null || restPointsLocal.Count < 2) return;
 
             // Outline (rest shape) in world space.

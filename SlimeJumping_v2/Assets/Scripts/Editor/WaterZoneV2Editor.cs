@@ -73,6 +73,7 @@ namespace SlimeJumping.Editor
         void OnSceneGUI()
         {
             var wz = (WaterZone_v2)target;
+            if (!wz.ShowAuthoringGizmos) return;
             Transform t = wz.transform;
             int n = wz.OutlinePointCount;
             if (n == 0) return;

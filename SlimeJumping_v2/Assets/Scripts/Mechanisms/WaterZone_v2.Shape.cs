@@ -154,6 +154,16 @@ namespace SlimeJumping.Mechanisms
         public void InsertOutlinePointLocal(int index, Vector2 v) => restPointsLocal.Insert(index, v);
         public void RemoveOutlinePointAt(int i) => restPointsLocal.RemoveAt(i);
 
+        /// Bulk-replace the outline. Caller is responsible for calling
+        /// RebuildRuntime() afterwards if Play-mode state needs refreshing.
+        public void ReplaceOutlinePoints(IList<Vector2> pts)
+        {
+            if (restPointsLocal == null) restPointsLocal = new List<Vector2>();
+            restPointsLocal.Clear();
+            if (pts == null) return;
+            for (int i = 0; i < pts.Count; i++) restPointsLocal.Add(pts[i]);
+        }
+
         /// <summary>
         /// Copies the rest outline into the attached PolygonCollider2D (if any).
         /// The trigger zone follows the static rest shape, not the animated surface —
