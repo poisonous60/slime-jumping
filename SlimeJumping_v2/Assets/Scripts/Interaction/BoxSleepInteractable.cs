@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
 using SlimeJumping.Controller;
 using SlimeJumping.InputHandling;
 using SlimeJumping.Interfaces;
@@ -97,6 +99,34 @@ namespace SlimeJumping.Interaction
         {
             if (zEmitter != null && boundAnimator != null)
                 zEmitter.IsEmitting = boundAnimator.IsSleeping;
+
+            // Any-key wake: only while actually Sleeping, so the E press that
+            // initiated the sit-down doesn't instantly wake during Settling.
+            if (boundAnimator != null && boundAnimator.IsSleeping && AnyButtonPressedThisFrame())
+                boundAnimator.RequestWake();
+        }
+
+        private static bool AnyButtonPressedThisFrame()
+        {
+            var kb = Keyboard.current;
+            if (kb != null && kb.anyKey.wasPressedThisFrame) return true;
+
+            var mouse = Mouse.current;
+            if (mouse != null && (
+                mouse.leftButton.wasPressedThisFrame ||
+                mouse.rightButton.wasPressedThisFrame ||
+                mouse.middleButton.wasPressedThisFrame)) return true;
+
+            var pad = Gamepad.current;
+            if (pad != null)
+            {
+                foreach (var ctrl in pad.allControls)
+                {
+                    if (ctrl is ButtonControl btn && btn.wasPressedThisFrame)
+                        return true;
+                }
+            }
+            return false;
         }
 
         public void ExternalFixedUpdate(SlimeController slime, float dt)

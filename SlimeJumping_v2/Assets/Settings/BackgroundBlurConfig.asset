@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: BackgroundBlurConfig
   m_EditorClassIdentifier: 
   mode: 1
-  radius: 15
+  radius: 6
   iteration: 0
   strength: 200
   referenceResolution: {x: 1920, y: 1080}

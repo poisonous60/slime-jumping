@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5984567f4d471a54b900532ebcab2223, type: 3}
+  m_Name: tutorial_memo
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Interaction.MemoProfile
+  layoutPrefab: {fileID: 5910012356729962439, guid: 2eba81e06bf1d7147a1bfd5773c1753b, type: 3}
+  backgroundSprite: {fileID: 0}
+  backgroundTint: {r: 1, g: 1, b: 1, a: 1}
+  titleText: 
+  bodyText: 
+  illustration: {fileID: 21300000, guid: c4f5027d296bdf54b888ff022bb39bf7, type: 3}
+  fadeInDuration: 0.4
+  fadeOutDuration: 0.3
+  followStrength: 0.1
+  maxFollowOffset: 0.4
+  followSmoothing: 8

@@ -2,6 +2,7 @@ Shader "SlimeJumping/UI/IrisMask"
 {
     Properties
     {
+        _MainTex ("Sprite Texture (unused)", 2D) = "white" {}
         _Color  ("Color", Color)          = (0, 0, 0, 1)
         _Center ("Center (UV)", Vector)   = (0.5, 0.5, 0, 0)
         _Radius ("Radius (UV)", Float)    = 0.0
