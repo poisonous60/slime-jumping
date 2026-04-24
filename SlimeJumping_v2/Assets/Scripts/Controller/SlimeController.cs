@@ -409,11 +409,13 @@ namespace SlimeJumping.Controller
                     break;
             }
 
-            // Rope rider contact — only while attached and on a rope surface.
-            // Fires after state dispatch so position/velocity are final for this frame.
+            // Rope rider contact — fires while attached OR charging so the rope keeps
+            // sagging under slime weight during charge. The stored displacement is
+            // what Launch() reads via GetMaxSagDistance() to add rebound speed.
             // Rope consumes the buffer on its next FixedUpdate (execution order -100),
             // giving the designed 1-frame lag.
-            if (currentRope != null && currentState == SlimeState.Attached)
+            if (currentRope != null
+                && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
                 currentRope.ReportRiderContact(surfaceCollider, rb.position, rb.mass, velocity);
 
             // External forces (wind, conveyor, etc.)
@@ -448,24 +450,17 @@ namespace SlimeJumping.Controller
             surfaceMod = tag != null ? tag.GetModifiers() : SurfaceModifiers.Default;
         }
 
-        // Rope reference cache. Called on surface change; handles freeze handover when
-        // the slime migrates between ropes mid-charge.
+        // Rope reference cache. Called on surface change.
         private void UpdateRopeReference(Collider2D col)
         {
             Rope newRope = col != null ? col.GetComponentInParent<Rope>() : null;
             if (newRope == currentRope) return;
-
-            // Unfreeze the old rope if we're leaving it mid-charge.
-            if (currentRope != null && currentState == SlimeState.Charging)
-                currentRope.SetFrozen(false);
 
             currentRope = newRope;
 
             if (currentRope != null)
             {
                 currentRope.NotifyFirstAttach(rb.position);
-                if (currentState == SlimeState.Charging)
-                    currentRope.SetFrozen(true);
             }
         }
 
@@ -549,15 +544,6 @@ namespace SlimeJumping.Controller
         private void ChangeState(SlimeState newState, bool intentional = false)
         {
             if (currentState == newState) return;
-
-            // Rope freeze transitions: hold rope sag during Charging, release on exit.
-            if (currentRope != null)
-            {
-                if (currentState == SlimeState.Charging && newState != SlimeState.Charging)
-                    currentRope.SetFrozen(false);
-                else if (currentState != SlimeState.Charging && newState == SlimeState.Charging)
-                    currentRope.SetFrozen(true);
-            }
 
             if (intentional)
                 attachToggleCount = 0;

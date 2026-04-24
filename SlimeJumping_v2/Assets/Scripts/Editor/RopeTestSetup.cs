@@ -24,6 +24,9 @@ namespace SlimeJumping.Editor
             public float maxTensionExit;
             public int colliderSubsample;
             public int visualSubdivisions;
+            public float reboundSpeedPerMeter;
+            public float previewRiderMass;
+            public int previewSteps;
         }
 
         static RopeTuning Telephone() => new RopeTuning
@@ -41,6 +44,9 @@ namespace SlimeJumping.Editor
             maxTensionExit = 1.10f,
             colliderSubsample = 2,
             visualSubdivisions = 1,
+            reboundSpeedPerMeter = 0f,
+            previewRiderMass = 1f,
+            previewSteps = 120,
         };
 
         static RopeTuning Elastic() => new RopeTuning
@@ -58,6 +64,32 @@ namespace SlimeJumping.Editor
             maxTensionExit = 1.10f,
             colliderSubsample = 2,
             visualSubdivisions = 3,
+            reboundSpeedPerMeter = 0f,
+            previewRiderMass = 1f,
+            previewSteps = 120,
+        };
+
+        // v2 preset — rubbery hammock-like rope that visibly sags under slime weight
+        // during Charging; release converts the sag into a launch-direction speed bonus.
+        // constraintIterations stays under the elasticFactor>0 + iter>5 warning threshold.
+        static RopeTuning RubberRebound(float reboundSpeedPerMeter) => new RopeTuning
+        {
+            segmentCount = 15,
+            restLengthMul = 1.08f,
+            constraintIterations = 3,
+            damping = 0.98f,
+            edgeRadius = 0f,
+            nodeGravity = 0.3f,
+            elasticFactor = 0.3f,
+            riderInfluenceSpacing = 4f,
+            riderForceMul = 50f,
+            maxTensionEnter = 1.25f,
+            maxTensionExit = 1.10f,
+            colliderSubsample = 2,
+            visualSubdivisions = 3,
+            reboundSpeedPerMeter = reboundSpeedPerMeter,
+            previewRiderMass = 1f,
+            previewSteps = 120,
         };
 
         [MenuItem("SlimeJumping/Mechanism/Setup Rope Test (Stage 1)")]
@@ -115,6 +147,86 @@ namespace SlimeJumping.Editor
                 "  Rope_Swinging   — dynamic anchor follows pendulum (stage 2c)\n" +
                 "  Rope_Tunnel     — drop onto from DropPlatform while shaking with arrows (stage 2d)\n" +
                 "Each Rope's parameters are on the Body GameObject's Rope component — tune in inspector.");
+        }
+
+        [MenuItem("SlimeJumping/Mechanism/Setup Rope Test V2 (Rebound)")]
+        public static void SetupV2Rebound()
+        {
+            var root = new GameObject("RopeTest_V2_Rebound");
+            Undo.RegisterCreatedObjectUndo(root, "Create Rope Test V2 Rebound");
+
+            // Shared floor + spawn pads under each rope.
+            CreatePlatform("Floor", root.transform,
+                new Vector3(0f, -6f, 0f), new Vector3(60f, 1f, 1f));
+            CreatePlatform("SpawnPad_NoRebound", root.transform,
+                new Vector3(-16f, -2f, 0f), new Vector3(3f, 1f, 1f));
+            CreatePlatform("SpawnPad_Medium", root.transform,
+                new Vector3(0f, -2f, 0f), new Vector3(3f, 1f, 1f));
+            CreatePlatform("SpawnPad_Strong", root.transform,
+                new Vector3(16f, -2f, 0f), new Vector3(3f, 1f, 1f));
+
+            // Three ropes, identical shape/tuning except reboundSpeedPerMeter.
+            // Same anchor heights → same initial sag under slime weight → A/B/C
+            // comparison isolates the rebound multiplier only.
+            const float anchorY = 3f;
+            const float halfSpan = 3.5f;
+
+            CreateRope(root.transform, "Rope_NoRebound",
+                new Vector3(-16f - halfSpan, anchorY, 0f),
+                new Vector3(-16f + halfSpan, anchorY, 0f),
+                RubberRebound(0f), withWindDebug: false);
+
+            CreateRope(root.transform, "Rope_Medium(×6)",
+                new Vector3(-halfSpan, anchorY, 0f),
+                new Vector3(halfSpan, anchorY, 0f),
+                RubberRebound(6f), withWindDebug: false);
+
+            CreateRope(root.transform, "Rope_Strong(×14)",
+                new Vector3(16f - halfSpan, anchorY, 0f),
+                new Vector3(16f + halfSpan, anchorY, 0f),
+                RubberRebound(14f), withWindDebug: false);
+
+            // Height markers above the ropes for visual launch-height gauge.
+            // Thin wide cubes, no collider. y relative to rope anchor (3m).
+            CreateHeightMarkers(root.transform, anchorY);
+
+            Finish(root,
+                "V2 Rebound test:\n" +
+                "  Rope_NoRebound     — reboundSpeedPerMeter = 0 (baseline, no bonus)\n" +
+                "  Rope_Medium(×6)    — reboundSpeedPerMeter = 6\n" +
+                "  Rope_Strong(×14)   — reboundSpeedPerMeter = 14\n" +
+                "\n" +
+                "How to evaluate:\n" +
+                "  1. Select any Rope_*/Body → right-click Rope component → 'Preview Max Sag'.\n" +
+                "     Magenta gizmo shows the stretched shape under previewRiderMass.\n" +
+                "  2. Play mode: attach slime to rope midpoint, charge, release straight up.\n" +
+                "     Compare peak heights against the gray marker lines (y = +4,+6,+8,+10,+12 above rope).\n" +
+                "  3. Tune reboundSpeedPerMeter on each Body to taste.\n" +
+                "\n" +
+                "All three ropes share identical sag physics — only the rebound multiplier differs.");
+        }
+
+        // Thin unlit horizontal bars (no collider) at set heights above the rope row,
+        // so launch-peak heights can be eyeballed in play mode.
+        static void CreateHeightMarkers(Transform parent, float baseY)
+        {
+            var group = new GameObject("HeightMarkers");
+            group.transform.SetParent(parent, false);
+
+            float[] offsets = { 4f, 6f, 8f, 10f, 12f };
+            foreach (float dy in offsets)
+            {
+                var bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                bar.name = $"Mark_+{dy:F0}m";
+                bar.transform.SetParent(group.transform, false);
+                bar.transform.position = new Vector3(0f, baseY + dy, 0f);
+                bar.transform.localScale = new Vector3(50f, 0.03f, 1f);
+                Object.DestroyImmediate(bar.GetComponent<BoxCollider>());
+                // Gray dim, lighter every other step so the eye can count.
+                float shade = 0.3f + 0.08f * (dy / 2f - 1f);
+                bar.GetComponent<MeshRenderer>().sharedMaterial =
+                    MakeMaterial(new Color(shade, shade, shade));
+            }
         }
 
         // ===== Rope factory =====
@@ -221,6 +333,9 @@ namespace SlimeJumping.Editor
             so.FindProperty("maxTensionExit").floatValue = tuning.maxTensionExit;
             so.FindProperty("colliderSubsample").intValue = tuning.colliderSubsample;
             so.FindProperty("visualSubdivisions").intValue = tuning.visualSubdivisions;
+            so.FindProperty("reboundSpeedPerMeter").floatValue = tuning.reboundSpeedPerMeter;
+            so.FindProperty("previewRiderMass").floatValue = tuning.previewRiderMass;
+            so.FindProperty("previewSteps").intValue = tuning.previewSteps;
             so.ApplyModifiedProperties();
 
             rope.Rebuild();

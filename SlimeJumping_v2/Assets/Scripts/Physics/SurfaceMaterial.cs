@@ -37,6 +37,12 @@ namespace SlimeJumping.Physics
         [Tooltip("Speed multiplier when attaching to surface. 1 = no dampen, 0.5 = half speed")]
         public AngleScaledValue wallAttachSpeedDampen = AngleScaledValue.Constant(1f);
 
+        [Header("Hop")]
+        [Tooltip("Tangent velocity retained on Hop. 1 = full preserve (default), 0 = wipe tangent (W acts as pure kill-brake). Ice → keep 1. Sticky mud → 0.")]
+        public AngleScaledValue hopVelocityRetention = AngleScaledValue.Constant(1f);
+        [Tooltip("Opposing-input Hop behavior. ON (default) = zero existing tangent and build bonus in input direction same frame (arcade-responsive, good for grass/mud). OFF = decelerate toward 0 by hopMomentumBonus, never flip in one hop (inertial / ice).")]
+        public bool hopInstantFlip = true;
+
         public SurfaceModifiers ToModifiers() => new SurfaceModifiers
         {
             crawlSpeed = crawlSpeedMultiplier,
@@ -51,7 +57,9 @@ namespace SlimeJumping.Physics
             stickDuration = stickDurationMultiplier,
             impactRedirect = impactRedirectRatio,
             wallAttachDampen = wallAttachSpeedDampen,
-            groundDashScale = groundDashScale
+            groundDashScale = groundDashScale,
+            hopVelocityRetention = hopVelocityRetention,
+            hopInstantFlip = hopInstantFlip
         };
     }
 }

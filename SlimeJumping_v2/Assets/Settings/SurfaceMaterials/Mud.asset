@@ -77,3 +77,9 @@ MonoBehaviour:
     fullValue: 0
     angleMin: 0
     angleMax: 90
+  hopVelocityRetention:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  hopInstantFlip: 1

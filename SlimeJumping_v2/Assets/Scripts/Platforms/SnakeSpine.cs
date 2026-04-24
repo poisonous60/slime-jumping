@@ -22,8 +22,20 @@ namespace SlimeJumping.Platforms
         [SerializeField] MonoBehaviour pathProviderBehaviour;
 
         [Header("Segments")]
-        [Tooltip("Head visual — swap the prefab later for a face-decorated model; SnakeSpine only writes transform.")]
+        [Tooltip("Head visual — the transform that SnakeSpine writes position/rotation to each frame. Leave empty if you assign Head Prefab below; it will be instantiated at runtime and the root transform auto-assigned here.")]
         [SerializeField] Transform headVisual;
+        [Tooltip("Optional prefab. If Head Visual is empty, this is instantiated as a child of the snake at Awake and assigned as the head. Author the prefab with its forward axis along +X so the 2D yaw rotation lines it up with the motion direction, and with the visible face on the +Z side (toward the camera).")]
+        [SerializeField] GameObject headPrefab;
+        [Tooltip("If on, SnakeSpine forces headVisual.localScale to (segmentLength, segmentWidth, segmentWidth) every frame — useful for the placeholder cube. Turn off when headVisual is a sculpted/composite head authored at its own final size, otherwise nested child offsets (eyes, mouth) will smear.")]
+        [SerializeField] bool overrideHeadScale = true;
+        [Tooltip("Optional renderer to receive the on-plane / off-plane tint via MaterialPropertyBlock. Use this to target only the head's skin material when the head has multiple child renderers (e.g., eyes and mouth that should keep their own color). If left empty, we fall back to a MeshRenderer on headVisual's root, if any.")]
+        [SerializeField] Renderer headSkinRenderer;
+        [Tooltip("Local Euler offset applied to headVisual BEFORE the motion yaw, letting you realign a prefab whose forward axis isn't +X. " +
+                 "Final rotation = yaw(Z) * Euler(offset). Examples — prefab faces +Y: (0,0,-90). Prefab faces -X: (0,0,180). " +
+                 "3D prefab whose face points +Z (out of the screen): (0,-90,0) brings the face onto +X. Tweak until the eyes face the motion direction.")]
+        [SerializeField] Vector3 headRotationOffsetEuler;
+        [Tooltip("Point on the head (in head-local space AFTER Head Rotation Offset is applied; X=forward along motion, Y=side, Z=toward camera) where the body tube meets the head. The head visual is positioned so this point lands exactly on the path arc — i.e., the body's front ring is always flush with this spot on the head, closing the neck gap. Default (0,0,0) sits the head pivot on the path. Example: placeholder cube extends ±0.5 in local X, so (-0.5, 0, 0) joins the body at the head's back face. Read every FixedUpdate — tweak in play mode to find the right spot live.")]
+        [SerializeField] Vector3 headBodyJointLocal;
         [Tooltip("Number of body segments behind the head. Body is rendered as a single dynamic ribbon mesh sweeping this many spine samples; changing this value resizes the ribbon live.")]
         [Min(1)] [SerializeField] int bodySegmentCount = 8;
 
@@ -38,6 +50,8 @@ namespace SlimeJumping.Platforms
         [SerializeField] AnimationCurve radiusProfile = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(1f, 0.25f));
         [Tooltip("Cross-section sides. 8 reads as round at normal camera distances.")]
         [Range(3, 24)] [SerializeField] int radialSegments = 8;
+        [Tooltip("Visual rings emitted between adjacent spine anchors. 1 = one ring per spine segment (sharp folds at bends). 4 is a good default — Catmull-Rom interpolates the spine so the tube bends smoothly without changing the collider or simulation (collider stays per-segment).")]
+        [Range(1, 8)] [SerializeField] int visualRingsPerSegment = 4;
 
         [Header("Colors")]
         [Tooltip("Head visual tint when the head's collider is on the Z=0 plane (collision active).")]
@@ -98,15 +112,20 @@ namespace SlimeJumping.Platforms
         Vector2[] segPerp;
         bool[]    segOnPlane;
 
-        // 3D tube frames (world-space). Computed per-frame via parallel transport so adjacent
-        // rings share a twist-free basis and the radial UV seam stays coherent along the body.
-        Vector3[] segTangent3D;
-        Vector3[] segNormal3D;
-        Vector3[] segBinormal3D;
-
-        // Per-segment half-width / radius (meters). Drives both the tube ring radius and the
-        // polygon collider's perp extrusion so collider and visual taper together along the body.
+        // Per-segment half-width / radius (meters). Drives the polygon collider's perp extrusion
+        // along the coarse spine; the visual tube samples its own (interpolated) radii from these.
         float[] segHalfW;
+
+        // Fine sample arrays — (bodySegmentCount) * visualRingsPerSegment + 1 entries, rebuilt
+        // each frame inside RebuildBodyMesh. Positions come from Catmull-Rom interpolation of
+        // segPos3D; TNB frames are parallel-transported along the fine tangents so adjacent
+        // rings share a twist-free basis (smooth tube even at sharp bends).
+        Vector3[] fineWorldPos;
+        Vector3[] fineTangent;
+        Vector3[] fineNormal;
+        Vector3[] fineBinormal;
+        float[]   fineRadius;
+        int[]     fineSpineBand; // which spine band (i..i+1) this fine sample starts in — used for on/off-plane submesh routing
 
         // Scratch for poly.SetPath calls — reused per frame.
         readonly List<Vector2[]> scratchPaths = new List<Vector2[]>();
@@ -140,7 +159,23 @@ namespace SlimeJumping.Platforms
 
             ResolvePath();
             AllocateSegmentArrays();
+            EnsureHeadVisual();
             EnsureBodyMesh();
+        }
+
+        void EnsureHeadVisual()
+        {
+            // Prefab path: if nothing is wired to headVisual yet, instantiate the prefab as a
+            // child of the snake root and auto-assign. We don't touch headPrefab or overrideHeadScale
+            // here — the user controls those via the inspector. A prefab user will typically also
+            // untick overrideHeadScale so their authored size is preserved.
+            if (headVisual != null) return;
+            if (headPrefab == null) return;
+            var go = Instantiate(headPrefab, transform);
+            go.name = headPrefab.name;
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            headVisual = go.transform;
         }
 
         void Start()
@@ -232,15 +267,22 @@ namespace SlimeJumping.Platforms
                 segPerp = new Vector2[n];
                 segOnPlane = new bool[n];
             }
-            if (segTangent3D == null || segTangent3D.Length != n)
-            {
-                segTangent3D  = new Vector3[n];
-                segNormal3D   = new Vector3[n];
-                segBinormal3D = new Vector3[n];
-            }
             if (segHalfW == null || segHalfW.Length != n)
             {
                 segHalfW = new float[n];
+            }
+        }
+
+        void EnsureFineArrays(int fineCount)
+        {
+            if (fineWorldPos == null || fineWorldPos.Length != fineCount)
+            {
+                fineWorldPos  = new Vector3[fineCount];
+                fineTangent   = new Vector3[fineCount];
+                fineNormal    = new Vector3[fineCount];
+                fineBinormal  = new Vector3[fineCount];
+                fineRadius    = new float[fineCount];
+                fineSpineBand = new int[fineCount];
             }
         }
 
@@ -291,7 +333,7 @@ namespace SlimeJumping.Platforms
             }
 
             ComputeSegmentFrames();
-            ComputeSegmentFrames3D();
+            ComputeSegmentHalfWidths();
             WriteVisuals();
             RebuildBodyMesh();
             ApplyBodyMeshColor();
@@ -344,7 +386,7 @@ namespace SlimeJumping.Platforms
             }
 
             ComputeSegmentFrames();
-            ComputeSegmentFrames3D();
+            ComputeSegmentHalfWidths();
             WriteVisuals();
             RebuildBodyMesh();
             ApplyBodyMeshColor();
@@ -471,120 +513,88 @@ namespace SlimeJumping.Platforms
         }
 
         /// <summary>
-        /// Builds a twist-free orthonormal frame (tangent, normal, binormal) in world space for
-        /// each spine segment. Tangent uses a central-difference in 3D so it honors Z excursions;
-        /// normal/binormal are parallel-transported from the head frame so rings at adjacent
-        /// segments share a coherent radial basis (no flip at sharp bends).
-        /// Called after ComputeSegmentFrames (which produces the 2D perps the collider still needs).
+        /// Per-segment collider half-width, sampled from radiusProfile at i/(N-1). Driven here
+        /// (instead of inside the mesh builder) because the polygon collider needs the same
+        /// values every frame regardless of whether the mesh rebuild runs.
         /// </summary>
-        void ComputeSegmentFrames3D()
+        void ComputeSegmentHalfWidths()
         {
             int n = SegmentCount;
-            if (n < 1) return;
-
             for (int i = 0; i < n; i++)
             {
-                Vector3 t;
-                if (i == 0)
-                {
-                    t = lastHeadTangent;
-                }
-                else if (i == n - 1)
-                {
-                    // Points head-ward in the 2D code; flip so 3D tangent stays "forward along motion".
-                    t = segPos3D[i - 1] - segPos3D[i];
-                }
-                else
-                {
-                    // Central difference, head-ward convention matches the 2D perp derivation.
-                    t = segPos3D[i - 1] - segPos3D[i + 1];
-                }
-                if (t.sqrMagnitude < 1e-10f) t = lastHeadTangent;
-                if (t.sqrMagnitude < 1e-10f) t = Vector3.right;
-                segTangent3D[i] = t.normalized;
-
                 float profileT = n > 1 ? i / (float)(n - 1) : 0f;
                 segHalfW[i] = Mathf.Max(0.001f, bodyRadius * radiusProfile.Evaluate(profileT));
             }
+        }
 
-            // Initial frame — pick a reference up that isn't parallel to the head tangent.
-            Vector3 refUp = Vector3.up;
-            if (Mathf.Abs(Vector3.Dot(segTangent3D[0], refUp)) > 0.99f) refUp = Vector3.forward;
-            Vector3 b0 = Vector3.Cross(segTangent3D[0], refUp);
-            if (b0.sqrMagnitude < 1e-10f) b0 = Vector3.Cross(segTangent3D[0], Vector3.forward);
-            b0.Normalize();
-            Vector3 n0 = Vector3.Cross(b0, segTangent3D[0]).normalized;
-            segBinormal3D[0] = b0;
-            segNormal3D[0]   = n0;
-
-            // Rotation-minimizing parallel transport.
-            for (int i = 1; i < n; i++)
-            {
-                Vector3 tPrev = segTangent3D[i - 1];
-                Vector3 tCur  = segTangent3D[i];
-                Vector3 axis  = Vector3.Cross(tPrev, tCur);
-                float axisSq = axis.sqrMagnitude;
-                Vector3 nPrev = segNormal3D[i - 1];
-                Vector3 bPrev = segBinormal3D[i - 1];
-                if (axisSq < 1e-8f)
-                {
-                    segNormal3D[i]   = nPrev;
-                    segBinormal3D[i] = bPrev;
-                }
-                else
-                {
-                    float cosA = Mathf.Clamp(Vector3.Dot(tPrev, tCur), -1f, 1f);
-                    float angDeg = Mathf.Acos(cosA) * Mathf.Rad2Deg;
-                    Quaternion q = Quaternion.AngleAxis(angDeg, axis / Mathf.Sqrt(axisSq));
-                    segNormal3D[i]   = (q * nPrev).normalized;
-                    segBinormal3D[i] = (q * bPrev).normalized;
-                }
-            }
+        // Catmull-Rom (tension 0.5). Same form used by WaypointSnakePath and scores of other
+        // spline utilities; pasted here to avoid adding a cross-class dependency for four lines.
+        static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+        {
+            float t2 = t * t;
+            float t3 = t2 * t;
+            return 0.5f * (
+                (2f * p1) +
+                (-p0 + p2) * t +
+                (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+                (-p0 + 3f * p1 - 3f * p2 + p3) * t3
+            );
         }
 
         void WriteVisuals()
         {
             int n = SegmentCount;
-            if (headVisual != null && n >= 1)
-            {
-                headVisual.position = segPos3D[0];
-                float rotDeg = Mathf.Atan2(lastHeadTangent.y, lastHeadTangent.x) * Mathf.Rad2Deg;
-                headVisual.rotation = Quaternion.Euler(0f, 0f, rotDeg);
+            if (headVisual == null || n < 1) return;
+
+            float rotDeg = Mathf.Atan2(lastHeadTangent.y, lastHeadTangent.x) * Mathf.Rad2Deg;
+            // Offset is pre-applied in local space (right-multiply) so the prefab's authored
+            // forward is first rotated onto +X, then the motion yaw turns +X toward the tangent.
+            headVisual.rotation = Quaternion.Euler(0f, 0f, rotDeg) * Quaternion.Euler(headRotationOffsetEuler);
+            // Place the head so headBodyJointLocal (in head-local space) lands exactly on the
+            // path sample — this is where the body tube's front ring already sits, so choosing
+            // a joint point at the back of the head closes the neck gap automatically.
+            headVisual.position = segPos3D[0] - headVisual.rotation * headBodyJointLocal;
+            if (overrideHeadScale)
                 headVisual.localScale = new Vector3(segmentLength, segmentWidth, segmentWidth);
-                bool headOn = segOnPlane != null && n >= 1 ? segOnPlane[0] : true;
-                ApplyVisualColor(headVisual, headOn ? headColor : offPlaneColor);
-            }
+
+            bool headOn = segOnPlane != null ? segOnPlane[0] : true;
+            ApplyVisualColor(headOn ? headColor : offPlaneColor);
         }
 
-        void ApplyVisualColor(Transform visual, Color c)
+        void ApplyVisualColor(Color c)
         {
-            var mr = visual.GetComponent<MeshRenderer>();
-            if (mr == null) return;
+            // Prefer an explicit headSkinRenderer so composite heads (cube + eye + mouth children)
+            // can tint only the skin. Fall back to a MeshRenderer on headVisual's root so the
+            // original single-cube authoring keeps working without wiring the new field.
+            Renderer target = headSkinRenderer;
+            if (target == null && headVisual != null) target = headVisual.GetComponent<MeshRenderer>();
+            if (target == null) return;
             if (mpb == null) mpb = new MaterialPropertyBlock();
-            mr.GetPropertyBlock(mpb);
+            target.GetPropertyBlock(mpb);
             mpb.SetColor(BaseColorID, c);
-            mr.SetPropertyBlock(mpb);
+            target.SetPropertyBlock(mpb);
         }
 
         /// <summary>
-        /// Body visual: dynamic 3D tube sweeping the spine. Per segment we emit a ring of
-        /// `radialSegments` vertices oriented by that segment's parallel-transported TNB frame,
-        /// at radius = bodyRadius * radiusProfile(i/(N-1)); consecutive rings are bridged with
-        /// two triangles per radial slot. Both ends get a fan cap to a center vertex half a
-        /// segmentLength beyond the end segment along its tangent.
-        /// The tube covers ALL segments — on-plane and off-plane — so the whole body stays
-        /// visible. Band triangles are routed into submesh 0 (on-plane) or submesh 1 (off-plane)
-        /// based on the starting segment's on-plane flag, preserving the two-tone tinting that
-        /// ApplyBodyMeshColor applies. Only RebuildCollider filters by on-plane.
-        /// Vertices are built in world space (using segPos3D, which carries Z) and converted to
-        /// local via InverseTransformPoint, so Z excursions show up as the tube bowing out of
-        /// the XY plane.
+        /// Body visual: dynamic 3D tube sweeping the spine. Each spine band (i..i+1) is subdivided
+        /// into `visualRingsPerSegment` fine rings via Catmull-Rom interpolation of the spine
+        /// positions, producing a smooth curve that doesn't kink at bends even though the
+        /// simulation/collider only track `bodySegmentCount` coarse anchors. Fine tangents come
+        /// from central differences on the fine positions and the TNB frame is parallel-transported
+        /// along the fine sequence so the radial basis stays twist-free at sharp turns. Radii are
+        /// linearly interpolated between segHalfW values.
+        /// Band triangles are routed into submesh 0 (on-plane) or submesh 1 (off-plane) based on
+        /// the source spine band's on-plane flag — so the two-tone tinting survives subdivision.
+        /// Only RebuildCollider filters by on-plane.
+        /// Vertices are built in world space (using Z-bearing positions) and converted to local
+        /// via InverseTransformPoint, so Z excursions show up as the tube bowing out of the XY plane.
         /// </summary>
         void RebuildBodyMesh()
         {
             if (bodyMesh == null) return;
             int n = SegmentCount;
             int R = Mathf.Max(3, radialSegments);
+            int K = Mathf.Max(1, visualRingsPerSegment);
             scratchVerts.Clear();
             scratchTrisOn.Clear();
             scratchTrisOff.Clear();
@@ -592,15 +602,89 @@ namespace SlimeJumping.Platforms
 
             if (n < 2) { bodyMesh.Clear(); return; }
 
-            // Ring vertices: vert index = i*R + r for segment i, radial slot r.
-            for (int i = 0; i < n; i++)
+            int fineCount = (n - 1) * K + 1;
+            EnsureFineArrays(fineCount);
+
+            // --- Fine positions & radii via Catmull-Rom on the spine.
+            // Virtual endpoint mirroring gives the first/last bands a smooth shape too — without
+            // it the tube would still crease at the head-adjacent ring if the neighbors form an
+            // angle. p0/p3 reflect p1/p2 around p1 (resp. p2) when no outer spine anchor exists.
+            for (int b = 0; b < n - 1; b++)
             {
-                float profileT = n > 1 ? i / (float)(n - 1) : 0f;
-                float ri = segHalfW[i];
-                Vector3 nrm = segNormal3D[i];
-                Vector3 bin = segBinormal3D[i];
-                Vector3 center = segPos3D[i];
-                float u = profileT;
+                Vector3 p1 = segPos3D[b];
+                Vector3 p2 = segPos3D[b + 1];
+                Vector3 p0 = b > 0         ? segPos3D[b - 1] : (2f * p1 - p2);
+                Vector3 p3 = b + 2 < n     ? segPos3D[b + 2] : (2f * p2 - p1);
+                float r1 = segHalfW[b];
+                float r2 = segHalfW[b + 1];
+                for (int k = 0; k < K; k++)
+                {
+                    float t = k / (float)K;
+                    int j = b * K + k;
+                    fineWorldPos[j]  = CatmullRom(p0, p1, p2, p3, t);
+                    fineRadius[j]    = Mathf.Lerp(r1, r2, t);
+                    fineSpineBand[j] = b;
+                }
+            }
+            // Closing sample at the tail.
+            fineWorldPos[fineCount - 1]  = segPos3D[n - 1];
+            fineRadius[fineCount - 1]    = segHalfW[n - 1];
+            fineSpineBand[fineCount - 1] = n - 2;
+
+            // --- Fine tangents: central difference on fine positions (head-ward convention,
+            // i.e., tangent[j] points from j+1 toward j-1, matching the 2D perp convention so
+            // front/back cap offsets read naturally: +tangent goes "forward" off the head).
+            for (int j = 0; j < fineCount; j++)
+            {
+                Vector3 t;
+                if (j == 0)                   t = fineWorldPos[0] - fineWorldPos[1];
+                else if (j == fineCount - 1)  t = fineWorldPos[j - 1] - fineWorldPos[j];
+                else                          t = fineWorldPos[j - 1] - fineWorldPos[j + 1];
+                if (t.sqrMagnitude < 1e-10f) t = lastHeadTangent;
+                if (t.sqrMagnitude < 1e-10f) t = Vector3.right;
+                fineTangent[j] = t.normalized;
+            }
+
+            // --- Parallel-transport TNB frame along the fine tangents.
+            Vector3 refUp = Vector3.up;
+            if (Mathf.Abs(Vector3.Dot(fineTangent[0], refUp)) > 0.99f) refUp = Vector3.forward;
+            Vector3 b0 = Vector3.Cross(fineTangent[0], refUp);
+            if (b0.sqrMagnitude < 1e-10f) b0 = Vector3.Cross(fineTangent[0], Vector3.forward);
+            b0.Normalize();
+            Vector3 n0 = Vector3.Cross(b0, fineTangent[0]).normalized;
+            fineBinormal[0] = b0;
+            fineNormal[0]   = n0;
+            for (int j = 1; j < fineCount; j++)
+            {
+                Vector3 tPrev = fineTangent[j - 1];
+                Vector3 tCur  = fineTangent[j];
+                Vector3 axis  = Vector3.Cross(tPrev, tCur);
+                float axisSq = axis.sqrMagnitude;
+                Vector3 nPrev = fineNormal[j - 1];
+                Vector3 bPrev = fineBinormal[j - 1];
+                if (axisSq < 1e-8f)
+                {
+                    fineNormal[j]   = nPrev;
+                    fineBinormal[j] = bPrev;
+                }
+                else
+                {
+                    float cosA = Mathf.Clamp(Vector3.Dot(tPrev, tCur), -1f, 1f);
+                    float angDeg = Mathf.Acos(cosA) * Mathf.Rad2Deg;
+                    Quaternion q = Quaternion.AngleAxis(angDeg, axis / Mathf.Sqrt(axisSq));
+                    fineNormal[j]   = (q * nPrev).normalized;
+                    fineBinormal[j] = (q * bPrev).normalized;
+                }
+            }
+
+            // --- Ring vertices: vert index = j*R + r for fine sample j, radial slot r.
+            for (int j = 0; j < fineCount; j++)
+            {
+                float u = fineCount > 1 ? j / (float)(fineCount - 1) : 0f;
+                float ri = fineRadius[j];
+                Vector3 nrm = fineNormal[j];
+                Vector3 bin = fineBinormal[j];
+                Vector3 center = fineWorldPos[j];
                 for (int r = 0; r < R; r++)
                 {
                     float ang = (2f * Mathf.PI * r) / R;
@@ -612,31 +696,32 @@ namespace SlimeJumping.Platforms
             }
 
             // Cap centers, pushed half a segmentLength past each end along the end tangent.
-            int frontCapIdx = n * R;
-            int backCapIdx  = n * R + 1;
-            Vector3 frontCapWorld = segPos3D[0]     + segTangent3D[0]     * (segmentLength * 0.5f);
-            Vector3 backCapWorld  = segPos3D[n - 1] - segTangent3D[n - 1] * (segmentLength * 0.5f);
+            int frontCapIdx = fineCount * R;
+            int backCapIdx  = fineCount * R + 1;
+            Vector3 frontCapWorld = fineWorldPos[0]             + fineTangent[0]             * (segmentLength * 0.5f);
+            Vector3 backCapWorld  = fineWorldPos[fineCount - 1] - fineTangent[fineCount - 1] * (segmentLength * 0.5f);
             scratchVerts.Add(transform.InverseTransformPoint(frontCapWorld));
             scratchUVs.Add(new Vector2(0f, 0.5f));
             scratchVerts.Add(transform.InverseTransformPoint(backCapWorld));
             scratchUVs.Add(new Vector2(1f, 0.5f));
 
-            // Body bands between ring i and ring i+1. Two tris per radial slot, wrapped.
-            for (int i = 0; i < n - 1; i++)
+            // Body bands between fine ring j and j+1. Submesh routing uses the starting sample's
+            // source spine band flag so tinting boundaries follow the coarse on-plane transitions.
+            for (int j = 0; j < fineCount - 1; j++)
             {
-                var tris = segOnPlane[i] ? scratchTrisOn : scratchTrisOff;
-                int ringA = i * R;
-                int ringB = (i + 1) * R;
+                int bandSrc = fineSpineBand[j];
+                var tris = segOnPlane[bandSrc] ? scratchTrisOn : scratchTrisOff;
+                int ringA = j * R;
+                int ringB = (j + 1) * R;
                 for (int r = 0; r < R; r++)
                 {
                     int rNext = (r + 1) % R;
                     int a0 = ringA + r;
                     int a1 = ringA + rNext;
-                    int b0 = ringB + r;
-                    int b1 = ringB + rNext;
-                    // Outward-facing winding (verified against existing +Z ribbon convention).
-                    tris.Add(a0); tris.Add(b1); tris.Add(b0);
-                    tris.Add(a0); tris.Add(a1); tris.Add(b1);
+                    int bb0 = ringB + r;
+                    int bb1 = ringB + rNext;
+                    tris.Add(a0); tris.Add(bb1); tris.Add(bb0);
+                    tris.Add(a0); tris.Add(a1);  tris.Add(bb1);
                 }
             }
 
@@ -646,7 +731,6 @@ namespace SlimeJumping.Platforms
                 for (int r = 0; r < R; r++)
                 {
                     int rNext = (r + 1) % R;
-                    // Wind so the cap faces outward (opposite of a body band from the front side).
                     tris.Add(frontCapIdx); tris.Add(r); tris.Add(rNext);
                 }
             }
@@ -654,7 +738,7 @@ namespace SlimeJumping.Platforms
             // Back cap fan — submesh keyed by tail segment's on-plane flag.
             {
                 var tris = segOnPlane[n - 1] ? scratchTrisOn : scratchTrisOff;
-                int tailRing = (n - 1) * R;
+                int tailRing = (fineCount - 1) * R;
                 for (int r = 0; r < R; r++)
                 {
                     int rNext = (r + 1) % R;
@@ -864,6 +948,12 @@ namespace SlimeJumping.Platforms
                 Vector3 flat = new Vector3(segPos3D[i].x, segPos3D[i].y, 0f);
                 Gizmos.DrawLine(flat, segPos3D[i]);
             }
+
+            // Head-body joint marker — magenta sphere at segPos3D[0], which is exactly where
+            // the body tube's front ring sits and where headBodyJointLocal is pinned on the head.
+            // Makes it visually obvious where to aim the joint while tweaking in the inspector.
+            Gizmos.color = new Color(1f, 0.25f, 0.9f, 0.9f);
+            Gizmos.DrawWireSphere(segPos3D[0], 0.08f);
         }
     }
 }

@@ -128,6 +128,25 @@ namespace SlimeJumping.Mechanisms
                 Gizmos.DrawWireCube(Vector3.zero, box.size);
                 Gizmos.matrix = old;
             }
+            else if (col is PolygonCollider2D poly)
+            {
+                Matrix4x4 old = Gizmos.matrix;
+                Gizmos.matrix = transform.localToWorldMatrix;
+                Vector2 off = poly.offset;
+                Gizmos.color = GizmoWire;
+                for (int p = 0; p < poly.pathCount; p++)
+                {
+                    var points = poly.GetPath(p);
+                    if (points.Length < 2) continue;
+                    for (int i = 0; i < points.Length; i++)
+                    {
+                        Vector3 a = (Vector3)(points[i] + off);
+                        Vector3 b = (Vector3)(points[(i + 1) % points.Length] + off);
+                        Gizmos.DrawLine(a, b);
+                    }
+                }
+                Gizmos.matrix = old;
+            }
 
             // Direction field arrows
             if (gravityMode == GravityMode.Fixed)

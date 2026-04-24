@@ -5,6 +5,7 @@ namespace SlimeJumping.Platforms
 {
     public enum RopeEventType { FirstAttach, MaxTension, LaunchRebound }
 
+    [ExecuteAlways]
     [DefaultExecutionOrder(-100)]
     public class Rope : MonoBehaviour
     {
@@ -56,6 +57,17 @@ namespace SlimeJumping.Platforms
         [SerializeField] float maxTensionEnter = 1.25f;
         [SerializeField] float maxTensionExit = 1.10f;
 
+        [Header("Rebound")]
+        [Tooltip("Extra launch speed added per meter of sag at release. " +
+                 "Called from SlimeController.Launch. 0 = disabled.")]
+        [SerializeField, Min(0f)] float reboundSpeedPerMeter = 4f;
+
+        [Header("Scene Preview")]
+        [Tooltip("Synthetic rider mass for the Preview Max Sag context menu.")]
+        [SerializeField, Min(0f)] float previewRiderMass = 1f;
+        [Tooltip("Fixed steps to simulate for the sag preview (dt = 0.02).")]
+        [SerializeField, Min(10)] int previewSteps = 120;
+
         [Header("Resolution decoupling")]
         [Tooltip("Take every Nth simulation node into the EdgeCollider2D. " +
                  "1 = all nodes. 2 = every other node (recommended). " +
@@ -72,6 +84,7 @@ namespace SlimeJumping.Platforms
         [SerializeField] float slimeRadiusHint = 0.4f;
 
         public EdgeCollider2D Edge => edge;
+        public float ReboundSpeedPerMeter => reboundSpeedPerMeter;
         public event Action<RopeEventType, Vector2> OnRopeEvent;
 
         Vector2[] pos;
@@ -85,7 +98,18 @@ namespace SlimeJumping.Platforms
         int nodeCount;
 
         bool maxTensionActive;
-        bool frozen;
+
+        // Preview cache — with-rider deflected shape, drawn as magenta gizmo.
+        // Populated by RefreshEditPreview() in edit mode (auto on anchor move)
+        // or by the Preview Max Sag context menu.
+        Vector2[] previewMaxSagPos;
+        float previewMaxSagValue;
+
+#if UNITY_EDITOR
+        Vector3 editLastAnchorAPos;
+        Vector3 editLastAnchorBPos;
+        bool editNeedsRefresh = true;
+#endif
 
         void Awake()
         {
@@ -160,10 +184,45 @@ namespace SlimeJumping.Platforms
 
         void FixedUpdate()
         {
+            // [ExecuteAlways] allows Update to drive an edit-mode preview, but the
+            // real rope sim must only run in play mode; otherwise entering play with
+            // a sag-preview shape would double-integrate from pre-stretched state.
+            if (!Application.isPlaying) return;
             if (nodeCount == 0) return;
             if (anchorA == null || anchorB == null) return;
 
-            float dt = Time.fixedDeltaTime;
+            StepSimulationOnce(Time.fixedDeltaTime);
+            EvaluateMaxTension();
+            SyncVisual();
+
+            for (int i = 0; i < nodeCount; i++) riderAccum[i] = Vector2.zero;
+        }
+
+#if UNITY_EDITOR
+        // Edit-mode only: poll anchor positions; when markers are moved in the scene
+        // (or fields are edited via OnValidate) rerun RefreshEditPreview so the
+        // LineRenderer + EdgeCollider show the current rest-sag shape and the magenta
+        // gizmo shows the deflected-under-rider shape.
+        void Update()
+        {
+            if (Application.isPlaying) return;
+            if (anchorA == null || anchorB == null) return;
+
+            bool anchorMoved = anchorA.position != editLastAnchorAPos
+                            || anchorB.position != editLastAnchorBPos;
+            if (!editNeedsRefresh && !anchorMoved) return;
+
+            editLastAnchorAPos = anchorA.position;
+            editLastAnchorBPos = anchorB.position;
+            editNeedsRefresh = false;
+            RefreshEditPreview();
+        }
+#endif
+
+        // One Verlet + elastic + constraint pass. Consumes riderAccum but does not
+        // clear it (caller's job), so PreviewMaxSag can drive it step-by-step.
+        void StepSimulationOnce(float dt)
+        {
             float dt2 = dt * dt;
             Vector2 gravStep = Physics2D.gravity * (nodeGravity * dt2);
 
@@ -175,12 +234,6 @@ namespace SlimeJumping.Platforms
                     Vector2 anchor = (i == 0) ? (Vector2)anchorA.position : (Vector2)anchorB.position;
                     pos[i] = anchor;
                     prevPos[i] = anchor;
-                    continue;
-                }
-
-                if (frozen)
-                {
-                    prevPos[i] = pos[i];
                     continue;
                 }
 
@@ -239,11 +292,6 @@ namespace SlimeJumping.Platforms
                 pos[0] = anchorA.position;
                 pos[nodeCount - 1] = anchorB.position;
             }
-
-            EvaluateMaxTension();
-            SyncVisual();
-
-            for (int i = 0; i < nodeCount; i++) riderAccum[i] = Vector2.zero;
         }
 
         void SyncVisual()
@@ -332,7 +380,7 @@ namespace SlimeJumping.Platforms
 
         public void ReportRiderContact(Collider2D _slimeCol, Vector2 worldContact, float mass, Vector2 _riderVel)
         {
-            if (nodeCount == 0 || frozen) return;
+            if (nodeCount == 0) return;
 
             float radius = segmentRestLen * riderInfluenceSpacing;
             if (radius < 1e-4f) return;
@@ -391,8 +439,6 @@ namespace SlimeJumping.Platforms
             return Vector2.Lerp(vA, vB, t);
         }
 
-        public void SetFrozen(bool v) => frozen = v;
-
         public void NotifyFirstAttach(Vector2 worldContact)
         {
             OnRopeEvent?.Invoke(RopeEventType.FirstAttach, worldContact);
@@ -417,6 +463,32 @@ namespace SlimeJumping.Platforms
 
         public int NodeCount => nodeCount;
         public Vector2 GetNodePosition(int i) => pos[i];
+
+        /// <summary>
+        /// Max perpendicular distance from any node to the straight anchorA→anchorB line.
+        /// 0 = rope is taut straight. Used by Launch() to convert stored elastic
+        /// displacement into a launch-speed bonus.
+        /// </summary>
+        public float GetMaxSagDistance()
+        {
+            if (nodeCount < 3) return 0f;
+            Vector2 a = pos[0];
+            Vector2 b = pos[nodeCount - 1];
+            Vector2 ab = b - a;
+            float abLenSq = ab.sqrMagnitude;
+            if (abLenSq < 1e-6f) return 0f;
+
+            float best = 0f;
+            for (int i = 1; i < nodeCount - 1; i++)
+            {
+                Vector2 ap = pos[i] - a;
+                float t = Mathf.Clamp01(Vector2.Dot(ap, ab) / abLenSq);
+                Vector2 proj = a + ab * t;
+                float d = (pos[i] - proj).magnitude;
+                if (d > best) best = d;
+            }
+            return best;
+        }
 
         // === Editor ===
 
@@ -449,6 +521,23 @@ namespace SlimeJumping.Platforms
                     $"[Rope:{name}] elasticFactor > 0 AND constraintIterations={constraintIterations} > 5. " +
                     "Double-action: constraint already enforces rest length, elastic becomes redundant. " +
                     "Use iter 2-3 for elastic rope, or elasticFactor=0 for rigid rope.", this);
+
+#if UNITY_EDITOR
+            editNeedsRefresh = true;
+#endif
+        }
+
+        // Always-visible overlay so authors moving anchor markers see the rider-loaded
+        // shape without having to select the rope Body. The rest shape is already
+        // visible via the LineRenderer; this gizmo is only the deflected-under-rider shape.
+        void OnDrawGizmos()
+        {
+            if (previewMaxSagPos == null || nodeCount < 2) return;
+            if (previewMaxSagPos.Length != nodeCount) return;
+
+            Gizmos.color = Color.magenta;
+            for (int i = 0; i < nodeCount - 1; i++)
+                Gizmos.DrawLine(previewMaxSagPos[i], previewMaxSagPos[i + 1]);
         }
 
         void OnDrawGizmosSelected()
@@ -466,6 +555,100 @@ namespace SlimeJumping.Platforms
                     Gizmos.DrawLine(pos[i], pos[i] + riderAccum[i] * 0.02f);
                 }
             }
+
+            if (previewMaxSagPos != null && previewMaxSagPos.Length == nodeCount)
+            {
+                Gizmos.color = Color.magenta;
+                for (int i = 0; i < nodeCount; i++)
+                    Gizmos.DrawSphere(previewMaxSagPos[i], 0.04f);
+            }
         }
+
+#if UNITY_EDITOR
+        // Edit-mode authoring preview. Runs two headless simulation phases:
+        //   (1) settle with no rider → rest-sag shape, written to LineRenderer + EdgeCollider.
+        //   (2) continue with a synthetic rider at midpoint → deepest deflected shape,
+        //       cached as magenta gizmo overlay.
+        // pos/prevPos end on the rest shape so the visible rope represents the
+        // no-load state; entering play mode rebuilds from straight via Awake anyway.
+        void RefreshEditPreview()
+        {
+            Rebuild();
+            if (nodeCount < 3) return;
+
+            const float dt = 0.02f;
+            int steps = Mathf.Max(10, previewSteps);
+
+            // Phase 1 — settle under self-gravity only (no rider).
+            for (int s = 0; s < steps; s++)
+            {
+                StepSimulationOnce(dt);
+                for (int i = 0; i < nodeCount; i++) riderAccum[i] = Vector2.zero;
+            }
+            var restPos = (Vector2[])pos.Clone();
+            SyncVisual();
+
+            // Phase 2 — add rider load at midpoint, track the deepest-sag frame.
+            float radius = segmentRestLen * riderInfluenceSpacing;
+            Vector2 force = Physics2D.gravity * previewRiderMass;
+            float bestSag = GetMaxSagDistance();
+            var bestPos = (Vector2[])pos.Clone();
+
+            for (int s = 0; s < steps; s++)
+            {
+                Vector2 riderPoint = pos[nodeCount / 2];
+                if (radius > 1e-4f)
+                {
+                    for (int i = 0; i < nodeCount; i++)
+                    {
+                        if (pinned[i]) continue;
+                        float d = Vector2.Distance(pos[i], riderPoint);
+                        if (d >= radius) continue;
+                        float falloff = 1f - (d / radius);
+                        riderAccum[i] += force * falloff;
+                    }
+                }
+                StepSimulationOnce(dt);
+                for (int i = 0; i < nodeCount; i++) riderAccum[i] = Vector2.zero;
+
+                float sag = GetMaxSagDistance();
+                if (sag > bestSag)
+                {
+                    bestSag = sag;
+                    Array.Copy(pos, bestPos, nodeCount);
+                }
+            }
+
+            previewMaxSagPos = bestPos;
+            previewMaxSagValue = bestSag;
+
+            // Restore the no-rider rest shape so LineRenderer + EdgeCollider show the
+            // unloaded pose. The magenta gizmo overlays the loaded pose.
+            Array.Copy(restPos, pos, nodeCount);
+            Array.Copy(restPos, prevPos, nodeCount);
+            SyncVisual();
+        }
+
+        [ContextMenu("Preview Max Sag")]
+        void PreviewMaxSagMenu()
+        {
+            if (anchorA == null || anchorB == null)
+            {
+                Debug.LogWarning($"[Rope:{name}] Assign anchorA and anchorB before previewing.", this);
+                return;
+            }
+            RefreshEditPreview();
+            Debug.Log(
+                $"[Rope:{name}] Preview max sag = {previewMaxSagValue:F3} m under {previewRiderMass:F1} kg rider. " +
+                "LineRenderer = rest shape (no rider). Magenta gizmo = deflected shape (with rider).", this);
+        }
+
+        [ContextMenu("Clear Preview")]
+        void ClearPreview()
+        {
+            previewMaxSagPos = null;
+            previewMaxSagValue = 0f;
+        }
+#endif
     }
 }

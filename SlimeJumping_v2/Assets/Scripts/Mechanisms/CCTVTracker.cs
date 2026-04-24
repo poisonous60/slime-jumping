@@ -17,6 +17,9 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("If null, auto-finds SlimeController in scene at Start.")]
         [SerializeField] private Transform target;
 
+        /// <summary>Allow an external controller (e.g. TurretHazard) to override the tracked target with a virtual delayed-position transform.</summary>
+        public Transform Target { get => target; set => target = value; }
+
         [Header("Tracking")]
         [SerializeField] private float trackingRange = 20f;
         [SerializeField] private float angularSpeed = 120f;

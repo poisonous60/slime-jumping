@@ -105,6 +105,19 @@ namespace SlimeJumping.Controller
             }
             // Volume launch: pure aim direction, no hyper dash, no carrier
 
+            // Rope rebound: add stored-sag displacement as a launch-direction speed bonus.
+            // Freeze was removed from Charging, so the rope keeps sagging under slime weight
+            // through the charge; GetMaxSagDistance() reads that stored displacement.
+            if (currentRope != null)
+            {
+                float sag = currentRope.GetMaxSagDistance();
+                if (sag > 1e-4f)
+                {
+                    Vector2 launchDir = velocity.sqrMagnitude > 0.0001f ? velocity.normalized : dir;
+                    velocity += launchDir * (sag * currentRope.ReboundSpeedPerMeter);
+                }
+            }
+
             // Inside drag zone: reduce launch velocity. Exit multiplier restores on leaving.
             if (CurrentDragZone != null)
                 velocity *= CurrentDragZone.launchMultiplier;
@@ -119,9 +132,7 @@ namespace SlimeJumping.Controller
         private void Hop()
         {
             // Precondition: must be called at end of FixedUpdateAttached,
-            // after velocity = surfaceTangent * (slideSpeed + crawlVelocity).
-            // During stick, velocity holds impact decel residual — start from zero.
-            // During normal operation, velocity = surfaceTangent * (slide + crawl) — preserve it.
+            // after velocity = surfaceTangent * (slideSpeed + crawlVelocity) — purely tangent.
             // Hop abandons the charge chain, so discard any pending coyote conversion
             // and apply the deferred floor reset that the no-Space landing skipped.
             ClearPendingEnergyConversion(executeDeferredReset: true);
@@ -130,25 +141,47 @@ namespace SlimeJumping.Controller
             float hopT = Mathf.InverseLerp(settings.hopMinAngle, settings.hopMaxAngle, angle);
             float power = Mathf.Lerp(settings.hopPower, settings.hopPowerMin, hopT);
             Vector2 hopDir = settings.hopAlongSurfaceNormal ? surfaceNormal : gravityUp;
-            if (stickTimer > 0f)
+
+            // Surface-defined tangent retention. 1 = preserve (ice), 0 = wipe (sticky mud).
+            float retention = surfaceMod.hopVelocityRetention.Evaluate(angle);
+            float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
+            float preservedTangent = tangentSpeed * retention;
+            velocity = surfaceTangent * preservedTangent;
+
+            if (stickTimer <= 0f)
             {
-                velocity = hopDir * power;
-            }
-            else
-            {
-                // Hop momentum: boost in A/D input direction, neutral = no bonus
+                // Hop momentum:
+                //   same-direction input   → add bonus (capped by hopMomentumMaxSpeed).
+                //   opposing-direction input → surface-defined:
+                //       hopInstantFlip = false → decelerate toward 0 by bonus (inertial, e.g. ice).
+                //       hopInstantFlip = true  → zero existing + bonus in input direction (arcade, e.g. grass).
+                //   neutral input → no change.
                 float inputX = inputReader.LastInputMove.x;
                 if (settings.hopMomentumBonus > 0f && Mathf.Abs(inputX) > 0.01f)
                 {
-                    float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
                     float inputSign = -Mathf.Sign(inputX);
-                    float currentInDir = tangentSpeed * inputSign;
-                    float boosted = Mathf.Min(Mathf.Max(currentInDir, 0f) + settings.hopMomentumBonus,
-                                              settings.hopMomentumMaxSpeed);
-                    velocity += surfaceTangent * (inputSign * boosted - tangentSpeed);
+                    float currentSpeedSign = Mathf.Sign(preservedTangent);
+                    float newTangent;
+                    if (currentSpeedSign == 0f || currentSpeedSign == inputSign)
+                    {
+                        float currentInDir = preservedTangent * inputSign;
+                        float boosted = Mathf.Min(currentInDir + settings.hopMomentumBonus,
+                                                  settings.hopMomentumMaxSpeed);
+                        newTangent = inputSign * boosted;
+                    }
+                    else if (surfaceMod.hopInstantFlip)
+                    {
+                        float boosted = Mathf.Min(settings.hopMomentumBonus, settings.hopMomentumMaxSpeed);
+                        newTangent = inputSign * boosted;
+                    }
+                    else
+                    {
+                        newTangent = Mathf.MoveTowards(preservedTangent, 0f, settings.hopMomentumBonus);
+                    }
+                    velocity += surfaceTangent * (newTangent - preservedTangent);
                 }
-                velocity += hopDir * power;
             }
+            velocity += hopDir * power;
             crawlVelocity = 0f;
             stickTimer = 0f;
             stickDeccelTimer = 0f;
