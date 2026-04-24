@@ -49,7 +49,9 @@ namespace SlimeJumping.Mechanisms
 #endif
             }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log($"[JumpBallAudioManager] Applied audio to {balls.Length} JumpBall instance(s).", this);
+#endif
         }
     }
 }

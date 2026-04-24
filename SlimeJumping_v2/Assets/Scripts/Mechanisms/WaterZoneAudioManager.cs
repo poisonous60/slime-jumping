@@ -56,7 +56,9 @@ namespace SlimeJumping.Mechanisms
 #endif
             }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log($"[WaterZoneAudioManager] Applied audio to {zones.Length} WaterZone_v2 instance(s).", this);
+#endif
         }
     }
 }

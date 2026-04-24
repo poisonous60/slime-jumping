@@ -1,4 +1,5 @@
 using UnityEngine;
+using SlimeJumping.Audio;
 
 namespace SlimeJumping.UI
 {
@@ -12,7 +13,7 @@ namespace SlimeJumping.UI
                 if (image != null) fullscreenImage.sprite = image;
                 fullscreenImage.color = Color.white;
             }
-            if (sound != null && audioSource != null) audioSource.PlayOneShot(sound);
+            SoundService.Play2D(sound, SoundCategory.UI, 1f);
             if (impulseEmitter != null) impulseEmitter.Emit(1.5f);
             StartFade(displaySeconds, fadeSeconds);
         }

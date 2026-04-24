@@ -4,7 +4,7 @@ using SlimeJumping.Audio;
 
 namespace SlimeJumping.Settings
 {
-    public enum WindowMode { Windowed, Fullscreen }
+    public enum WindowMode { Windowed, Fullscreen, Borderless }
 
     /// Persists demo-facing user options (frame limit, Player/World SFX / BGM /
     /// UI volume, window mode, background camera) via PlayerPrefs and applies
@@ -19,6 +19,7 @@ namespace SlimeJumping.Settings
         private const string KeyBgmVolume             = "opt.bgmVolume";
         private const string KeyUiVolume              = "opt.uiVolume";
         private const string KeyWindowMode            = "opt.windowMode";
+        private const string KeyResolutionIndex       = "opt.resolutionIndex";
         private const string KeyBackgroundCameraOn    = "opt.backgroundCameraEnabled";
 
         // Legacy key used before the SFX split (single combined slider).
@@ -36,13 +37,26 @@ namespace SlimeJumping.Settings
         // -1 = Unlimited (Application.targetFrameRate = -1)
         public static readonly int[] FrameLimitOptions = { 30, 60, 120, -1 };
 
+        public static readonly Vector2Int[] ResolutionOptions =
+        {
+            new Vector2Int(1280, 720),
+            new Vector2Int(1366, 768),
+            new Vector2Int(1600, 900),
+            new Vector2Int(1920, 1080),
+            new Vector2Int(2560, 1440),
+            new Vector2Int(3840, 2160),
+        };
+
         public static int        FrameLimit              { get; private set; } = DefaultFrameLimit;
         public static float      PlayerSfxVolume         { get; private set; } = DefaultPlayerSfxVolume;
         public static float      WorldSfxVolume          { get; private set; } = DefaultWorldSfxVolume;
         public static float      BgmVolume               { get; private set; } = DefaultBgmVolume;
         public static float      UiVolume                { get; private set; } = DefaultUiVolume;
         public static WindowMode WindowMode              { get; private set; } = DefaultWindowMode;
+        public static int        ResolutionIndex         { get; private set; }
         public static bool       BackgroundCameraEnabled { get; private set; } = DefaultBackgroundCameraOn;
+
+        public static Vector2Int Resolution => ResolutionOptions[ResolutionIndex];
 
         /// Raised when BackgroundCameraEnabled is changed. Scene components
         /// subscribe to toggle the BG camera + overlay stack live.
@@ -62,9 +76,12 @@ namespace SlimeJumping.Settings
             UiVolume               = Mathf.Clamp01(PlayerPrefs.GetFloat(KeyUiVolume, DefaultUiVolume));
 
             WindowMode             = (WindowMode)PlayerPrefs.GetInt(KeyWindowMode, (int)DefaultWindowMode);
+            ResolutionIndex        = Mathf.Clamp(
+                PlayerPrefs.GetInt(KeyResolutionIndex, FindNativeResolutionIndex()),
+                0, ResolutionOptions.Length - 1);
             BackgroundCameraEnabled = PlayerPrefs.GetInt(KeyBackgroundCameraOn, DefaultBackgroundCameraOn ? 1 : 0) != 0;
             ApplyFrameLimit(FrameLimit);
-            ApplyWindowMode(WindowMode);
+            ApplyDisplay(ResolutionOptions[ResolutionIndex], WindowMode);
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -123,7 +140,15 @@ namespace SlimeJumping.Settings
             WindowMode = mode;
             PlayerPrefs.SetInt(KeyWindowMode, (int)mode);
             PlayerPrefs.Save();
-            ApplyWindowMode(mode);
+            ApplyDisplay(ResolutionOptions[ResolutionIndex], mode);
+        }
+
+        public static void SetResolutionIndex(int index)
+        {
+            ResolutionIndex = Mathf.Clamp(index, 0, ResolutionOptions.Length - 1);
+            PlayerPrefs.SetInt(KeyResolutionIndex, ResolutionIndex);
+            PlayerPrefs.Save();
+            ApplyDisplay(ResolutionOptions[ResolutionIndex], WindowMode);
         }
 
         public static void SetBackgroundCameraEnabled(bool on)
@@ -167,11 +192,35 @@ namespace SlimeJumping.Settings
             SoundService.SetCategoryVolumeDb(SoundCategory.UI, db);
         }
 
-        private static void ApplyWindowMode(WindowMode mode)
+        private static void ApplyDisplay(Vector2Int res, WindowMode mode)
         {
-            Screen.fullScreenMode = mode == WindowMode.Windowed
-                ? FullScreenMode.Windowed
-                : FullScreenMode.FullScreenWindow;
+            FullScreenMode fsMode;
+            switch (mode)
+            {
+                case WindowMode.Windowed:   fsMode = FullScreenMode.Windowed;            break;
+                case WindowMode.Borderless: fsMode = FullScreenMode.FullScreenWindow;    break;
+                default:                    fsMode = FullScreenMode.ExclusiveFullScreen; break;
+            }
+            // In Windowed mode this resizes the window; in FullScreenWindow/
+            // ExclusiveFullScreen it sets the render resolution while the window
+            // covers the display.
+            Screen.SetResolution(res.x, res.y, fsMode);
+        }
+
+        private static int FindNativeResolutionIndex()
+        {
+            int w = Screen.currentResolution.width;
+            int h = Screen.currentResolution.height;
+            int bestIdx = 3; // 1920x1080 fallback
+            int bestDelta = int.MaxValue;
+            for (int i = 0; i < ResolutionOptions.Length; i++)
+            {
+                if (ResolutionOptions[i].x == w && ResolutionOptions[i].y == h)
+                    return i;
+                int d = Mathf.Abs(ResolutionOptions[i].x - w) + Mathf.Abs(ResolutionOptions[i].y - h);
+                if (d < bestDelta) { bestDelta = d; bestIdx = i; }
+            }
+            return bestIdx;
         }
     }
 }

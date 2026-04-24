@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using SlimeJumping.Audio;
 using SlimeJumping.Controller;
 using SlimeJumping.Effects;
 
@@ -18,15 +19,16 @@ namespace SlimeJumping.Interaction
 
         [Header("FX")]
         [SerializeField] private ParticleSystem fireworkVFX;
-        [SerializeField] private AudioSource audioSource;
         [SerializeField] private AudioClip launchSfx;
+        [SerializeField, Range(0f, 1f)] private float launchSfxVolume = 1f;
         [SerializeField] private ImpulseEmitter impulseEmitter;
         [SerializeField] private float impulseForce = 0f;
 
         protected override void OnInteract(SlimeController slime)
         {
             if (fireworkVFX != null) fireworkVFX.Play();
-            if (audioSource != null && launchSfx != null) audioSource.PlayOneShot(launchSfx);
+            SoundService.PlayAt(launchSfx, transform.position,
+                                SoundCategory.SFX_Object, launchSfxVolume);
 
             if (launchDelay > 0f)
                 StartCoroutine(LaunchAfterDelay(slime, launchDelay));

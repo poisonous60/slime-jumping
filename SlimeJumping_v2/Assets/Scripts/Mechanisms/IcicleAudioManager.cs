@@ -51,7 +51,9 @@ namespace SlimeJumping.Mechanisms
 #endif
             }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log($"[IcicleAudioManager] Applied audio to {icicles.Length} IcicleHazard instance(s).", this);
+#endif
         }
     }
 }

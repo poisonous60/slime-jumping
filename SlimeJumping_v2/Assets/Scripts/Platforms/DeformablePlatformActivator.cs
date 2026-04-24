@@ -91,7 +91,9 @@ namespace SlimeJumping.Platforms
                 if (!Application.isPlaying) EditorUtility.SetDirty(platforms[i]);
 #endif
             }
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log($"[DeformablePlatformActivator] Applied impact VFX to {platforms.Length} DeformablePlatform instance(s).", this);
+#endif
         }
 
         void OnValidate()

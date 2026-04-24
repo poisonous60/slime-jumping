@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using SlimeJumping.Audio;
 
 namespace SlimeJumping.Effects
 {
@@ -11,7 +12,6 @@ namespace SlimeJumping.Effects
     public class SliceEffect : MonoBehaviour
     {
         [SerializeField] private ParticleSystem particles;
-        [SerializeField] private AudioSource audioSource;
         [SerializeField] private AudioClip[] hitClips;
         [SerializeField, Range(0f, 1f)] private float sfxVolume = 1f;
         [SerializeField, Range(0f, 0.5f)] private float pitchJitter = 0.1f;
@@ -39,13 +39,14 @@ namespace SlimeJumping.Effects
             if (particles != null) particles.Play();
 
             AudioClip chosen = null;
-            if (audioSource != null && hitClips != null && hitClips.Length > 0)
+            if (hitClips != null && hitClips.Length > 0)
             {
                 chosen = hitClips[Random.Range(0, hitClips.Length)];
                 if (chosen != null)
                 {
-                    audioSource.pitch = 1f + Random.Range(-pitchJitter, pitchJitter);
-                    audioSource.PlayOneShot(chosen, sfxVolume);
+                    float pitch = 1f + Random.Range(-pitchJitter, pitchJitter);
+                    SoundService.PlayAt(chosen, transform.position,
+                                        SoundCategory.SFX_Object, sfxVolume, pitch);
                 }
             }
 

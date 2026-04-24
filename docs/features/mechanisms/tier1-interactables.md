@@ -37,6 +37,9 @@
 ### FireworkInteractable
 `ForceAirborneWithVelocity` 발사. `launchDelay`, `pushOriginOffset`, `launchAwayFromCenter`.
 
+### FireworkInteractable_V2
+오브젝트 자체가 폭죽 로켓. E 입력 시 `rocketVisual` 자식이 `flightDirection × flightDistance` 만큼 `flightDuration` 동안 `flightCurve` 로 비행 → 정점에서 `explosionVFX` 를 현재 위치로 이동 후 재생, `ForceAirborneWithVelocity` 로 슬라임 발사, `impulseEmitter` 카메라 쉐이크, `explosionSfx` 재생 → `rocketVisual` SetActive(false) → `respawnDelay` 초 대기 → 원위치 복귀 + `respawnScaleCurve` 팝인 (+선택적 `respawnAnimatorTrigger`). 비행/폭발/리스폰 전 구간 `ExtraCanInteract` 로 재입력 차단. 콜라이더/프롬프트는 루트에, 비주얼만 rocketVisual 에 두어 분리 원칙 준수.
+
 ### ShrineInteractable (IExternalController)
 일본 신사 앞에서 E로 데모 엔딩 진입.
 - `wispAnchor`에 픽업 프리팹 (기본 `Assets/Prebs/VFX/StrawberryPickup.prefab` — 딸기 스프라이트) 인스턴스화 (스폰 시 `wispScale` 필드로 루트 스케일 적용).

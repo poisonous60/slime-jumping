@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 using TMPro;
 using SlimeJumping.Settings;
@@ -14,11 +15,22 @@ namespace SlimeJumping.UI
         [SerializeField] private Button frameLimitPrevButton;
         [SerializeField] private Button frameLimitNextButton;
         [SerializeField] private TextMeshProUGUI frameLimitValueLabel;
-        [SerializeField] private Slider sfxVolumeSlider;
-        [SerializeField] private TextMeshProUGUI sfxVolumeValueLabel;
+        [FormerlySerializedAs("sfxVolumeSlider")]
+        [SerializeField] private Slider playerSfxVolumeSlider;
+        [FormerlySerializedAs("sfxVolumeValueLabel")]
+        [SerializeField] private TextMeshProUGUI playerSfxVolumeValueLabel;
+        [FormerlySerializedAs("bgmVolumeSlider")]
+        [SerializeField] private Slider worldSfxVolumeSlider;
+        [FormerlySerializedAs("bgmVolumeValueLabel")]
+        [SerializeField] private TextMeshProUGUI worldSfxVolumeValueLabel;
+        [SerializeField] private Slider bgmVolumeSlider;
+        [SerializeField] private TextMeshProUGUI bgmVolumeValueLabel;
+        [SerializeField] private Slider uiVolumeSlider;
+        [SerializeField] private TextMeshProUGUI uiVolumeValueLabel;
         [SerializeField] private Button windowModePrevButton;
         [SerializeField] private Button windowModeNextButton;
         [SerializeField] private TextMeshProUGUI windowModeValueLabel;
+        [SerializeField] private TMP_Dropdown resolutionDropdown;
         [SerializeField] private Button backgroundCameraPrevButton;
         [SerializeField] private Button backgroundCameraNextButton;
         [SerializeField] private TextMeshProUGUI backgroundCameraValueLabel;
@@ -31,8 +43,9 @@ namespace SlimeJumping.UI
 
         private int frameLimitIndex;
         private int windowModeIndex;
+        private int resolutionIndex;
         private int backgroundCameraIndex;
-        private static readonly WindowMode[] WindowModes = { WindowMode.Windowed, WindowMode.Fullscreen };
+        private static readonly WindowMode[] WindowModes = { WindowMode.Windowed, WindowMode.Borderless, WindowMode.Fullscreen };
         private static readonly bool[] BackgroundCameraStates = { false, true };
 
         private void Awake()
@@ -47,13 +60,40 @@ namespace SlimeJumping.UI
             if (frameLimitNextButton != null)
                 frameLimitNextButton.onClick.AddListener(() => CycleFrameLimit(+1));
 
-            if (sfxVolumeSlider != null)
+            if (playerSfxVolumeSlider != null)
             {
-                sfxVolumeSlider.minValue = 0f;
-                sfxVolumeSlider.maxValue = 1f;
-                sfxVolumeSlider.SetValueWithoutNotify(GameOptions.SfxVolume);
-                sfxVolumeSlider.onValueChanged.AddListener(OnSfxVolumeChanged);
-                UpdateSfxVolumeLabel(GameOptions.SfxVolume);
+                playerSfxVolumeSlider.minValue = 0f;
+                playerSfxVolumeSlider.maxValue = 1f;
+                playerSfxVolumeSlider.SetValueWithoutNotify(GameOptions.PlayerSfxVolume);
+                playerSfxVolumeSlider.onValueChanged.AddListener(OnPlayerSfxVolumeChanged);
+                UpdatePlayerSfxVolumeLabel(GameOptions.PlayerSfxVolume);
+            }
+
+            if (worldSfxVolumeSlider != null)
+            {
+                worldSfxVolumeSlider.minValue = 0f;
+                worldSfxVolumeSlider.maxValue = 1f;
+                worldSfxVolumeSlider.SetValueWithoutNotify(GameOptions.WorldSfxVolume);
+                worldSfxVolumeSlider.onValueChanged.AddListener(OnWorldSfxVolumeChanged);
+                UpdateWorldSfxVolumeLabel(GameOptions.WorldSfxVolume);
+            }
+
+            if (bgmVolumeSlider != null)
+            {
+                bgmVolumeSlider.minValue = 0f;
+                bgmVolumeSlider.maxValue = 1f;
+                bgmVolumeSlider.SetValueWithoutNotify(GameOptions.BgmVolume);
+                bgmVolumeSlider.onValueChanged.AddListener(OnBgmVolumeChanged);
+                UpdateBgmVolumeLabel(GameOptions.BgmVolume);
+            }
+
+            if (uiVolumeSlider != null)
+            {
+                uiVolumeSlider.minValue = 0f;
+                uiVolumeSlider.maxValue = 1f;
+                uiVolumeSlider.SetValueWithoutNotify(GameOptions.UiVolume);
+                uiVolumeSlider.onValueChanged.AddListener(OnUiVolumeChanged);
+                UpdateUiVolumeLabel(GameOptions.UiVolume);
             }
 
             windowModeIndex = IndexOfWindowMode(GameOptions.WindowMode);
@@ -62,6 +102,23 @@ namespace SlimeJumping.UI
                 windowModePrevButton.onClick.AddListener(() => CycleWindowMode(-1));
             if (windowModeNextButton != null)
                 windowModeNextButton.onClick.AddListener(() => CycleWindowMode(+1));
+
+            resolutionIndex = GameOptions.ResolutionIndex;
+            if (resolutionDropdown != null)
+            {
+                resolutionDropdown.ClearOptions();
+                var opts = new System.Collections.Generic.List<TMP_Dropdown.OptionData>(
+                    GameOptions.ResolutionOptions.Length);
+                for (int i = 0; i < GameOptions.ResolutionOptions.Length; i++)
+                {
+                    var r = GameOptions.ResolutionOptions[i];
+                    opts.Add(new TMP_Dropdown.OptionData(r.x + " x " + r.y));
+                }
+                resolutionDropdown.AddOptions(opts);
+                resolutionDropdown.SetValueWithoutNotify(resolutionIndex);
+                resolutionDropdown.RefreshShownValue();
+                resolutionDropdown.onValueChanged.AddListener(OnResolutionDropdownChanged);
+            }
 
             backgroundCameraIndex = IndexOfBackgroundCamera(GameOptions.BackgroundCameraEnabled);
             UpdateBackgroundCameraLabel();
@@ -110,10 +167,28 @@ namespace SlimeJumping.UI
             UpdateFrameLimitLabel();
         }
 
-        private void OnSfxVolumeChanged(float v)
+        private void OnPlayerSfxVolumeChanged(float v)
         {
-            GameOptions.SetSfxVolume(v);
-            UpdateSfxVolumeLabel(v);
+            GameOptions.SetPlayerSfxVolume(v);
+            UpdatePlayerSfxVolumeLabel(v);
+        }
+
+        private void OnWorldSfxVolumeChanged(float v)
+        {
+            GameOptions.SetWorldSfxVolume(v);
+            UpdateWorldSfxVolumeLabel(v);
+        }
+
+        private void OnBgmVolumeChanged(float v)
+        {
+            GameOptions.SetBgmVolume(v);
+            UpdateBgmVolumeLabel(v);
+        }
+
+        private void OnUiVolumeChanged(float v)
+        {
+            GameOptions.SetUiVolume(v);
+            UpdateUiVolumeLabel(v);
         }
 
         private void UpdateFrameLimitLabel()
@@ -123,10 +198,28 @@ namespace SlimeJumping.UI
             frameLimitValueLabel.text = fps <= 0 ? "Unlimited" : fps + " FPS";
         }
 
-        private void UpdateSfxVolumeLabel(float v)
+        private void UpdatePlayerSfxVolumeLabel(float v)
         {
-            if (sfxVolumeValueLabel == null) return;
-            sfxVolumeValueLabel.text = Mathf.RoundToInt(v * 100f) + "%";
+            if (playerSfxVolumeValueLabel == null) return;
+            playerSfxVolumeValueLabel.text = Mathf.RoundToInt(v * 100f) + "%";
+        }
+
+        private void UpdateWorldSfxVolumeLabel(float v)
+        {
+            if (worldSfxVolumeValueLabel == null) return;
+            worldSfxVolumeValueLabel.text = Mathf.RoundToInt(v * 100f) + "%";
+        }
+
+        private void UpdateBgmVolumeLabel(float v)
+        {
+            if (bgmVolumeValueLabel == null) return;
+            bgmVolumeValueLabel.text = Mathf.RoundToInt(v * 100f) + "%";
+        }
+
+        private void UpdateUiVolumeLabel(float v)
+        {
+            if (uiVolumeValueLabel == null) return;
+            uiVolumeValueLabel.text = Mathf.RoundToInt(v * 100f) + "%";
         }
 
         private static int IndexOfFrameLimit(int fps)
@@ -147,8 +240,12 @@ namespace SlimeJumping.UI
         private void UpdateWindowModeLabel()
         {
             if (windowModeValueLabel == null) return;
-            windowModeValueLabel.text = WindowModes[windowModeIndex] == WindowMode.Windowed
-                ? "Windowed" : "Fullscreen";
+            switch (WindowModes[windowModeIndex])
+            {
+                case WindowMode.Windowed:   windowModeValueLabel.text = "Windowed";   break;
+                case WindowMode.Borderless: windowModeValueLabel.text = "Borderless"; break;
+                default:                    windowModeValueLabel.text = "Fullscreen"; break;
+            }
         }
 
         private static int IndexOfWindowMode(WindowMode m)
@@ -156,6 +253,12 @@ namespace SlimeJumping.UI
             for (int i = 0; i < WindowModes.Length; i++)
                 if (WindowModes[i] == m) return i;
             return 1; // Fullscreen default
+        }
+
+        private void OnResolutionDropdownChanged(int index)
+        {
+            resolutionIndex = Mathf.Clamp(index, 0, GameOptions.ResolutionOptions.Length - 1);
+            GameOptions.SetResolutionIndex(resolutionIndex);
         }
 
         private void CycleBackgroundCamera(int dir)

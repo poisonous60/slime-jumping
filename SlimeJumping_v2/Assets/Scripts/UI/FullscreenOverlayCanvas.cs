@@ -9,7 +9,6 @@ namespace SlimeJumping.UI
     {
         [SerializeField] protected CanvasGroup canvasGroup;
         [SerializeField] protected Image fullscreenImage;
-        [SerializeField] protected AudioSource audioSource;
         [SerializeField] protected ImpulseEmitter impulseEmitter;
 
         private Coroutine activeFade;

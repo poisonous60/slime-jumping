@@ -21,7 +21,9 @@ namespace SlimeJumping.Interaction
 
         public void Interact(SlimeController slime)
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log($"[MemoNote] Read note: {noteText}");
+#endif
         }
 
         private void OnDrawGizmos()

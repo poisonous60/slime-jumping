@@ -97,12 +97,23 @@ SoundService.StopLoop(handle);
 
 **UI 사운드**: 기존 `UIClickSoundInstaller`가 Canvas 하위 모든 버튼 자동 처리. 다른 UI 사운드 필요 시 `SoundService.Play2D(clip, SoundCategory.UI)`.
 
-## 현재 남은 위반 (follow-up)
+## 기존 코드 리팩터 현황
 
-이번 체계 도입 범위 밖. 아래 9곳은 `AudioSource.Play*` 직접 호출 중 — 별도 PR에서 `SoundService` 경유로 전환 예정:
+**CONVERT 완료 (2026-04-24 Phase 2)** — 직접 `AudioSource.Play*` → `SoundService` 경유로 이관, 프리팹/씬 orphan AudioSource 제거:
 
-- `SliceEffect.cs`, `ApplianceInteractable_Washing.cs`, `FireworkInteractable.cs`
-- `MediaInteractable_Phonograph.cs`, `MediaInteractable_TV.cs`, `ShrineInteractable.cs`
-- `CameraFlashHazard.cs`, `JumpscareCanvasController.cs`, `SceneTransitionController.cs`
+- `SliceEffect.cs` → `SoundService.PlayAt(SFX_Object)` (`Slice_Hit.prefab` AudioSource 제거)
+- `FireworkInteractable.cs` → `PlayAt(SFX_Object)` (`Firework_Radial.prefab` 포함 인스턴스 AudioSource 전부 제거)
+- `ShrineInteractable.cs` → `PlayAt(SFX_Object)`
+- `CameraFlashHazard.cs` → `PlayAt(SFX_Object)` (`shutterAudio` 필드 → `shutterClip`+`shutterVolume`만)
+- `JumpscareCanvasController.cs` → `Play2D(UI)`. `FullscreenOverlayCanvas` base class의 `audioSource` 필드도 같이 제거 (유일 사용자였음)
 
-이 컴포넌트들의 프리팹/씬 AudioSource가 올바른 `Output AudioMixerGroup`을 쥐고 있으면 슬라이더 반영은 되므로, validator가 누락만 잡으면 당장은 동작에 문제 없음.
+**KEEP — embedded AudioSource 유지 (상태/루프 필요)** — prefab/씬 인스턴스의 `Output AudioMixerGroup`만 검증/설정:
+
+- `ApplianceInteractable_Washing.cs` → `MainMixer/SFX/SFX_Environment` (기계 루프 on/off 토글)
+- `MediaInteractable_Phonograph.cs` → `MainMixer/BGM` (디스크 회전 sync with `audioSource.time`)
+- `MediaInteractable_TV.cs` → `MainMixer/SFX/SFX_Object` (toggle on/off clip)
+
+**DEFER** — 이번 범위 밖, 별도 PR에서 진행:
+
+- `SceneTransitionController.cs` (6개 `PlayOneShot`) — 비동기 씬 로드 async 로직과 얽힘. 현재 prefab의 AudioSource `Output` 필드만 지정하면 슬라이더 반영은 됨 (validator로 관리).
+- `UIClickSoundInstaller.cs` — 자체 AudioSource + `settings.uiGroup` 경로로 이미 규칙 충족. 변경 불필요.

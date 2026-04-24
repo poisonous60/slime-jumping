@@ -51,7 +51,9 @@ namespace SlimeJumping.Platforms
 #endif
             }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log($"[ThinIcePlatformAudioManager] Applied audio to {tiles.Length} ThinIcePlatform instance(s).", this);
+#endif
         }
     }
 }

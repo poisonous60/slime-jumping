@@ -63,16 +63,34 @@ namespace SlimeJumping.UI
 
         private void OnValidate()
         {
-            // In edit mode, we only restyle existing children — never create during OnValidate
-            // (Unity warns about SendMessage during serialization callbacks).
-            if (bgRenderer == null || tmp == null)
+            // SpriteRenderer.size setter dispatches SendMessage internally, which Unity
+            // forbids during OnValidate. Defer the restyle by one editor tick so the
+            // serialization callback completes first.
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.delayCall += DeferredOnValidate;
+#endif
+        }
+
+#if UNITY_EDITOR
+        private void DeferredOnValidate()
+        {
+            UnityEditor.EditorApplication.delayCall -= DeferredOnValidate;
+            if (this == null) return; // destroyed between the schedule and the fire
+
+            if (bgRenderer == null)
             {
-                bgRenderer = transform.Find("BG")?.GetComponent<SpriteRenderer>();
-                tmp = transform.Find("Label")?.GetComponent<TextMeshPro>();
+                var bgT = transform.Find("BG");
+                if (bgT != null) bgRenderer = bgT.GetComponent<SpriteRenderer>();
+            }
+            if (tmp == null)
+            {
+                var labelT = transform.Find("Label");
+                if (labelT != null) tmp = labelT.GetComponent<TextMeshPro>();
             }
             ApplyAppearance();
             if (!Application.isPlaying) ApplyAlpha(1f); // preview fully visible in editor
         }
+#endif
 
         private void Update()
         {

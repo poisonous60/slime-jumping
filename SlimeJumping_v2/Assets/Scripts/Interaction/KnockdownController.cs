@@ -21,12 +21,16 @@ namespace SlimeJumping.Interaction
         {
             timer = 0f;
             slime.OverrideVelocity(Vector2.zero);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log("[Knockdown] TakeControl");
+#endif
         }
 
         public void OnReleaseControl(SlimeController slime)
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log("[Knockdown] ReleaseControl");
+#endif
         }
 
         public void ExternalUpdate(SlimeController slime)
