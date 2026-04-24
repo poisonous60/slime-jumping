@@ -631,13 +631,23 @@ namespace SlimeJumping.Platforms
             Rebuild();
             if (nodeCount < 3) return;
 
-            const float dt = 0.02f;
+            // Mirror runtime FixedUpdate exactly: same dt, same substep pattern.
+            // Each outer iteration = one FixedUpdate worth of input; rider force is
+            // written to riderAccum ONCE, then consumed by N substeps (just like
+            // SlimeController writes once per tick and Rope.FixedUpdate substeps).
+            // Without this, preview single-step integration produces force × dt²
+            // per frame while runtime N-substeps produce force × dt²/N — the
+            // magenta gizmo would show a deeper sag than the actual in-play rope.
+            float dt = Time.fixedDeltaTime;
+            int substeps = Mathf.Clamp(simulationSubsteps, 1, 8);
+            float subDt = dt / substeps;
             int steps = Mathf.Max(10, previewSteps);
 
             // Phase 1 — settle under self-gravity only (no rider).
             for (int s = 0; s < steps; s++)
             {
-                StepSimulationOnce(dt);
+                for (int sub = 0; sub < substeps; sub++)
+                    StepSimulationOnce(subDt);
                 for (int i = 0; i < nodeCount; i++) riderAccum[i] = Vector2.zero;
             }
             var restPos = (Vector2[])pos.Clone();
@@ -663,7 +673,8 @@ namespace SlimeJumping.Platforms
                         riderAccum[i] += force * falloff;
                     }
                 }
-                StepSimulationOnce(dt);
+                for (int sub = 0; sub < substeps; sub++)
+                    StepSimulationOnce(subDt);
                 for (int i = 0; i < nodeCount; i++) riderAccum[i] = Vector2.zero;
 
                 float sag = GetMaxSagDistance();
