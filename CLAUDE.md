@@ -28,6 +28,7 @@ Available commands: `list`, `exec`, `run_tests`, `console`, `screenshot`, `refre
 
 - Before using `exec`, check if another `unity-cli` command can query/modify/add what you need.
 - After changes, only check the error log. Do not run the game and take a screenshot.
+- 새로 만든 `.cs` 파일이 인스펙터 Add Component 에서 안 뜨고, `Type.GetType(...)` 로도 NOT FOUND 나는 경우. Unity가 메타(guid)는 등록했지만 컴파일 목록(`Library/Bee/artifacts/*.dag/Assembly-CSharp.rsp`)에는 추가하지 않은 상태. 해결: `unity-cli exec "UnityEditor.AssetDatabase.DeleteAsset(\"<path>\"); return \"deleted\";"` → `Write` 로 동일 경로에 재생성 → `unity-cli refresh_unity`.
 
 
 

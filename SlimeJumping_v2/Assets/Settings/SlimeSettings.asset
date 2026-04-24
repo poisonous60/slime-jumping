@@ -99,6 +99,12 @@ MonoBehaviour:
   groundLayer:
     serializedVersion: 2
     m_Bits: 128
+  surfaceProbeMode: 1
+  surfaceProbeSamples: 8
+  surfaceProbeRingScale: 0.8
+  surfaceProbeDedupeDot: 0.97
+  surfaceNormalSmoothRate: 20
+  surfaceNormalSmoothAngularThreshold: 10
   postLaunchIgnoreTime: 0.05
   launchClearanceThreshold: 0.05
   maxIgnoreTime: 0.15

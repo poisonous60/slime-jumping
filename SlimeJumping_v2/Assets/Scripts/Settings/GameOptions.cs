@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using SlimeJumping.Audio;
 
@@ -5,32 +6,42 @@ namespace SlimeJumping.Settings
 {
     public enum WindowMode { Windowed, Fullscreen }
 
-    /// Persists demo-facing user options (frame limit, SFX volume, window mode)
-    /// via PlayerPrefs and applies them on boot. Audio is re-applied after scene
-    /// load so the mixer picks it up once SoundService has initialized.
+    /// Persists demo-facing user options (frame limit, SFX volume, window mode,
+    /// background camera) via PlayerPrefs and applies them on boot. Audio is
+    /// re-applied after scene load so the mixer picks it up once SoundService
+    /// has initialized. Background camera changes fire an event so scene-level
+    /// components (see BackgroundCameraOption) can react live.
     public static class GameOptions
     {
-        private const string KeyFrameLimit = "opt.frameLimit";
-        private const string KeySfxVolume  = "opt.sfxVolume";
-        private const string KeyWindowMode = "opt.windowMode";
+        private const string KeyFrameLimit            = "opt.frameLimit";
+        private const string KeySfxVolume             = "opt.sfxVolume";
+        private const string KeyWindowMode            = "opt.windowMode";
+        private const string KeyBackgroundCameraOn    = "opt.backgroundCameraEnabled";
 
-        public const int        DefaultFrameLimit = 60;
-        public const float      DefaultSfxVolume  = 0.8f;
-        public const WindowMode DefaultWindowMode = WindowMode.Fullscreen;
+        public const int        DefaultFrameLimit            = 60;
+        public const float      DefaultSfxVolume             = 0.8f;
+        public const WindowMode DefaultWindowMode            = WindowMode.Fullscreen;
+        public const bool       DefaultBackgroundCameraOn    = true;
 
         // -1 = Unlimited (Application.targetFrameRate = -1)
         public static readonly int[] FrameLimitOptions = { 30, 60, 120, -1 };
 
-        public static int        FrameLimit { get; private set; } = DefaultFrameLimit;
-        public static float      SfxVolume  { get; private set; } = DefaultSfxVolume;
-        public static WindowMode WindowMode { get; private set; } = DefaultWindowMode;
+        public static int        FrameLimit             { get; private set; } = DefaultFrameLimit;
+        public static float      SfxVolume              { get; private set; } = DefaultSfxVolume;
+        public static WindowMode WindowMode             { get; private set; } = DefaultWindowMode;
+        public static bool       BackgroundCameraEnabled { get; private set; } = DefaultBackgroundCameraOn;
+
+        /// Raised when BackgroundCameraEnabled is changed. Scene components
+        /// subscribe to toggle the BG camera + overlay stack live.
+        public static event Action<bool> BackgroundCameraEnabledChanged;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void BootstrapLoadAndApplyFrame()
         {
-            FrameLimit = PlayerPrefs.GetInt(KeyFrameLimit, DefaultFrameLimit);
-            SfxVolume  = Mathf.Clamp01(PlayerPrefs.GetFloat(KeySfxVolume, DefaultSfxVolume));
-            WindowMode = (WindowMode)PlayerPrefs.GetInt(KeyWindowMode, (int)DefaultWindowMode);
+            FrameLimit             = PlayerPrefs.GetInt(KeyFrameLimit, DefaultFrameLimit);
+            SfxVolume              = Mathf.Clamp01(PlayerPrefs.GetFloat(KeySfxVolume, DefaultSfxVolume));
+            WindowMode             = (WindowMode)PlayerPrefs.GetInt(KeyWindowMode, (int)DefaultWindowMode);
+            BackgroundCameraEnabled = PlayerPrefs.GetInt(KeyBackgroundCameraOn, DefaultBackgroundCameraOn ? 1 : 0) != 0;
             ApplyFrameLimit(FrameLimit);
             ApplyWindowMode(WindowMode);
         }
@@ -65,6 +76,15 @@ namespace SlimeJumping.Settings
             PlayerPrefs.SetInt(KeyWindowMode, (int)mode);
             PlayerPrefs.Save();
             ApplyWindowMode(mode);
+        }
+
+        public static void SetBackgroundCameraEnabled(bool on)
+        {
+            BackgroundCameraEnabled = on;
+            PlayerPrefs.SetInt(KeyBackgroundCameraOn, on ? 1 : 0);
+            PlayerPrefs.Save();
+            var handler = BackgroundCameraEnabledChanged;
+            if (handler != null) handler(on);
         }
 
         private static void ApplyFrameLimit(int fps)

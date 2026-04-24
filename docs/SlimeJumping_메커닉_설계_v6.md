@@ -38,6 +38,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 
 - [Common (PlatformMotor / Carrier)](features/platforms/common-platform.md)
 - [Crumbling](features/platforms/crumbling.md) — 무너지는 플랫폼
+- [Thin Ice](features/platforms/thin-ice.md) — Crumbling 확장 (SFX + 파티클 + 부드러운 재생성)
 - [Rolling Disk](features/platforms/rolling-disk.md) — 360° 회전 원형
 - [Pendulum](features/platforms/pendulum.md) — 매달린 진자
 - [Springy Branch](features/platforms/springy-branch.md) — 탄력 나뭇가지
@@ -55,10 +56,12 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Water Zone](features/mechanisms/water-zone.md) — 물 v1/v2 + 파도 + Underwater 포스트
 - [Push Door](features/mechanisms/push-door.md) — 밀어서 여는 문
 - [Jump Pad](features/mechanisms/jump-pad.md)
+- [Jump Ball](features/mechanisms/jump-ball.md) — 트리거 자동 점프, 보빙 비주얼
 - [Conveyor Belt](features/mechanisms/conveyor-belt.md)
 - [Spike Hazard](features/mechanisms/spike-hazard.md)
 - [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect
 - [Turret Hazard](features/mechanisms/turret-hazard.md) — CCTV 확장 사격
+- [Icicle Hazard](features/mechanisms/icicle-hazard.md) — 낙하 고드름 (진동 → 낙하 → 파괴)
 - [Tier 1 Interactables](features/mechanisms/tier1-interactables.md) — E키 (Sit, TV, Shrine 등)
 - [Tier 1 Fullscreen Hazards](features/mechanisms/tier1-fullscreen-hazards.md) — Jumpscare, CameraFlash
 - [Memo](features/mechanisms/memo.md) — 월드 스페이스 내레이션
@@ -71,7 +74,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Timer Architecture](features/infra/timer-architecture.md) — wall-clock vs fixedDelta, IgnoredColliderList 모드
 - [Input Summary](features/infra/input-summary.md)
 - [Trail (진행 트레일)](features/infra/trail.md) — 항아리 게임 스타일 영속 자국
-- [VFX Infrastructure](features/infra/vfx-infra.md) — ImpulseEmitter, SliceEffect, Blur, Two-Ramp Y Blend, 옵션패널
+- [VFX Infrastructure](features/infra/vfx-infra.md) — ImpulseEmitter, SliceEffect, Blur, Two-Ramp Y Blend, 옵션패널(Background Camera On/Off 포함)
 - [Tuning Parameters](features/infra/tuning-parameters.md) — SlimeSettings 전체 목록
 - [Script Structure](features/infra/script-structure.md) — 전체 스크립트 인벤토리
 

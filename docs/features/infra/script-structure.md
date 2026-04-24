@@ -109,6 +109,7 @@
 | `OptionsPanelController.cs` | 옵션 패널 ESC 토글 |
 | `UIClickSoundInstaller.cs` | 버튼 클릭 SFX 후킹 |
 | `ResolutionScaleController.cs` | FOV 해상도 비례 스케일 |
+| `BackgroundCameraOption.cs` | BG 카메라 + TIS 온/오프 + Main 카메라 Overlay↔Base 전환 |
 
 ## 에디터
 | 스크립트 | 설명 |

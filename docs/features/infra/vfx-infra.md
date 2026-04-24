@@ -59,10 +59,11 @@ ESC로 열고 닫되 `Time.timeScale`은 건드리지 않아 게임 진행 유�
 - Frame Limit (30/60/120/Unlimited — `<`/`>` 사이클러).
 - SFX Volume (0..1 linear → dB 변환해 `SoundService.SetCategoryVolumeDb`로 SFX_Slime/Environment/Object 3개 버스 적용).
 - Window Mode (Windowed/Fullscreen — `Screen.fullScreenMode`에 `Windowed` / `FullScreenWindow`).
+- Background Camera (On/Off — `BackgroundCameraEnabledChanged` 이벤트로 `BackgroundCameraOption`이 BG 카메라 + TranslucentImageSource 비활성화 + Main Camera Overlay→Base 전환. Off 시 블러/BG 스택이 꺼지며 `MainScene_성능_프로파일_2026-04-24.md`의 ~0.55 ms 렌더 비용 제거).
 - CLOSE + QUIT 버튼.
 
 **영속화**: `GameOptions.cs`가 PlayerPrefs에 저장.
-- `BeforeSceneLoad`: `Application.targetFrameRate` + `Screen.fullScreenMode` 적용.
+- `BeforeSceneLoad`: `Application.targetFrameRate` + `Screen.fullScreenMode` + `BackgroundCameraEnabled` 로드 (카메라 토글은 씬의 `BackgroundCameraOption.OnEnable`에서 현재 값 적용).
 - `AfterSceneLoad`: 오디오 적용 (SoundService Awake 이후).
 
 **배치**: MainMenuScene / MainScene 양쪽에 `OptionsCanvas` (sortingOrder=1000) 루트 + `OptionsPanelController.cs`. 메인메뉴에는 `OPTIONS` 버튼 추가 (`onClick → OptionsPanelController.Open()`). 게임 중 ESC는 `Input.GetKeyDown` 직접 폴링.

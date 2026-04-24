@@ -19,6 +19,9 @@ namespace SlimeJumping.UI
         [SerializeField] private Button windowModePrevButton;
         [SerializeField] private Button windowModeNextButton;
         [SerializeField] private TextMeshProUGUI windowModeValueLabel;
+        [SerializeField] private Button backgroundCameraPrevButton;
+        [SerializeField] private Button backgroundCameraNextButton;
+        [SerializeField] private TextMeshProUGUI backgroundCameraValueLabel;
         [SerializeField] private Button closeButton;
         [SerializeField] private Button quitButton;
 
@@ -28,7 +31,9 @@ namespace SlimeJumping.UI
 
         private int frameLimitIndex;
         private int windowModeIndex;
+        private int backgroundCameraIndex;
         private static readonly WindowMode[] WindowModes = { WindowMode.Windowed, WindowMode.Fullscreen };
+        private static readonly bool[] BackgroundCameraStates = { false, true };
 
         private void Awake()
         {
@@ -57,6 +62,13 @@ namespace SlimeJumping.UI
                 windowModePrevButton.onClick.AddListener(() => CycleWindowMode(-1));
             if (windowModeNextButton != null)
                 windowModeNextButton.onClick.AddListener(() => CycleWindowMode(+1));
+
+            backgroundCameraIndex = IndexOfBackgroundCamera(GameOptions.BackgroundCameraEnabled);
+            UpdateBackgroundCameraLabel();
+            if (backgroundCameraPrevButton != null)
+                backgroundCameraPrevButton.onClick.AddListener(() => CycleBackgroundCamera(-1));
+            if (backgroundCameraNextButton != null)
+                backgroundCameraNextButton.onClick.AddListener(() => CycleBackgroundCamera(+1));
 
             if (closeButton != null)
                 closeButton.onClick.AddListener(Close);
@@ -144,6 +156,27 @@ namespace SlimeJumping.UI
             for (int i = 0; i < WindowModes.Length; i++)
                 if (WindowModes[i] == m) return i;
             return 1; // Fullscreen default
+        }
+
+        private void CycleBackgroundCamera(int dir)
+        {
+            int len = BackgroundCameraStates.Length;
+            backgroundCameraIndex = ((backgroundCameraIndex + dir) % len + len) % len;
+            GameOptions.SetBackgroundCameraEnabled(BackgroundCameraStates[backgroundCameraIndex]);
+            UpdateBackgroundCameraLabel();
+        }
+
+        private void UpdateBackgroundCameraLabel()
+        {
+            if (backgroundCameraValueLabel == null) return;
+            backgroundCameraValueLabel.text = BackgroundCameraStates[backgroundCameraIndex] ? "On" : "Off";
+        }
+
+        private static int IndexOfBackgroundCamera(bool on)
+        {
+            for (int i = 0; i < BackgroundCameraStates.Length; i++)
+                if (BackgroundCameraStates[i] == on) return i;
+            return 1; // On default
         }
     }
 }
