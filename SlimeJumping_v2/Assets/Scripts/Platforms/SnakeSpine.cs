@@ -24,10 +24,8 @@ namespace SlimeJumping.Platforms
         [Header("Segments")]
         [Tooltip("Head visual — the transform that SnakeSpine writes position/rotation to each frame. Leave empty if you assign Head Prefab below; it will be instantiated at runtime and the root transform auto-assigned here.")]
         [SerializeField] Transform headVisual;
-        [Tooltip("Optional prefab. If Head Visual is empty, this is instantiated as a child of the snake at Awake and assigned as the head. Author the prefab with its forward axis along +X so the 2D yaw rotation lines it up with the motion direction, and with the visible face on the +Z side (toward the camera).")]
+        [Tooltip("Optional prefab. If Head Visual is empty, this is instantiated as a child of the snake at Awake and assigned as the head. Author the prefab at its final size — SnakeSpine only writes position + rotation, never scale. Author forward = +X so the 2D yaw rotation lines it up with the motion direction, and put the visible face on the +Z side (toward the camera).")]
         [SerializeField] GameObject headPrefab;
-        [Tooltip("If on, SnakeSpine forces headVisual.localScale to (segmentLength, segmentWidth, segmentWidth) every frame — useful for the placeholder cube. Turn off when headVisual is a sculpted/composite head authored at its own final size, otherwise nested child offsets (eyes, mouth) will smear.")]
-        [SerializeField] bool overrideHeadScale = true;
         [Tooltip("Optional renderer to receive the on-plane / off-plane tint via MaterialPropertyBlock. Use this to target only the head's skin material when the head has multiple child renderers (e.g., eyes and mouth that should keep their own color). If left empty, we fall back to a MeshRenderer on headVisual's root, if any.")]
         [SerializeField] Renderer headSkinRenderer;
         [Tooltip("Local Euler offset applied to headVisual BEFORE the motion yaw, letting you realign a prefab whose forward axis isn't +X. " +
@@ -36,15 +34,15 @@ namespace SlimeJumping.Platforms
         [SerializeField] Vector3 headRotationOffsetEuler;
         [Tooltip("Point on the head (in head-local space AFTER Head Rotation Offset is applied; X=forward along motion, Y=side, Z=toward camera) where the body tube meets the head. The head visual is positioned so this point lands exactly on the path arc — i.e., the body's front ring is always flush with this spot on the head, closing the neck gap. Default (0,0,0) sits the head pivot on the path. Example: placeholder cube extends ±0.5 in local X, so (-0.5, 0, 0) joins the body at the head's back face. Read every FixedUpdate — tweak in play mode to find the right spot live.")]
         [SerializeField] Vector3 headBodyJointLocal;
+        [Tooltip("If on, the head rotation is built as an orthonormal basis with +X = motion direction and +Y projected onto world-up, so the head NEVER flips upside-down on curves that reverse horizontally. Cost: when the snake moves leftward (motion.x < 0), the head's +Z side rotates away from the camera (the 'face' disappears from view) — you can't keep +X=motion, +Y=world-up, and +Z=toward-camera all at once without mirroring. If off, falls back to pure Z-axis yaw (face stays toward camera, but head flips upside-down for motion.x < 0). When motion is near-vertical this mode uses world +Z as the up fallback so the head doesn't pop through the degenerate case.")]
+        [SerializeField] bool keepHeadUpright = true;
         [Tooltip("Number of body segments behind the head. Body is rendered as a single dynamic ribbon mesh sweeping this many spine samples; changing this value resizes the ribbon live.")]
         [Min(1)] [SerializeField] int bodySegmentCount = 8;
 
         [Header("Shape")]
         [Tooltip("Arc-length spacing between adjacent segment centers (meters).")]
         [Min(0.01f)] [SerializeField] float segmentLength = 1f;
-        [Tooltip("Head cube placeholder cross-section (meters). No longer feeds the body collider — per-segment collider half-width now tracks bodyRadius * radiusProfile so the collider tapers with the visual tube.")]
-        [Min(0.01f)] [SerializeField] float segmentWidth = 0.6f;
-        [Tooltip("Base radius of the tube cross-section at the head (meters). Visual only — 2D collider still uses segmentWidth.")]
+        [Tooltip("Base radius of the tube cross-section at the head (meters). Per-segment collider half-width tracks bodyRadius × radiusProfile so the polygon collider tapers with the visual tube.")]
         [Min(0.01f)] [SerializeField] float bodyRadius = 0.3f;
         [Tooltip("Radius multiplier sampled at i/(N-1): 0 = head-adjacent, 1 = tail. Default 1→0.25 tapers toward the tail.")]
         [SerializeField] AnimationCurve radiusProfile = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(1f, 0.25f));
@@ -166,9 +164,9 @@ namespace SlimeJumping.Platforms
         void EnsureHeadVisual()
         {
             // Prefab path: if nothing is wired to headVisual yet, instantiate the prefab as a
-            // child of the snake root and auto-assign. We don't touch headPrefab or overrideHeadScale
-            // here — the user controls those via the inspector. A prefab user will typically also
-            // untick overrideHeadScale so their authored size is preserved.
+            // child of the snake root and auto-assign. The prefab keeps its authored scale —
+            // SnakeSpine never writes to headVisual.localScale, so whatever size the prefab is
+            // authored at is exactly what ships on screen.
             if (headVisual != null) return;
             if (headPrefab == null) return;
             var go = Instantiate(headPrefab, transform);
@@ -546,16 +544,42 @@ namespace SlimeJumping.Platforms
             int n = SegmentCount;
             if (headVisual == null || n < 1) return;
 
-            float rotDeg = Mathf.Atan2(lastHeadTangent.y, lastHeadTangent.x) * Mathf.Rad2Deg;
+            Quaternion baseYaw;
+            if (keepHeadUpright)
+            {
+                // Build an orthonormal basis where local +X aims at the motion tangent in the
+                // XY plane and local +Y is projected onto world-up (so the head's top always
+                // points up in the world, never flips). Local +Z is then determined — and will
+                // rotate toward the back when motion reverses in X. That's the intentional
+                // trade-off: keeping upright costs face-visibility on leftward motion.
+                Vector3 motionDir = new Vector3(lastHeadTangent.x, lastHeadTangent.y, 0f);
+                if (motionDir.sqrMagnitude < 1e-10f) motionDir = Vector3.right;
+                motionDir.Normalize();
+                Vector3 yCandidate = Vector3.up - Vector3.Dot(Vector3.up, motionDir) * motionDir;
+                if (yCandidate.sqrMagnitude < 1e-6f)
+                {
+                    // Motion is (near-)parallel to world-up — yLocal is undefined. Fall back to
+                    // world +Z as "up", so local +Y points toward the camera and the face side
+                    // rotates to world +X rather than collapsing. It's the least-bad degenerate.
+                    yCandidate = Vector3.forward;
+                }
+                yCandidate.Normalize();
+                Vector3 zLocal = Vector3.Cross(motionDir, yCandidate).normalized;
+                baseYaw = Quaternion.LookRotation(zLocal, yCandidate);
+            }
+            else
+            {
+                float rotDeg = Mathf.Atan2(lastHeadTangent.y, lastHeadTangent.x) * Mathf.Rad2Deg;
+                baseYaw = Quaternion.Euler(0f, 0f, rotDeg);
+            }
             // Offset is pre-applied in local space (right-multiply) so the prefab's authored
             // forward is first rotated onto +X, then the motion yaw turns +X toward the tangent.
-            headVisual.rotation = Quaternion.Euler(0f, 0f, rotDeg) * Quaternion.Euler(headRotationOffsetEuler);
+            headVisual.rotation = baseYaw * Quaternion.Euler(headRotationOffsetEuler);
             // Place the head so headBodyJointLocal (in head-local space) lands exactly on the
             // path sample — this is where the body tube's front ring already sits, so choosing
             // a joint point at the back of the head closes the neck gap automatically.
+            // Scale is never written: the head prefab/authored transform keeps its own size.
             headVisual.position = segPos3D[0] - headVisual.rotation * headBodyJointLocal;
-            if (overrideHeadScale)
-                headVisual.localScale = new Vector3(segmentLength, segmentWidth, segmentWidth);
 
             bool headOn = segOnPlane != null ? segOnPlane[0] : true;
             ApplyVisualColor(headOn ? headColor : offPlaneColor);

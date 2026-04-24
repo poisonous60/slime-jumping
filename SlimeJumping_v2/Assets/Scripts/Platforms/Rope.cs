@@ -28,9 +28,30 @@ namespace SlimeJumping.Platforms
                  "High (8-15) = stiff (telephone). Low (2-3) = soft (elastic).")]
         [SerializeField, Min(1)] int constraintIterations = 12;
 
-        [Tooltip("Velocity retention per frame. " +
-                 "vel = (pos - prevPos) * damping; pos' = pos + vel + accel*dt^2")]
+        [Tooltip("Velocity retention per Verlet step. " +
+                 "Closer to 1 = longer oscillation (bouncier, slower to settle). " +
+                 "Closer to 0.9 = fast settle, less bounce. " +
+                 "Controls *how long the rope keeps oscillating*, not how much it sags.")]
         [SerializeField, Range(0f, 1f)] float damping = 0.98f;
+
+        [Tooltip("Softens the distance constraint projection — nodes stretch more " +
+                 "under load without changing iteration count. " +
+                 "0 = fully rigid (Jakobsen pulls back to rest length every iter). " +
+                 "0.2-0.5 = rubbery (rider force reaches a deeper equilibrium sag). " +
+                 "1 = constraint disabled (rope falls apart, use elasticFactor instead).\n\n" +
+                 "This is THE elasticity knob. Raise for more stretch per unit of rider weight.")]
+        [SerializeField, Range(0f, 1f)] float stretchSoftness = 0f;
+
+        [Tooltip("Physics substeps per FixedUpdate. Higher = stable at higher stiffness / faster motion. " +
+                 "1 = legacy behavior. 2-4 recommended. Raise to 4-6 if the rope buzzes or vibrates " +
+                 "when swinging fast.")]
+        [SerializeField, Range(1, 8)] int simulationSubsteps = 2;
+
+        [Tooltip("Laplacian smoothing applied after each constraint pass. " +
+                 "Damps zigzag/buzzing modes (where adjacent nodes alternate up/down). " +
+                 "0 = off. 0.1-0.2 = smooth out vibration during fast swings without washing out the shape. " +
+                 ">0.4 = too much, natural sag shape flattens.")]
+        [SerializeField, Range(0f, 0.5f)] float zigzagSmoothing = 0f;
 
         [Tooltip("EdgeCollider2D capsule thickness. 0 = zero-thickness polyline. " +
                  "Raise to ~0.05 if high-speed tunneling test fails.")]
@@ -62,6 +83,12 @@ namespace SlimeJumping.Platforms
                  "Called from SlimeController.Launch. 0 = disabled.")]
         [SerializeField, Min(0f)] float reboundSpeedPerMeter = 4f;
 
+        [Tooltip("Hard cap on speed the rope can transfer to the slime — bounds BOTH " +
+                 "the ongoing velocity inheritance (while attached, so fast swings don't " +
+                 "over-accelerate the slime) AND the one-shot Launch rebound bonus. " +
+                 "Mirrors SpringyBranchPlatform.maxTipSpeed semantics. 0 = uncapped.")]
+        [SerializeField, Min(0f)] float maxReboundSpeed = 18f;
+
         [Header("Scene Preview")]
         [Tooltip("Synthetic rider mass for the Preview Max Sag context menu.")]
         [SerializeField, Min(0f)] float previewRiderMass = 1f;
@@ -85,6 +112,7 @@ namespace SlimeJumping.Platforms
 
         public EdgeCollider2D Edge => edge;
         public float ReboundSpeedPerMeter => reboundSpeedPerMeter;
+        public float MaxReboundSpeed => maxReboundSpeed;
         public event Action<RopeEventType, Vector2> OnRopeEvent;
 
         Vector2[] pos;
@@ -191,7 +219,13 @@ namespace SlimeJumping.Platforms
             if (nodeCount == 0) return;
             if (anchorA == null || anchorB == null) return;
 
-            StepSimulationOnce(Time.fixedDeltaTime);
+            // Substepping stabilizes high-stiffness / fast-motion regimes where
+            // single-step Verlet would blow up into zigzag vibration.
+            int substeps = Mathf.Clamp(simulationSubsteps, 1, 8);
+            float subDt = Time.fixedDeltaTime / substeps;
+            for (int s = 0; s < substeps; s++)
+                StepSimulationOnce(subDt);
+
             EvaluateMaxTension();
             SyncVisual();
 
@@ -264,7 +298,12 @@ namespace SlimeJumping.Platforms
             }
 
             // (4) Distance constraint (Jakobsen). Pin re-assert inside loop.
+            // stretchSoftness scales the per-iteration projection: at 0 the rope
+            // is pulled back to rest length 100% each iter (rigid Jakobsen); at
+            // higher values the equilibrium stretches further under rider load
+            // without changing iteration count.
             int iters = Mathf.Max(1, constraintIterations);
+            float projectionScale = Mathf.Clamp01(1f - stretchSoftness);
             for (int it = 0; it < iters; it++)
             {
                 for (int i = 0; i < nodeCount - 1; i++)
@@ -273,7 +312,7 @@ namespace SlimeJumping.Platforms
                     float len = delta.magnitude;
                     if (len < 1e-5f) continue;
 
-                    float diff = (len - segmentRestLen) / len;
+                    float diff = (len - segmentRestLen) / len * projectionScale;
                     Vector2 offset = delta * (0.5f * diff);
 
                     bool pinA = pinned[i];
@@ -291,6 +330,21 @@ namespace SlimeJumping.Platforms
 
                 pos[0] = anchorA.position;
                 pos[nodeCount - 1] = anchorB.position;
+            }
+
+            // (5) Laplacian smoothing — blend each free node toward the average of
+            // its neighbors. Specifically kills adjacent-node-alternation ("zigzag")
+            // modes that Verlet excites during fast lateral motion without damping
+            // large-scale sag/swing. Cheap O(N).
+            if (zigzagSmoothing > 0f)
+            {
+                float s = Mathf.Clamp(zigzagSmoothing, 0f, 0.5f);
+                for (int i = 1; i < nodeCount - 1; i++)
+                {
+                    if (pinned[i]) continue;
+                    Vector2 avg = (pos[i - 1] + pos[i + 1]) * 0.5f;
+                    pos[i] = Vector2.Lerp(pos[i], avg, s);
+                }
             }
         }
 
@@ -516,11 +570,12 @@ namespace SlimeJumping.Platforms
                     $"[Rope:{name}] Collider spacing {colliderSpacing:F3} > slimeRadius*3 ({maxSpacing:F3}). " +
                     "Segments may feel kinked at vertices — lower colliderSubsample or raise segmentCount.", this);
 
-            if (elasticFactor > 0f && constraintIterations > 5)
+            if (elasticFactor > 0f && constraintIterations > 5 && stretchSoftness <= 0f)
                 Debug.LogWarning(
-                    $"[Rope:{name}] elasticFactor > 0 AND constraintIterations={constraintIterations} > 5. " +
-                    "Double-action: constraint already enforces rest length, elastic becomes redundant. " +
-                    "Use iter 2-3 for elastic rope, or elasticFactor=0 for rigid rope.", this);
+                    $"[Rope:{name}] elasticFactor > 0 AND constraintIterations={constraintIterations} > 5 AND stretchSoftness = 0. " +
+                    "Double-action: rigid constraint wipes out elastic pull-back. " +
+                    "Either raise stretchSoftness (0.1-0.4) to let the rope flex, drop iter to 2-3, " +
+                    "or set elasticFactor = 0.", this);
 
 #if UNITY_EDITOR
             editNeedsRefresh = true;

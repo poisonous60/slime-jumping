@@ -108,13 +108,18 @@ namespace SlimeJumping.Controller
             // Rope rebound: add stored-sag displacement as a launch-direction speed bonus.
             // Freeze was removed from Charging, so the rope keeps sagging under slime weight
             // through the charge; GetMaxSagDistance() reads that stored displacement.
+            // Capped by rope.MaxReboundSpeed so deep sag × high multiplier can't produce
+            // unbounded launches — mirrors SpringyBranchPlatform.maxTipSpeed.
             if (currentRope != null)
             {
                 float sag = currentRope.GetMaxSagDistance();
                 if (sag > 1e-4f)
                 {
                     Vector2 launchDir = velocity.sqrMagnitude > 0.0001f ? velocity.normalized : dir;
-                    velocity += launchDir * (sag * currentRope.ReboundSpeedPerMeter);
+                    float bonusMag = sag * currentRope.ReboundSpeedPerMeter;
+                    float cap = currentRope.MaxReboundSpeed;
+                    if (cap > 0f && bonusMag > cap) bonusMag = cap;
+                    velocity += launchDir * bonusMag;
                 }
             }
 

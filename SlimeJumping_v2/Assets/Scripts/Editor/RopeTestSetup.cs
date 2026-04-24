@@ -25,6 +25,7 @@ namespace SlimeJumping.Editor
             public int colliderSubsample;
             public int visualSubdivisions;
             public float reboundSpeedPerMeter;
+            public float maxReboundSpeed;
             public float previewRiderMass;
             public int previewSteps;
         }
@@ -45,6 +46,7 @@ namespace SlimeJumping.Editor
             colliderSubsample = 2,
             visualSubdivisions = 1,
             reboundSpeedPerMeter = 0f,
+            maxReboundSpeed = 18f,
             previewRiderMass = 1f,
             previewSteps = 120,
         };
@@ -65,6 +67,7 @@ namespace SlimeJumping.Editor
             colliderSubsample = 2,
             visualSubdivisions = 3,
             reboundSpeedPerMeter = 0f,
+            maxReboundSpeed = 18f,
             previewRiderMass = 1f,
             previewSteps = 120,
         };
@@ -88,6 +91,7 @@ namespace SlimeJumping.Editor
             colliderSubsample = 2,
             visualSubdivisions = 3,
             reboundSpeedPerMeter = reboundSpeedPerMeter,
+            maxReboundSpeed = 18f,
             previewRiderMass = 1f,
             previewSteps = 120,
         };
@@ -334,6 +338,7 @@ namespace SlimeJumping.Editor
             so.FindProperty("colliderSubsample").intValue = tuning.colliderSubsample;
             so.FindProperty("visualSubdivisions").intValue = tuning.visualSubdivisions;
             so.FindProperty("reboundSpeedPerMeter").floatValue = tuning.reboundSpeedPerMeter;
+            so.FindProperty("maxReboundSpeed").floatValue = tuning.maxReboundSpeed;
             so.FindProperty("previewRiderMass").floatValue = tuning.previewRiderMass;
             so.FindProperty("previewSteps").intValue = tuning.previewSteps;
             so.ApplyModifiedProperties();

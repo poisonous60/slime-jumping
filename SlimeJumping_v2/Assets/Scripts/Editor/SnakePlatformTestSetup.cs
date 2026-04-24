@@ -59,10 +59,9 @@ namespace SlimeJumping.Editor
             var spine = snake.AddComponent<SnakeSpine>();
 
             // Build a composite faced head: root 'Head' transform (SnakeSpine drives position/
-            // rotation), with child HeadSkin cube sized for the segment, plus eyes and mouth as
-            // sibling children. Because the head is authored at final size here, we set
-            // overrideHeadScale=false so SnakeSpine doesn't rescale the root each frame (which
-            // would smear the hand-placed eye/mouth offsets).
+            // rotation — never scale), with child HeadSkin cube sized for the segment, plus
+            // eyes and mouth as sibling children in the head root's un-scaled space so their
+            // offsets don't smear.
             const float segLen = 1.0f;
             const float segW   = 0.6f;
             Transform headRoot;
@@ -73,10 +72,8 @@ namespace SlimeJumping.Editor
             so.FindProperty("pathProviderBehaviour").objectReferenceValue = path;
             so.FindProperty("headVisual").objectReferenceValue = headRoot;
             so.FindProperty("headSkinRenderer").objectReferenceValue = headSkin;
-            so.FindProperty("overrideHeadScale").boolValue = false;
             so.FindProperty("bodySegmentCount").intValue = 8;
             so.FindProperty("segmentLength").floatValue = segLen;
-            so.FindProperty("segmentWidth").floatValue = segW;
             so.FindProperty("followness").floatValue = 0.6f;
             so.FindProperty("zColliderThreshold").floatValue = 0.05f;
             so.FindProperty("visualRingsPerSegment").intValue = 4;
@@ -87,7 +84,7 @@ namespace SlimeJumping.Editor
 
             Selection.activeGameObject = snake;
             Debug.Log("SnakePlatform Test setup complete.\n" +
-                      "- Head: composite 'Head' (HeadSkin cube + two eyes + mouth) — only the skin is tinted on/off-plane, eyes/mouth keep their authored colors. Swap by dropping a prefab into SnakeSpine.headPrefab (and leaving Head Visual empty) — the prefab is instantiated at Awake. Keep Override Head Scale off for authored prefabs; point Head Skin Renderer at whichever child receives the plane tint.\n" +
+                      "- Head: composite 'Head' (HeadSkin cube + two eyes + mouth) — only the skin is tinted on/off-plane, eyes/mouth keep their authored colors. Swap by dropping a prefab into SnakeSpine.headPrefab (and leaving Head Visual empty) — the prefab is instantiated at Awake at its authored scale (SnakeSpine never writes localScale). Point Head Skin Renderer at whichever child receives the plane tint.\n" +
                       "- Body: single dynamic ribbon mesh. Each coarse spine band is subdivided into 'Visual Rings Per Segment' (default 4) Catmull-Rom samples, so the tube bends smoothly even at sharp turns. Collider stays per-segment.\n" +
                       "- Waypoint 3 is at Z=0.5 → ribbon splits into two pieces as the off-plane segment passes through.\n" +
                       "- Change 'Body Segment Count' or 'Visual Rings Per Segment' on SnakeSpine to resize the ribbon live.");

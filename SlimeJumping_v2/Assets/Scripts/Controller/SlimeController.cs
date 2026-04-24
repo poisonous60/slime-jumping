@@ -431,7 +431,28 @@ namespace SlimeJumping.Controller
             Vector2 platformVel = (carrier != null && carrier.IsOnPlatform)
                 ? carrier.GetEffectiveVelocity() : Vector2.zero;
             float frictionAngle = isTouchingSurface ? GetSurfaceAngle() : 0f;
-            rb.linearVelocity = velocity + platformVel * surfaceMod.carrierFriction.Evaluate(frictionAngle);
+
+            // Rope isn't a PlatformMotor, so PlatformCarrier's motor-based velocity
+            // path returns zero for it. Sample rope-local velocity at the contact
+            // point and inherit it directly — otherwise the slime lands, weighs the
+            // rope down via ReportRiderContact, but the rope's collider sags out
+            // from under the slime while the slime sits at the old y, leaving it
+            // hanging in mid-air above the rope.
+            // Capped by rope.MaxReboundSpeed so a wildly whipping rope can't fling
+            // the slime at arbitrary speeds.
+            Vector2 ropeVel = Vector2.zero;
+            if (currentRope != null && isTouchingSurface
+                && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
+            {
+                ropeVel = currentRope.SampleVelocityAt(rb.position);
+                float cap = currentRope.MaxReboundSpeed;
+                if (cap > 0f && ropeVel.sqrMagnitude > cap * cap)
+                    ropeVel = ropeVel.normalized * cap;
+            }
+
+            rb.linearVelocity = velocity
+                + platformVel * surfaceMod.carrierFriction.Evaluate(frictionAngle)
+                + ropeVel;
         }
 
         // --- Surface Modifiers ---
