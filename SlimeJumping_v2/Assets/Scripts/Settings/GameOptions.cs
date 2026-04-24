@@ -6,29 +6,42 @@ namespace SlimeJumping.Settings
 {
     public enum WindowMode { Windowed, Fullscreen }
 
-    /// Persists demo-facing user options (frame limit, SFX volume, window mode,
-    /// background camera) via PlayerPrefs and applies them on boot. Audio is
-    /// re-applied after scene load so the mixer picks it up once SoundService
-    /// has initialized. Background camera changes fire an event so scene-level
-    /// components (see BackgroundCameraOption) can react live.
+    /// Persists demo-facing user options (frame limit, Player/World SFX / BGM /
+    /// UI volume, window mode, background camera) via PlayerPrefs and applies
+    /// them on boot. Audio is re-applied after scene load so the mixer picks it
+    /// up once SoundService has initialized. Background camera changes fire an
+    /// event so scene-level components (see BackgroundCameraOption) can react live.
     public static class GameOptions
     {
         private const string KeyFrameLimit            = "opt.frameLimit";
-        private const string KeySfxVolume             = "opt.sfxVolume";
+        private const string KeyPlayerSfxVolume       = "opt.playerSfxVolume";
+        private const string KeyWorldSfxVolume        = "opt.worldSfxVolume";
+        private const string KeyBgmVolume             = "opt.bgmVolume";
+        private const string KeyUiVolume              = "opt.uiVolume";
         private const string KeyWindowMode            = "opt.windowMode";
         private const string KeyBackgroundCameraOn    = "opt.backgroundCameraEnabled";
 
+        // Legacy key used before the SFX split (single combined slider).
+        // Migrated into PlayerSfxVolume on first load so existing users don't lose their setting.
+        private const string KeyLegacySfxVolume       = "opt.sfxVolume";
+
         public const int        DefaultFrameLimit            = 60;
-        public const float      DefaultSfxVolume             = 0.8f;
+        public const float      DefaultPlayerSfxVolume       = 0.8f;
+        public const float      DefaultWorldSfxVolume        = 0.8f;
+        public const float      DefaultBgmVolume             = 0.8f;
+        public const float      DefaultUiVolume              = 0.8f;
         public const WindowMode DefaultWindowMode            = WindowMode.Fullscreen;
         public const bool       DefaultBackgroundCameraOn    = true;
 
         // -1 = Unlimited (Application.targetFrameRate = -1)
         public static readonly int[] FrameLimitOptions = { 30, 60, 120, -1 };
 
-        public static int        FrameLimit             { get; private set; } = DefaultFrameLimit;
-        public static float      SfxVolume              { get; private set; } = DefaultSfxVolume;
-        public static WindowMode WindowMode             { get; private set; } = DefaultWindowMode;
+        public static int        FrameLimit              { get; private set; } = DefaultFrameLimit;
+        public static float      PlayerSfxVolume         { get; private set; } = DefaultPlayerSfxVolume;
+        public static float      WorldSfxVolume          { get; private set; } = DefaultWorldSfxVolume;
+        public static float      BgmVolume               { get; private set; } = DefaultBgmVolume;
+        public static float      UiVolume                { get; private set; } = DefaultUiVolume;
+        public static WindowMode WindowMode              { get; private set; } = DefaultWindowMode;
         public static bool       BackgroundCameraEnabled { get; private set; } = DefaultBackgroundCameraOn;
 
         /// Raised when BackgroundCameraEnabled is changed. Scene components
@@ -39,7 +52,15 @@ namespace SlimeJumping.Settings
         private static void BootstrapLoadAndApplyFrame()
         {
             FrameLimit             = PlayerPrefs.GetInt(KeyFrameLimit, DefaultFrameLimit);
-            SfxVolume              = Mathf.Clamp01(PlayerPrefs.GetFloat(KeySfxVolume, DefaultSfxVolume));
+
+            float legacy = PlayerPrefs.GetFloat(KeyLegacySfxVolume, -1f);
+            PlayerSfxVolume        = Mathf.Clamp01(PlayerPrefs.GetFloat(KeyPlayerSfxVolume,
+                                                    legacy >= 0f ? legacy : DefaultPlayerSfxVolume));
+            WorldSfxVolume         = Mathf.Clamp01(PlayerPrefs.GetFloat(KeyWorldSfxVolume,
+                                                    legacy >= 0f ? legacy : DefaultWorldSfxVolume));
+            BgmVolume              = Mathf.Clamp01(PlayerPrefs.GetFloat(KeyBgmVolume, DefaultBgmVolume));
+            UiVolume               = Mathf.Clamp01(PlayerPrefs.GetFloat(KeyUiVolume, DefaultUiVolume));
+
             WindowMode             = (WindowMode)PlayerPrefs.GetInt(KeyWindowMode, (int)DefaultWindowMode);
             BackgroundCameraEnabled = PlayerPrefs.GetInt(KeyBackgroundCameraOn, DefaultBackgroundCameraOn ? 1 : 0) != 0;
             ApplyFrameLimit(FrameLimit);
@@ -51,7 +72,10 @@ namespace SlimeJumping.Settings
         {
             // Mixer params are only valid once SoundService has built its pools
             // (which routes the AudioMixer). AfterSceneLoad runs after all Awakes.
-            ApplySfxVolume(SfxVolume);
+            ApplyPlayerSfxVolume(PlayerSfxVolume);
+            ApplyWorldSfxVolume(WorldSfxVolume);
+            ApplyBgmVolume(BgmVolume);
+            ApplyUiVolume(UiVolume);
         }
 
         public static void SetFrameLimit(int fps)
@@ -62,12 +86,36 @@ namespace SlimeJumping.Settings
             ApplyFrameLimit(fps);
         }
 
-        public static void SetSfxVolume(float linear01)
+        public static void SetPlayerSfxVolume(float linear01)
         {
-            SfxVolume = Mathf.Clamp01(linear01);
-            PlayerPrefs.SetFloat(KeySfxVolume, SfxVolume);
+            PlayerSfxVolume = Mathf.Clamp01(linear01);
+            PlayerPrefs.SetFloat(KeyPlayerSfxVolume, PlayerSfxVolume);
             PlayerPrefs.Save();
-            ApplySfxVolume(SfxVolume);
+            ApplyPlayerSfxVolume(PlayerSfxVolume);
+        }
+
+        public static void SetWorldSfxVolume(float linear01)
+        {
+            WorldSfxVolume = Mathf.Clamp01(linear01);
+            PlayerPrefs.SetFloat(KeyWorldSfxVolume, WorldSfxVolume);
+            PlayerPrefs.Save();
+            ApplyWorldSfxVolume(WorldSfxVolume);
+        }
+
+        public static void SetBgmVolume(float linear01)
+        {
+            BgmVolume = Mathf.Clamp01(linear01);
+            PlayerPrefs.SetFloat(KeyBgmVolume, BgmVolume);
+            PlayerPrefs.Save();
+            ApplyBgmVolume(BgmVolume);
+        }
+
+        public static void SetUiVolume(float linear01)
+        {
+            UiVolume = Mathf.Clamp01(linear01);
+            PlayerPrefs.SetFloat(KeyUiVolume, UiVolume);
+            PlayerPrefs.Save();
+            ApplyUiVolume(UiVolume);
         }
 
         public static void SetWindowMode(WindowMode mode)
@@ -93,13 +141,30 @@ namespace SlimeJumping.Settings
             Application.targetFrameRate = fps <= 0 ? -1 : fps;
         }
 
-        private static void ApplySfxVolume(float linear01)
+        private static void ApplyPlayerSfxVolume(float linear01)
         {
             // Linear 0..1 -> dB, with -80dB floor for silence.
             float db = linear01 <= 0.0001f ? -80f : Mathf.Log10(linear01) * 20f;
-            SoundService.SetCategoryVolumeDb(SoundCategory.SFX_Slime,       db);
+            SoundService.SetCategoryVolumeDb(SoundCategory.SFX_Slime, db);
+        }
+
+        private static void ApplyWorldSfxVolume(float linear01)
+        {
+            float db = linear01 <= 0.0001f ? -80f : Mathf.Log10(linear01) * 20f;
             SoundService.SetCategoryVolumeDb(SoundCategory.SFX_Environment, db);
             SoundService.SetCategoryVolumeDb(SoundCategory.SFX_Object,      db);
+        }
+
+        private static void ApplyBgmVolume(float linear01)
+        {
+            float db = linear01 <= 0.0001f ? -80f : Mathf.Log10(linear01) * 20f;
+            SoundService.SetCategoryVolumeDb(SoundCategory.BGM, db);
+        }
+
+        private static void ApplyUiVolume(float linear01)
+        {
+            float db = linear01 <= 0.0001f ? -80f : Mathf.Log10(linear01) * 20f;
+            SoundService.SetCategoryVolumeDb(SoundCategory.UI, db);
         }
 
         private static void ApplyWindowMode(WindowMode mode)

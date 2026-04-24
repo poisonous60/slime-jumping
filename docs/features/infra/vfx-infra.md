@@ -57,7 +57,10 @@ ESC로 열고 닫되 `Time.timeScale`은 건드리지 않아 게임 진행 유�
 
 **항목**:
 - Frame Limit (30/60/120/Unlimited — `<`/`>` 사이클러).
-- SFX Volume (0..1 linear → dB 변환해 `SoundService.SetCategoryVolumeDb`로 SFX_Slime/Environment/Object 3개 버스 적용).
+- Player SFX (0..1 linear → dB 변환해 `SoundService.SetCategoryVolumeDb(SFX_Slime, db)`로 슬라임 액션 효과음 전용 버스 적용 → 믹서 노출 파라미터 `SFXSlimeVolume`).
+- World SFX (0..1 linear → dB 변환해 `SFX_Environment` + `SFX_Object` 두 버스에 동일 dB 적용 → 노출 파라미터 `SFXEnvironmentVolume` / `SFXObjectVolume`). 환경 루프(WaterZone, ThinIce, JumpBall)와 오브젝트 이벤트(Icicle 등) 묶음.
+- BGM (`BGMVolume` 파라미터 → BGM 버스). `StageBgmPlayer` 컴포넌트를 통해 재생.
+- UI (`UIVolume` 파라미터 → UI 버스). `UIClickSoundInstaller`가 Canvas 하위 버튼 클릭음에 적용.
 - Window Mode (Windowed/Fullscreen — `Screen.fullScreenMode`에 `Windowed` / `FullScreenWindow`).
 - Background Camera (On/Off — `BackgroundCameraEnabledChanged` 이벤트로 `BackgroundCameraOption`이 BG 카메라 + TranslucentImageSource 비활성화 + Main Camera Overlay→Base 전환. Off 시 블러/BG 스택이 꺼지며 `MainScene_성능_프로파일_2026-04-24.md`의 ~0.55 ms 렌더 비용 제거).
 - CLOSE + QUIT 버튼.
@@ -68,7 +71,9 @@ ESC로 열고 닫되 `Time.timeScale`은 건드리지 않아 게임 진행 유�
 
 **배치**: MainMenuScene / MainScene 양쪽에 `OptionsCanvas` (sortingOrder=1000) 루트 + `OptionsPanelController.cs`. 메인메뉴에는 `OPTIONS` 버튼 추가 (`onClick → OptionsPanelController.Open()`). 게임 중 ESC는 `Input.GetKeyDown` 직접 폴링.
 
-**UI 클릭 SFX**: `UIClickSoundInstaller.cs`가 Canvas 하위 모든 Button의 onClick에 UI 버스 SFX 후킹 (`Fantasy_Game_UI_Material_Liquid_Bubble_Pop_1.wav`). 자체 AudioSource를 만들어 `AudioMixerGroup` (SoundSettings.uiGroup)으로 라우팅 → SoundService 없는 씬에서도 동작.
+**UI 클릭 SFX**: `UIClickSoundInstaller.cs`가 Canvas 하위 모든 Button의 onClick에 UI 버스 SFX 후킹 (`Fantasy_Game_UI_Material_Liquid_Bubble_Pop_1.wav`). 자체 AudioSource를 만들어 `AudioMixerGroup` (SoundSettings.uiGroup)으로 라우팅 → SoundService 없는 씬에서도 동작. UI 슬라이더는 `UIVolume` 파라미터로 이 그룹 제어.
+
+> **오디오 시스템 전체 아키텍처/규칙**: [audio-system.md](audio-system.md) 참고. SoundService, 믹서 계층, BGM, validator, 새 사운드 추가 가이드.
 
 ## 해상도 독립 슬라임 크기 (2026-04-23)
 `ResolutionScaleController.cs`:

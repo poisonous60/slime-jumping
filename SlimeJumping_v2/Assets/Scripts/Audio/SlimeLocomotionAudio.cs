@@ -20,7 +20,7 @@ namespace SlimeJumping.Audio
         [Min(0f)] [SerializeField] float landHardThreshold = 8f;
         [Tooltip("Impact speed that maps to full volume; below scales linearly toward zero.")]
         [Min(0.1f)] [SerializeField] float landRefSpeed = 12f;
-        [Range(0f, 1f)] [SerializeField] float landVolume = 0.9f;
+        [Min(0f)] [SerializeField] float landVolume = 0.9f;
 
         [Header("Launch / Hop")]
         [Tooltip("Played on charged Launch().")]
@@ -29,8 +29,8 @@ namespace SlimeJumping.Audio
         [SerializeField] AudioClip hopClip;
         [Tooltip("Launch speed that maps to full volume.")]
         [Min(0.1f)] [SerializeField] float launchRefSpeed = 20f;
-        [Range(0f, 1f)] [SerializeField] float launchVolume = 0.9f;
-        [Range(0f, 1f)] [SerializeField] float hopVolume = 0.7f;
+        [Min(0f)] [SerializeField] float launchVolume = 0.9f;
+        [Min(0f)] [SerializeField] float hopVolume = 0.7f;
 
         [Header("Common")]
         [Tooltip("±random pitch jitter applied to each playback.")]

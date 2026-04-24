@@ -37,3 +37,7 @@ Available commands: `list`, `exec`, `run_tests`, `console`, `screenshot`, `refre
 - If some feature add or change, update  `SlimeJumping_메커닉_설계_v6.md`, `프로토타입_구현_현황.md` document in /docs folder
 - Never use `??` or `?.` with UnityEngine.Object references (Component, GameObject, etc). C# null-coalescing operators bypass Unity's overloaded `==` and mis-handle "fake null" (destroyed-but-not-null) references.
 - Divide visual and collider. Don't let them effect each other (e.g. even if visual rotate, collider shouldn't be effected)
+
+
+### Audio
+All gameplay audio routes through `SoundService` with a `SoundCategory` — that's what hooks it to the option sliders. Rules, mixer layout, and playback recipes live in [docs/features/infra/audio-system.md](docs/features/infra/audio-system.md). Read it before adding any sound.

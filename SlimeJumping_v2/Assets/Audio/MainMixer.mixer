@@ -155,6 +155,12 @@ AudioMixerController:
     name: SFXVolume
   - guid: 78fa3125a2adfcb45a6ec055050c63a5
     name: UIVolume
+  - guid: 66ffd18e242539f4f88781b3db27ffe4
+    name: SFXSlimeVolume
+  - guid: 9248a0eec46a54348ac6da6e22a24f9e
+    name: SFXEnvironmentVolume
+  - guid: 3e470063a2edc4340a0f86d5aecc1358
+    name: SFXObjectVolume
   m_AudioMixerGroupViews: []
   m_CurrentViewIndex: 0
   m_TargetSnapshot: {fileID: 24500006}

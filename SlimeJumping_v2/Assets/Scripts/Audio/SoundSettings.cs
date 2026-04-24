@@ -19,6 +19,9 @@ namespace SlimeJumping.Audio
         public string bgmVolumeParam = "BGMVolume";
         public string sfxVolumeParam = "SFXVolume";
         public string uiVolumeParam = "UIVolume";
+        public string sfxSlimeVolumeParam = "SFXSlimeVolume";
+        public string sfxEnvironmentVolumeParam = "SFXEnvironmentVolume";
+        public string sfxObjectVolumeParam = "SFXObjectVolume";
 
         [Header("Pool")]
         [Tooltip("Number of AudioSources preallocated per category. Soft-steal oldest if exhausted.")]
