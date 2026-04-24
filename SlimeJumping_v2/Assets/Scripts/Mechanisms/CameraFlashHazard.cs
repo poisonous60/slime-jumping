@@ -32,6 +32,15 @@ namespace SlimeJumping.Mechanisms
 
         public bool IsActive => isFlashing;
 
+        void Awake()
+        {
+            // Scene migration: the old per-scene FullscreenEffectCanvas was replaced
+            // by the UIRoot prefab, so serialized scene refs may be null. Fall back
+            // to scanning the scene for the new FlashCanvasController under UIRoot.
+            if (flashCanvas == null)
+                flashCanvas = FindFirstObjectByType<FlashCanvasController>(FindObjectsInactive.Include);
+        }
+
         public HazardEffect GetHazardEffect() => new HazardEffect
         {
             knockbackForce = 0f,

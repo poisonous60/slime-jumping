@@ -14,6 +14,14 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float displaySeconds = 0.4f;
         [SerializeField] private float fadeSeconds = 0.3f;
 
+        void Awake()
+        {
+            // Scene migration fallback: pick up the new JumpscareCanvasController
+            // under UIRoot if the old scene ref was cleared.
+            if (canvas == null)
+                canvas = FindFirstObjectByType<JumpscareCanvasController>(FindObjectsInactive.Include);
+        }
+
         void Reset()
         {
             var col = GetComponent<Collider2D>();

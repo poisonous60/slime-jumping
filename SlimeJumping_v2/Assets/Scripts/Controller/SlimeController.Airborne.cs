@@ -16,6 +16,16 @@ namespace SlimeJumping.Controller
             if (postLaunchAirControlLockTimer > 0f)
                 postLaunchAirControlLockTimer -= dt;
 
+            // Air Dash: suspend gravity + air control for the remainder of the dash window.
+            // Landing logic below still runs, so touching a surface mid-dash lands normally
+            // and ChangeState zeroes the timer.
+            bool airDashSuppressesPhysics = airDashActiveTimer > 0f;
+            if (airDashSuppressesPhysics)
+            {
+                airDashActiveTimer -= dt;
+                if (airDashActiveTimer < 0f) airDashActiveTimer = 0f;
+            }
+
             // Apex threshold locks air control while rising hard. In a fluid medium
             // (water etc.) the upward velocity comes from buoyancy, not a launch —
             // the player should still be able to steer. Bypass the apex gate while submerged.
@@ -23,32 +33,35 @@ namespace SlimeJumping.Controller
                 || (postLaunchAirControlLockTimer <= 0f
                     && Vector2.Dot(velocity, gravityUp) <= settings.apexThreshold);
 
-            // Gravity
-            // W/S scale picks rising vs falling variant by actual velocity direction —
-            // independent of airControlActive, so steering still works while above apex.
-            // In fluid: intentionally ignore velocity sign and use the dedicated in-fluid
-            // values instead. Water movement is buoyancy-driven and has no clean apex, so
-            // a rising/falling split would make submerged steering feel inconsistent.
-            float gravityScale = 1f;
-            float inputYRaw = inputReader.LastInputMove.y;
-            if (InFluid)
+            if (!airDashSuppressesPhysics)
             {
-                if (inputYRaw > 0.1f) gravityScale = settings.floatGravityScaleInFluid;
-                else if (inputYRaw < -0.1f) gravityScale = settings.diveGravityScaleInFluid;
-            }
-            else
-            {
-                bool isRisingByVelocity = Vector2.Dot(velocity, gravityUp) > 0f;
-                if (inputYRaw > 0.1f)
-                    gravityScale = isRisingByVelocity ? settings.floatGravityScaleRising : settings.floatGravityScaleFalling;
-                else if (inputYRaw < -0.1f)
-                    gravityScale = isRisingByVelocity ? settings.diveGravityScaleRising : settings.diveGravityScaleFalling;
-            }
+                // Gravity
+                // W/S scale picks rising vs falling variant by actual velocity direction —
+                // independent of airControlActive, so steering still works while above apex.
+                // In fluid: intentionally ignore velocity sign and use the dedicated in-fluid
+                // values instead. Water movement is buoyancy-driven and has no clean apex, so
+                // a rising/falling split would make submerged steering feel inconsistent.
+                float gravityScale = 1f;
+                float inputYRaw = inputReader.LastInputMove.y;
+                if (InFluid)
+                {
+                    if (inputYRaw > 0.1f) gravityScale = settings.floatGravityScaleInFluid;
+                    else if (inputYRaw < -0.1f) gravityScale = settings.diveGravityScaleInFluid;
+                }
+                else
+                {
+                    bool isRisingByVelocity = Vector2.Dot(velocity, gravityUp) > 0f;
+                    if (inputYRaw > 0.1f)
+                        gravityScale = isRisingByVelocity ? settings.floatGravityScaleRising : settings.floatGravityScaleFalling;
+                    else if (inputYRaw < -0.1f)
+                        gravityScale = isRisingByVelocity ? settings.diveGravityScaleRising : settings.diveGravityScaleFalling;
+                }
 
-            // Asymmetric gravity uses the existing airControlActive split (apex-gated),
-            // unchanged from before so rising/falling multipliers behave identically.
-            float asymScale = airControlActive ? settings.fallingGravityScale : settings.risingGravityScale;
-            velocity += -gravityUp * Mathf.Abs(settings.gravity) * gravityScale * asymScale * dt;
+                // Asymmetric gravity uses the existing airControlActive split (apex-gated),
+                // unchanged from before so rising/falling multipliers behave identically.
+                float asymScale = airControlActive ? settings.fallingGravityScale : settings.risingGravityScale;
+                velocity += -gravityUp * Mathf.Abs(settings.gravity) * gravityScale * asymScale * dt;
+            }
 
             // Land on any surface
             if (isTouchingSurface)
@@ -257,7 +270,7 @@ namespace SlimeJumping.Controller
 
             // Air control: horizontal acceleration with speed cap (last-input-wins)
             // "Horizontal" = perpendicular to effective gravity, not necessarily world-X.
-            if (airControlActive)
+            if (airControlActive && !airDashSuppressesPhysics)
             {
                 float inputX = inputReader.LastInputMove.x;
                 if (Mathf.Abs(inputX) > 0.01f)

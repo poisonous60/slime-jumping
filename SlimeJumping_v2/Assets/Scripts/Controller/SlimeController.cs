@@ -156,6 +156,11 @@ namespace SlimeJumping.Controller
         private float dashCooldownTimer;
         private float dashBufferTimer;
 
+        // Air Dash (Shift, driven by external SlimeAirDash component).
+        // Non-zero = FixedUpdateAirborne suspends gravity + air control for the remainder.
+        private float airDashActiveTimer;
+        public bool IsAirDashing => airDashActiveTimer > 0f;
+
         // Hop cooldown
         private float hopCooldownTimer;
         private float hopBufferTimer;
@@ -251,6 +256,11 @@ namespace SlimeJumping.Controller
         // Fires from player-intentional launches only: Launch() and Hop(). External-force paths
         // (JumpPad, Catapult) go through ForceAirborneWithVelocity and should raise their own cue.
         public event System.Action<Vector2, Vector2, bool> OnLaunch; // (position, velocity, wasHop)
+
+        // --- Air Dash event ---
+        // Payload = velocity written into the slime at dash start (direction × speed).
+        // Consumers: SlimeAirDashVisual (trail/particles), audio, analytics.
+        public event System.Action<Vector2> OnAirDashStarted;
 
         private void Awake()
         {
@@ -638,6 +648,11 @@ namespace SlimeJumping.Controller
             else
                 RegisterAttachToggle();
 
+            // Leaving Airborne ends any in-flight air dash (timer only ticks in
+            // FixedUpdateAirborne, so a stale value would fire on re-entry).
+            if (currentState == SlimeState.Airborne && newState != SlimeState.Airborne)
+                airDashActiveTimer = 0f;
+
             currentState = newState;
         }
 
@@ -676,6 +691,41 @@ namespace SlimeJumping.Controller
             launchedByHop = false;
             conversionCount = 0;
             ClearPendingEnergyConversion(executeDeferredReset: false);
+        }
+
+        /// <summary>
+        /// Writes the given velocity and suspends gravity + air control for `activeDuration`
+        /// seconds. Called by the optional SlimeAirDash component.
+        /// Works from Attached (flings off the surface into Airborne) and Airborne.
+        /// Blocked from Charging (would violate "charge must end in launch") and Stunned.
+        /// Dash velocity flows through the standard landing path, so subsequent tangent
+        /// inheritance at Charging entry (hyper dash) preserves the boost into the next
+        /// Launch automatically.
+        /// </summary>
+        public bool ApplyAirDash(Vector2 dashVelocity, float activeDuration)
+        {
+            if (_override != null) return false;
+            if (activeDuration <= 0f) return false;
+            if (currentState == SlimeState.Charging) return false;
+            if (currentState == SlimeState.Stunned) return false;
+
+            if (currentState == SlimeState.Attached)
+            {
+                // Reuse the external-force path: detaches carrier, clears stick/crawl/rope
+                // state, registers launch-clearance ignore, transitions to Airborne via
+                // FinalizeAirborneExit (which resets the launch-reference for energy conversion).
+                ForceAirborneWithVelocity(dashVelocity);
+            }
+            else // Airborne
+            {
+                velocity = dashVelocity;
+                ResetLaunchReference();
+            }
+
+            airDashActiveTimer = activeDuration;
+            postLaunchAirControlLockTimer = 0f;
+            OnAirDashStarted?.Invoke(dashVelocity);
+            return true;
         }
 
         // --- Platform Effect ---

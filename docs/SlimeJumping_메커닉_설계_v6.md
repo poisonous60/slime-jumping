@@ -23,6 +23,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Surface Attach & Detection](features/slime/surface-attach.md) — Primary + Constraints, 2-Phase Depenetration
 - [Crawling & Slide](features/slime/crawling.md) — 접선 이동 + 중력 분해
 - [Ground Dash](features/slime/ground-dash.md) — S 순간 부스트
+- [Shift Dash](features/slime/air-dash.md) — Shift 8방향 대시, Attached/Airborne (Celeste-style, 독립 컴포넌트)
 - [Hop](features/slime/hop.md) — W 표면 점프 + 모멘텀
 - [Hyper Dash](features/slime/hyper-dash.md) — Dash → Charge → Launch 콤보
 - [Stick Timer](features/slime/stick-timer.md) — 착지 고정 + Charge Entry Grace
