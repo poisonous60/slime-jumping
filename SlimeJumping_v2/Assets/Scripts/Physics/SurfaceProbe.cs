@@ -5,32 +5,39 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Physics
 {
-    public class SurfaceProbe
+    /// <summary>
+    /// Abstract surface contact detector. Subclasses implement two hooks:
+    ///   - PopulateContacts: how per-collider contacts are produced from the broad-phase list.
+    ///   - DepenetratePass:  one iter of Phase A push (how depenetration queries the colliders).
+    /// The rest (SelectPrimary, EffectiveNormal, ProjectVelocityAgainstContacts, Phase B, diagnostics)
+    /// is shared so swapping the mode at runtime does not drift from the shared behavior.
+    /// </summary>
+    public abstract class SurfaceProbe
     {
-        private readonly Rigidbody2D rb;
-        private readonly SlimeSettings settings;
-        private readonly List<Collider2D> ignoredColliders;
+        protected readonly Rigidbody2D rb;
+        protected readonly SlimeSettings settings;
+        protected readonly List<Collider2D> ignoredColliders;
 
-        private readonly Collider2D[] overlapBuffer = new Collider2D[16];
-        private readonly Collider2D[] depenetrationBuffer = new Collider2D[16];
+        protected readonly Collider2D[] overlapBuffer = new Collider2D[16];
+        protected readonly Collider2D[] depenetrationBuffer = new Collider2D[16];
 
         // Per-frame contact data (reused to avoid GC)
-        private readonly Collider2D[] contactColliders = new Collider2D[16];
-        private readonly Vector2[] contactNormals = new Vector2[16];
-        private readonly float[] contactDistances = new float[16];
-        private readonly bool[] contactActive = new bool[16];
-        private int contactCount;
+        protected readonly Collider2D[] contactColliders = new Collider2D[16];
+        protected readonly Vector2[] contactNormals = new Vector2[16];
+        protected readonly float[] contactDistances = new float[16];
+        protected readonly bool[] contactActive = new bool[16];
+        protected int contactCount;
 
         // Diagnostic state
-        private int activeCount;
-        private int selectedIdx = -1;
-        private int phaseAIterCount;
-        private float phaseARemainPen;
+        protected int activeCount;
+        protected int selectedIdx = -1;
+        protected int phaseAIterCount;
+        protected float phaseARemainPen;
 
         // Cached gravity/ceiling context from last CheckSurface (used by EffectiveNormal
         // and ProjectVelocityAgainstContacts — they run after CheckSurface in the same frame).
-        private Vector2 lastGravityUp = Vector2.up;
-        private float lastCeilingThreshold;
+        protected Vector2 lastGravityUp = Vector2.up;
+        protected float lastCeilingThreshold;
 
         // Diagnostic accessors
         public int ContactCount => contactCount;
@@ -44,13 +51,25 @@ namespace SlimeJumping.Physics
         public bool IsContactActive(int i) => contactActive[i];
 
         // Finding 1: preserve last valid normal for deep penetration fallback
-        private Vector2 lastGoodNormal = Vector2.up;
+        protected Vector2 lastGoodNormal = Vector2.up;
 
-        public SurfaceProbe(Rigidbody2D rb, SlimeSettings settings, List<Collider2D> ignoredColliders)
+        protected SurfaceProbe(Rigidbody2D rb, SlimeSettings settings, List<Collider2D> ignoredColliders)
         {
             this.rb = rb;
             this.settings = settings;
             this.ignoredColliders = ignoredColliders;
+        }
+
+        // Called on runtime mode swap. Without this, a new probe starts with
+        // lastGoodNormal=Vector2.up — a slime attached to a ceiling/wall at swap
+        // time would fall back to "up" on the next deep-penetration frame and
+        // get snapped off its surface.
+        public void TransferStateFrom(SurfaceProbe other)
+        {
+            if (other == null) return;
+            this.lastGoodNormal = other.lastGoodNormal;
+            this.lastGravityUp = other.lastGravityUp;
+            this.lastCeilingThreshold = other.lastCeilingThreshold;
         }
 
         public bool CheckSurface(out Vector2 normal, out Collider2D col,
@@ -59,7 +78,6 @@ namespace SlimeJumping.Physics
         {
             float radius = settings.slimeRadius;
             float detectRange = settings.surfaceCheckDistance * distMultiplier;
-            float contactSkin = settings.contactSkin;
             LayerMask mask = settings.groundLayer;
             Vector2 pos = rb.position;
 
@@ -73,30 +91,7 @@ namespace SlimeJumping.Physics
             // Find all nearby colliders
             int overlapCount = Physics2D.OverlapCircleNonAlloc(pos, radius + detectRange, overlapBuffer, mask);
 
-            bool hasNearby = false;
-
-            for (int i = 0; i < overlapCount; i++)
-            {
-                if (ignoredColliders.Contains(overlapBuffer[i])) continue;
-
-                hasNearby = true;
-
-                Vector2 closest = overlapBuffer[i].ClosestPoint(pos);
-                Vector2 toSlime = pos - closest;
-
-                // Deep penetration: ClosestPoint returned query point itself — skip
-                if (toSlime.sqrMagnitude < 0.0001f) continue;
-
-                float dist = toSlime.magnitude;
-                Vector2 n = toSlime / dist;
-
-                contactColliders[contactCount] = overlapBuffer[i];
-                contactNormals[contactCount] = n;
-                contactDistances[contactCount] = dist;
-                contactCount++;
-
-                if (contactCount >= contactColliders.Length) break;
-            }
+            bool hasNearby = PopulateContacts(pos, overlapCount);
 
             if (contactCount == 0)
             {
@@ -115,13 +110,21 @@ namespace SlimeJumping.Physics
 
             // Identify active contacts (within slimeRadius + contactSkin)
             // and select primary using 5-step fallback
-            int selected = SelectPrimary(radius, contactSkin, inputX, prevCollider, gravityUp, gravityRight);
+            int selected = SelectPrimary(radius, settings.contactSkin, inputX, prevCollider, gravityUp, gravityRight);
             selectedIdx = selected;
             normal = contactNormals[selected];
             col = contactColliders[selected];
             lastGoodNormal = normal;
             return true;
         }
+
+        /// <summary>
+        /// Populate contactColliders/contactNormals/contactDistances from the broad-phase
+        /// overlap list in overlapBuffer[0..overlapCount). Returns true if any non-ignored
+        /// collider was seen (used to decide the deep-penetration fallback path).
+        /// Subclasses decide how many contacts per collider to emit.
+        /// </summary>
+        protected abstract bool PopulateContacts(Vector2 pos, int overlapCount);
 
         private int SelectPrimary(float radius, float contactSkin, float inputX, Collider2D prevCollider,
             Vector2 gravityUp, Vector2 gravityRight)
@@ -183,20 +186,34 @@ namespace SlimeJumping.Physics
             // contact has an effect on its parent, pick it so effects (JumpPad etc.) fire
             // even when a floor contact is tied or deeper. Multiple effects fall through
             // to normal selection to avoid arbitrary choice between them.
+            // Dedupe by IPlatformEffect instance so Multi-probe samples of the same
+            // effect-bearing collider count once.
             {
                 int effectCount = 0;
                 int effectIdx = -1;
+                // Fixed 16-slot scratch to avoid GC; loop is O(N^2) but N<=16.
+                IPlatformEffect[] seenEffects = selectPrimaryEffectsScratch;
+                int seenCount = 0;
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
                     if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
                     Collider2D c = contactColliders[i];
-                    if (c != null && c.GetComponentInParent<IPlatformEffect>() != null)
+                    if (c == null) continue;
+                    IPlatformEffect eff = c.GetComponentInParent<IPlatformEffect>();
+                    if (eff == null) continue;
+                    bool already = false;
+                    for (int s = 0; s < seenCount; s++)
                     {
-                        effectCount++;
-                        effectIdx = i;
+                        if (seenEffects[s] == eff) { already = true; break; }
                     }
+                    if (already) continue;
+                    if (seenCount < seenEffects.Length) seenEffects[seenCount++] = eff;
+                    effectCount++;
+                    effectIdx = i;
                 }
+                // Clear scratch refs to avoid pinning MonoBehaviours
+                for (int s = 0; s < seenCount; s++) seenEffects[s] = null;
                 if (effectCount == 1) return effectIdx;
             }
 
@@ -204,20 +221,25 @@ namespace SlimeJumping.Physics
             // active non-ceiling set AND no other contact beats it in penetration by more
             // than primaryContactHysteresis, keep it. Eliminates frame-to-frame primary
             // flipping at corners without letting the primary lock onto a losing surface.
+            // With multi-probe, a collider can appear multiple times: pick the deepest
+            // prevCollider sample so the hysteresis check uses the best view of prev.
             float hysteresis = settings.primaryContactHysteresis;
             if (prevCollider != null)
             {
                 int prevIdx = -1;
-                float prevPen = 0f;
+                float prevPen = float.MinValue;
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
                     if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
                     if (contactColliders[i] == prevCollider)
                     {
-                        prevIdx = i;
-                        prevPen = radius - contactDistances[i];
-                        break;
+                        float pen = radius - contactDistances[i];
+                        if (pen > prevPen)
+                        {
+                            prevPen = pen;
+                            prevIdx = i;
+                        }
                     }
                 }
                 if (prevIdx >= 0)
@@ -227,6 +249,7 @@ namespace SlimeJumping.Physics
                     {
                         if (i == prevIdx) continue;
                         if (!contactActive[i]) continue;
+                        if (contactColliders[i] == prevCollider) continue; // other samples of same collider don't count as "other"
                         if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
                         float pen = radius - contactDistances[i];
                         if (pen > maxOtherPen) maxOtherPen = pen;
@@ -299,6 +322,10 @@ namespace SlimeJumping.Physics
             }
         }
 
+        // Scratch buffer for Step 1.7 effect-instance dedupe. Persisted on the instance
+        // so SelectPrimary stays allocation-free.
+        private readonly IPlatformEffect[] selectPrimaryEffectsScratch = new IPlatformEffect[16];
+
         /// <summary>
         /// Penetration-weighted average of active non-ceiling contact normals.
         /// Used as the slide/crawl/aim axis — smooth across polygon vertices and
@@ -360,44 +387,19 @@ namespace SlimeJumping.Physics
             if (surfaceCollider == null) return;
 
             float radius = settings.slimeRadius;
-            float skin = settings.depenetrationSkin;
             float contactSkin = settings.contactSkin;
-            LayerMask mask = settings.groundLayer;
             Vector2 pos = rb.position;
 
-            // Phase A: Depenetrate against all nearby colliders (push only)
+            // Phase A: Depenetrate against all nearby colliders (push only).
+            // Implementation delegates to DepenetratePass for single- vs multi-probe style.
             bool anyPush = false;
-            int count = Physics2D.OverlapCircleNonAlloc(pos, radius + skin, depenetrationBuffer, mask);
             int iterationsRun = 0;
-
             for (int iter = 0; iter < 3; iter++)
             {
                 iterationsRun++;
-
-                // Re-query after position changed from previous iteration
-                if (iter > 0 && anyPush)
-                    count = Physics2D.OverlapCircleNonAlloc(pos, radius + skin, depenetrationBuffer, mask);
-
-                bool anyPenetration = false;
-                for (int i = 0; i < count; i++)
-                {
-                    if (ignoredColliders.Contains(depenetrationBuffer[i])) continue;
-
-                    Vector2 closest = depenetrationBuffer[i].ClosestPoint(pos);
-                    Vector2 toSlime = pos - closest;
-                    float dist = toSlime.magnitude;
-
-                    // Deep penetration: skip (no reliable push direction)
-                    if (dist < 0.0001f) continue;
-
-                    if (dist < radius)
-                    {
-                        pos += (toSlime / dist) * (radius - dist);
-                        anyPenetration = true;
-                        anyPush = true;
-                    }
-                }
-                if (!anyPenetration) break;
+                bool pushed = DepenetratePass(ref pos);
+                if (pushed) anyPush = true;
+                if (!pushed) break;
             }
 
             // Diagnostic: measure remaining penetration after Phase A
@@ -405,7 +407,7 @@ namespace SlimeJumping.Physics
             phaseARemainPen = 0f;
             if (anyPush)
             {
-                int postCount = Physics2D.OverlapCircleNonAlloc(pos, radius + skin, depenetrationBuffer, mask);
+                int postCount = Physics2D.OverlapCircleNonAlloc(pos, radius + settings.depenetrationSkin, depenetrationBuffer, settings.groundLayer);
                 for (int i = 0; i < postCount; i++)
                 {
                     if (ignoredColliders.Contains(depenetrationBuffer[i])) continue;
@@ -434,6 +436,14 @@ namespace SlimeJumping.Physics
 
             rb.position = pos;
         }
+
+        /// <summary>
+        /// One iteration of Phase A depenetration. Should re-query overlapping ground-layer
+        /// colliders at the current pos, compute per-collider push vectors, and apply them
+        /// (possibly combined across multi-probe samples). Returns true if any push was
+        /// applied this iteration.
+        /// </summary>
+        protected abstract bool DepenetratePass(ref Vector2 pos);
 
         public static float GetSurfaceAngle(Vector2 surfaceNormal, Vector2 gravityUp)
         {

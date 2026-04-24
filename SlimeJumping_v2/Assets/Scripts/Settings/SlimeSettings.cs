@@ -1,4 +1,5 @@
 using UnityEngine;
+using SlimeJumping.Physics;
 
 namespace SlimeJumping.Settings
 {
@@ -145,6 +146,24 @@ namespace SlimeJumping.Settings
         public float attachedCheckMultiplier = 3f;
         public float airborneCheckMultiplier = 1f;
         public LayerMask groundLayer;
+
+        [Header("Surface Probe")]
+        [Tooltip("Contact detector. Single = per-collider ClosestPoint 1회 (기존). Multi = N-probe 샘플링 (multi-path polygon 대응).")]
+        public SurfaceProbeMode surfaceProbeMode = SurfaceProbeMode.Single;
+        [Tooltip("(Multi) Per-collider probe samples. 8은 multi-path polygon 간격에 충분.")]
+        [Range(1, 16)] public int surfaceProbeSamples = 8;
+        [Tooltip("(Multi) Probe ring radius as fraction of slimeRadius.")]
+        [Range(0f, 1f)] public float surfaceProbeRingScale = 0.8f;
+        [Tooltip("(Multi) Dedupe: dot(n1,n2) > 이 값이면 같은 면으로 머지.")]
+        [Range(0.9f, 1f)] public float surfaceProbeDedupeDot = 0.97f;
+
+        [Header("Surface Normal Smoothing")]
+        [Tooltip("회전 플랫폼에서 surfaceNormal 저역통과 필터 컷오프(Hz). 0 = OFF.\n" +
+                 "예: 20 → 매 50Hz 프레임당 ~33% 갱신 (90° 튐이 한 프레임에 ~30°로 감쇠, 약 5프레임에 90% 수렴).")]
+        [Min(0f)] public float surfaceNormalSmoothRate = 20f;
+        [Tooltip("이 각속도(deg/s) 이상의 플랫폼에 붙어있을 때만 smoothing 적용. 0 = 항상 적용.")]
+        [Min(0f)] public float surfaceNormalSmoothAngularThreshold = 10f;
+
         public float postLaunchIgnoreTime = 0.05f;
         public float launchClearanceThreshold = 0.05f;
         public float maxIgnoreTime = 0.15f;

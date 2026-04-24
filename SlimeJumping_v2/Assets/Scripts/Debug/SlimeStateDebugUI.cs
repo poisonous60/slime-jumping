@@ -27,6 +27,7 @@ namespace SlimeJumping.Debugging
         private Rigidbody2D rb;
         private Vector2 prevVelocity;
         private Vector2 acceleration;
+        private readonly System.Text.StringBuilder perContactBuilder = new System.Text.StringBuilder(128);
 
         private void Awake()
         {
@@ -75,7 +76,7 @@ namespace SlimeJumping.Debugging
             labelStyle.alignment = TextAnchor.MiddleLeft;
             float labelY = screenOffset.y + circleSize + 22f;
 
-            Vector2 pos = slimeController.transform.position;
+            Vector2 pos = slimeController.Position;
             GUI.Label(new Rect(screenOffset.x, labelY, 200f, 20f), $"X: {pos.x:F1}  Y: {pos.y:F1}", labelStyle);
             labelY += 18f;
 
@@ -92,7 +93,31 @@ namespace SlimeJumping.Debugging
             if (slimeController.IsTouchingSurface)
             {
                 float angle = Mathf.Acos(Mathf.Abs(Vector2.Dot(slimeController.SurfaceNormal, slimeController.GravityUp))) * Mathf.Rad2Deg;
-                GUI.Label(new Rect(screenOffset.x, labelY, 200f, 20f), $"Surface: {angle:F1}°", labelStyle);
+                GUI.Label(new Rect(screenOffset.x, labelY, 280f, 20f), $"Surface (eff): {angle:F1}°", labelStyle);
+                labelY += 18f;
+
+                var probe = slimeController.Probe;
+                if (probe != null && probe.ContactCount > 0)
+                {
+                    Vector2 gUp = slimeController.GravityUp;
+                    int primary = probe.SelectedIndex;
+                    var sb = perContactBuilder;
+                    sb.Length = 0;
+                    sb.Append("  ");
+                    for (int i = 0; i < probe.ContactCount; i++)
+                    {
+                        Vector2 n = probe.GetContactNormal(i);
+                        float a = Mathf.Acos(Mathf.Abs(Vector2.Dot(n, gUp))) * Mathf.Rad2Deg;
+                        bool active = probe.IsContactActive(i);
+                        bool isPrimary = i == primary;
+                        if (i > 0) sb.Append("  ");
+                        sb.Append('[').Append(i).Append(']');
+                        if (isPrimary) sb.Append('*');
+                        if (!active) sb.Append('~');
+                        sb.Append(' ').Append(a.ToString("F1")).Append("°");
+                    }
+                    GUI.Label(new Rect(screenOffset.x, labelY, 520f, 20f), sb.ToString(), labelStyle);
+                }
             }
 
             labelStyle.alignment = TextAnchor.MiddleCenter;

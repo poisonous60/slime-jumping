@@ -27,6 +27,7 @@ namespace SlimeJumping.Controller
             driftDirection = Vector2.zero;
             surfaceProbeMissFrames = 0;
             cachedSurfaceCollider = null;
+            hasPrevSmoothedNormal = false;
             if (chargeVisual != null) chargeVisual.Hide();
 
             // Carrier detach

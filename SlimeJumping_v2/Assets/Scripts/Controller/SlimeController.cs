@@ -194,6 +194,11 @@ namespace SlimeJumping.Controller
         private int surfaceProbeMissFrames;
         private Collider2D cachedSurfaceCollider;
 
+        // Surface normal low-pass filter (rotating platforms): damps EffectiveNormal
+        // jitter when contact faces flicker in/out of active range as a wheel rotates.
+        private Vector2 prevSmoothedSurfaceNormal;
+        private bool hasPrevSmoothedNormal;
+
         // Attach debounce: prevent rapid Attached↔Airborne oscillation at corners/edges
         private int attachToggleCount;
         private float lastAttachToggleTime;
@@ -261,8 +266,34 @@ namespace SlimeJumping.Controller
 
             SyncRadius();
             ignoredColliderList = new IgnoredColliderList(settings.maxIgnoreTime, circleCollider);
-            surfaceProbe = new SurfaceProbe(rb, settings, ignoredColliderList.Colliders);
+            surfaceProbe = CreateProbe(settings.surfaceProbeMode);
+            currentProbeMode = settings.surfaceProbeMode;
             launchPosition = rb.position;
+        }
+
+        private SurfaceProbe CreateProbe(SurfaceProbeMode mode)
+        {
+            return mode == SurfaceProbeMode.Multi
+                ? (SurfaceProbe)new MultiContactSurfaceProbe(rb, settings, ignoredColliderList.Colliders)
+                : new SingleContactSurfaceProbe(rb, settings, ignoredColliderList.Colliders);
+        }
+
+        private SurfaceProbeMode currentProbeMode;
+        public SurfaceProbeMode CurrentProbeMode => currentProbeMode;
+
+        /// <summary>
+        /// Swap the active surface probe at runtime. lastGoodNormal/gravity context
+        /// carries over so a mode switch while attached to a ceiling/wall doesn't
+        /// snap the slime off. The transient contact buffer is refilled on the
+        /// next FixedUpdate.
+        /// </summary>
+        public void SetProbeMode(SurfaceProbeMode mode)
+        {
+            if (mode == currentProbeMode) return;
+            var newProbe = CreateProbe(mode);
+            newProbe.TransferStateFrom(surfaceProbe);
+            surfaceProbe = newProbe;
+            currentProbeMode = mode;
         }
 
         private void OnValidate()
@@ -374,7 +405,32 @@ namespace SlimeJumping.Controller
 
             // Aggregate normal for slide/crawl/aim/impact continuity. `surfaceCollider`
             // still carries primary identity for carrier/surfaceMod/effect attribution.
-            surfaceNormal = isTouchingSurface ? surfaceProbe.EffectiveNormal : gravityUp;
+            Vector2 rawSurfaceNormal = isTouchingSurface ? surfaceProbe.EffectiveNormal : gravityUp;
+
+            // Low-pass filter surfaceNormal on fast-rotating platforms. On a spinning
+            // wheel, contact faces flicker in/out of activeContactSkin as the wheel turns,
+            // which causes EffectiveNormal to jump ~90° between frames. The Attached
+            // velocity write (`velocity = surfaceTangent * (slideSpeed + crawlVelocity)`)
+            // faithfully transfers that jump to rb.linearVelocity → dPos oscillates.
+            // Filtering the normal only when the carrier is spinning leaves static
+            // geometry responsiveness untouched.
+            bool smoothingActive = isTouchingSurface
+                && settings.surfaceNormalSmoothRate > 0.001f
+                && IsOnFastRotatingSurface();
+
+            if (smoothingActive && hasPrevSmoothedNormal)
+            {
+                float k = 1f - Mathf.Exp(-settings.surfaceNormalSmoothRate * dt);
+                Vector2 mixed = Vector2.Lerp(prevSmoothedSurfaceNormal, rawSurfaceNormal, k);
+                surfaceNormal = mixed.sqrMagnitude > 1e-6f ? mixed.normalized : rawSurfaceNormal;
+            }
+            else
+            {
+                surfaceNormal = rawSurfaceNormal;
+            }
+            prevSmoothedSurfaceNormal = surfaceNormal;
+            hasPrevSmoothedNormal = isTouchingSurface;
+
             surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
 
             if (isTouchingSurface && surfaceCollider != prevSurfaceCollider
@@ -541,6 +597,17 @@ namespace SlimeJumping.Controller
                 vel += new Vector2(-arm.y, arm.x) * radPerSec;
             }
             return vel;
+        }
+
+        // True when the primary surface belongs to a platform rotating faster than the
+        // configured threshold. Gate for surfaceNormal smoothing — static/linearly-moving
+        // surfaces don't need filtering and would only lose responsiveness.
+        private bool IsOnFastRotatingSurface()
+        {
+            if (surfaceCollider == null) return false;
+            var motor = surfaceCollider.GetComponentInParent<PlatformMotor>();
+            if (motor == null) return false;
+            return Mathf.Abs(motor.AngularVelocity) > settings.surfaceNormalSmoothAngularThreshold;
         }
 
         private void SnapToSurface()
