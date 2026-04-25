@@ -43,6 +43,10 @@ namespace SlimeJumping.Physics
         [Tooltip("Opposing-input Hop behavior. ON (default) = zero existing tangent and build bonus in input direction same frame (arcade-responsive, good for grass/mud). OFF = decelerate toward 0 by hopMomentumBonus, never flip in one hop (inertial / ice).")]
         public bool hopInstantFlip = true;
 
+        [Header("Slide Physics")]
+        [Tooltip("ON = inertial slide (gravity-along-tangent integrated as acceleration; slideResistance is friction in m/s²; landed tangent velocity flows into the inertial channel). OFF (default, untagged surfaces) = legacy steady-state slide where slideSpeed is recomputed each frame from current tangent gravity. Use ON for ice / halfpipes where kinetic energy must convert back to height.")]
+        public bool useInertialSlide = false;
+
         public SurfaceModifiers ToModifiers() => new SurfaceModifiers
         {
             crawlSpeed = crawlSpeedMultiplier,
@@ -59,7 +63,8 @@ namespace SlimeJumping.Physics
             wallAttachDampen = wallAttachSpeedDampen,
             groundDashScale = groundDashScale,
             hopVelocityRetention = hopVelocityRetention,
-            hopInstantFlip = hopInstantFlip
+            hopInstantFlip = hopInstantFlip,
+            useInertialSlide = useInertialSlide
         };
     }
 }

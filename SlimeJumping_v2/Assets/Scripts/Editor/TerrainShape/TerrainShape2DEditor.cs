@@ -28,6 +28,17 @@ namespace SlimeJumping.TerrainShape.Editor
         HeightmapPreset _heightmapPreset;
         string _presetSaveName = "";
         bool _presetsFoldout = false;
+
+        // Shape templates & vertex transform UI state (session-only).
+        bool _templatesFoldout = false;
+        float _circleRadius = 1f;
+        int _circlePoints = 16;
+        bool _transformFoldout = false;
+        float _rotateAngle = 90f;
+        // 0 = auto (selection centroid if 2+ selected, else all-vertices centroid)
+        // 1 = all-vertices centroid
+        // 2 = origin (0,0 in local space)
+        int _rotatePivotMode = 0;
         HeightmapProcMode _procMode = HeightmapProcMode.Perlin;
         float _procScale = 0.3f;
         int _procOctaves = 4;
@@ -113,6 +124,8 @@ namespace SlimeJumping.TerrainShape.Editor
             ClampActiveLayer(src);
 
             DrawLayerSection(src);
+            DrawTemplatesSection(src);
+            DrawTransformVerticesSection(src);
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Active Tool", EditorStyles.boldLabel);
@@ -1910,6 +1923,196 @@ namespace SlimeJumping.TerrainShape.Editor
             Vector2 b = Event.current != null ? Event.current.mousePosition : a;
             return new Rect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y),
                             Mathf.Abs(a.x - b.x), Mathf.Abs(a.y - b.y));
+        }
+
+        // ──────────────── Shape templates ────────────────
+
+        void DrawTemplatesSection(TerrainShape2D src)
+        {
+            EditorGUILayout.Space();
+            _templatesFoldout = EditorGUILayout.Foldout(_templatesFoldout, "Shape templates (overwrite current)", true, EditorStyles.foldoutHeader);
+            if (!_templatesFoldout) return;
+
+            _circleRadius = EditorGUILayout.Slider(new GUIContent("Circle radius", "Radius in local units."), _circleRadius, 0.1f, 10f);
+            _circlePoints = EditorGUILayout.IntSlider(new GUIContent("Circle points", "Number of vertices on the circle outline. Higher = smoother but more triangles."), _circlePoints, 3, 128);
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Make Circle"))
+            {
+                if (EditorUtility.DisplayDialog("Replace shape with circle?",
+                    $"Wipes all layers / interior / forced edges and creates a circle ({_circlePoints} pts, r={_circleRadius:0.##}). Continue?",
+                    "Replace", "Cancel"))
+                {
+                    MakeCircleShape(src, _circleRadius, _circlePoints);
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void MakeCircleShape(TerrainShape2D src, float radius, int pointCount)
+        {
+            Undo.RecordObject(src, "Make Circle");
+            src.layers.Clear();
+            src.interior.Clear();
+            src.forcedEdges.Clear();
+            _selectedOutlineIds.Clear();
+            _selectedInteriorIds.Clear();
+
+            int n = Mathf.Max(3, pointCount);
+            var front = new OutlineLayer { name = "Front", z = 0f };
+            for (int i = 0; i < n; i++)
+            {
+                // -π/2 start so the first vertex is at the bottom (matches the rectangle Reset's
+                // bottom-left starting feel — useful when comparing the two templates side-by-side).
+                float a = -Mathf.PI * 0.5f + (i / (float)n) * Mathf.PI * 2f;
+                front.outline.Add(new OutlinePoint
+                {
+                    id = src.AllocateId(),
+                    pos = new Vector2(Mathf.Cos(a) * radius, Mathf.Sin(a) * radius),
+                });
+            }
+            src.layers.Add(front);
+            src.AddLayerCopy(0, 0.5f);
+            if (src.layers.Count > 1) src.layers[1].name = "Back";
+
+            _activeLayer = 0;
+            EditorUtility.SetDirty(src);
+            MarkDirty();
+            SceneView.RepaintAll();
+        }
+
+        // ──────────────── Vertex transform (rotation) ────────────────
+
+        void DrawTransformVerticesSection(TerrainShape2D src)
+        {
+            EditorGUILayout.Space();
+            _transformFoldout = EditorGUILayout.Foldout(_transformFoldout, "Rotate vertices (without touching object Transform)", true, EditorStyles.foldoutHeader);
+            if (!_transformFoldout) return;
+
+            int selectionTotal = _selectedOutlineIds.Count + _selectedInteriorIds.Count;
+            EditorGUILayout.LabelField($"Selection: {_selectedOutlineIds.Count} outline + {_selectedInteriorIds.Count} interior = {selectionTotal} vertex(es)", EditorStyles.miniLabel);
+
+            _rotatePivotMode = EditorGUILayout.Popup(
+                new GUIContent("Pivot",
+                    "Auto: rotates the current selection around its centroid when 2+ vertices are selected; otherwise rotates everything around the polygon centroid.\n" +
+                    "All-vertices centroid: ignores selection — rotates every outline+interior vertex around the polygon centroid.\n" +
+                    "Origin: rotates around (0,0) in local space, regardless of selection."),
+                _rotatePivotMode,
+                new[] { "Auto (selection if 2+, else all)", "All-vertices centroid", "Origin (0,0)" });
+
+            _rotateAngle = EditorGUILayout.FloatField(new GUIContent("Angle (°)", "Positive = CCW. Negative = CW."), _rotateAngle);
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Apply")) RotateVertices(src, _rotateAngle);
+            if (GUILayout.Button("-90°", GUILayout.Width(50))) RotateVertices(src, -90f);
+            if (GUILayout.Button("+90°", GUILayout.Width(50))) RotateVertices(src, 90f);
+            if (GUILayout.Button("180°", GUILayout.Width(50))) RotateVertices(src, 180f);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void RotateVertices(TerrainShape2D src, float deg)
+        {
+            // Decide which vertices to rotate, and the pivot.
+            int selectionTotal = _selectedOutlineIds.Count + _selectedInteriorIds.Count;
+            bool partial = (_rotatePivotMode == 0) && selectionTotal >= 2;
+
+            Vector2 pivot;
+            if (_rotatePivotMode == 2)
+            {
+                pivot = Vector2.zero;
+            }
+            else if (partial)
+            {
+                pivot = ComputeSelectionCentroid(src);
+            }
+            else
+            {
+                pivot = ComputeAllVerticesCentroid(src);
+            }
+
+            float rad = deg * Mathf.Deg2Rad;
+            float cs = Mathf.Cos(rad), sn = Mathf.Sin(rad);
+            Vector2 Rot(Vector2 v) => new Vector2(v.x * cs - v.y * sn, v.x * sn + v.y * cs);
+
+            Undo.RecordObject(src, partial ? "Rotate selected vertices" : "Rotate all vertices");
+
+            // Outline points + tangents. Apply across ALL layers — outline IDs map across layers,
+            // and the same index/id must keep the same shape so the side walls don't shear.
+            for (int li = 0; li < src.layers.Count; li++)
+            {
+                foreach (var op in src.layers[li].outline)
+                {
+                    if (partial && !_selectedOutlineIds.Contains(op.id)) continue;
+                    op.pos = pivot + Rot(op.pos - pivot);
+                    if (op.smooth)
+                    {
+                        // Tangents are direction vectors — rotate without translating by the pivot.
+                        op.tangentIn = Rot(op.tangentIn);
+                        op.tangentOut = Rot(op.tangentOut);
+                    }
+                }
+            }
+
+            // Interior points. Rotate XY; preserve effective Z (the same logic as drag-move).
+            foreach (var ip in src.interior)
+            {
+                if (partial && !_selectedInteriorIds.Contains(ip.id)) continue;
+                Vector2 oldXY = new Vector2(ip.pos.x, ip.pos.y);
+                Vector2 newXY = pivot + Rot(oldXY - pivot);
+                if (src.useHeightmap && src.HasHeightmap)
+                {
+                    float oldEffZ = src.GetEffectiveInteriorPos(ip).z;
+                    float newBaseZ = src.SampleHeightmapZ(newXY);
+                    ip.pos = new Vector3(newXY.x, newXY.y, ip.pos.z);
+                    ip.zOffset = oldEffZ - newBaseZ;
+                }
+                else
+                {
+                    ip.pos = new Vector3(newXY.x, newXY.y, ip.pos.z);
+                }
+            }
+
+            EditorUtility.SetDirty(src);
+            MarkDirty();
+            SceneView.RepaintAll();
+        }
+
+        Vector2 ComputeSelectionCentroid(TerrainShape2D src)
+        {
+            Vector2 sum = Vector2.zero;
+            int count = 0;
+            // Use only the FRONT layer's outline points for the centroid — every layer shares the
+            // same XY ID-set, so picking one layer is enough and avoids double-counting.
+            if (src.FrontLayer != null)
+            {
+                foreach (var op in src.FrontLayer.outline)
+                {
+                    if (!_selectedOutlineIds.Contains(op.id)) continue;
+                    sum += op.pos; count++;
+                }
+            }
+            foreach (var ip in src.interior)
+            {
+                if (!_selectedInteriorIds.Contains(ip.id)) continue;
+                sum += new Vector2(ip.pos.x, ip.pos.y);
+                count++;
+            }
+            return count > 0 ? sum / count : ComputeAllVerticesCentroid(src);
+        }
+
+        Vector2 ComputeAllVerticesCentroid(TerrainShape2D src)
+        {
+            Vector2 sum = Vector2.zero;
+            int count = 0;
+            if (src.FrontLayer != null)
+            {
+                foreach (var op in src.FrontLayer.outline) { sum += op.pos; count++; }
+            }
+            foreach (var ip in src.interior)
+            {
+                sum += new Vector2(ip.pos.x, ip.pos.y); count++;
+            }
+            return count > 0 ? sum / count : Vector2.zero;
         }
 
         // ──────────────── Misc ────────────────

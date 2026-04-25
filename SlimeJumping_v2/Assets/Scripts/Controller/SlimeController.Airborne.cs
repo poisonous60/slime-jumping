@@ -134,7 +134,17 @@ namespace SlimeJumping.Controller
                     hopBufferTimer = 0f;
                     dashBufferTimer = 0f;
                     chargeBufferTimer = 0f;
-                    crawlVelocity = ComputeLandingCrawlVelocity(effectiveTangent, landingAngle);
+                    float landedTangent = ComputeLandingCrawlVelocity(effectiveTangent, landingAngle);
+                    if (surfaceMod.useInertialSlide)
+                    {
+                        slideVelocity = landedTangent;
+                        crawlVelocity = 0f;
+                    }
+                    else
+                    {
+                        crawlVelocity = landedTangent;
+                        slideVelocity = 0f;
+                    }
                     velocity = Vector2.zero;
 
                     if (surfaceUp >= settings.stickSlopeThreshold)
@@ -190,7 +200,17 @@ namespace SlimeJumping.Controller
                     if (hopBufferTimer > 0f)
                         preserveLandingVelocity = true;
 
-                    crawlVelocity = ComputeLandingCrawlVelocity(effectiveTangent, landingAngle);
+                    float landedTangent = ComputeLandingCrawlVelocity(effectiveTangent, landingAngle);
+                    if (surfaceMod.useInertialSlide)
+                    {
+                        slideVelocity = landedTangent;
+                        crawlVelocity = 0f;
+                    }
+                    else
+                    {
+                        crawlVelocity = landedTangent;
+                        slideVelocity = 0f;
+                    }
                     velocity = Vector2.zero;
 
                     // Energy-conversion coyote: compute the spawn distance a Space-held
@@ -252,7 +272,8 @@ namespace SlimeJumping.Controller
                     {
                         hopBufferTimer = 0f;
                         dashBufferTimer = 0f;
-                        velocity = surfaceTangent * crawlVelocity;
+                        // On inertial surfaces landedTangent went into slideVelocity, so include it.
+                        velocity = surfaceTangent * (crawlVelocity + slideVelocity);
                         stickTimer = 0f;
                         Hop();
                         return;

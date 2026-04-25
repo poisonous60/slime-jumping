@@ -132,6 +132,12 @@ namespace SlimeJumping.Controller
         // Persistent crawl speed (accel/decel model)
         private float crawlVelocity;
 
+        // Persistent inertial slide speed along surfaceTangent. Only used while attached
+        // to a SurfaceTag whose material has useInertialSlide = true; otherwise stays 0
+        // and the legacy steady-state slide formula is used. Integrates gravAlongTangent
+        // as acceleration, and slideResistance acts as kinetic friction (m/s²).
+        private float slideVelocity;
+
         // Active charge radius (expanded on energy conversion)
         private float activeChargeRadius;
 
@@ -539,7 +545,22 @@ namespace SlimeJumping.Controller
                     if (tags[i].enabled) { tag = tags[i]; break; }
                 }
             }
+            bool wasInertial = surfaceMod.useInertialSlide;
             surfaceMod = tag != null ? tag.GetModifiers() : SurfaceModifiers.Default;
+
+            // Transition between inertial and legacy slide surfaces: keep tangent speed
+            // consistent by moving the inertial channel into crawl when leaving inertial,
+            // and seeding the inertial channel from crawl when entering inertial.
+            if (wasInertial && !surfaceMod.useInertialSlide)
+            {
+                crawlVelocity += slideVelocity;
+                slideVelocity = 0f;
+            }
+            else if (!wasInertial && surfaceMod.useInertialSlide)
+            {
+                slideVelocity += crawlVelocity;
+                crawlVelocity = 0f;
+            }
         }
 
         // Rope reference cache. Called on surface change.
@@ -798,6 +819,7 @@ namespace SlimeJumping.Controller
 
             // Reset state fields
             crawlVelocity = 0f;
+            slideVelocity = 0f;
             chargeEntryCrawl = 0f;
             aimOffset = Vector2.zero;
             chargeFullAimTimer = 0f;
@@ -863,6 +885,21 @@ namespace SlimeJumping.Controller
                 return;
             }
             velocity = v;
+        }
+
+        /// <summary>
+        /// Direct position write. Only callable while HasOverride==true. Used by
+        /// path-based traversal controllers (#31 pipe transit) that lerp the slime
+        /// along an external path while suspending normal physics.
+        /// </summary>
+        public void OverridePosition(Vector2 p)
+        {
+            if (!HasOverride)
+            {
+                Debug.LogError("[SlimeController] OverridePosition called outside of override context");
+                return;
+            }
+            rb.position = p;
         }
 
         public void SetOverride(IExternalController controller)

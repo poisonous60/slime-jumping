@@ -43,6 +43,7 @@ namespace SlimeJumping.Controller
             stickDeccelTimer = 0f;
             slideRampTimer = 0f;
             crawlVelocity = 0f;
+            slideVelocity = 0f;
             chargeEntryCrawl = 0f;
             postLaunchTimer = 0f;
             postLaunchAirControlLockTimer = 0f;

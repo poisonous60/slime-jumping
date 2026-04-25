@@ -35,6 +35,7 @@ namespace SlimeJumping.Controller
         {
             velocity = vel;
             crawlVelocity = 0f;
+            slideVelocity = 0f;
             chargeEntryCrawl = 0f;
             stickTimer = 0f;
             stickDeccelTimer = 0f;
@@ -73,6 +74,7 @@ namespace SlimeJumping.Controller
             float preLaunchCrawl = chargeEntryCrawl;
             chargeEntryCrawl = 0f;
             crawlVelocity = 0f;
+            slideVelocity = 0f;
 
             if (!isVolumeCharging)
             {
@@ -141,7 +143,7 @@ namespace SlimeJumping.Controller
             // Hop abandons the charge chain, so discard any pending coyote conversion
             // and apply the deferred floor reset that the no-Space landing skipped.
             ClearPendingEnergyConversion(executeDeferredReset: true);
-            chargeEntryCrawl = crawlVelocity;
+            chargeEntryCrawl = crawlVelocity + slideVelocity;
             float angle = GetSurfaceAngle();
             float hopT = Mathf.InverseLerp(settings.hopMinAngle, settings.hopMaxAngle, angle);
             float power = Mathf.Lerp(settings.hopPower, settings.hopPowerMin, hopT);
@@ -188,6 +190,7 @@ namespace SlimeJumping.Controller
             }
             velocity += hopDir * power;
             crawlVelocity = 0f;
+            slideVelocity = 0f;
             stickTimer = 0f;
             stickDeccelTimer = 0f;
 
@@ -215,9 +218,15 @@ namespace SlimeJumping.Controller
             float dashStrength = settings.groundDashImpulse * dashAngleScale * surfaceMod.groundDashScale.Evaluate(dashAngle);
             if (dashStrength > 0f)
             {
-                float sameDirSpeed = Mathf.Max(0f, inputSign * crawlVelocity);
+                // Inertial surfaces: read falloff from combined speed and impulse the inertial
+                // channel so the dash boost persists as kinetic energy through curves.
+                float currentTangent = surfaceMod.useInertialSlide ? (crawlVelocity + slideVelocity) : crawlVelocity;
+                float sameDirSpeed = Mathf.Max(0f, inputSign * currentTangent);
                 float falloff = 1f - Mathf.InverseLerp(settings.dashFalloffStart, settings.dashFalloffEnd, sameDirSpeed);
-                crawlVelocity += inputSign * dashStrength * falloff;
+                if (surfaceMod.useInertialSlide)
+                    slideVelocity += inputSign * dashStrength * falloff;
+                else
+                    crawlVelocity += inputSign * dashStrength * falloff;
                 dashCooldownTimer = settings.groundDashCooldown;
             }
         }

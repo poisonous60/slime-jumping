@@ -38,13 +38,13 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   slideResistanceMultiplier:
-    baseValue: 1
-    fullValue: 1
+    baseValue: 0.1
+    fullValue: 0.1
     angleMin: 0
     angleMax: 90
   slideGravityMultiplier:
-    baseValue: 1.3
-    fullValue: 1.3
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   slideRampUpTime:
@@ -83,3 +83,4 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   hopInstantFlip: 0
+  useInertialSlide: 1

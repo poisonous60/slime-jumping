@@ -31,7 +31,7 @@ namespace SlimeJumping.Mechanisms
             slime.ForceAirborneWithVelocity(worldDir * launchForce);
             cooldownTimer = cooldown;
 
-            if (warpEffect != null) warpEffect.Trigger();
+            if (warpEffect != null) warpEffect.TriggerStretch(slime.transform);
         }
 
         public void OnSlimeDetach(SlimeController slime) { }

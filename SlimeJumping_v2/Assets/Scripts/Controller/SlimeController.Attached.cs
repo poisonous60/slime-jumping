@@ -15,6 +15,7 @@ namespace SlimeJumping.Controller
             {
                 hopRequested = false;
                 crawlVelocity = 0f;
+                slideVelocity = 0f;
                 launchSpeed = 0f;
                 launchPosition = rb.position;
                 launchedByHop = false;
@@ -40,7 +41,16 @@ namespace SlimeJumping.Controller
             {
                 slideRampTimer = 0f;
                 wasStuck = false;
-                crawlVelocity = Vector2.Dot(velocity, surfaceTangent);
+                float postStickTangent = Vector2.Dot(velocity, surfaceTangent);
+                if (surfaceMod.useInertialSlide)
+                {
+                    slideVelocity = postStickTangent;
+                    crawlVelocity = 0f;
+                }
+                else
+                {
+                    crawlVelocity = postStickTangent;
+                }
             }
             if (stickTimer > 0f) wasStuck = true;
 
@@ -62,32 +72,49 @@ namespace SlimeJumping.Controller
                 }
             }
 
-            // 1. Slide: fresh each frame, no accumulation (skip during stick)
+            // 1. Slide: legacy = fresh each frame; inertial = integrated (skip during stick)
             float angle = GetSurfaceAngle();
             float slideSpeed = 0f;
             if (stickTimer <= 0f)
             {
                 Vector2 gravityVec = GravityVector;
                 float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
-                if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
-                    gravAlongTangent = 0f;
-                slideSpeed = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
 
-                // Apply resistance to slideSpeed (not gravAlongTangent — crawl still fights full gravity)
-                if (Mathf.Abs(slideSpeed) > 0.001f)
+                if (surfaceMod.useInertialSlide)
                 {
-                    float sign = Mathf.Sign(slideSpeed);
-                    slideSpeed -= sign * settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
-                    if (Mathf.Sign(slideSpeed) != sign)
-                        slideSpeed = 0f;
+                    // Inertial: gravity is acceleration, slideResistance is kinetic friction (m/s²).
+                    // No threshold deadzone — every bit of tangent gravity matters for KE↔height
+                    // exchange on a halfpipe; friction handles drift on near-flat ground.
+                    float slideAccel = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
+                    slideVelocity += slideAccel * dt;
+                    float frictionDecel = settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
+                    if (frictionDecel > 0f)
+                        slideVelocity = Mathf.MoveTowards(slideVelocity, 0f, frictionDecel * dt);
+                    slideSpeed = slideVelocity;
+                    slideRampTimer += dt; // kept ticking for state consistency (used by debug readouts)
                 }
+                else
+                {
+                    if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
+                        gravAlongTangent = 0f;
+                    slideSpeed = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
 
-                // Slide ramp-up: gradual acceleration after landing
-                slideRampTimer += dt;
-                float surfaceRamp = surfaceMod.slideRampUp.Evaluate(angle);
-                float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.stickSlideTransitionRampTime;
-                float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
-                slideSpeed *= rampT;
+                    // Apply resistance to slideSpeed (not gravAlongTangent — crawl still fights full gravity)
+                    if (Mathf.Abs(slideSpeed) > 0.001f)
+                    {
+                        float sign = Mathf.Sign(slideSpeed);
+                        slideSpeed -= sign * settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
+                        if (Mathf.Sign(slideSpeed) != sign)
+                            slideSpeed = 0f;
+                    }
+
+                    // Slide ramp-up: gradual acceleration after landing
+                    slideRampTimer += dt;
+                    float surfaceRamp = surfaceMod.slideRampUp.Evaluate(angle);
+                    float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.stickSlideTransitionRampTime;
+                    float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
+                    slideSpeed *= rampT;
+                }
             }
 
             // 2. Crawl: accel/decel model (weakened during stick)

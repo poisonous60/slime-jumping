@@ -33,7 +33,9 @@ namespace SlimeJumping.Controller
             hopRequested = false;
 
             ChangeState(SlimeState.Charging);
-            chargeEntryCrawl = crawlVelocity;
+            // Hyper-dash seed: capture full tangent speed at charge entry. On inertial
+            // surfaces the half-pipe momentum lives in slideVelocity, so include it.
+            chargeEntryCrawl = crawlVelocity + slideVelocity;
             aimOffset = Vector2.zero;
             driftDirection = -surfaceNormal;
             prevSurfaceNormal = surfaceNormal;
@@ -93,6 +95,7 @@ namespace SlimeJumping.Controller
             chargeFullAimTimer = 0f;
             chargeEntryCrawl = 0f;
             crawlVelocity = 0f;
+            slideVelocity = 0f;
 
             ChangeState(SlimeState.Charging, intentional: true);
             if (chargeVisual != null) chargeVisual.Show();

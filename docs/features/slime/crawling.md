@@ -17,7 +17,9 @@ else
 - 벽에서 위로 기면 중력에 의해 느려지고, 아래로 기면 빨라짐. 중력 > crawlSpeed이면 올라갈 수 없음.
 
 ## 표면 미끄러짐 (중력 분해)
-중력을 접선/법선으로 분해. 접선 성분이 미끄러짐, 법선은 표면이 상쇄.
+중력을 접선/법선으로 분해. 접선 성분이 미끄러짐, 법선은 표면이 상쇄. SurfaceTag의 `useInertialSlide`로 두 모드 중 선택.
+
+### 정상상태 모드 (기본 — SurfaceTag 없는 지면 / 일반 표면)
 ```
 gravAlongTangent = dot(gravity, surfaceTangent)
 if (abs(gravAlongTangent) < slideThreshold)  // 완만한 경사 보호
@@ -28,8 +30,22 @@ slideSpeed = gravAlongTangent * slideGravityScale − slideResistance
 - 크롤링은 원래 중력 접선 전체와 싸움 (resistance/threshold 적용 전 값).
 - `slideResistance`: 완만=많이 감속, 급경사=적게 감속.
 
+### 관성 모드 (`useInertialSlide = true`, 빙판/하프파이프)
+중력을 가속도로 적분 → KE↔높이 자연 변환.
+```
+slideAccel     = gravAlongTangent * slideGravityScale * slideGravityMultiplier  // [m/s²]
+slideVelocity += slideAccel * dt
+frictionDecel  = slideResistance * slideResistanceMultiplier                     // [m/s²]
+slideVelocity  = MoveTowards(slideVelocity, 0, frictionDecel * dt)
+slideSpeed     = slideVelocity
+```
+- 데드존(slideThreshold) / 램프업 미적용.
+- 착지 시 접선 속도는 `slideVelocity`로 들어가 마찰 외 감쇠 없음.
+- `slideResistance` 의미가 바뀜: 빼는 속도 → 친선 마찰 (m/s²).
+- 자세한 내용은 [surface-material.md](surface-material.md#관성-슬라이드-모드-useinertialslide).
+
 ## 최종 속도
-`finalTangent = slideSpeed + crawlVelocity` → `velocity = surfaceTangent * finalTangent`.
+`finalTangent = slideSpeed + crawlVelocity` → `velocity = surfaceTangent * finalTangent`. 관성 모드에서도 동일 — `slideSpeed`만 `slideVelocity`로 대체됨.
 
 ## 파라미터
 | 파라미터 | 기본값 | 설명 |

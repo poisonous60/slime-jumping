@@ -16,15 +16,37 @@ namespace SlimeJumping.Editor
         const string ShaderName       = "SlimeJumping/SpaceWarp_Distortion";
         const string MatFolder        = "Assets/Art/Shader";
         const string MatZonePath      = MatFolder + "/Mat_SpaceWarpZone.mat";
+        const string MatZoneBgPath    = MatFolder + "/Mat_SpaceWarpZone_Background.mat";
         const string MatJumpPadPath   = MatFolder + "/Mat_SpaceWarpJumpPad.mat";
 
-        [MenuItem("SlimeJumping/Mechanism/Setup Space Warp Zone")]
-        public static void SetupZone()
-        {
-            var mat = LoadOrCreateZoneMaterial();
+        // Foreground = covers gameplay (only the warped image shows). Background = drawn behind
+        // gameplay, useful as an ambient backdrop. Material settings drive the difference:
+        //   queue 3500 + ZTest Always (8) → foreground
+        //   queue 3000 + ZTest LEqual (4) → background
+        const int   QueueForeground = 3500;
+        const int   QueueBackground = 3000;
+        const float ZTestAlways     = 8f;
+        const float ZTestLEqual     = 4f;
 
+        [MenuItem("SlimeJumping/Mechanism/Setup Space Warp Zone (Foreground)")]
+        public static void SetupZoneForeground()
+        {
+            CreateZone(LoadOrCreateZoneMaterial(), "SpaceWarpZone_Test",
+                "Foreground zone — quad covers everything inside it; only the warped image shows.");
+        }
+
+        [MenuItem("SlimeJumping/Mechanism/Setup Space Warp Zone (Background)")]
+        public static void SetupZoneBackground()
+        {
+            CreateZone(LoadOrCreateZoneBackgroundMaterial(), "SpaceWarpZone_Background_Test",
+                "Background zone — gameplay objects (slime, platforms) draw on top; the warp acts as a backdrop. " +
+                "Place behind gameplay (z larger than gameplay z).");
+        }
+
+        static void CreateZone(Material mat, string goName, string log)
+        {
             var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            go.name = "SpaceWarpZone_Test";
+            go.name = goName;
             Object.DestroyImmediate(go.GetComponent<MeshCollider>());
             go.transform.localScale = new Vector3(6f, 6f, 1f);
             go.transform.position = GetSpawnPosition();
@@ -34,10 +56,7 @@ namespace SlimeJumping.Editor
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
                 UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
             Selection.activeGameObject = go;
-
-            Debug.Log("Space Warp Zone created. Move it in front of any opaque scenery — the " +
-                      "noise warp samples _CameraOpaqueTexture, so it shows whatever is behind " +
-                      "the quad rippling continuously.");
+            Debug.Log(log);
         }
 
         [MenuItem("SlimeJumping/Mechanism/Setup Space Warp Jump Pad")]
@@ -101,16 +120,41 @@ namespace SlimeJumping.Editor
 
             EnsureFolder(MatFolder);
             mat = new Material(Shader.Find(ShaderName));
+            ApplyZoneCommon(mat);
+            mat.SetFloat("_ZTest", ZTestAlways);
+            mat.renderQueue = QueueForeground;
+            AssetDatabase.CreateAsset(mat, MatZonePath);
+            AssetDatabase.SaveAssets();
+            return mat;
+        }
+
+        static Material LoadOrCreateZoneBackgroundMaterial()
+        {
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(MatZoneBgPath);
+            if (mat != null) return mat;
+
+            EnsureFolder(MatFolder);
+            mat = new Material(Shader.Find(ShaderName));
+            ApplyZoneCommon(mat);
+            mat.SetFloat("_ZTest", ZTestLEqual);
+            mat.renderQueue = QueueBackground;
+            AssetDatabase.CreateAsset(mat, MatZoneBgPath);
+            AssetDatabase.SaveAssets();
+            return mat;
+        }
+
+        static void ApplyZoneCommon(Material mat)
+        {
             mat.SetColor("_BaseColor",       new Color(0.55f, 0.7f, 1.0f, 1.0f));
             mat.SetFloat("_TintStrength",    0.05f);
             mat.SetFloat("_FalloffStart",    0.45f);
             mat.SetFloat("_FalloffEnd",      1.0f);
-            mat.SetFloat("_PersistStrength", 0.07f);
+            mat.SetFloat("_PersistStrength", 0.04f);
             mat.SetFloat("_PersistScale",    3.0f);
-            mat.SetFloat("_PulseStrength",   0f);   // zone = no pulse by default
-            AssetDatabase.CreateAsset(mat, MatZonePath);
-            AssetDatabase.SaveAssets();
-            return mat;
+            mat.SetFloat("_DomainWarp",      1.6f);
+            mat.SetFloat("_SwirlAmount",     0.9f);
+            mat.SetFloat("_SwirlAnim",       0.4f);
+            mat.SetFloat("_PulseStrength",   0f);
         }
 
         static Material LoadOrCreateJumpPadMaterial()
@@ -125,8 +169,15 @@ namespace SlimeJumping.Editor
             mat.SetFloat("_FalloffStart",      0.6f);
             mat.SetFloat("_FalloffEnd",        1.0f);
             mat.SetFloat("_PersistStrength",   0f);   // jump pad = pulse only
-            mat.SetFloat("_PulseRippleWidth",  0.18f);
-            mat.SetFloat("_PulseMaxRadius",    1.0f);
+            mat.SetFloat("_SwirlAmount",       0f);
+            mat.SetFloat("_PulseRippleWidth",  0.22f);
+            mat.SetFloat("_PulseMaxRadius",    1.1f);
+            mat.SetFloat("_Taper",             0.55f);
+            mat.SetFloat("_PopFizz",           0.06f);
+            mat.SetFloat("_FalloffStart",      0.45f);
+            mat.SetFloat("_FalloffEnd",        1.0f);
+            mat.SetFloat("_ZTest",             ZTestAlways);
+            mat.renderQueue                  = QueueForeground;
             AssetDatabase.CreateAsset(mat, MatJumpPadPath);
             AssetDatabase.SaveAssets();
             return mat;
