@@ -337,17 +337,29 @@ namespace SlimeJumping.Physics
         {
             get
             {
-                if (activeCount == 0) return lastGoodNormal;
-
                 float radius = settings.slimeRadius;
                 float contactSkin = settings.contactSkin;
+                // Soft band: contacts within (radius + fullBand) contribute, weighted
+                // by a smoothstep ramp. Replaces the old hard "active or not" gate.
+                // Without the soft band, aC=0 returned stale lastGoodNormal and aC>=1
+                // returned a fresh weighted sum — that step discontinuity drove the
+                // Ice-curve judder (vel direction flipping every frame as the slime
+                // overshot the curve and re-touched it). multiplier=1 reproduces the
+                // legacy hard threshold.
+                float fullBand = contactSkin * Mathf.Max(1f, settings.effectiveNormalSoftBandMultiplier);
+                float rampWidth = fullBand * Mathf.Clamp01(settings.effectiveNormalWeightRampBand);
                 Vector2 sum = Vector2.zero;
                 for (int i = 0; i < contactCount; i++)
                 {
-                    if (!contactActive[i]) continue;
                     if (Vector2.Dot(contactNormals[i], lastGravityUp) < lastCeilingThreshold) continue;
-                    float w = radius + contactSkin - contactDistances[i];
-                    if (w < 0f) w = 0f;
+                    float w = radius + fullBand - contactDistances[i];
+                    if (w <= 0f) continue;
+                    if (rampWidth > 1e-6f)
+                    {
+                        float t = Mathf.Clamp01(w / rampWidth);
+                        // smoothstep(0,1,t) = t*t*(3-2t)
+                        w *= t * t * (3f - 2f * t);
+                    }
                     sum += contactNormals[i] * w;
                 }
                 if (sum.sqrMagnitude < 1e-6f) return lastGoodNormal;
@@ -356,28 +368,60 @@ namespace SlimeJumping.Physics
         }
 
         /// <summary>
-        /// Multi-constraint velocity clipping: for each active contact (including
-        /// ceilings, to prevent pass-through), remove the velocity component pointing
-        /// into that contact. Two Gauss-Seidel passes converge for typical 2-3 contact
-        /// corners. When no active contacts, falls back to clipping against the provided
-        /// fallback normal — used by Charging's surface-probe grace period.
+        /// Velocity clipping for surface contacts.
+        ///
+        /// Step 1 (always): full clip into fallbackNormal. fallbackNormal is the
+        ///   smoothed primary surface axis; this provides the stable "no into-surface"
+        ///   constraint. Even when no contact is in the soft band (slime briefly
+        ///   detached from curve at high speed), this still anchors velocity to be
+        ///   tangent to the smoothed primary.
+        ///
+        /// Step 2: weighted multi-clip ONLY against contacts whose normal differs
+        ///   from fallbackNormal by more than acos(projectVelocitySameDirectionDot)
+        ///   degrees. Same-direction contacts are multi-probe samples of the same
+        ///   surface — clipping against them produces step changes in vel as the
+        ///   active set toggles (the Ice judder). Different-direction contacts
+        ///   (true corners, opposing walls) still get multi-clipped, soft-banded.
+        ///
+        /// Two Gauss-Seidel passes converge for typical 2-3 contact corners.
         /// </summary>
         public void ProjectVelocityAgainstContacts(ref Vector2 v, Vector2 fallbackNormal, int passes = 2)
         {
-            if (activeCount == 0)
-            {
-                float vn = Vector2.Dot(v, fallbackNormal);
-                if (vn < 0f) v -= fallbackNormal * vn;
-                return;
-            }
+            // Step 1: primary-axis clip (always).
+            float vnFb = Vector2.Dot(v, fallbackNormal);
+            if (vnFb < 0f) v -= fallbackNormal * vnFb;
+
+            // Step 2: multi-clip against non-aligned contacts only.
+            float radius = settings.slimeRadius;
+            float contactSkin = settings.contactSkin;
+            float fullBand = contactSkin * Mathf.Max(1f, settings.effectiveNormalSoftBandMultiplier);
+            float rampWidth = fullBand * Mathf.Clamp01(settings.effectiveNormalWeightRampBand);
+            float sameDirDot = Mathf.Clamp01(settings.projectVelocitySameDirectionDot);
+
             for (int pass = 0; pass < passes; pass++)
             {
                 for (int i = 0; i < contactCount; i++)
                 {
-                    if (!contactActive[i]) continue;
                     Vector2 n = contactNormals[i];
+                    // Skip same-surface samples — fallbackNormal already constrained that axis.
+                    if (Vector2.Dot(n, fallbackNormal) > sameDirDot) continue;
+
+                    float w = radius + fullBand - contactDistances[i];
+                    if (w <= 0f) continue;
+                    float weight;
+                    if (rampWidth > 1e-6f)
+                    {
+                        float t = Mathf.Clamp01(w / rampWidth);
+                        weight = t * t * (3f - 2f * t);
+                    }
+                    else
+                    {
+                        weight = 1f;
+                    }
+                    if (weight < 1e-4f) continue;
+
                     float vn = Vector2.Dot(v, n);
-                    if (vn < 0f) v -= n * vn;
+                    if (vn < 0f) v -= n * (vn * weight);
                 }
             }
         }

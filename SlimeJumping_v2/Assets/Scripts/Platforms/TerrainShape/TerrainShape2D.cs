@@ -38,6 +38,14 @@ namespace SlimeJumping.TerrainShape
         public int idB;
     }
 
+    public enum AutoSubdivideMode
+    {
+        Grid,
+        JitteredGrid,
+        PoissonDisk,
+        Halton,
+    }
+
     [ExecuteAlways]
     [DisallowMultipleComponent]
     [RequireComponent(typeof(MeshFilter))]
@@ -47,11 +55,21 @@ namespace SlimeJumping.TerrainShape
         public List<InteriorPoint> interior = new List<InteriorPoint>();
         public List<ForcedEdge> forcedEdges = new List<ForcedEdge>();
 
-        [Range(2, 32)]
-        public int subdivisionsPerSegment = 8;
+        [Range(2, 128)]
+        public int subdivisionsPerSegment = 24;
+
+        // Curved (smooth) segments are subdivided this many times more finely than straight ones.
+        // Curved bezier sections need much higher density to look smooth than flat edges.
+        [Range(1, 16)]
+        public int curveSubdivisionMultiplier = 4;
 
         [Min(0.05f)]
         public float autoSpacing = 0.4f;
+
+        public AutoSubdivideMode autoMode = AutoSubdivideMode.PoissonDisk;
+        public int autoSeed = 1;
+        [Range(0, 8)]
+        public int autoLloydIters = 0;
 
         public bool doubleSidedFront = false;
 
@@ -59,6 +77,9 @@ namespace SlimeJumping.TerrainShape
 
         [Min(0f)]
         public float planarSimplifyThreshold = 0f;
+
+        public Material installMaterial;
+        public bool installAutoGenerateCollider2D = false;
 
         public bool useHeightmap = false;
         public bool showHeightmapInScene = false;

@@ -49,7 +49,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 ## 메커니즘
 
 - [Categories](features/mechanisms/mechanism-categories.md) — 6분류 (환경존/위험/플랫폼효과/인터랙터블/오버라이드/소프트피직스)
-- [Portal](features/mechanisms/portal.md) — 텔레포터 쌍 + PortalSwapper
+- [Portal](features/mechanisms/portal.md) — 텔레포터 쌍 + PortalSwapper (v2: 소비/재생성, 자동 페어링, 색 지정)
 - [Signal / Button](features/mechanisms/signal-button.md) — SignalSource, WeightDescendPlatform
 - [Wind Zone](features/mechanisms/wind-zone.md)
 - [Drag Zone](features/mechanisms/drag-zone.md) — 감속/모래 + 볼륨 차징

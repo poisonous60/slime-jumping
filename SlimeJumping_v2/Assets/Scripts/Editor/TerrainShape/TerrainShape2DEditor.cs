@@ -16,6 +16,27 @@ namespace SlimeJumping.TerrainShape.Editor
         bool _edgesDragging = false;
         int _edgesDragFromId = 0;
 
+        // Multi-select state. IDs are stable across rebuilds, so we key by id rather than index.
+        readonly HashSet<int> _selectedOutlineIds = new HashSet<int>();
+        readonly HashSet<int> _selectedInteriorIds = new HashSet<int>();
+        bool _marqueeActive;
+        Vector2 _marqueeStartGUI;
+        // Which mode the in-progress marquee uses. 0=replace, 1=add (Shift), 2=subtract (Ctrl).
+        int _marqueeMode;
+
+        // Heightmap preset / procedural-generator UI state (session-only, not serialized).
+        HeightmapPreset _heightmapPreset;
+        string _presetSaveName = "";
+        bool _presetsFoldout = false;
+        HeightmapProcMode _procMode = HeightmapProcMode.Perlin;
+        float _procScale = 0.3f;
+        int _procOctaves = 4;
+        float _procPersistence = 0.5f;
+        float _procLacunarity = 2f;
+        float _procAngle = 0f;
+        int _procSeed = 1;
+        float _procFlatValue = 0.5f;
+
         struct EdgeDragSnap
         {
             public bool valid;
@@ -106,12 +127,22 @@ namespace SlimeJumping.TerrainShape.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Shape", EditorStyles.boldLabel);
             EditorGUI.BeginChangeCheck();
-            int newSubs = EditorGUILayout.IntSlider("Outline samples / curve", src.subdivisionsPerSegment, 2, 32);
+            int newSubs = EditorGUILayout.IntSlider(
+                new GUIContent("Outline samples / segment",
+                    "Base sample count for each straight segment between two outline points."),
+                src.subdivisionsPerSegment, 2, 128);
+            int newCurveMult = EditorGUILayout.IntSlider(
+                new GUIContent("Curve subdivision ×",
+                    "Multiplier applied to 'Outline samples / segment' on smooth (curved) segments only. Bezier curvature needs much finer subdivision than flat edges. 1 = same as straight, 4 = default, higher = smoother curves at the cost of more triangles."),
+                src.curveSubdivisionMultiplier, 1, 16);
+            int curvedSamples = Mathf.Max(newSubs, newSubs * Mathf.Max(1, newCurveMult));
+            EditorGUILayout.LabelField($"   → straight: {newSubs} samples / segment, curved: {curvedSamples} samples / segment", EditorStyles.miniLabel);
             bool newDouble = EditorGUILayout.Toggle(new GUIContent("Double-sided front", "Render the front face from both sides — useful when forced edges or Z bumps make some triangles back-face the camera and look black."), src.doubleSidedFront);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(src, "TerrainShape settings");
                 src.subdivisionsPerSegment = newSubs;
+                src.curveSubdivisionMultiplier = newCurveMult;
                 src.doubleSidedFront = newDouble;
                 EditorUtility.SetDirty(src);
                 MarkDirty();
@@ -179,14 +210,35 @@ namespace SlimeJumping.TerrainShape.Editor
             }
             EditorGUILayout.EndHorizontal();
 
+            DrawHeightmapPresetsSection(src);
+
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Auto Subdivide", EditorStyles.boldLabel);
             EditorGUI.BeginChangeCheck();
-            float newSpacing = EditorGUILayout.Slider("Grid spacing", src.autoSpacing, 0.05f, 2f);
+            var newMode = (AutoSubdivideMode)EditorGUILayout.EnumPopup(
+                new GUIContent("Mode",
+                    "Grid: deterministic regular grid (clean but mechanical).\n" +
+                    "JitteredGrid: grid + random offset per cell.\n" +
+                    "PoissonDisk: Bridson's blue-noise sampling — organic, even spacing, no clustering.\n" +
+                    "Halton: low-discrepancy quasi-random — even coverage, deterministic, less regular than grid."),
+                src.autoMode);
+            float newSpacing = EditorGUILayout.Slider(
+                new GUIContent("Spacing", "Grid cell size, or minimum point distance for PoissonDisk/Halton."),
+                src.autoSpacing, 0.05f, 2f);
+            int newSeed = EditorGUILayout.IntField(
+                new GUIContent("Random seed", "Deterministic seed for JitteredGrid and PoissonDisk. Same seed → same layout."),
+                src.autoSeed);
+            int newLloyd = EditorGUILayout.IntSlider(
+                new GUIContent("Lloyd relax iters",
+                    "Centroidal Voronoi relaxation passes after generation. Smooths spacing toward an even Voronoi tessellation. 0 = off. 2-4 is usually enough."),
+                src.autoLloydIters, 0, 8);
             if (EditorGUI.EndChangeCheck())
             {
-                Undo.RecordObject(src, "Auto spacing");
+                Undo.RecordObject(src, "Auto subdivide settings");
+                src.autoMode = newMode;
                 src.autoSpacing = newSpacing;
+                src.autoSeed = newSeed;
+                src.autoLloydIters = newLloyd;
                 EditorUtility.SetDirty(src);
             }
             EditorGUILayout.BeginHorizontal();
@@ -208,14 +260,36 @@ namespace SlimeJumping.TerrainShape.Editor
             EditorGUILayout.LabelField($"Mesh: {vertCount} verts, {triCount} tris");
 
             EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Save & Install", EditorStyles.boldLabel);
+            EditorGUI.BeginChangeCheck();
+            var newMat = (Material)EditorGUILayout.ObjectField(
+                new GUIContent("Install material", "Material applied to the GameObject created by 'Save & Install'."),
+                src.installMaterial, typeof(Material), false);
+            bool newAutoCol = EditorGUILayout.Toggle(
+                new GUIContent("Auto generate Collider2D",
+                    "After 'Save & Install', run SlimeJumping/Generate PolygonCollider2D from Mesh on the new GameObject. " +
+                    "Slices the mesh at world Z=0 and attaches a PolygonCollider2D to an identity-rotated wrapper above it."),
+                src.installAutoGenerateCollider2D);
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(src, "Set install options");
+                src.installMaterial = newMat;
+                src.installAutoGenerateCollider2D = newAutoCol;
+                EditorUtility.SetDirty(src);
+            }
             using (new EditorGUI.DisabledScope(_cache.mesh == null || _cache.mesh.vertexCount < 3))
             {
+                EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button("Save Mesh As Asset")) SaveMeshAsset(src);
+                if (GUILayout.Button(new GUIContent("Save & Install", "Save the mesh asset and spawn a new GameObject at this TerrainShape's transform with MeshFilter + MeshRenderer using the install material.")))
+                    SaveAndInstall(src);
+                EditorGUILayout.EndHorizontal();
             }
 
             EditorGUILayout.HelpBox(
                 "Layers: select active layer; outline tool edits its points. + Add Layer duplicates the active one.\n" +
-                "Outline: drag yellow handles. Shift+click an edge to insert (propagates to all layers). Ctrl+click a point to delete.\n" +
+                "Outline: drag yellow handles. Shift+click an edge to insert (propagates to all layers). Ctrl+click a point to delete. Alt+click a point to toggle smooth.\n" +
+                "Drag in empty space to marquee-select multiple vertices (cyan = selected); Shift+drag adds, Ctrl+drag subtracts. Drag a selected vertex to move the whole group.\n" +
                 "Toggle 'smooth' on a row → cyan tangent handles appear at that point. Drag the cyan endpoints to shape the curve.\n" +
                 "Interior (Z bumps on FRONT face only): Shift+click inside polygon to add. PositionHandle drags X/Y/Z. Ctrl+click to delete.\n" +
                 "Edges (front face only): drag from vertex A — yellow line follows mouse, snaps to nearest vertex (cyan ring). Release on snap to add forced edge.\n   Hold Shift while dragging — orange line snaps to nearest edge or interior point (green ring). Release to insert a new vertex there and link it.\n   Ctrl+click an existing forced edge to remove.",
@@ -229,7 +303,24 @@ namespace SlimeJumping.TerrainShape.Editor
 
         void DrawLayerSection(TerrainShape2D src)
         {
+            EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Layers (front → back)", EditorStyles.boldLabel);
+            GUILayout.FlexibleSpace();
+            var prevColor = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(1f, 0.55f, 0.55f);
+            if (GUILayout.Button(new GUIContent("Reset Shape",
+                "Wipe all layers, outline points, interior, and forced edges, and reinitialize a default 2-layer rectangle."),
+                GUILayout.Width(100)))
+            {
+                if (EditorUtility.DisplayDialog("Reset TerrainShape2D",
+                    "All layers, outline points, interior points, and forced edges will be wiped and reinitialized to the default rectangle. This cannot be undone with a single Ctrl+Z if you have followed up with other edits. Continue?",
+                    "Reset", "Cancel"))
+                {
+                    ResetShape(src);
+                }
+            }
+            GUI.backgroundColor = prevColor;
+            EditorGUILayout.EndHorizontal();
             int deleteIdx = -1;
             for (int i = 0; i < src.layers.Count; i++)
             {
@@ -298,9 +389,13 @@ namespace SlimeJumping.TerrainShape.Editor
                     Undo.RecordObject(src, "Edit outline point");
                     if (s != p.smooth)
                     {
-                        p.smooth = s;
-                        if (s) InitTangentsFor(L, i);
-                        else { p.tangentIn = Vector2.zero; p.tangentOut = Vector2.zero; }
+                        for (int li = 0; li < src.layers.Count; li++)
+                        {
+                            var Lp = src.layers[li].outline[i];
+                            Lp.smooth = s;
+                            if (s) InitTangentsFor(src.layers[li], i);
+                            else { Lp.tangentIn = Vector2.zero; Lp.tangentOut = Vector2.zero; }
+                        }
                     }
                     p.pos = pos;
                     EditorUtility.SetDirty(src);
@@ -637,26 +732,7 @@ namespace SlimeJumping.TerrainShape.Editor
             var e = Event.current;
             var layer = src.layers[_activeLayer];
 
-            for (int i = 0; i < layer.outline.Count; i++)
-            {
-                var p = layer.outline[i];
-                Vector3 wp = t.TransformPoint(new Vector3(p.pos.x, p.pos.y, layer.z));
-                float size = HandleUtility.GetHandleSize(wp) * HANDLE_SIZE;
-                Handles.color = p.smooth ? new Color(0.4f, 1f, 0.4f) : Color.yellow;
-                EditorGUI.BeginChangeCheck();
-                Vector3 nw = Handles.FreeMoveHandle(wp, size, Vector3.zero, Handles.SphereHandleCap);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    Undo.RecordObject(src, "Move outline point");
-                    Vector3 lp = t.InverseTransformPoint(nw);
-                    p.pos = new Vector2(lp.x, lp.y);
-                    EditorUtility.SetDirty(src);
-                    MarkDirty();
-                }
-
-                if (p.smooth) DrawTangentHandles(src, layer, i, t);
-            }
-
+            // Handle modifier+click BEFORE FreeMoveHandle, otherwise the handle eats MouseDown.
             if (e.type == EventType.MouseDown && e.button == 0)
             {
                 if (e.control && TryFindClickedOutlineIndex(src, layer, e.mousePosition, out int delIdx))
@@ -664,24 +740,113 @@ namespace SlimeJumping.TerrainShape.Editor
                     if (layer.outline.Count > 3)
                     {
                         Undo.RecordObject(src, "Delete outline point");
+                        int delId = layer.outline[delIdx].id;
                         src.RemoveOutlinePointInAllLayers(delIdx);
+                        _selectedOutlineIds.Remove(delId);
                         EditorUtility.SetDirty(src);
                         MarkDirty();
                         e.Use();
+                        return;
                     }
                 }
-                else if (e.shift && TryProjectMouseToActiveLayerXY(src, e.mousePosition, out Vector2 lxy))
+                else if (e.alt && TryFindClickedOutlineIndex(src, layer, e.mousePosition, out int smoothIdx))
                 {
-                    if (TryFindClosestOutlineEdge(layer, lxy, out int edgeI, out Vector2 onEdge))
+                    Undo.RecordObject(src, "Toggle outline smooth");
+                    bool newSmooth = !layer.outline[smoothIdx].smooth;
+                    // Propagate smooth + tangents to the same index in every layer; otherwise
+                    // SampleLayerOutline produces different sample counts per layer and the
+                    // mesh builder's equality guard discards the whole mesh.
+                    for (int li = 0; li < src.layers.Count; li++)
                     {
-                        Undo.RecordObject(src, "Insert outline point");
-                        src.InsertOutlinePointInAllLayers(edgeI, _activeLayer, onEdge);
-                        EditorUtility.SetDirty(src);
-                        MarkDirty();
-                        e.Use();
+                        var Lp = src.layers[li].outline[smoothIdx];
+                        Lp.smooth = newSmooth;
+                        if (newSmooth) InitTangentsFor(src.layers[li], smoothIdx);
+                        else { Lp.tangentIn = Vector2.zero; Lp.tangentOut = Vector2.zero; }
                     }
+                    EditorUtility.SetDirty(src);
+                    MarkDirty();
+                    e.Use();
+                    return;
                 }
             }
+
+            HandleMarquee(e, _selectedOutlineIds,
+                () => CollectOutlineIdsInRect(src, layer),
+                () => TryFindClickedOutlineIndex(src, layer, e.mousePosition, out _),
+                (mode, mouseGUI) =>
+                {
+                    // Shift+click on empty (no drag): insert outline point on closest edge.
+                    if (mode != 1) return;
+                    if (!TryProjectMouseToActiveLayerXY(src, mouseGUI, out Vector2 lxy)) return;
+                    if (!TryFindClosestOutlineEdge(layer, lxy, out int edgeI, out Vector2 onEdge)) return;
+                    Undo.RecordObject(src, "Insert outline point");
+                    src.InsertOutlinePointInAllLayers(edgeI, _activeLayer, onEdge);
+                    EditorUtility.SetDirty(src);
+                    MarkDirty();
+                });
+
+            // Suppress FreeMoveHandle's hot-control grab while a modifier is held or a marquee
+            // is in progress — Layout events fire under the handle even before MouseDown.
+            bool suppressHandles = ((e.control || e.alt) && (e.type == EventType.Layout || e.type == EventType.MouseDown))
+                                || _marqueeActive;
+
+            // For group-drag we need to remember the anchor point's old position so we can
+            // compute world-space delta when the FreeMoveHandle reports a change.
+            for (int i = 0; i < layer.outline.Count; i++)
+            {
+                var p = layer.outline[i];
+                bool selected = _selectedOutlineIds.Contains(p.id);
+                Vector3 wp = t.TransformPoint(new Vector3(p.pos.x, p.pos.y, layer.z));
+                float size = HandleUtility.GetHandleSize(wp) * HANDLE_SIZE;
+                Handles.color = selected
+                    ? new Color(0.3f, 0.9f, 1f)
+                    : (p.smooth ? new Color(0.4f, 1f, 0.4f) : Color.yellow);
+                if (!suppressHandles)
+                {
+                    EditorGUI.BeginChangeCheck();
+                    Vector3 nw = Handles.FreeMoveHandle(wp, size, Vector3.zero, Handles.SphereHandleCap);
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        Vector3 lp = t.InverseTransformPoint(nw);
+                        Vector2 newPos = new Vector2(lp.x, lp.y);
+                        Vector2 delta = newPos - p.pos;
+                        if (selected && _selectedOutlineIds.Count > 1)
+                        {
+                            Undo.RecordObject(src, "Move outline points");
+                            foreach (var op in layer.outline)
+                                if (_selectedOutlineIds.Contains(op.id))
+                                    op.pos += delta;
+                        }
+                        else
+                        {
+                            Undo.RecordObject(src, "Move outline point");
+                            p.pos = newPos;
+                        }
+                        EditorUtility.SetDirty(src);
+                        MarkDirty();
+                    }
+                }
+                else if (e.type == EventType.Repaint)
+                {
+                    Handles.SphereHandleCap(0, wp, t.rotation, size, EventType.Repaint);
+                }
+
+                if (p.smooth) DrawTangentHandles(src, layer, i, t);
+            }
+        }
+
+        HashSet<int> CollectOutlineIdsInRect(TerrainShape2D src, OutlineLayer layer)
+        {
+            var hits = new HashSet<int>();
+            var rect = MarqueeRect();
+            var t = src.transform;
+            foreach (var p in layer.outline)
+            {
+                Vector3 wp = t.TransformPoint(new Vector3(p.pos.x, p.pos.y, layer.z));
+                Vector2 g = HandleUtility.WorldToGUIPoint(wp);
+                if (rect.Contains(g)) hits.Add(p.id);
+            }
+            return hits;
         }
 
         void DrawTangentHandles(TerrainShape2D src, OutlineLayer layer, int i, Transform t)
@@ -770,32 +935,7 @@ namespace SlimeJumping.TerrainShape.Editor
             var t = src.transform;
             var e = Event.current;
 
-            for (int i = 0; i < src.interior.Count; i++)
-            {
-                var p = src.interior[i];
-                Vector3 effLocal = src.GetEffectiveInteriorPos(p);
-                Vector3 wp = t.TransformPoint(effLocal);
-                EditorGUI.BeginChangeCheck();
-                Vector3 nw = CompactPositionHandle(wp, t.rotation, 0.35f);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    Undo.RecordObject(src, "Move interior point");
-                    Vector3 newLocal = t.InverseTransformPoint(nw);
-                    p.pos = new Vector3(newLocal.x, newLocal.y, p.pos.z);
-                    if (src.useHeightmap && src.HasHeightmap)
-                    {
-                        float baseZ = src.SampleHeightmapZ(new Vector2(newLocal.x, newLocal.y));
-                        p.zOffset = newLocal.z - baseZ;
-                    }
-                    else
-                    {
-                        p.pos = new Vector3(newLocal.x, newLocal.y, newLocal.z);
-                    }
-                    EditorUtility.SetDirty(src);
-                    MarkDirty();
-                }
-            }
-
+            // Modifier+click first, before the slider handles register their controls.
             if (e.type == EventType.MouseDown && e.button == 0)
             {
                 if (e.control && TryFindClickedInteriorIndex(src, e.mousePosition, out int delIdx))
@@ -804,35 +944,114 @@ namespace SlimeJumping.TerrainShape.Editor
                     int delId = src.interior[delIdx].id;
                     src.interior.RemoveAt(delIdx);
                     src.forcedEdges.RemoveAll(fe => fe.idA == delId || fe.idB == delId);
+                    _selectedInteriorIds.Remove(delId);
                     EditorUtility.SetDirty(src);
                     MarkDirty();
                     e.Use();
+                    return;
                 }
-                else if (e.shift && TryProjectMouseToFrontLayerXY(src, e.mousePosition, out Vector2 lxy))
+            }
+
+            HandleMarquee(e, _selectedInteriorIds,
+                () => CollectInteriorIdsInRect(src),
+                () => TryFindClickedInteriorIndex(src, e.mousePosition, out _),
+                (mode, mouseGUI) =>
                 {
+                    // Shift+click on empty (no drag): insert interior point at mouse if inside polygon.
+                    if (mode != 1) return;
+                    if (!TryProjectMouseToFrontLayerXY(src, mouseGUI, out Vector2 lxy)) return;
                     var frontPts = (_cache.sampledOutlinesPerLayer != null && _cache.sampledOutlinesPerLayer.Count > 0)
                         ? _cache.sampledOutlinesPerLayer[0] : null;
-                    if (frontPts != null && TerrainShape2DMeshBuilder.IsPointInside(frontPts, lxy))
+                    if (frontPts == null || !TerrainShape2DMeshBuilder.IsPointInside(frontPts, lxy)) return;
+                    Undo.RecordObject(src, "Insert interior point");
+                    float z = src.SampleHeightmapZ(lxy);
+                    src.interior.Add(new InteriorPoint { id = src.AllocateId(), pos = new Vector3(lxy.x, lxy.y, z) });
+                    EditorUtility.SetDirty(src);
+                    MarkDirty();
+                });
+
+            bool suppressHandles = (e.control && (e.type == EventType.Layout || e.type == EventType.MouseDown))
+                                || _marqueeActive;
+
+            for (int i = 0; i < src.interior.Count; i++)
+            {
+                var p = src.interior[i];
+                bool selected = _selectedInteriorIds.Contains(p.id);
+                Vector3 effLocal = src.GetEffectiveInteriorPos(p);
+                Vector3 wp = t.TransformPoint(effLocal);
+                if (!suppressHandles)
+                {
+                    EditorGUI.BeginChangeCheck();
+                    Vector3 nw = CompactPositionHandle(wp, t.rotation, 0.35f, selected);
+                    if (EditorGUI.EndChangeCheck())
                     {
-                        Undo.RecordObject(src, "Insert interior point");
-                        float z = src.SampleHeightmapZ(lxy);
-                        src.interior.Add(new InteriorPoint { id = src.AllocateId(), pos = new Vector3(lxy.x, lxy.y, z) });
+                        Vector3 newLocal = t.InverseTransformPoint(nw);
+                        Vector3 deltaLocal = newLocal - effLocal;
+                        if (selected && _selectedInteriorIds.Count > 1)
+                        {
+                            Undo.RecordObject(src, "Move interior points");
+                            foreach (var ip in src.interior)
+                            {
+                                if (!_selectedInteriorIds.Contains(ip.id)) continue;
+                                Vector3 ipEff = src.GetEffectiveInteriorPos(ip);
+                                Vector3 ipNew = ipEff + deltaLocal;
+                                ApplyInteriorMove(src, ip, ipNew);
+                            }
+                        }
+                        else
+                        {
+                            Undo.RecordObject(src, "Move interior point");
+                            ApplyInteriorMove(src, p, newLocal);
+                        }
                         EditorUtility.SetDirty(src);
                         MarkDirty();
-                        e.Use();
                     }
+                }
+                else if (e.type == EventType.Repaint)
+                {
+                    float s = HandleUtility.GetHandleSize(wp) * 0.35f * 0.25f;
+                    Handles.color = selected ? new Color(0.3f, 0.9f, 1f) : new Color(1f, 1f, 1f, 0.6f);
+                    Handles.SphereHandleCap(0, wp, t.rotation, s, EventType.Repaint);
                 }
             }
         }
 
-        Vector3 CompactPositionHandle(Vector3 wp, Quaternion rot, float scale)
+        static void ApplyInteriorMove(TerrainShape2D src, InteriorPoint ip, Vector3 newEffLocal)
+        {
+            if (src.useHeightmap && src.HasHeightmap)
+            {
+                float baseZ = src.SampleHeightmapZ(new Vector2(newEffLocal.x, newEffLocal.y));
+                ip.pos = new Vector3(newEffLocal.x, newEffLocal.y, ip.pos.z);
+                ip.zOffset = newEffLocal.z - baseZ;
+            }
+            else
+            {
+                ip.pos = newEffLocal;
+            }
+        }
+
+        HashSet<int> CollectInteriorIdsInRect(TerrainShape2D src)
+        {
+            var hits = new HashSet<int>();
+            var rect = MarqueeRect();
+            var t = src.transform;
+            foreach (var ip in src.interior)
+            {
+                Vector3 wp = t.TransformPoint(src.GetEffectiveInteriorPos(ip));
+                Vector2 g = HandleUtility.WorldToGUIPoint(wp);
+                if (rect.Contains(g)) hits.Add(ip.id);
+            }
+            return hits;
+        }
+
+        Vector3 CompactPositionHandle(Vector3 wp, Quaternion rot, float scale, bool selected = false)
         {
             float s = HandleUtility.GetHandleSize(wp) * scale;
-            Handles.color = new Color(0.85f, 0.3f, 0.3f);
+            Handles.color = selected ? new Color(0.3f, 0.9f, 1f) : new Color(0.85f, 0.3f, 0.3f);
             wp = Handles.Slider(wp, rot * Vector3.right, s, Handles.ArrowHandleCap, 0f);
-            Handles.color = new Color(0.3f, 0.85f, 0.3f);
+            Handles.color = selected ? new Color(0.3f, 0.9f, 1f) : new Color(0.3f, 0.85f, 0.3f);
             wp = Handles.Slider(wp, rot * Vector3.up, s, Handles.ArrowHandleCap, 0f);
-            Handles.color = new Color(0.3f, 0.5f, 1f);
+            Handles.color = selected ? new Color(0.3f, 0.9f, 1f) : new Color(0.3f, 0.5f, 1f);
             wp = Handles.Slider(wp, rot * Vector3.forward, s, Handles.ArrowHandleCap, 0f);
             Handles.color = new Color(1f, 1f, 1f, 0.5f);
             wp = Handles.FreeMoveHandle(wp, s * 0.25f, Vector3.zero, Handles.SphereHandleCap);
@@ -1170,32 +1389,549 @@ namespace SlimeJumping.TerrainShape.Editor
             if (pts == null || pts.Count < 3) return;
 
             float spacing = Mathf.Max(0.05f, src.autoSpacing);
-            Vector2 min = pts[0], max = pts[0];
-            for (int i = 1; i < pts.Count; i++) { min = Vector2.Min(min, pts[i]); max = Vector2.Max(max, pts[i]); }
+            var existing = new List<Vector2>(src.interior.Count);
+            foreach (var ip in src.interior) existing.Add(new Vector2(ip.pos.x, ip.pos.y));
 
-            float frontZ = src.FrontLayer != null ? src.FrontLayer.z : 0f;
-            Undo.RecordObject(src, "Auto Subdivide");
-            for (float x = min.x + spacing * 0.5f; x <= max.x; x += spacing)
+            var rng = new System.Random(src.autoSeed);
+            List<Vector2> candidates;
+            switch (src.autoMode)
             {
-                for (float y = min.y + spacing * 0.5f; y <= max.y; y += spacing)
+                case AutoSubdivideMode.JitteredGrid: candidates = SampleJitteredGrid(pts, spacing, existing, rng); break;
+                case AutoSubdivideMode.PoissonDisk:  candidates = SamplePoissonDisk(pts, spacing, existing, rng); break;
+                case AutoSubdivideMode.Halton:       candidates = SampleHalton(pts, spacing, existing); break;
+                case AutoSubdivideMode.Grid:
+                default:                             candidates = SampleGrid(pts, spacing, existing); break;
+            }
+
+            if (src.autoLloydIters > 0 && candidates.Count > 0)
+                candidates = LloydRelax(candidates, pts, existing, src.autoLloydIters);
+
+            Undo.RecordObject(src, "Auto Subdivide");
+            foreach (var p in candidates)
+            {
+                float sampledZ = src.SampleHeightmapZ(p);
+                src.interior.Add(new InteriorPoint
                 {
-                    var p = new Vector2(x, y);
-                    if (!TerrainShape2DMeshBuilder.IsPointInside(pts, p)) continue;
-                    if (TerrainShape2DMeshBuilder.DistanceToPolyline(p, pts) < spacing * 0.5f) continue;
-                    bool tooClose = false;
-                    for (int k = 0; k < src.interior.Count; k++)
-                        if (Vector2.Distance(new Vector2(src.interior[k].pos.x, src.interior[k].pos.y), p) < spacing * 0.5f)
-                        { tooClose = true; break; }
-                    if (tooClose) continue;
-                    float sampledZ = src.SampleHeightmapZ(p);
-                    src.interior.Add(new InteriorPoint { id = src.AllocateId(), pos = new Vector3(p.x, p.y, sampledZ), autoGenerated = true });
-                }
+                    id = src.AllocateId(),
+                    pos = new Vector3(p.x, p.y, sampledZ),
+                    autoGenerated = true,
+                });
             }
             EditorUtility.SetDirty(src);
             MarkDirty();
         }
 
+        static void PolyBounds(List<Vector2> poly, out Vector2 min, out Vector2 max)
+        {
+            min = poly[0]; max = poly[0];
+            for (int i = 1; i < poly.Count; i++) { min = Vector2.Min(min, poly[i]); max = Vector2.Max(max, poly[i]); }
+        }
+
+        static bool AcceptCandidate(Vector2 p, List<Vector2> poly, float minDist, float boundaryBuffer, List<Vector2> all)
+        {
+            if (!TerrainShape2DMeshBuilder.IsPointInside(poly, p)) return false;
+            if (TerrainShape2DMeshBuilder.DistanceToPolyline(p, poly) < boundaryBuffer) return false;
+            for (int k = 0; k < all.Count; k++)
+                if (Vector2.SqrMagnitude(all[k] - p) < minDist * minDist) return false;
+            return true;
+        }
+
+        static List<Vector2> SampleGrid(List<Vector2> poly, float spacing, List<Vector2> existing)
+        {
+            var result = new List<Vector2>();
+            if (poly.Count < 3) return result;
+            PolyBounds(poly, out var min, out var max);
+            var all = new List<Vector2>(existing);
+            float minDist = spacing * 0.5f;
+            float buf = spacing * 0.5f;
+            for (float x = min.x + spacing * 0.5f; x <= max.x; x += spacing)
+            for (float y = min.y + spacing * 0.5f; y <= max.y; y += spacing)
+            {
+                var p = new Vector2(x, y);
+                if (!AcceptCandidate(p, poly, minDist, buf, all)) continue;
+                all.Add(p); result.Add(p);
+            }
+            return result;
+        }
+
+        static List<Vector2> SampleJitteredGrid(List<Vector2> poly, float spacing, List<Vector2> existing, System.Random rng)
+        {
+            var result = new List<Vector2>();
+            if (poly.Count < 3) return result;
+            PolyBounds(poly, out var min, out var max);
+            var all = new List<Vector2>(existing);
+            float minDist = spacing * 0.45f;
+            float buf = spacing * 0.4f;
+            float jitter = spacing * 0.45f;
+            for (float x = min.x + spacing * 0.5f; x <= max.x; x += spacing)
+            for (float y = min.y + spacing * 0.5f; y <= max.y; y += spacing)
+            {
+                float jx = ((float)rng.NextDouble() * 2f - 1f) * jitter;
+                float jy = ((float)rng.NextDouble() * 2f - 1f) * jitter;
+                var p = new Vector2(x + jx, y + jy);
+                if (!AcceptCandidate(p, poly, minDist, buf, all)) continue;
+                all.Add(p); result.Add(p);
+            }
+            return result;
+        }
+
+        // Bridson's Poisson-disk sampling: O(N) blue-noise distribution where every pair
+        // of points is at least `r` apart. Uses a background grid (cell = r/√2 → max one
+        // sample per cell) so neighbour queries are O(1).
+        // Reference: Bridson 2007, "Fast Poisson Disk Sampling in Arbitrary Dimensions".
+        static List<Vector2> SamplePoissonDisk(List<Vector2> poly, float r, List<Vector2> existing, System.Random rng)
+        {
+            var result = new List<Vector2>();
+            if (poly.Count < 3) return result;
+            PolyBounds(poly, out var min, out var max);
+            Vector2 size = max - min;
+            if (size.x <= 0f || size.y <= 0f) return result;
+
+            float cell = r / Mathf.Sqrt(2f);
+            int gw = Mathf.Max(1, Mathf.CeilToInt(size.x / cell) + 1);
+            int gh = Mathf.Max(1, Mathf.CeilToInt(size.y / cell) + 1);
+            var grid = new int[gw * gh];
+            for (int i = 0; i < grid.Length; i++) grid[i] = -1;
+            var all = new List<Vector2>();
+            float buf = r * 0.5f;
+
+            void Place(Vector2 p)
+            {
+                int gx = Mathf.Clamp((int)((p.x - min.x) / cell), 0, gw - 1);
+                int gy = Mathf.Clamp((int)((p.y - min.y) / cell), 0, gh - 1);
+                grid[gy * gw + gx] = all.Count;
+                all.Add(p);
+            }
+
+            bool TooClose(Vector2 p)
+            {
+                int gx = (int)((p.x - min.x) / cell);
+                int gy = (int)((p.y - min.y) / cell);
+                for (int dy = -2; dy <= 2; dy++)
+                {
+                    int y = gy + dy;
+                    if (y < 0 || y >= gh) continue;
+                    for (int dx = -2; dx <= 2; dx++)
+                    {
+                        int x = gx + dx;
+                        if (x < 0 || x >= gw) continue;
+                        int idx = grid[y * gw + x];
+                        if (idx < 0) continue;
+                        if (Vector2.SqrMagnitude(all[idx] - p) < r * r) return true;
+                    }
+                }
+                return false;
+            }
+
+            foreach (var ex in existing)
+            {
+                if (ex.x < min.x || ex.x > max.x || ex.y < min.y || ex.y > max.y) continue;
+                Place(ex);
+            }
+
+            var active = new List<Vector2>();
+            for (int tries = 0; tries < 200; tries++)
+            {
+                var seed = new Vector2(
+                    min.x + (float)rng.NextDouble() * size.x,
+                    min.y + (float)rng.NextDouble() * size.y);
+                if (!TerrainShape2DMeshBuilder.IsPointInside(poly, seed)) continue;
+                if (TerrainShape2DMeshBuilder.DistanceToPolyline(seed, poly) < buf) continue;
+                if (TooClose(seed)) continue;
+                Place(seed); active.Add(seed); result.Add(seed);
+                break;
+            }
+
+            const int K = 30;
+            while (active.Count > 0)
+            {
+                int ai = rng.Next(active.Count);
+                Vector2 a = active[ai];
+                bool placed = false;
+                for (int k = 0; k < K; k++)
+                {
+                    float ang = (float)rng.NextDouble() * Mathf.PI * 2f;
+                    float dist = r * (1f + (float)rng.NextDouble());
+                    var c = a + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * dist;
+                    if (c.x < min.x || c.x > max.x || c.y < min.y || c.y > max.y) continue;
+                    if (!TerrainShape2DMeshBuilder.IsPointInside(poly, c)) continue;
+                    if (TerrainShape2DMeshBuilder.DistanceToPolyline(c, poly) < buf) continue;
+                    if (TooClose(c)) continue;
+                    Place(c); active.Add(c); result.Add(c);
+                    placed = true;
+                    break;
+                }
+                if (!placed) active.RemoveAt(ai);
+            }
+            return result;
+        }
+
+        // Halton low-discrepancy sequence: deterministic, evenly-distributed, repeatable
+        // without RNG. We use bases (2, 3) for X and Y, then reject points outside the polygon.
+        static List<Vector2> SampleHalton(List<Vector2> poly, float r, List<Vector2> existing)
+        {
+            var result = new List<Vector2>();
+            if (poly.Count < 3) return result;
+            PolyBounds(poly, out var min, out var max);
+            Vector2 size = max - min;
+            if (size.x <= 0f || size.y <= 0f) return result;
+
+            float area = size.x * size.y;
+            int target = Mathf.Max(8, Mathf.RoundToInt(area / (r * r * 0.85f)));
+            var all = new List<Vector2>(existing);
+            float minDist = r;
+            float buf = r * 0.5f;
+
+            int maxTries = target * 16;
+            for (int i = 1; result.Count < target && i < maxTries; i++)
+            {
+                var p = new Vector2(min.x + Halton(i, 2) * size.x, min.y + Halton(i, 3) * size.y);
+                if (!AcceptCandidate(p, poly, minDist, buf, all)) continue;
+                all.Add(p); result.Add(p);
+            }
+            return result;
+        }
+
+        static float Halton(int index, int b)
+        {
+            float f = 1f, r = 0f;
+            while (index > 0)
+            {
+                f /= b;
+                r += f * (index % b);
+                index /= b;
+            }
+            return r;
+        }
+
+        // Lloyd's relaxation toward a Centroidal Voronoi Tessellation. Each iteration:
+        //   1. discretise the polygon into a sample grid,
+        //   2. assign each sample to its nearest movable point (existing manual points stay fixed),
+        //   3. move each movable point to the centroid of its assigned samples.
+        // Converges to evenly-spaced point distributions; 2-4 iterations is usually enough.
+        static List<Vector2> LloydRelax(List<Vector2> movable, List<Vector2> poly, List<Vector2> fixedPts, int iters)
+        {
+            if (movable.Count == 0) return movable;
+            PolyBounds(poly, out var min, out var max);
+            Vector2 size = max - min;
+            if (size.x <= 0f || size.y <= 0f) return movable;
+
+            int RES = 80;
+            var combined = new List<Vector2>(movable.Count + fixedPts.Count);
+            combined.AddRange(movable);
+            int movableCount = movable.Count;
+            combined.AddRange(fixedPts);
+
+            for (int it = 0; it < iters; it++)
+            {
+                var sumX = new float[combined.Count];
+                var sumY = new float[combined.Count];
+                var count = new int[combined.Count];
+
+                for (int gy = 0; gy < RES; gy++)
+                {
+                    float py = min.y + size.y * (gy + 0.5f) / RES;
+                    for (int gx = 0; gx < RES; gx++)
+                    {
+                        float px = min.x + size.x * (gx + 0.5f) / RES;
+                        var g = new Vector2(px, py);
+                        if (!TerrainShape2DMeshBuilder.IsPointInside(poly, g)) continue;
+                        int best = 0;
+                        float bestD = float.MaxValue;
+                        for (int j = 0; j < combined.Count; j++)
+                        {
+                            float d = Vector2.SqrMagnitude(combined[j] - g);
+                            if (d < bestD) { bestD = d; best = j; }
+                        }
+                        sumX[best] += g.x;
+                        sumY[best] += g.y;
+                        count[best]++;
+                    }
+                }
+
+                for (int j = 0; j < movableCount; j++)
+                {
+                    if (count[j] <= 0) continue;
+                    var newPos = new Vector2(sumX[j] / count[j], sumY[j] / count[j]);
+                    if (TerrainShape2DMeshBuilder.IsPointInside(poly, newPos))
+                        combined[j] = newPos;
+                }
+            }
+
+            return combined.GetRange(0, movableCount);
+        }
+
+        // ──────────────── Heightmap presets / generator ────────────────
+
+        void DrawHeightmapPresetsSection(TerrainShape2D src)
+        {
+            EditorGUILayout.Space();
+            _presetsFoldout = EditorGUILayout.Foldout(_presetsFoldout, "Heightmap presets / generator", true, EditorStyles.foldoutHeader);
+            if (!_presetsFoldout) return;
+
+            // ── Load ──
+            EditorGUILayout.LabelField("Load preset", EditorStyles.miniBoldLabel);
+            EditorGUILayout.BeginHorizontal();
+            _heightmapPreset = (HeightmapPreset)EditorGUILayout.ObjectField(_heightmapPreset, typeof(HeightmapPreset), false);
+            using (new EditorGUI.DisabledScope(_heightmapPreset == null || _heightmapPreset.data == null))
+            {
+                if (GUILayout.Button("Load", GUILayout.Width(60))) LoadHeightmapPreset(src);
+            }
+            EditorGUILayout.EndHorizontal();
+
+            // Quick picker: scan Assets/HeightmapPresets/ for all presets so the user can
+            // browse without navigating the project window.
+            var allPresets = AssetDatabase.FindAssets("t:HeightmapPreset");
+            if (allPresets != null && allPresets.Length > 0)
+            {
+                var names = new string[allPresets.Length + 1];
+                names[0] = "(quick pick…)";
+                for (int i = 0; i < allPresets.Length; i++)
+                    names[i + 1] = System.IO.Path.GetFileNameWithoutExtension(AssetDatabase.GUIDToAssetPath(allPresets[i]));
+                int chosen = EditorGUILayout.Popup(0, names);
+                if (chosen > 0)
+                {
+                    var path = AssetDatabase.GUIDToAssetPath(allPresets[chosen - 1]);
+                    _heightmapPreset = AssetDatabase.LoadAssetAtPath<HeightmapPreset>(path);
+                }
+            }
+
+            EditorGUILayout.Space();
+
+            // ── Save ──
+            EditorGUILayout.LabelField("Save current as preset", EditorStyles.miniBoldLabel);
+            EditorGUILayout.BeginHorizontal();
+            _presetSaveName = EditorGUILayout.TextField(_presetSaveName);
+            using (new EditorGUI.DisabledScope(!src.HasHeightmap || string.IsNullOrWhiteSpace(_presetSaveName)))
+            {
+                if (GUILayout.Button("Save", GUILayout.Width(60))) SaveHeightmapPreset(src, _presetSaveName.Trim());
+            }
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.LabelField("   → Saved under Assets/HeightmapPresets/", EditorStyles.miniLabel);
+
+            EditorGUILayout.Space();
+
+            // ── Procedural generator ──
+            EditorGUILayout.LabelField("Procedural generator", EditorStyles.miniBoldLabel);
+            _procMode = (HeightmapProcMode)EditorGUILayout.EnumPopup(
+                new GUIContent("Mode",
+                    "Perlin: classic smooth fractal noise.\n" +
+                    "RidgedPerlin: ridge / mountain look.\n" +
+                    "Cone: radial falloff from center (peak at center).\n" +
+                    "LinearGradient: directional ramp.\n" +
+                    "Random: pure white noise.\n" +
+                    "Flat: fill with a single value."),
+                _procMode);
+
+            switch (_procMode)
+            {
+                case HeightmapProcMode.Perlin:
+                case HeightmapProcMode.RidgedPerlin:
+                    _procScale = EditorGUILayout.Slider(new GUIContent("Scale", "UV-space tile size (smaller = finer detail)."), _procScale, 0.05f, 1.5f);
+                    _procOctaves = EditorGUILayout.IntSlider("Octaves", _procOctaves, 1, 8);
+                    _procPersistence = EditorGUILayout.Slider(new GUIContent("Persistence", "Amplitude falloff per octave (0..1)."), _procPersistence, 0f, 1f);
+                    _procLacunarity = EditorGUILayout.Slider(new GUIContent("Lacunarity", "Frequency multiplier per octave (>1)."), _procLacunarity, 1f, 4f);
+                    _procSeed = EditorGUILayout.IntField("Seed", _procSeed);
+                    break;
+                case HeightmapProcMode.Cone:
+                    _procScale = EditorGUILayout.Slider(new GUIContent("Radius", "Falloff radius in normalised units (1.0 reaches the corners)."), _procScale, 0.1f, 2f);
+                    break;
+                case HeightmapProcMode.LinearGradient:
+                    _procAngle = EditorGUILayout.Slider("Angle (°)", _procAngle, 0f, 360f);
+                    break;
+                case HeightmapProcMode.Random:
+                    _procSeed = EditorGUILayout.IntField("Seed", _procSeed);
+                    break;
+                case HeightmapProcMode.Flat:
+                    _procFlatValue = EditorGUILayout.Slider(new GUIContent("Value (0=blue/far, 1=red/near)"), _procFlatValue, 0f, 1f);
+                    break;
+            }
+
+            using (new EditorGUI.DisabledScope(!src.HasHeightmap))
+            {
+                if (GUILayout.Button("Generate (overwrite heightmap)")) GenerateHeightmap(src);
+            }
+        }
+
+        void LoadHeightmapPreset(TerrainShape2D src)
+        {
+            if (_heightmapPreset == null || _heightmapPreset.data == null) return;
+            int expected = _heightmapPreset.width * _heightmapPreset.height;
+            if (_heightmapPreset.data.Length != expected)
+            {
+                EditorUtility.DisplayDialog("Bad preset",
+                    $"Preset's data length ({_heightmapPreset.data.Length}) does not match its declared size ({_heightmapPreset.width}×{_heightmapPreset.height} = {expected}).",
+                    "OK");
+                return;
+            }
+            Undo.RecordObject(src, "Load heightmap preset");
+            src.heightmapW = _heightmapPreset.width;
+            src.heightmapH = _heightmapPreset.height;
+            src.heightmapData = (byte[])_heightmapPreset.data.Clone();
+            src.heightmapZMin = _heightmapPreset.zMin;
+            src.heightmapZMax = _heightmapPreset.zMax;
+            EditorUtility.SetDirty(src);
+            TerrainShape2DZPainterWindow.NotifyExternalDataChanged(src);
+            NotifyHeightmapChanged(src);
+            MarkDirty();
+            Debug.Log($"[TerrainShape2D] Loaded heightmap preset '{_heightmapPreset.name}' ({_heightmapPreset.width}×{_heightmapPreset.height}).");
+        }
+
+        void SaveHeightmapPreset(TerrainShape2D src, string presetName)
+        {
+            if (!src.HasHeightmap) return;
+            const string folder = "Assets/HeightmapPresets";
+            if (!AssetDatabase.IsValidFolder(folder))
+                AssetDatabase.CreateFolder("Assets", "HeightmapPresets");
+            string path = $"{folder}/{presetName}.asset";
+            var existing = AssetDatabase.LoadAssetAtPath<HeightmapPreset>(path);
+            bool overwrote = existing != null;
+            if (overwrote && !EditorUtility.DisplayDialog("Overwrite preset?",
+                $"'{presetName}' already exists. Overwrite?", "Overwrite", "Cancel"))
+                return;
+
+            var preset = existing ?? ScriptableObject.CreateInstance<HeightmapPreset>();
+            preset.width = src.heightmapW;
+            preset.height = src.heightmapH;
+            preset.data = (byte[])src.heightmapData.Clone();
+            preset.zMin = src.heightmapZMin;
+            preset.zMax = src.heightmapZMax;
+
+            if (!overwrote) AssetDatabase.CreateAsset(preset, path);
+            EditorUtility.SetDirty(preset);
+            AssetDatabase.SaveAssets();
+            _heightmapPreset = preset;
+            EditorGUIUtility.PingObject(preset);
+            Debug.Log($"[TerrainShape2D] Saved heightmap preset to {path}");
+        }
+
+        void GenerateHeightmap(TerrainShape2D src)
+        {
+            if (!src.HasHeightmap) return;
+            Undo.RecordObject(src, "Generate heightmap");
+            var p = new HeightmapProcGen.Params
+            {
+                scale = _procScale,
+                octaves = _procOctaves,
+                persistence = _procPersistence,
+                lacunarity = _procLacunarity,
+                angleDeg = _procAngle,
+                seed = _procSeed,
+                flatValue = _procFlatValue,
+            };
+            src.heightmapData = HeightmapProcGen.Generate(_procMode, src.heightmapW, src.heightmapH, p);
+            EditorUtility.SetDirty(src);
+            TerrainShape2DZPainterWindow.NotifyExternalDataChanged(src);
+            NotifyHeightmapChanged(src);
+            MarkDirty();
+        }
+
+        // ──────────────── Marquee selection ────────────────
+
+        // Drives a screen-space rectangle selection. Plain drag = replace; Shift+drag = add;
+        // Ctrl+drag = subtract. Click without drag clears selection (or fires the modifier
+        // click action via `onClickWithoutDrag` — needed because Shift+click vs Shift+drag
+        // can only be told apart at MouseUp).
+        // `isOverHandle` lets the caller bail out when the click lands on a vertex — the
+        // FreeMoveHandle / Slider for that vertex must receive the MouseDown instead.
+        void HandleMarquee(Event e, HashSet<int> selection,
+                           System.Func<HashSet<int>> hitsInRect, System.Func<bool> isOverHandle,
+                           System.Action<int /*marqueeMode*/, Vector2 /*mousePos*/> onClickWithoutDrag = null)
+        {
+            if (e.type == EventType.MouseDown && e.button == 0 && !e.alt && !_marqueeActive)
+            {
+                if (isOverHandle != null && isOverHandle()) return;
+                _marqueeActive = true;
+                _marqueeStartGUI = e.mousePosition;
+                _marqueeMode = e.shift ? 1 : (e.control ? 2 : 0);
+                e.Use();
+                return;
+            }
+
+            if (!_marqueeActive) return;
+
+            if (e.type == EventType.MouseDrag && e.button == 0)
+            {
+                SceneView.RepaintAll();
+                e.Use();
+                return;
+            }
+
+            if (e.type == EventType.MouseUp && e.button == 0)
+            {
+                Rect r = MarqueeRect();
+                int mode = _marqueeMode;
+                _marqueeActive = false;
+                _marqueeMode = 0;
+                if (r.width < 3f && r.height < 3f)
+                {
+                    // No drag — interpret as a click. Modifier-click actions (Shift = insert
+                    // point) fire here so they don't pre-empt a Shift+drag marquee.
+                    if (onClickWithoutDrag != null)
+                        onClickWithoutDrag(mode, e.mousePosition);
+                    if (mode == 0) selection.Clear();
+                }
+                else
+                {
+                    var hits = hitsInRect();
+                    if (mode == 0) { selection.Clear(); foreach (var h in hits) selection.Add(h); }
+                    else if (mode == 1) foreach (var h in hits) selection.Add(h);
+                    else if (mode == 2) foreach (var h in hits) selection.Remove(h);
+                }
+                SceneView.RepaintAll();
+                e.Use();
+                return;
+            }
+
+            if (e.type == EventType.Repaint)
+            {
+                Rect r = MarqueeRect();
+                Handles.BeginGUI();
+                var fill = new Color(0.3f, 0.7f, 1f, 0.18f);
+                var border = new Color(0.4f, 0.85f, 1f, 0.9f);
+                EditorGUI.DrawRect(r, fill);
+                // 1px border (top/bottom/left/right)
+                EditorGUI.DrawRect(new Rect(r.xMin, r.yMin, r.width, 1f), border);
+                EditorGUI.DrawRect(new Rect(r.xMin, r.yMax - 1f, r.width, 1f), border);
+                EditorGUI.DrawRect(new Rect(r.xMin, r.yMin, 1f, r.height), border);
+                EditorGUI.DrawRect(new Rect(r.xMax - 1f, r.yMin, 1f, r.height), border);
+                Handles.EndGUI();
+            }
+        }
+
+        Rect MarqueeRect()
+        {
+            Vector2 a = _marqueeStartGUI;
+            Vector2 b = Event.current != null ? Event.current.mousePosition : a;
+            return new Rect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y),
+                            Mathf.Abs(a.x - b.x), Mathf.Abs(a.y - b.y));
+        }
+
         // ──────────────── Misc ────────────────
+
+        void ResetShape(TerrainShape2D src)
+        {
+            Undo.RecordObject(src, "Reset TerrainShape");
+            src.layers.Clear();
+            src.interior.Clear();
+            src.forcedEdges.Clear();
+            _selectedOutlineIds.Clear();
+            _selectedInteriorIds.Clear();
+
+            var front = new OutlineLayer { name = "Front", z = 0f };
+            front.outline.Add(new OutlinePoint { id = src.AllocateId(), pos = new Vector2(-1f, -1f) });
+            front.outline.Add(new OutlinePoint { id = src.AllocateId(), pos = new Vector2(1f, -1f) });
+            front.outline.Add(new OutlinePoint { id = src.AllocateId(), pos = new Vector2(1f, 1f) });
+            front.outline.Add(new OutlinePoint { id = src.AllocateId(), pos = new Vector2(-1f, 1f) });
+            src.layers.Add(front);
+            src.AddLayerCopy(0, 0.5f);
+            if (src.layers.Count > 1) src.layers[1].name = "Back";
+
+            _activeLayer = 0;
+            EditorUtility.SetDirty(src);
+            MarkDirty();
+            SceneView.RepaintAll();
+        }
 
         void ClampActiveLayer(TerrainShape2D src)
         {
@@ -1253,8 +1989,9 @@ namespace SlimeJumping.TerrainShape.Editor
             _cacheDirty = false;
         }
 
-        void SaveMeshAsset(TerrainShape2D src)
+        Mesh SaveMeshAssetCore(TerrainShape2D src)
         {
+            if (_cache.mesh == null) return null;
             const string folder = "Assets/GeneratedMeshes";
             if (!AssetDatabase.IsValidFolder(folder))
                 AssetDatabase.CreateFolder("Assets", "GeneratedMeshes");
@@ -1263,10 +2000,56 @@ namespace SlimeJumping.TerrainShape.Editor
             string path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{meshCopy.name}.asset");
             AssetDatabase.CreateAsset(meshCopy, path);
             AssetDatabase.SaveAssets();
-            var mf = src.GetComponent<MeshFilter>();
-            if (mf != null) mf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-            EditorGUIUtility.PingObject(mf.sharedMesh);
             Debug.Log($"[TerrainShape2D] saved {path}");
+            return AssetDatabase.LoadAssetAtPath<Mesh>(path);
+        }
+
+        void SaveMeshAsset(TerrainShape2D src)
+        {
+            var asset = SaveMeshAssetCore(src);
+            if (asset == null) return;
+            var mf = src.GetComponent<MeshFilter>();
+            if (mf != null) mf.sharedMesh = asset;
+            EditorGUIUtility.PingObject(asset);
+        }
+
+        void SaveAndInstall(TerrainShape2D src)
+        {
+            var asset = SaveMeshAssetCore(src);
+            if (asset == null) return;
+
+            var go = new GameObject(asset.name);
+            Undo.RegisterCreatedObjectUndo(go, "Install terrain mesh");
+            go.transform.SetParent(src.transform.parent, worldPositionStays: false);
+            go.transform.position = src.transform.position;
+            go.transform.rotation = src.transform.rotation;
+            go.transform.localScale = src.transform.localScale;
+
+            var mf = go.AddComponent<MeshFilter>();
+            mf.sharedMesh = asset;
+            var mr = go.AddComponent<MeshRenderer>();
+            if (src.installMaterial != null)
+                mr.sharedMaterial = src.installMaterial;
+            else
+                Debug.LogWarning($"[TerrainShape2D] '{go.name}' installed with no material — assign 'Install material' on the source.");
+
+            Selection.activeGameObject = go;
+
+            if (src.installAutoGenerateCollider2D)
+            {
+                // MeshToCollider2DGenerator.Generate() reads Selection.activeGameObject and
+                // slices the mesh at world Z=0. We just selected `go`, so it picks it up.
+                var col = SlimeJumping.EditorTools.MeshToCollider2DGenerator.Generate();
+                if (col != null)
+                {
+                    // Generate() reparents `go` under a new wrapper and selects the wrapper —
+                    // ping that instead so the user lands on the final hierarchy result.
+                    EditorGUIUtility.PingObject(col.gameObject);
+                    return;
+                }
+            }
+
+            EditorGUIUtility.PingObject(go);
         }
     }
 }

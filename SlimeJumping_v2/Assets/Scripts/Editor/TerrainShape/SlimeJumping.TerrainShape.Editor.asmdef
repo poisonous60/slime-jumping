@@ -3,7 +3,8 @@
     "rootNamespace": "SlimeJumping.TerrainShape.Editor",
     "references": [
         "SlimeJumping.TerrainShape",
-        "SlimeJumping.Plugins.TriangleNet"
+        "SlimeJumping.Plugins.TriangleNet",
+        "SlimeJumping.EditorTools.MeshTools"
     ],
     "includePlatforms": [
         "Editor"

@@ -35,7 +35,7 @@ namespace SlimeJumping.TerrainShape.Editor
 
             var perLayer = new List<List<Vector2>>(L);
             for (int li = 0; li < L; li++)
-                perLayer.Add(SampleLayerOutline(src.layers[li], src.subdivisionsPerSegment));
+                perLayer.Add(SampleLayerOutline(src.layers[li], src.subdivisionsPerSegment, src.curveSubdivisionMultiplier));
 
             int M = perLayer[0].Count;
             for (int li = 1; li < L; li++)
@@ -255,21 +255,23 @@ namespace SlimeJumping.TerrainShape.Editor
                 int c = t.GetVertex(2).ID;
                 if (frontFacing)
                 {
-                    // -Z is the forward direction (camera looks toward -Z). The visible face must
-                    // face the camera → normal points +Z (opposite of view direction). Triangle.NET
-                    // emits (a,b,c) CCW from +Z view, which already gives +Z normal. Use as-is.
-                    outTris.Add(faceStart + a);
-                    outTris.Add(faceStart + b);
-                    outTris.Add(faceStart + c);
-                    localTris.Add(a); localTris.Add(b); localTris.Add(c);
-                }
-                else
-                {
-                    // Back face is on the +Z (away) side — its normal must point -Z (away from camera).
+                    // Camera looks toward +Z (Unity default), so smaller Z = closer to camera.
+                    // The visible front face is on the -Z (near) side and its normal must point -Z
+                    // (toward the camera). Triangle.NET emits (a,b,c) CCW from +Z view → +Z normal,
+                    // so we reverse the winding to flip the normal to -Z.
                     outTris.Add(faceStart + a);
                     outTris.Add(faceStart + c);
                     outTris.Add(faceStart + b);
                     localTris.Add(a); localTris.Add(c); localTris.Add(b);
+                }
+                else
+                {
+                    // Back face is on the +Z (far) side — its normal must point +Z (away from camera).
+                    // Use Triangle.NET's CCW order as-is.
+                    outTris.Add(faceStart + a);
+                    outTris.Add(faceStart + b);
+                    outTris.Add(faceStart + c);
+                    localTris.Add(a); localTris.Add(b); localTris.Add(c);
                 }
             }
             localVertsOut = localVerts;
@@ -286,12 +288,15 @@ namespace SlimeJumping.TerrainShape.Editor
             return faceStart;
         }
 
-        public static List<Vector2> SampleLayerOutline(OutlineLayer layer, int subdivisionsPerSegment)
+        public static List<Vector2> SampleLayerOutline(OutlineLayer layer, int subdivisionsPerSegment, int curveMultiplier = 4)
         {
             var samples = new List<Vector2>();
             int n = layer.outline.Count;
             if (n < 2) return samples;
-            int subs = Mathf.Max(2, subdivisionsPerSegment);
+            int subsStraight = Mathf.Max(2, subdivisionsPerSegment);
+            // Curved segments deserve more samples than straight ones — bezier curvature wants fine subdivision.
+            int mult = Mathf.Max(1, curveMultiplier);
+            int subsCurved = Mathf.Max(subsStraight, subdivisionsPerSegment * mult);
             for (int i = 0; i < n; i++)
             {
                 var p0 = layer.outline[i];
@@ -303,17 +308,17 @@ namespace SlimeJumping.TerrainShape.Editor
                 {
                     Vector2 c0 = p0.smooth ? p0.pos + p0.tangentOut : p0.pos;
                     Vector2 c1 = p1.smooth ? p1.pos + p1.tangentIn : p1.pos;
-                    for (int s = 1; s < subs; s++)
+                    for (int s = 1; s < subsCurved; s++)
                     {
-                        float t = (float)s / subs;
+                        float t = (float)s / subsCurved;
                         samples.Add(CubicBezier(p0.pos, c0, c1, p1.pos, t));
                     }
                 }
                 else
                 {
-                    for (int s = 1; s < subs; s++)
+                    for (int s = 1; s < subsStraight; s++)
                     {
-                        float t = (float)s / subs;
+                        float t = (float)s / subsStraight;
                         samples.Add(Vector2.Lerp(p0.pos, p1.pos, t));
                     }
                 }

@@ -419,20 +419,23 @@ namespace SlimeJumping.Controller
             // still carries primary identity for carrier/surfaceMod/effect attribution.
             Vector2 rawSurfaceNormal = isTouchingSurface ? surfaceProbe.EffectiveNormal : gravityUp;
 
-            // Low-pass filter surfaceNormal on fast-rotating platforms. On a spinning
-            // wheel, contact faces flicker in/out of activeContactSkin as the wheel turns,
-            // which causes EffectiveNormal to jump ~90° between frames. The Attached
-            // velocity write (`velocity = surfaceTangent * (slideSpeed + crawlVelocity)`)
-            // faithfully transfers that jump to rb.linearVelocity → dPos oscillates.
-            // Filtering the normal only when the carrier is spinning leaves static
-            // geometry responsiveness untouched.
-            bool smoothingActive = isTouchingSurface
-                && settings.surfaceNormalSmoothRate > 0.001f
-                && IsOnFastRotatingSurface();
+            // Low-pass filter surfaceNormal. EffectiveNormal flickers on:
+            //   (a) fast-rotating platforms — contact faces flicker as the wheel turns
+            //   (b) static curved surfaces at high tangent speed — multi-probe active set
+            //       churns (aC=1↔3↔0 between frames), which swings the weighted average
+            //       normal by 10°+ per frame. Without filtering this swing transfers to
+            //       velocity = surfaceTangent * speed, producing rb.position judder
+            //       (visible especially on Ice / low-decel materials).
+            // Always smoothing once attached fixes (b). Rotating platforms can opt into
+            // a stronger rate via surfaceNormalSmoothRotatingMultiplier.
+            float smoothRate = settings.surfaceNormalSmoothRate;
+            if (smoothRate > 0.001f && IsOnFastRotatingSurface())
+                smoothRate *= settings.surfaceNormalSmoothRotatingMultiplier;
+            bool smoothingActive = isTouchingSurface && smoothRate > 0.001f;
 
             if (smoothingActive && hasPrevSmoothedNormal)
             {
-                float k = 1f - Mathf.Exp(-settings.surfaceNormalSmoothRate * dt);
+                float k = 1f - Mathf.Exp(-smoothRate * dt);
                 Vector2 mixed = Vector2.Lerp(prevSmoothedSurfaceNormal, rawSurfaceNormal, k);
                 surfaceNormal = mixed.sqrMagnitude > 1e-6f ? mixed.normalized : rawSurfaceNormal;
             }

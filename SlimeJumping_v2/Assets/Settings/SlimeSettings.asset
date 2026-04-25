@@ -103,7 +103,10 @@ MonoBehaviour:
   surfaceProbeSamples: 8
   surfaceProbeRingScale: 0.8
   surfaceProbeDedupeDot: 0.97
+  effectiveNormalWeightRampBand: 1
+  effectiveNormalSoftBandMultiplier: 5
   surfaceNormalSmoothRate: 20
+  surfaceNormalSmoothRotatingMultiplier: 1
   surfaceNormalSmoothAngularThreshold: 10
   postLaunchIgnoreTime: 0.05
   launchClearanceThreshold: 0.05

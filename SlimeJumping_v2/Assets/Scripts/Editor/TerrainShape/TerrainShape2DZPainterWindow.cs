@@ -32,6 +32,24 @@ namespace SlimeJumping.TerrainShape.Editor
             src.heightmapData = new byte[w * h];
             for (int i = 0; i < src.heightmapData.Length; i++) src.heightmapData[i] = 128;
             EditorUtility.SetDirty(src);
+            NotifyExternalDataChanged(src);
+        }
+
+        // Mark any open Z-Painter window's preview as stale so external loaders / generators
+        // don't leave the canvas showing stale colors.
+        public static void NotifyExternalDataChanged(TerrainShape2D src)
+        {
+            var windows = Resources.FindObjectsOfTypeAll<TerrainShape2DZPainterWindow>();
+            foreach (var w in windows)
+            {
+                if (w._target == src)
+                {
+                    if (w._previewTex != null) DestroyImmediate(w._previewTex);
+                    w._previewTex = null;
+                    w._previewDirty = true;
+                    w.Repaint();
+                }
+            }
         }
 
         void OnDestroy()
