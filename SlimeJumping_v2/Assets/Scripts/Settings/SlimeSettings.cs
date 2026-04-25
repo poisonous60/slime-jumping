@@ -156,12 +156,30 @@ namespace SlimeJumping.Settings
         [Range(0f, 1f)] public float surfaceProbeRingScale = 0.8f;
         [Tooltip("(Multi) Dedupe: dot(n1,n2) > 이 값이면 같은 면으로 머지.")]
         [Range(0.9f, 1f)] public float surfaceProbeDedupeDot = 0.97f;
+        [Tooltip("EffectiveNormal weight ramp: smoothstep ramp covers this fraction of the soft band.\n" +
+                 "0 = OFF (legacy step weight). 1 = ramp covers entire soft band. Recommended: 1.0.")]
+        [Range(0f, 1f)] public float effectiveNormalWeightRampBand = 1f;
+        [Tooltip("Soft-band multiplier for EffectiveNormal & ProjectVelocityAgainstContacts.\n" +
+                 "Contacts within (radius + this × contactSkin) contribute, weighted by smoothstep ramp.\n" +
+                 "1 = legacy hard threshold (active = within radius+contactSkin only).\n" +
+                 "Higher = wider window, smoother active-set transitions on fast curve slides at the cost of looser into-surface clipping.\n" +
+                 "Recommended: 6~10. At slime speed v, gap per frame ≈ v × dt; band must exceed expected gap for continuity.")]
+        [Range(1f, 15f)] public float effectiveNormalSoftBandMultiplier = 8f;
+        [Tooltip("ProjectVelocityAgainstContacts: contacts whose normal aligns with fallbackNormal (smoothed surfaceNormal) by more than this dot threshold are treated as 'same surface' samples and skipped from multi-clip.\n" +
+                 "Same-direction multi-probe samples are noisy; clipping against all of them produces vel jitter as the active set toggles.\n" +
+                 "0.7 ≈ 45° tolerance (default). Lower = stricter, more contacts skipped (smoother but less corner safety). Higher = original behavior with more multi-clip.\n" +
+                 "fallbackNormal itself always provides a primary-axis clip — corners with truly opposing walls (dot < threshold) still get multi-clipped.")]
+        [Range(0f, 1f)] public float projectVelocitySameDirectionDot = 0.7f;
 
         [Header("Surface Normal Smoothing")]
-        [Tooltip("회전 플랫폼에서 surfaceNormal 저역통과 필터 컷오프(Hz). 0 = OFF.\n" +
-                 "예: 20 → 매 50Hz 프레임당 ~33% 갱신 (90° 튐이 한 프레임에 ~30°로 감쇠, 약 5프레임에 90% 수렴).")]
+        [Tooltip("surfaceNormal 저역통과 필터 컷오프(rad/s). 0 = OFF.\n" +
+                 "예: 20 → 매 50Hz 프레임당 ~33% 갱신 (90° 튐이 한 프레임에 ~30°로 감쇠, 약 5프레임에 90% 수렴).\n" +
+                 "정적 곡면에서도 EffectiveNormal active-set churn (aC=1↔3 swing) 으로 발생하는 normal jitter 를 억제하기 위해 항상 적용됨.")]
         [Min(0f)] public float surfaceNormalSmoothRate = 20f;
-        [Tooltip("이 각속도(deg/s) 이상의 플랫폼에 붙어있을 때만 smoothing 적용. 0 = 항상 적용.")]
+        [Tooltip("회전 플랫폼(이 각속도 deg/s 이상) 에서 추가로 적용할 smoothing rate 가중치.\n" +
+                 "회전 플랫폼은 기본보다 강하게 smoothing 하고 싶을 때만 사용. 1 = 동일 (기본 rate 만 적용). 2 = 회전 시 2배 rate.")]
+        [Min(1f)] public float surfaceNormalSmoothRotatingMultiplier = 1f;
+        [Tooltip("이 각속도(deg/s) 이상의 플랫폼에 붙어있을 때 surfaceNormalSmoothRotatingMultiplier 적용.")]
         [Min(0f)] public float surfaceNormalSmoothAngularThreshold = 10f;
 
         public float postLaunchIgnoreTime = 0.05f;

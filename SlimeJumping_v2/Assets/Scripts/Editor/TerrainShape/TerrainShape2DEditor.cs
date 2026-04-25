@@ -1824,6 +1824,11 @@ namespace SlimeJumping.TerrainShape.Editor
             TerrainShape2DZPainterWindow.NotifyExternalDataChanged(src);
             NotifyHeightmapChanged(src);
             MarkDirty();
+
+            // Roll a fresh seed so the next click produces a new variation. Modes that ignore
+            // the seed (Cone / LinearGradient / Flat) are unaffected; the field still updates
+            // so the user sees the change.
+            _procSeed = new System.Random().Next(int.MinValue, int.MaxValue);
         }
 
         // ──────────────── Marquee selection ────────────────

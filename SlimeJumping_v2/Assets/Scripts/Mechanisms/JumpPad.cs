@@ -17,6 +17,10 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private Vector2 launchDirection = Vector2.up;
         [SerializeField] private float cooldown = 0.3f;
 
+        [Header("VFX (optional)")]
+        [Tooltip("Space-warp shockwave fired on each launch. Leave null to disable.")]
+        [SerializeField] private SpaceWarpEffect warpEffect;
+
         private float cooldownTimer;
 
         public void OnSlimeAttach(SlimeController slime)
@@ -26,6 +30,8 @@ namespace SlimeJumping.Mechanisms
             Vector2 worldDir = ((Vector2)transform.TransformDirection(launchDirection)).normalized;
             slime.ForceAirborneWithVelocity(worldDir * launchForce);
             cooldownTimer = cooldown;
+
+            if (warpEffect != null) warpEffect.Trigger();
         }
 
         public void OnSlimeDetach(SlimeController slime) { }
