@@ -3,24 +3,27 @@ using SlimeJumping.Effects;
 
 namespace SlimeJumping.Debugging
 {
-    /// Test helper: press the configured key in Play mode to invoke HitStopService.Freeze
-    /// with the Inspector-tuned duration and frozen scale. Use this to preview the B&amp;W
-    /// impact frame visual and tune defaults before wiring real call sites.
+    /// Test helper: press the configured key in Play mode to invoke HitStopService.
+    /// Three selectable modes so you can isolate each channel (hitstop-only, impact-
+    /// frame-only, or both).
     ///
-    /// Note: HitStopGuards still applies — if slime is charging or options panel is open,
-    /// the press is a no-op. A Debug.Log reports each outcome so the blocked case is obvious.
+    /// Note: HitStopGuards still applies — if slime is charging or options panel is
+    /// open, the press is a no-op. A Debug.Log reports each outcome.
     public class HitStopTestTrigger : MonoBehaviour
     {
-        [SerializeField] private KeyCode triggerKey = KeyCode.G;
+        public enum TriggerMode { HitStopOnly, ImpactFrameOnly, Both }
 
-        [Header("Freeze Parameters")]
-        [Tooltip("Realtime seconds of the hitstop. Anime-style impact: 0.04-0.15.")]
+        [SerializeField] private KeyCode triggerKey = KeyCode.G;
+        [SerializeField] private TriggerMode mode = TriggerMode.Both;
+
+        [Header("Parameters")]
+        [Tooltip("Realtime seconds. Anime-style impact: 0.04-0.15.")]
         [SerializeField, Range(0.01f, 1f)] private float duration = 0.1f;
 
-        [Tooltip("Time.timeScale during the freeze. 0 = full stop, 0.05 = slow-mo feel.")]
+        [Tooltip("Time.timeScale during hitstop. 0 = full stop, 0.05 = slow-mo feel. Ignored for ImpactFrameOnly mode.")]
         [SerializeField, Range(0f, 0.5f)] private float frozenScale = 0f;
 
-        [Header("Optional Shake")]
+        [Header("Optional Shake (hitstop modes only)")]
         [SerializeField] private ImpulseEmitter shakeEmitter;
         [SerializeField, Range(0f, 3f)] private float shakeForce = 0f;
 
@@ -28,13 +31,28 @@ namespace SlimeJumping.Debugging
         {
             if (!Input.GetKeyDown(triggerKey)) return;
 
-            if (shakeEmitter != null && shakeForce > 0f)
-                HitStopService.Freeze(duration, shakeEmitter, shakeForce, frozenScale);
-            else
-                HitStopService.Freeze(duration, frozenScale);
+            switch (mode)
+            {
+                case TriggerMode.HitStopOnly:
+                    if (shakeEmitter != null && shakeForce > 0f)
+                        HitStopService.Freeze(duration, shakeEmitter, shakeForce, frozenScale);
+                    else
+                        HitStopService.Freeze(duration, frozenScale);
+                    break;
 
-            Debug.Log($"[HitStopTestTrigger] Freeze requested: duration={duration:0.000}s, frozenScale={frozenScale:0.00}. " +
-                      $"If no visual change, a guard blocked it (charging / options open) or ImpactFrameVisual/FullScreenPass feature is not wired.");
+                case TriggerMode.ImpactFrameOnly:
+                    HitStopService.PlayImpactFrame(duration);
+                    break;
+
+                case TriggerMode.Both:
+                default:
+                    if (shakeEmitter != null && shakeForce > 0f) shakeEmitter.Emit(shakeForce);
+                    HitStopService.ImpactHit(duration, frozenScale);
+                    break;
+            }
+
+            Debug.Log($"[HitStopTestTrigger] mode={mode}, duration={duration:0.000}s, frozenScale={frozenScale:0.00}. " +
+                      $"If no effect visible, a guard blocked it (charging / options open) or the visual/feature is not wired.");
         }
     }
 }

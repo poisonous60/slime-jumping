@@ -63,11 +63,15 @@ namespace SlimeJumping.Effects
         private static readonly List<Func<bool>> guards = new List<Func<bool>>();
 
         /// Fired every time a Freeze call passes the guard check. Argument is the freeze
-        /// duration in realtime seconds. Subscribers should use Time.unscaledDeltaTime for
-        /// any animation since Time.timeScale is (or will be) clamped low during the freeze.
-        /// Intended hook for layered effects: B&amp;W post-process, fullscreen flash, audio
-        /// pitch dip, etc. Handlers must not throw — exceptions would break the freeze.
+        /// duration in realtime seconds. Use this for effects tied to the *time pause*
+        /// itself — audio pitch dip, rumble, etc. Handlers must not throw.
         public static event Action<float> OnFreezeStarted;
+
+        /// Fired every time a PlayImpactFrame call passes the guard check. Argument is
+        /// the visual duration in realtime seconds. Decoupled from OnFreezeStarted so
+        /// callers can request one without the other (e.g. Shift dash uses hitstop-only,
+        /// a hazard hit might trigger the B&amp;W impact frame without freezing time).
+        public static event Action<float> OnImpactFrameStarted;
 
         /// Register a veto predicate. While any registered predicate returns true, Freeze
         /// calls are silently ignored. Always unregister in OnDisable to avoid captured
@@ -89,7 +93,7 @@ namespace SlimeJumping.Effects
         {
             if (duration <= 0f) return;
             if (IsBlocked()) return;
-            RaiseStarted(duration);
+            RaiseFreezeStarted(duration);
             EnsureRunner();
             runner.Request(duration, Mathf.Max(0f, frozenScale));
         }
@@ -101,16 +105,41 @@ namespace SlimeJumping.Effects
             if (IsBlocked()) return;
             if (shakeEmitter != null && shakeForce > 0f) shakeEmitter.Emit(shakeForce);
             if (duration <= 0f) return;
-            RaiseStarted(duration);
+            RaiseFreezeStarted(duration);
             EnsureRunner();
             runner.Request(duration, Mathf.Max(0f, frozenScale));
         }
 
-        private static void RaiseStarted(float duration)
+        /// Request the B&amp;W impact-frame visual without touching Time.timeScale.
+        /// Subject to the same guard list (charging, menu, etc.) as Freeze. Use this
+        /// from hit-feedback callers that want the anime ink cut but not a time pause.
+        public static void PlayImpactFrame(float duration)
         {
-            var handler = OnFreezeStarted;
+            if (duration <= 0f) return;
+            if (IsBlocked()) return;
+            RaiseImpactFrameStarted(duration);
+        }
+
+        /// Convenience: fire hitstop AND impact-frame visual with the same duration.
+        /// Use from "big hit" call sites (boss KO, hazard crit) that want the full
+        /// combined sequence. Guard blocks both atomically.
+        public static void ImpactHit(float duration, float frozenScale = 0f)
+        {
+            if (duration <= 0f) return;
+            if (IsBlocked()) return;
+            RaiseFreezeStarted(duration);
+            RaiseImpactFrameStarted(duration);
+            EnsureRunner();
+            runner.Request(duration, Mathf.Max(0f, frozenScale));
+        }
+
+        private static void RaiseFreezeStarted(float duration) => Raise(OnFreezeStarted, duration);
+        private static void RaiseImpactFrameStarted(float duration) => Raise(OnImpactFrameStarted, duration);
+
+        private static void Raise(Action<float> handler, float duration)
+        {
             if (handler == null) return;
-            // Isolate handlers: one throwing subscriber must not block the others or the freeze.
+            // Isolate handlers: one throwing subscriber must not block the others.
             foreach (Action<float> h in handler.GetInvocationList())
             {
                 try { h(duration); }
@@ -146,6 +175,7 @@ namespace SlimeJumping.Effects
             runner = null;
             guards.Clear();
             OnFreezeStarted = null;
+            OnImpactFrameStarted = null;
         }
 #endif
     }

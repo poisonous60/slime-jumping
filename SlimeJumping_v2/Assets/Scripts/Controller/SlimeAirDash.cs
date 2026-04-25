@@ -25,6 +25,8 @@ namespace SlimeJumping.Controller
         [SerializeField] private float dashActiveDuration = 0.15f;
         [Tooltip("Seconds after dash before another dash is allowed (safety net; landing also refills).")]
         [SerializeField] private float dashCooldown = 0.2f;
+        [Tooltip("Seconds a Shift press is buffered while conditions aren't met (pre-landing, during postLaunch).")]
+        [SerializeField] private float dashInputBuffer = 0.12f;
 
         [Header("Input")]
         [SerializeField] private Key dashKey = Key.LeftShift;
@@ -32,9 +34,11 @@ namespace SlimeJumping.Controller
         public event System.Action<Vector2> OnDash;
         public bool DashAvailable => dashAvailable;
         public float DashActiveDuration => dashActiveDuration;
+        public SlimeController SlimeController => slimeController;
 
         private bool dashAvailable = true;
         private float cooldownTimer;
+        private float pressBufferTimer;
         private float lastHorizontalSign = 1f;
 
         private void Reset()
@@ -59,6 +63,8 @@ namespace SlimeJumping.Controller
         {
             if (slimeController != null)
                 slimeController.OnLanded -= HandleLanded;
+            cooldownTimer = 0f;
+            pressBufferTimer = 0f;
         }
 
         private void HandleLanded(Vector2 point, Vector2 normal)
@@ -67,9 +73,17 @@ namespace SlimeJumping.Controller
             cooldownTimer = 0f;
         }
 
+        /// <summary>Public refill hook for external dash-restoring sources (pickups, zones, etc.).</summary>
+        public void RefillDash()
+        {
+            dashAvailable = true;
+            cooldownTimer = 0f;
+        }
+
         private void Update()
         {
             if (cooldownTimer > 0f) cooldownTimer -= Time.deltaTime;
+            if (pressBufferTimer > 0f) pressBufferTimer -= Time.deltaTime;
 
             if (inputReader != null)
             {
@@ -78,31 +92,36 @@ namespace SlimeJumping.Controller
             }
 
             var kb = Keyboard.current;
-            if (kb == null) return;
-            if (!kb[dashKey].wasPressedThisFrame) return;
+            bool pressed = kb != null && kb[dashKey].wasPressedThisFrame;
+            if (pressed) pressBufferTimer = dashInputBuffer;
 
-            TryDash();
+            if (pressBufferTimer > 0f)
+            {
+                if (TryDash()) pressBufferTimer = 0f;
+            }
         }
 
-        private void TryDash()
+        private bool TryDash()
         {
-            if (slimeController == null) return;
-            if (!dashAvailable) return;
-            if (cooldownTimer > 0f) return;
-            if (slimeController.HasOverride) return;
+            if (slimeController == null) return false;
+            if (!dashAvailable) return false;
+            if (cooldownTimer > 0f) return false;
+            if (slimeController.HasOverride) return false;
+            if (slimeController.PostLaunchTimer > 0f) return false;
             // Allowed from Attached + Airborne. Blocked from Charging (would cancel charge
             // mid-aim) and Stunned. Matches the state guard inside ApplyAirDash.
             var state = slimeController.CurrentState;
-            if (state == SlimeController.SlimeState.Charging) return;
-            if (state == SlimeController.SlimeState.Stunned) return;
+            if (state == SlimeController.SlimeState.Charging) return false;
+            if (state == SlimeController.SlimeState.Stunned) return false;
 
             Vector2 dir = ResolveDashDirection();
             Vector2 dashVel = dir * dashSpeed;
-            if (!slimeController.ApplyAirDash(dashVel, dashActiveDuration)) return;
+            if (!slimeController.ApplyAirDash(dashVel, dashActiveDuration)) return false;
 
             dashAvailable = false;
             cooldownTimer = dashCooldown;
             OnDash?.Invoke(dashVel);
+            return true;
         }
 
         private Vector2 ResolveDashDirection()

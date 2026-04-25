@@ -5,7 +5,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Before We Start
 - Use only English if user asks you in Korean. Korean is 7 times expensive than english.
-- Don't use agent if you can do it yourself ability. Agent is expensive. 
 
 
 ## Project Overview
@@ -26,6 +25,7 @@ SlimeJumping_v2 is a **2.5D platformer** built in **Unity 6** (6000.3.11f1) wher
 Use `unity-cli` command to interact with the Unity Editor.
 Available commands: `list`, `exec`, `run_tests`, `console`, `screenshot`, `refresh_unity`, `manage_editor`, `execute_menu_item`, `reserialize_assets`.
 
+- 코드를 파악할 때는 unity-cli로 파악하지 말고 코드 구현만 파악할 것. unity-cli로 실시간 동작을 봐야 할 경우는 debug component를 작성해서 사용자에게 실행 부탁할 것.
 - Before using `exec`, check if another `unity-cli` command can query/modify/add what you need.
 - After changes, only check the error log. Do not run the game and take a screenshot.
 - 새로 만든 `.cs` 파일이 인스펙터 Add Component 에서 안 뜨고, `Type.GetType(...)` 로도 NOT FOUND 나는 경우. Unity가 메타(guid)는 등록했지만 컴파일 목록(`Library/Bee/artifacts/*.dag/Assembly-CSharp.rsp`)에는 추가하지 않은 상태. 해결: `unity-cli exec "UnityEditor.AssetDatabase.DeleteAsset(\"<path>\"); return \"deleted\";"` → `Write` 로 동일 경로에 재생성 → `unity-cli refresh_unity`.

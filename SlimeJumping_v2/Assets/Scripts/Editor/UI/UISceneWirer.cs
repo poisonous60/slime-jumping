@@ -31,6 +31,7 @@ namespace SlimeJumping.EditorTools.UI
             var scene = EditorSceneManager.OpenScene(MainMenuScenePath);
             RemoveOldCanvases(scene);
             var uiRoot = InstantiateUIRoot();
+            if (uiRoot == null) return "Error: UIRoot prefab missing — build it first.";
             InstantiatePanel(uiRoot, MainMenuPanelSetup.PrefabPath);
             InstantiatePanel(uiRoot, OptionsPanelSetup.PrefabPath);
             EditorSceneManager.MarkSceneDirty(scene);
@@ -43,7 +44,9 @@ namespace SlimeJumping.EditorTools.UI
             var scene = EditorSceneManager.OpenScene(MainScenePath);
             RemoveOldCanvases(scene);
             var uiRoot = InstantiateUIRoot();
+            if (uiRoot == null) return "Error: UIRoot prefab missing — build it first.";
             InstantiatePanel(uiRoot, OptionsPanelSetup.PrefabPath);
+            InstantiatePanel(uiRoot, GramophonePanelSetup.PrefabPath);
 
             var manager = uiRoot.GetComponent<UIManager>();
             var reader = Object.FindFirstObjectByType<SlimeInputReader>(FindObjectsInactive.Include);
@@ -64,6 +67,7 @@ namespace SlimeJumping.EditorTools.UI
             var scene = EditorSceneManager.OpenScene(EndScenePath);
             RemoveOldCanvases(scene);
             var uiRoot = InstantiateUIRoot();
+            if (uiRoot == null) return "Error: UIRoot prefab missing — build it first.";
             InstantiatePanel(uiRoot, EndPanelSetup.PrefabPath);
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);

@@ -31,5 +31,13 @@ namespace SlimeJumping.UI.Panels
             var options = UIManager.Instance != null ? UIManager.Instance.Get<OptionsPanel>() : null;
             if (options != null) UIManager.Instance.Open(options);
         }
+
+        protected override void OnDestroy()
+        {
+            if (startButton != null) startButton.onClick.RemoveAllListeners();
+            if (optionsButton != null) optionsButton.onClick.RemoveAllListeners();
+            if (quitButton != null) quitButton.onClick.RemoveAllListeners();
+            base.OnDestroy();
+        }
     }
 }

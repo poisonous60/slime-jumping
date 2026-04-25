@@ -32,16 +32,18 @@ namespace SlimeJumping.EditorTools.UI
             crt.anchorMin = new Vector2(0.5f, 0.5f);
             crt.anchorMax = new Vector2(0.5f, 0.5f);
             crt.pivot = new Vector2(0.5f, 0.5f);
-            crt.sizeDelta = new Vector2(560f, 560f);
+            crt.sizeDelta = new Vector2(880f, 620f);
             crt.anchoredPosition = new Vector2(0f, -40f);
             UISetupCommon.AddVerticalLayout(content, padding: 24, spacing: 22, childAlign: TextAnchor.MiddleCenter);
             UISetupCommon.TagSlot(content, UISlotType.ContentRoot);
 
-            // Title
+            // Title — single line guaranteed via wrapping off + overflow visible.
             var title = UISetupCommon.CreateText(content.transform, "Title", "Slime Jumping", UISetupCommon.FontTitle,
                 TextAlignmentOptions.Center);
             title.color = UISetupCommon.ColorTitle;
             title.fontStyle = TMPro.FontStyles.Bold;
+            title.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+            title.overflowMode = TMPro.TextOverflowModes.Overflow;
             UISetupCommon.TagSlot(title.gameObject, UISlotType.Title);
             UISetupCommon.AddLayoutElement(title.gameObject, minHeight: 96f, preferredHeight: 110f);
 

@@ -106,10 +106,6 @@ namespace SlimeJumping.Platforms
                  "3 = three samples per segment, smoother curve at line-render cost only.")]
         [SerializeField, Min(1)] int visualSubdivisions = 1;
 
-        [Header("OnValidate Hint")]
-        [Tooltip("Used only by OnValidate density guard. Match SlimeSettings.slimeRadius.")]
-        [SerializeField] float slimeRadiusHint = 0.4f;
-
         public EdgeCollider2D Edge => edge;
         public float ReboundSpeedPerMeter => reboundSpeedPerMeter;
         public float MaxReboundSpeed => maxReboundSpeed;
@@ -549,33 +545,9 @@ namespace SlimeJumping.Platforms
         void OnValidate()
         {
             // Hard clamp: subsample > (segmentCount-1)/2 degenerates the collider toward a
-            // 2-point straight line. Block the extreme before any warning math runs.
+            // 2-point straight line.
             int segCount = Mathf.Max(3, segmentCount);
             colliderSubsample = Mathf.Clamp(colliderSubsample, 1, Mathf.Max(1, (segCount - 1) / 2));
-
-            if (anchorA == null || anchorB == null) return;
-
-            float anchorDist = Vector3.Distance(anchorA.position, anchorB.position);
-            float nodeSpacing = (anchorDist * restLengthMul) / (segCount - 1);
-            float colliderSpacing = nodeSpacing * colliderSubsample;
-            float minSpacing = slimeRadiusHint * 1.5f;
-            float maxSpacing = slimeRadiusHint * 3f;
-
-            if (colliderSpacing < minSpacing)
-                Debug.LogWarning(
-                    $"[Rope:{name}] Collider spacing {colliderSpacing:F3} < slimeRadius*1.5 ({minSpacing:F3}). " +
-                    "Raise colliderSubsample, lower segmentCount, or increase anchor distance to avoid normal jitter.", this);
-            else if (colliderSpacing > maxSpacing)
-                Debug.LogWarning(
-                    $"[Rope:{name}] Collider spacing {colliderSpacing:F3} > slimeRadius*3 ({maxSpacing:F3}). " +
-                    "Segments may feel kinked at vertices — lower colliderSubsample or raise segmentCount.", this);
-
-            if (elasticFactor > 0f && constraintIterations > 5 && stretchSoftness <= 0f)
-                Debug.LogWarning(
-                    $"[Rope:{name}] elasticFactor > 0 AND constraintIterations={constraintIterations} > 5 AND stretchSoftness = 0. " +
-                    "Double-action: rigid constraint wipes out elastic pull-back. " +
-                    "Either raise stretchSoftness (0.1-0.4) to let the rope flex, drop iter to 2-3, " +
-                    "or set elasticFactor = 0.", this);
 
 #if UNITY_EDITOR
             editNeedsRefresh = true;

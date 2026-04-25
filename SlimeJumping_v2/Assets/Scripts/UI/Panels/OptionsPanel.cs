@@ -102,6 +102,26 @@ namespace SlimeJumping.UI.Panels
             else Close();
         }
 
+        protected override void OnDestroy()
+        {
+            // Drop all editor-wired listeners so the delegates don't retain `this`.
+            // These are attached in OnAfterAwake and never otherwise cleared.
+            if (frameLimitPrevButton != null) frameLimitPrevButton.onClick.RemoveAllListeners();
+            if (frameLimitNextButton != null) frameLimitNextButton.onClick.RemoveAllListeners();
+            if (playerSfxVolumeSlider != null) playerSfxVolumeSlider.onValueChanged.RemoveAllListeners();
+            if (worldSfxVolumeSlider != null) worldSfxVolumeSlider.onValueChanged.RemoveAllListeners();
+            if (bgmVolumeSlider != null) bgmVolumeSlider.onValueChanged.RemoveAllListeners();
+            if (uiVolumeSlider != null) uiVolumeSlider.onValueChanged.RemoveAllListeners();
+            if (windowModePrevButton != null) windowModePrevButton.onClick.RemoveAllListeners();
+            if (windowModeNextButton != null) windowModeNextButton.onClick.RemoveAllListeners();
+            if (resolutionDropdown != null) resolutionDropdown.onValueChanged.RemoveAllListeners();
+            if (backgroundCameraPrevButton != null) backgroundCameraPrevButton.onClick.RemoveAllListeners();
+            if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.RemoveAllListeners();
+            if (closeButton != null) closeButton.onClick.RemoveAllListeners();
+            if (quitButton != null) quitButton.onClick.RemoveAllListeners();
+            base.OnDestroy();
+        }
+
         private static void BindSlider(Slider slider, float initial, UnityEngine.Events.UnityAction<float> onChanged)
         {
             if (slider == null) return;

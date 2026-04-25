@@ -45,9 +45,21 @@ namespace SlimeJumping.UI.Framework
 
         protected virtual void Start()
         {
-            if (UIManager.Instance != null) UIManager.Instance.Register(this);
-            if (openOnStart) Open();
-            else gameObject.SetActive(false);
+            var mgr = UIManager.Instance;
+            if (mgr != null) mgr.Register(this);
+            else Debug.LogWarning($"[UIPanel] {name}: no UIManager in scene — panel will not respond to ESC or modal gate.", this);
+
+            if (openOnStart)
+            {
+                // Route through UIManager so modal panels that auto-open also
+                // push onto the modal stack and engage the input gate.
+                if (mgr != null) mgr.Open(this);
+                else Open();
+            }
+            else
+            {
+                gameObject.SetActive(false);
+            }
         }
 
         protected virtual void OnDestroy()

@@ -38,7 +38,14 @@ namespace SlimeJumping.EditorTools
                 if (existing is FullScreenPassRendererFeature fp &&
                     fp.passMaterial == material)
                 {
-                    if (verbose) Debug.Log("[ImpactFrameSetup] Already wired — no-op.");
+                    bool patched = EnsureDepthRequirement(fp);
+                    if (patched) AssetDatabase.SaveAssets();
+                    if (verbose)
+                    {
+                        Debug.Log(patched
+                            ? "[ImpactFrameSetup] Already wired — patched requirements → Depth."
+                            : "[ImpactFrameSetup] Already wired — no-op.");
+                    }
                     return;
                 }
             }
@@ -50,6 +57,9 @@ namespace SlimeJumping.EditorTools
             feature.hideFlags = HideFlags.HideInHierarchy;
 
             AssetDatabase.AddObjectToAsset(feature, rendererData);
+            AssetDatabase.SaveAssets();
+
+            EnsureDepthRequirement(feature);
             AssetDatabase.SaveAssets();
 
             long localId;
@@ -83,7 +93,37 @@ namespace SlimeJumping.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.ImportAsset(RendererPath);
 
-            Debug.Log($"[ImpactFrameSetup] Added '{FeatureName}' to {RendererPath} (material={material.name}, injection=AfterRenderingPostProcessing). Feature count is now {rendererData.rendererFeatures.Count}.");
+            Debug.Log($"[ImpactFrameSetup] Added '{FeatureName}' to {RendererPath} (material={material.name}, injection=AfterRenderingPostProcessing, requirements=Depth). Feature count is now {rendererData.rendererFeatures.Count}.");
+        }
+
+        /// Writes `requirements = Depth (1)` on the feature via SerializedObject if the
+        /// value is not already Depth-inclusive. Returns true when a change was applied.
+        /// Defensive: the URP asset already has RequireDepthTexture on globally, but
+        /// stamping the per-feature flag survives future URP asset edits or a Render
+        /// Graph mode switch.
+        private static bool EnsureDepthRequirement(FullScreenPassRendererFeature feature)
+        {
+            const int DepthFlag = 1;
+            var so = new SerializedObject(feature);
+            var prop = so.FindProperty("requirements");
+            if (prop == null) return false;
+            if ((prop.intValue & DepthFlag) == DepthFlag) return false;
+            prop.intValue = prop.intValue | DepthFlag;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(feature);
+            return true;
+        }
+
+        [MenuItem("Tools/SlimeJumping/Reimport Impact Frame Material")]
+        public static void ReimportMaterial()
+        {
+            if (!System.IO.File.Exists(MaterialPath))
+            {
+                Debug.LogError($"[ImpactFrameSetup] Material not found at {MaterialPath}");
+                return;
+            }
+            AssetDatabase.ImportAsset(MaterialPath, ImportAssetOptions.ForceUpdate);
+            Debug.Log($"[ImpactFrameSetup] Reimported {MaterialPath}.");
         }
     }
 }

@@ -45,5 +45,12 @@ namespace SlimeJumping.UI.Framework
         Row_WindowMode = 105,
         Row_Resolution = 106,
         Row_BackgroundCamera = 107,
+
+        // GramophonePanel anchors
+        ScrollViewport = 200,
+        TrackListContent = 201,
+        TrackRowTemplate = 202,
+        StopButton = 203,
+        CancelButton = 204,
     }
 }

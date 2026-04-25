@@ -31,6 +31,15 @@
 ### MediaInteractable_Phonograph
 트랙 순환, 디스크 축 선택 회전, 클립 프리로드.
 
+### MediaInteractable_PhonographV2
+축음기 v2. E 입력 시 공유 `GramophonePanel` (modal, UILayer.Modal) 을 `OpenFor(this)` 로 띄우고, 플레이어가 트랙을 고르면 패널 페이드-아웃 후 `PlayTrack(index)` 콜백에서 `SoundService.PlayBgm(clip, crossfade, volume)` 호출 + 니들 Z-회전 틸트 + 디스크 스핀업 코루틴. "Stop music" 선택 시 `StopBgm(fade)` + 니들 복귀 + 스핀다운.
+
+- 데이터 소스: `PhonographPlaylist` ScriptableObject (asset 재사용 가능). 각 축음기 인스턴스에 Playlist 참조만 꽂으면 됨.
+- 오디오: v1 과 달리 임베디드 AudioSource 를 쓰지 않고 `SoundService` 의 BGM 버스 경유 → 옵션 패널 BGM 슬라이더에 반응, 크로스페이드 자동.
+- 비주얼 분리: 콜라이더/프롬프트는 루트, 회전은 `discTransform`(자식 Pivot) 과 `needleArm` 만. 바디/트리거는 미이동.
+- 다중 축음기: `SoundService` BGM 채널이 글로벌 싱글이라 두 번째 축음기에서 트랙을 고르면 첫 번째 축음기 BGM 은 크로스페이드로 대체되며, 첫 축음기의 디스크/니들은 그대로 남음 (각자 로컬 `IsPlaying` 플래그). 의도된 동작.
+- v1 (`MediaInteractable_Phonograph`) 과 병존 — 기존 씬 호환.
+
 ### ApplianceInteractable_Washing
 토글 + 시각 루트 리사주 진동 (콜라이더 분리 원칙 준수).
 

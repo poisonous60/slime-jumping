@@ -74,7 +74,6 @@ namespace SlimeJumping.Editor
 
         // v2 preset — rubbery hammock-like rope that visibly sags under slime weight
         // during Charging; release converts the sag into a launch-direction speed bonus.
-        // constraintIterations stays under the elasticFactor>0 + iter>5 warning threshold.
         static RopeTuning RubberRebound(float reboundSpeedPerMeter) => new RopeTuning
         {
             segmentCount = 15,

@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
 using UnityEngine.UI;
 using SlimeJumping.UI.Framework;
 
@@ -28,9 +30,35 @@ namespace SlimeJumping.UI.Panels
         {
             if (!IsOpen) return;
             if (Time.unscaledTime < acceptInputAt) return;
-            if (Input.anyKeyDown) ReturnToMenu();
+            if (AnyKeyPressedThisFrame()) ReturnToMenu();
+        }
+
+        private static bool AnyKeyPressedThisFrame()
+        {
+            var kb = Keyboard.current;
+            if (kb != null && kb.anyKey.wasPressedThisFrame) return true;
+
+            var mouse = Mouse.current;
+            if (mouse != null && (
+                mouse.leftButton.wasPressedThisFrame ||
+                mouse.rightButton.wasPressedThisFrame ||
+                mouse.middleButton.wasPressedThisFrame)) return true;
+
+            var pad = Gamepad.current;
+            if (pad != null)
+            {
+                foreach (var ctrl in pad.allControls)
+                    if (ctrl is ButtonControl btn && btn.wasPressedThisFrame) return true;
+            }
+            return false;
         }
 
         public void ReturnToMenu() => GameFlow.LoadMainMenu();
+
+        protected override void OnDestroy()
+        {
+            if (returnButton != null) returnButton.onClick.RemoveAllListeners();
+            base.OnDestroy();
+        }
     }
 }

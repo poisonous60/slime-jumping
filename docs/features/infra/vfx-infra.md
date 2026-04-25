@@ -7,7 +7,7 @@ Cinemachine 3.x `CinemachineImpulseSource` 래퍼. 카메라 셰이크.
 애니메이션풍 고대비 흑백 프리즈 프레임 효과. **시간 동결** (`Time.timeScale` 강제 저하) + **B&W 풀스크린 포스트 이펙트**가 한 쌍으로 구성되어 히트 임팩트를 극화. `HitStopService.Freeze(0.08f)` 한 줄로 어디서든 호출.
 
 ### 시간 동결 (HitStopService.cs)
-- **API**: `Freeze(duration, frozenScale=0f)` / `Freeze(duration, ImpulseEmitter, shakeForce, frozenScale)` — 두 번째는 카메라 셰이크 동반(선택).
+- **API**: `Freeze(duration, frozenScale=0f)` / `Freeze(duration, ImpulseEmitter, shakeForce, frozenScale)` — 두 번째는 카메라 셰이크 동반(선택). *시간 동결만 발생, B&W 비주얼은 별도 API로 분리*.
 - **오버랩**: 연속 호출 시 끝 시점을 뒤로 밀고(더 긴 것 유지), 더 강한 freeze(낮은 scale) 유지. 스택/커트 없음.
 - **런너 자동 부트스트랩**: 첫 호출 시 `HideAndDontSave` GO가 `DontDestroyOnLoad`로 생성되어 코루틴 구동. 호출자는 아무 와이어링 필요 없음.
 - **안전장치**: `OnDisable`/`OnApplicationQuit`/`InitializeOnEnterPlayMode`에서 `Time.timeScale` 원복, 가드 리스트 리셋, 이벤트 구독자 정리. 런어웨이 프리즈로 게임이 멈춘 채 남는 경우 없음.
@@ -15,20 +15,60 @@ Cinemachine 3.x `CinemachineImpulseSource` 래퍼. 카메라 셰이크.
   - `HitStopGuards` 컴포넌트: 씬 GO에 부착, `SlimeController` + options panel GO 드래그로 두 기본 guard 자동 설치 (`IsCharging` → 차징 중 히트스톱 금지, panel `activeSelf` → 메뉴 열린 중 금지).
   - 추가 veto가 필요하면 (컷씬, 스테이지 전환 등) `HitStopService.AddGuard(() => 조건)` 직접 호출 — 컴포넌트 없이 가능.
 - **정책 정합성**: 옵션 패널은 `Time.timeScale`을 건드리지 않는다는 기존 규칙(아래 "옵션 패널" 섹션)과 guard 시스템이 짝을 이룸. 차징 상태 guard는 slingshot aim 중 물리 왜곡을 방지.
-- **이벤트 훅**: `public static event Action<float> OnFreezeStarted` — guard 통과 후 fires. B&W 비주얼·풀스크린 플래시·오디오 피치 덕 등 레이어드 피드백을 하나의 freeze에 연결하는 지점. 예외는 try/catch로 격리되어 한 구독자의 에러가 freeze를 망가뜨리지 않음.
+- **이벤트 훅 (2채널 분리)**:
+  - `OnFreezeStarted` — `Freeze()` 호출 시 fires. *시간 동결*에 딸린 피드백 전용 (오디오 피치 덕, 럼블 등).
+  - `OnImpactFrameStarted` — `PlayImpactFrame()` 호출 시 fires. *B&W 비주얼*에 딸린 피드백 전용 (`ImpactFrameVisual`이 이쪽에 구독).
+  - 두 채널이 분리되어 있어 "시간만 멈추고 B&W는 안 나옴" (Shift 대시) 또는 "B&W만 나오고 시간은 안 멈춤" (약한 히트 힌트) 같은 조합이 가능. 예외는 try/catch로 격리.
+- **API 3종**:
+  - `Freeze(duration, frozenScale=0f)` — 시간만 (Shift 대시가 사용).
+  - `PlayImpactFrame(duration)` — B&W 비주얼만.
+  - `ImpactHit(duration, frozenScale=0f)` — 둘 다 (큰 히트용 편의 메서드).
 
-### B&W 풀스크린 비주얼 (ImpactFrameGrayscale.shader + ImpactFrameVisual.cs)
-- **셰이더** `Assets/Shaders/Custom/ImpactFrameGrayscale.shader` — URP Fullscreen 규격 (`Blit.hlsl` 포함). `_BlitTexture` 샘플 → 루마 변환 (Rec.601) → `smoothstep(_Threshold ± _Softness)` 임계값 → `_Intensity`로 원본과 lerp 블렌드. `_Invert`로 밝은/어두운 영역 뒤집기.
-- **머티리얼** `Assets/Art/Materials/M_ImpactFrameGrayscale.mat` — 셰이더 인스턴스 하나. 렌더 피처와 `ImpactFrameVisual` 스크립트가 동일 머티리얼 참조를 공유.
-- **렌더 피처 설정** (씬 URP Renderer 에셋에 한 번 수동 설정):
-  1. Add Renderer Feature → **Full Screen Pass Renderer Feature**
-  2. Pass Material = `M_ImpactFrameGrayscale`
-  3. Injection Point = **After Rendering Post Processing** (Quibli 컬러 그레이딩 뒤, 순수 B&W 유지)
-  4. Requirements: 옵션 체크 없음 — `_BlitTexture`는 피처가 자동 바인딩
-- **컨트롤러** `ImpactFrameVisual.cs` — 씬 GO 부착(HitStopGuards와 같은 GO 추천). `OnFreezeStarted` 구독 → `_Intensity`를 `intensityOverTime` AnimationCurve로 `Time.unscaledDeltaTime` 구동. 기본 커브 `(0,1)→(0.85,1)→(1,0)`: 대부분 유지, 마지막 15% 페이드 아웃. Inspector 필드: `threshold` (0.5 기본), `softness` (0.02 기본), `invert` (bool).
-- **항상 켜둠**: `_Intensity=0`일 때 셰이더는 원본을 반환 (lerp no-op) → 렌더 피처 토글 불필요. 비활성 시 풀스크린 샘플 1회 비용만 발생 (수 µs).
-- **권장 값**: 타격 `duration 0.04~0.15s`, `frozenScale 0~0.05`. `0f`=완전 정지 (클래식 hitstop), `0.05f`=슬로우모 느낌.
-- **현재 상태**: 구현/와이어링 인프라만 제공, 호출 지점 미결정. 쓸 곳 정해지면 해당 트리거(해저드 히트, 보스 KO, 폭죽 폭발 등)에서 `HitStopService.Freeze(...)` 추가.
+### 애니풍 임팩트 프레임 비주얼 (ImpactFrameGrayscale.shader + ImpactFrameVisual.cs)
+**지각 모델**: 장면 *필터*가 아니라 장면 *교체*. 하드 컷 인 → 바이너리 잉크 1-N 프레임 홀드 → 하드 컷 아웃. 페이드 없음. 애니 임팩트 프레임의 핵심 규칙은 "뷰어가 의식적으로 반응하기 전에 완전히 다른 시각 어휘를 보여줬다 되돌린다".
+
+**4 레이어 구성**:
+1. **흰색 프리플래시 (1프레임)**: `_WhiteFlash=1` + `_ChromaActive=1` → 순백 + R/G/B가 방사선 방향으로 ±`_ChromaShift` 분리된 chromatic aberration.
+2. **피사체 실루엣**: `_CameraDepthTexture` → eye-depth → `smoothstep(_SubjectMaxDepth ± _SubjectDepthSoftness)` → 슬라임만 단색 잉크. 루마 폴백은 `_UseDepthSilhouette=0`.
+3. **잉크 윤곽선**: depth 버퍼에 Sobel 적용(Quibli 내부 셰이딩 무시) → `step(_EdgeThreshold, mag * _EdgeStrength)` → 얇은 기하 실루엣 라인.
+4. **방사형 스피드 라인**: 슬라임의 스크린 UV(`cam.WorldToViewportPoint(slime.Position)`)를 중심으로 `sin(angle * _RadialLineCount)` 기반 스포크. 안쪽 반경은 페이드.
+
+**바이너리 잉크 합성**: `ink = saturate(silhouette + edge + radial)` → `step(_InkThreshold, ink)` → 순수 흑 또는 순수 백만 출력 (회색 중간톤 제거).
+
+**액센트 색**: `_AccentColor` (HDR, alpha=interior fill) — 실루엣 내부를 accent로 페인트 (검은 잉크 아닌 영역만) + 엣지 림에 얇은 accent 틴트. 배경 종이는 흰색 유지. 기본값 슬라임 그린 `(0.4, 1.0, 0.55, 0.85)`.
+
+**셰이더 프로퍼티 일람** (Header 그룹):
+- **Master**: `_Intensity`, `_WhiteFlash`, `_ChromaActive`, `_ChromaShift`
+- **Posterize**: `_Threshold`, `_Softness`, `_Invert`, `_InkThreshold`
+- **Subject Silhouette**: `_UseDepthSilhouette`, `_SubjectMaxDepth`, `_SubjectDepthSoftness`
+- **Accent**: `_AccentColor` (HDR), `_AccentThreshold` (예약), `_AccentStrength`
+- **Edge**: `_EdgeStrength`, `_EdgeThreshold`
+- **Radial**: `_RadialStrength`, `_RadialCenter`, `_RadialLineCount`, `_RadialSharpness`, `_RadialInnerRadius`, `_RadialFadeWidth`
+
+**의존성**: `_CameraDepthTexture` 필요 — URP Asset `m_RequireDepthTexture=1` (전역) + 렌더 피처 `requirements=Depth(1)` (방어적 중복) 둘 다 on. depth 비활성 시 `_UseDepthSilhouette=0`으로 루마 폴백.
+
+**머티리얼** `Assets/Art/Materials/M_ImpactFrameGrayscale.mat` — 렌더 피처와 `ImpactFrameVisual` 스크립트가 동일 머티리얼 참조 공유.
+
+**렌더 피처 와이어링**: `Tools → SlimeJumping → Setup Impact Frame Renderer Feature` 메뉴가 idempotent로 설치:
+1. URP Renderer에 `FullScreenPassRendererFeature` 추가
+2. Pass Material = `M_ImpactFrameGrayscale`
+3. Injection Point = AfterRenderingPostProcessing (Quibli 컬러 그레이딩 뒤)
+4. `requirements = Depth(1)` 세팅 (SerializedObject 경유)
+
+셰이더 프로퍼티 변경 후에는 `Tools → SlimeJumping → Reimport Impact Frame Material`로 머티리얼 강제 재임포트.
+
+**컨트롤러** `ImpactFrameVisual.cs` — 씬 GO 부착(HitStopGuards와 같은 GO 추천). `OnFreezeStarted` 구독 → `RunSequence(duration)` 코루틴:
+- **Frame 0**: `slime`이 지정되면 `Camera.main.WorldToViewportPoint(slime.Position)`로 `_RadialCenter` 갱신 → white flash + chroma on → `_Intensity=1` → `yield return null`.
+- **Frame 1..N**: white flash/chroma off → `_Intensity=1` 유지 → `while (Time.realtimeSinceStartup < endReal) yield return null`.
+- **종료**: `SetIdle()` 하드 컷 (intensity/flash/chroma 모두 0). 
+
+타이밍 소스는 `Time.realtimeSinceStartup` — `timeScale≈0`에서도 안정. `OnValidate`로 Play 중 Inspector 튜닝 즉시 반영.
+
+**항상 켜둠**: `_Intensity=0`일 때 셰이더는 원본 반환 → 렌더 피처 토글 불필요. 비활성 비용은 풀스크린 샘플 수회 (cheap).
+
+**권장 값**: `duration 0.04~0.15s`, `frozenScale 0`(클래식) / `0.05f`(슬로모 느낌). `_SubjectMaxDepth`는 슬라임 Z 대비 +~1.
+
+**현재 상태**: 구현/와이어링 완료. 호출 지점은 미결정 — 쓸 곳 정해지면 (해저드 히트, 보스 KO, 폭죽 폭발 등) `HitStopService.Freeze(...)` 추가.
 
 ## FullscreenEffectCanvas / FullscreenOverlayCanvas
 풀스크린 이펙트 공용 베이스 추상 클래스.

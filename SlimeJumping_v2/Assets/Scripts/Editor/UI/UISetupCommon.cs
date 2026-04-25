@@ -86,10 +86,13 @@ namespace SlimeJumping.EditorTools.UI
 
         public static Canvas CreateOverlayCanvas(Transform parent, string name, int sortingOrder)
         {
+            // These ScreenSpaceOverlay canvases are nested under UIRoot, which has
+            // no parent Canvas. That makes them root-level canvases at render time
+            // (Unity treats ScreenSpaceOverlay canvases as roots regardless of
+            // hierarchy), so sortingOrder applies directly without overrideSorting.
             var go = CreateChild(parent, name, typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             var canvas = go.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.overrideSorting = false;
             canvas.sortingOrder = sortingOrder;
             ConfigureScaler(go.GetComponent<CanvasScaler>());
             return canvas;

@@ -53,12 +53,31 @@ namespace SlimeJumping.UI.Framework
         {
             if (panel == null) return;
             registered.Remove(panel);
-            // If it was the modal on top of the stack, pop so the gate can release.
-            if (modalStack.Count > 0 && modalStack.Peek() == panel)
+            // Drain and rebuild the modal stack skipping the destroyed panel — if we
+            // only popped when it was on top, a mid-stack destroy would leak the
+            // input gate and permanently freeze slime input.
+            if (ContainsInStack(panel))
             {
-                modalStack.Pop();
+                RemoveFromStack(panel);
                 UpdateInputGate();
             }
+        }
+
+        private bool ContainsInStack(UIPanel panel)
+        {
+            foreach (var m in modalStack) if (m == panel) return true;
+            return false;
+        }
+
+        private void RemoveFromStack(UIPanel panel)
+        {
+            var tmp = new List<UIPanel>(modalStack.Count);
+            while (modalStack.Count > 0)
+            {
+                var m = modalStack.Pop();
+                if (m != panel) tmp.Add(m);
+            }
+            for (int i = tmp.Count - 1; i >= 0; i--) modalStack.Push(tmp[i]);
         }
 
         public void Open(UIPanel panel)
@@ -78,15 +97,7 @@ namespace SlimeJumping.UI.Framework
             panel.Close();
             if (panel.IsModal)
             {
-                // Remove from stack regardless of position, in case a modal was
-                // closed programmatically while not on top.
-                var tmp = new List<UIPanel>(modalStack.Count);
-                while (modalStack.Count > 0)
-                {
-                    var m = modalStack.Pop();
-                    if (m != panel) tmp.Add(m);
-                }
-                for (int i = tmp.Count - 1; i >= 0; i--) modalStack.Push(tmp[i]);
+                RemoveFromStack(panel);
                 UpdateInputGate();
             }
         }

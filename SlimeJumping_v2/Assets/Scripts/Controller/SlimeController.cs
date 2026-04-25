@@ -43,6 +43,7 @@ namespace SlimeJumping.Controller
         public void AddExternalVelocity(Vector2 deltaV) { externalDeltaV += deltaV; }
         public float CoyoteTimer => coyoteTimer;
         public float EnergyCoyoteTimer => energyCoyoteTimer;
+        public float PostLaunchTimer => postLaunchTimer;
         public float StickTimer => stickTimer;
         public Collider2D SurfaceCollider => surfaceCollider;
         public int AttachToggleCount => attachToggleCount;
@@ -50,6 +51,7 @@ namespace SlimeJumping.Controller
         public float StickDeccelTimer => stickDeccelTimer;
         public float SlideRampTimer => slideRampTimer;
         public float Gravity => settings.gravity;
+        public float SlimeRadius => settings.slimeRadius;
         public float CrawlVelocity => crawlVelocity;
         public Vector2 SurfaceTangent => surfaceTangent;
         public SurfaceProbe Probe => surfaceProbe;
