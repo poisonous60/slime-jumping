@@ -2,7 +2,8 @@
     "name": "SlimeJumping.EditorTools.MeshTools",
     "rootNamespace": "SlimeJumping.EditorTools",
     "references": [
-        "geometry3Sharp"
+        "geometry3Sharp",
+        "SlimeJumping.Plugins.TriangleNet"
     ],
     "includePlatforms": [
         "Editor"

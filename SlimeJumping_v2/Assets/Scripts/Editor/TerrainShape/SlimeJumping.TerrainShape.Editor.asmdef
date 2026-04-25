@@ -1,0 +1,19 @@
+{
+    "name": "SlimeJumping.TerrainShape.Editor",
+    "rootNamespace": "SlimeJumping.TerrainShape.Editor",
+    "references": [
+        "SlimeJumping.TerrainShape",
+        "SlimeJumping.Plugins.TriangleNet"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
