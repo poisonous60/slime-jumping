@@ -34,9 +34,12 @@ struct AngleScaledValue {
 | crawlAccelerationMultiplier | 1 | 크롤 가속 |
 | crawlDecelerationMultiplier | 1 | 크롤 감속 (낮=관성 큼) |
 | crawlOverspeedDecelerationMultiplier | 1 | 초과속 감속 |
-| slideResistanceMultiplier | 1 | 슬라이드 저항 (0=없음, 3=진흙) |
+| slideResistanceMultiplier | 1 | 슬라이드 저항 (0=없음, 3=진흙). 관성 모드에서는 쿨롱 마찰 (m/s², 속도 무관) |
 | slideGravityMultiplier | 1 | 슬라이드 중력 |
 | slideRampUpTime | 0 | 슬라이드 램프업 (0=즉시, SlimeSettings 기본 fallback) |
+| slideLinearDrag | 0 | **관성 모드 한정.** 속도 비례 드래그 (1/s). `slideVelocity *= (1 - k*dt)`. 빠를수록 더 깎임 → 하프파이프 climb < drop |
+| slideDownhillGain | 1 | **관성 모드 한정.** `slideAccel`이 운동 방향과 같을 때 곱하는 게인. >1 = 내리막 가속 강화 |
+| slideUphillBrake | 1 | **관성 모드 한정.** `slideAccel`이 운동 방향과 반대일 때 곱하는 게인. >1 = 오르막 감속 강화 |
 | landingVelocityRetention | 0 | 착지 접선 보존 (0=정지, 0.8=빙판) |
 | stickDurationMultiplier | 1 | 스틱 배율 (0=빙판) |
 | impactRedirectRatio | 0 | 법선 충돌 → 접선 전환 (벽에서만 자동 활성) |
@@ -67,12 +70,18 @@ struct AngleScaledValue {
 
 켜면(true): 슬라이드 채널이 관성을 가짐.
 ```
-slideAccel    = gravAlongTangent * slideGravityScale * slideGravityMultiplier   // [m/s²]
-slideVelocity += slideAccel * dt                                                // 누적
-frictionDecel = slideResistance * slideResistanceMultiplier                     // [m/s²] 친선 마찰
-slideVelocity = MoveTowards(slideVelocity, 0, frictionDecel * dt)
+slideAccel     = gravAlongTangent * slideGravityScale * slideGravityMultiplier   // [m/s²]
+slopeGain      = (sign(slideAccel) == sign(slideVelocity)) ? slideDownhillGain
+                                                            : slideUphillBrake    // 1=중립
+slideAccel    *= slopeGain                                                        // C: 비대칭 게인
+slideVelocity += slideAccel * dt                                                  // 누적
+slideVelocity *= max(0, 1 - slideLinearDrag * dt)                                 // B: 속도 비례 드래그
+frictionDecel  = slideResistance * slideResistanceMultiplier                      // [m/s²] 쿨롱 마찰
+slideVelocity  = MoveTowards(slideVelocity, 0, frictionDecel * dt)
 ```
 - **`slideResistanceMultiplier`의 단위가 바뀜**: 정상상태 모드에서는 슬라이드 속도에서 빼는 값이지만, 관성 모드에서는 마찰 가속도 (m/s²). Ice는 0.1 → 약 0.2 m/s² 마찰.
+- **`slideLinearDrag`(B)**: 속도 비례 감속. 0 = 비활성. 0.5–1.5 정도면 마일드 — 하프파이프 climb 이 drop 보다 짧아져 "에너지 빠지는 빙판" 느낌. KE↔PE 보존을 깨고 싶을 때 사용.
+- **`slideDownhillGain` / `slideUphillBrake`(C)**: `slideAccel`이 현재 운동 방향과 같으면 downhillGain, 반대면 uphillBrake가 곱해짐. 둘 다 1이면 비활성. 내리막 가속과 오르막 감속을 독립 튜닝 — 비물리적이지만 강한 게임필 표현 가능. B 와 직교(B는 운동에 비례, C는 중력 접선에 비례)이므로 함께 사용 가능.
 - **`slideThreshold` 데드존 미적용**: 하프파이프 바닥(접선 중력≈0) 근처에서도 KE 보존되도록.
 - **slideRampUp 미적용**: 중력 가속이 자연스럽게 누적되므로 별도 램프 불필요.
 - 착지 시 접선 속도는 `slideVelocity`로 들어감 (`crawlVelocity`로 가는 기본 모드와 다름) — 마찰 외에 감쇠가 없어 운동량을 유지.

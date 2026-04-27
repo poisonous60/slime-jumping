@@ -21,6 +21,12 @@ namespace SlimeJumping.Physics
         public AngleScaledValue slideGravityMultiplier = AngleScaledValue.Constant(1f);
         [Tooltip("Time (seconds) for slide to ramp from 0 to full after landing. 0 = instant.")]
         public AngleScaledValue slideRampUpTime = AngleScaledValue.Constant(0f);
+        [Tooltip("Inertial-slide only. Linear drag coefficient (1/s) applied as slideVelocity *= (1 - k*dt). 0 = none. 0.5–1.5 ≈ mild ice drag (climb shorter than drop).")]
+        public AngleScaledValue slideLinearDrag = AngleScaledValue.Constant(0f);
+        [Tooltip("Inertial-slide only. Multiplier on tangent gravity when it accelerates motion (slideAccel sign matches slideVelocity). 1 = neutral, >1 = sharper descent speed-up.")]
+        public AngleScaledValue slideDownhillGain = AngleScaledValue.Constant(1f);
+        [Tooltip("Inertial-slide only. Multiplier on tangent gravity when it opposes motion (slideAccel sign opposes slideVelocity). 1 = neutral, >1 = sharper ascent slow-down.")]
+        public AngleScaledValue slideUphillBrake = AngleScaledValue.Constant(1f);
 
         [Header("Landing")]
         [Tooltip("0 = instant stop (default), 1 = full tangent velocity preserved")]
@@ -56,6 +62,9 @@ namespace SlimeJumping.Physics
             slideResistance = slideResistanceMultiplier,
             slideGravity = slideGravityMultiplier,
             slideRampUp = slideRampUpTime,
+            slideLinearDrag = slideLinearDrag,
+            slideDownhillGain = slideDownhillGain,
+            slideUphillBrake = slideUphillBrake,
             carrierFriction = carrierFriction,
             landingVelocityRetention = landingVelocityRetention,
             stickDuration = stickDurationMultiplier,

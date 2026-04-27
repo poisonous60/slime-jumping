@@ -38,8 +38,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   slideResistanceMultiplier:
-    baseValue: 0.1
-    fullValue: 0.1
+    baseValue: 0.4
+    fullValue: 0.4
     angleMin: 0
     angleMax: 90
   slideGravityMultiplier:
@@ -52,6 +52,21 @@ MonoBehaviour:
     fullValue: 0.3
     angleMin: 15
     angleMax: 80
+  slideLinearDrag:
+    baseValue: 0.1
+    fullValue: 0.1
+    angleMin: 0
+    angleMax: 90
+  slideDownhillGain:
+    baseValue: 2
+    fullValue: 2
+    angleMin: 0
+    angleMax: 90
+  slideUphillBrake:
+    baseValue: 2
+    fullValue: 2
+    angleMin: 0
+    angleMax: 90
   landingVelocityRetention:
     baseValue: 1
     fullValue: 1
@@ -68,13 +83,13 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   groundDashScale:
-    baseValue: 1
-    fullValue: 1
+    baseValue: 2
+    fullValue: 2
     angleMin: 0
     angleMax: 90
   wallAttachSpeedDampen:
     baseValue: 1
-    fullValue: 0.5
+    fullValue: 1
     angleMin: 15
     angleMax: 80
   hopVelocityRetention:

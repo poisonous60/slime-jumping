@@ -23,6 +23,8 @@ namespace SlimeJumping.TerrainShape.Editor
             public float angleDeg;
             public int seed;
             public float flatValue; // for Flat mode (0..1)
+            public float minValue;  // 0..1, output's "blue/far" end (default 0)
+            public float maxValue;  // 0..1, output's "red/near" end (default 1)
         }
 
         public static byte[] Generate(HeightmapProcMode mode, int W, int H, Params p)
@@ -43,6 +45,8 @@ namespace SlimeJumping.TerrainShape.Editor
             Vector2 gradDir = new Vector2(Mathf.Cos(angRad), Mathf.Sin(angRad));
             float scale = Mathf.Max(0.001f, p.scale);
             byte flatByte = (byte)Mathf.RoundToInt(Mathf.Clamp01(p.flatValue) * 255f);
+            float lo = Mathf.Clamp01(p.minValue);
+            float hi = Mathf.Clamp01(p.maxValue);
 
             for (int y = 0; y < H; y++)
             {
@@ -81,7 +85,8 @@ namespace SlimeJumping.TerrainShape.Editor
                             data[y * W + x] = flatByte;
                             continue;
                     }
-                    data[y * W + x] = (byte)Mathf.RoundToInt(Mathf.Clamp01(h) * 255f);
+                    float remapped = Mathf.Lerp(lo, hi, Mathf.Clamp01(h));
+                    data[y * W + x] = (byte)Mathf.RoundToInt(Mathf.Clamp01(remapped) * 255f);
                 }
             }
             return data;

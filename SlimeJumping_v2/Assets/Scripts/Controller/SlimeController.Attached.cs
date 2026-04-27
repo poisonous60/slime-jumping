@@ -86,7 +86,11 @@ namespace SlimeJumping.Controller
                     // No threshold deadzone — every bit of tangent gravity matters for KE↔height
                     // exchange on a halfpipe; friction handles drift on near-flat ground.
                     float slideAccel = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
+                    slideAccel *= ResolveSlopeGain(slideAccel, slideVelocity, angle);
                     slideVelocity += slideAccel * dt;
+                    float linearDrag = surfaceMod.slideLinearDrag.Evaluate(angle);
+                    if (linearDrag > 0f)
+                        slideVelocity *= Mathf.Max(0f, 1f - linearDrag * dt);
                     float frictionDecel = settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
                     if (frictionDecel > 0f)
                         slideVelocity = Mathf.MoveTowards(slideVelocity, 0f, frictionDecel * dt);

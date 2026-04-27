@@ -5,7 +5,7 @@
 ## 모드
 | Mode | 거동 |
 |------|------|
-| Branching | 머즐에서 burst point 까지 직선 트렁크 후, N개의 곡선 텐드릴(번개)이 슬라임 주변 지면(`groundSnapMask`)에 떨어짐. |
+| Branching | N개의 곡선 텐드릴(번개)이 머즐에서 직접 발사되어 각자의 경로로 슬라임 주변 지면(`groundSnapMask`)에 떨어짐. 트렁크 없음 — `launchSpreadDegrees` 가 머즐 P0 에서 텐드릴들을 부채꼴로 흩어버림. |
 | Beam | 한 발의 굵은 빔이 머즐에서 첫 차폐물까지 fireStart+firing+postFire 기간 지속. 라인 위 슬라임 1회 명중. |
 | Burst | `burstFlashCount` 개의 짧은 flash beam 이 콘(`burstSpreadDegrees`) 으로 부채꼴 발사. 각 flash 는 GraniteBlastBeam 인스턴스(`burstFlashDuration` 동안 표시). |
 
@@ -22,30 +22,32 @@ Idle
 ```
 - `loseSightGrace`로 탐지 히스테리시스.
 - **PreFire**: `chargeGlow` ParticleSystem 스케일 0.05x → 1x ease-out, 슬라임이 회피할 수 있는 텔레그래프 라인 표시(`showPreFireTelegraph`). 발사 방향(`lockedDir`) + 원점(`lockedOrigin`) 이 단계 시작 시 락인 → 이후 모든 페이즈가 같은 조준선 사용.
-- **FireStart**: 머즐 플래시 + `fireStartSound` + 모드별 1차 웨이브 스폰 (Branching = trunk + 종단 텐드릴 30%, Beam = 빔 1개, Burst = 총탄 30%).
+- **FireStart**: 머즐 플래시 + `fireStartSound` + 모드별 1차 웨이브 스폰 (Branching = 텐드릴 `branchingFireStartFraction` (기본 30%), Beam = 빔 1개, Burst = 모든 플래시 `burstFireStartFraction` (기본 100%)).
 - **Firing**: 잔여 텐드릴/총탄을 firingDuration 동안 균등 staggered 스폰. Beam 은 자체 라이프타임으로 유지.
 - **PostFire**: chargeGlow 정지, `postFireSound`. 신규 스폰 없음. 진행 중인 텐드릴/빔/총탄은 자체 페이드 진행.
 - **Cooldown**: 다음 발사 가능까지 정적 대기.
 
 | 페이즈 | Branching | Beam | Burst |
 |--------|-----------|------|-------|
-| FireStart | trunk + 종단 텐드릴 `branchingFireStartFraction` (기본 30%) | 빔 1개 (lifetime = fireStart+firing+postFire) | 총탄 `burstFireStartFraction` (기본 30%) |
-| Firing | 잔여 종단 텐드릴 staggered | (자체 유지) | 잔여 총탄 staggered |
+| FireStart | 텐드릴 `branchingFireStartFraction` (기본 30%) — 머즐에서 직접 발사 | 빔 1개 (lifetime = fireStart+firing+postFire) | 모든 플래시 `burstFireStartFraction` (기본 100%) — 부채꼴이 한꺼번에 보이도록 |
+| Firing | 잔여 종단 텐드릴 staggered | (자체 유지) | (자체 유지 — 기본값에서는 추가 스폰 없음) |
 | PostFire | (스폰 없음 — fade 진행 중) | 내부 fade 시작 | (스폰 없음) |
 
 ## 명중 처리
-공통: `HazardEffect { knockbackForce, knockbackDirection=발사체 진행 방향, stunDuration, DamageType.Lightning }` → `SlimeController.ApplyHazardEffect`.
+공통: `HazardEffect { knockbackForce, knockbackDirection = (slimePos − emitterMuzzlePos).normalized, stunDuration, DamageType.Lightning }` → `SlimeController.ApplyHazardEffect`. 슬라임은 항상 발사 주체로부터 멀어지는 방향으로 밀려남 (빔 진행 방향 아님 — 비스듬히 맞아도 표면에서 떼어내는 동작).
 
 | Mode | 검출 방식 | 다중 명중 |
 |------|----------|-----------|
-| Branching | 텐드릴 풀 드로우 시점에 각 세그먼트 `Physics2D.RaycastAll`. 첫 슬라임 히트로 종료. | 텐드릴 1개당 최대 1회. (트렁크 텐드릴은 cosmetic — `canHit=false`.) |
-| Beam | 매 프레임 `RaycastAll`. 슬라임 발견 시 1회만 적용. | 빔 인스턴스 1개당 최대 1회. |
-| Burst | `Rigidbody2D.Cast`로 collider 스윕 (터널링 방지) + 보조 `OnTriggerEnter2D`. | 발사체 1개당 최대 1회. |
+| Branching | 텐드릴 풀 드로우 시점에 각 세그먼트 `Physics2D.CircleCastAll(radius=hitRadius)`. 첫 슬라임 히트로 종료. | 텐드릴 1개당 최대 1회. |
+| Beam | 매 프레임 `CircleCastAll(radius=hitRadius)`. 슬라임 발견 시 1회만 적용. | 빔 인스턴스 1개당 최대 1회. |
+| Burst | 각 flash 가 GraniteBlastBeam 으로 동작 — `CircleCastAll(radius=hitRadius)` 매 프레임. | flash 1개당 최대 1회. |
+
+`hitRadius` (emitter, 기본 0.4) 가 세 모드 공통의 CircleCast 반경. 비주얼 라인 굵기와 무관하게 히트 볼륨을 튜닝 — `OnDrawGizmosSelected` 에서 muzzle→aim 방향 sweep tube 로 시각화됨.
 
 ## 시각
 - 모든 빔/텐드릴이 단일 LineRenderer (TurretHazard.bulletTracer 와 동일한 셋업: `Sprites/Default` + `Texture2D.whiteTexture` + 정점 컬러).
 - Material 은 emitter 가 캐싱 (`GetCoreMaterial`) — 발사당 신규 할당 없음.
-- 너비: Beam `beamCoreWidth` (기본 0.42), Tendril `tendrilCoreWidth` (기본 0.12), Trunk × `trunkWidthMultiplier`, Burst flash `burstFlashCoreWidth` (기본 0.18).
+- 너비: Beam `beamCoreWidth` (기본 0.55), Tendril `tendrilCoreWidth` (기본 0.12), Burst flash `burstFlashCoreWidth` (기본 0.22).
 - 색상: 기본 `coreColor = #D9F5FF` (near-white blue). Hold/fade 단계 PerlinNoise ±18% 너비 펄스 → "에너지 크래클" 느낌.
 - Z 오프셋 `lineZOffset = -0.5f` 로 2.5D 지형 앞에 그림.
 - (이전 버전에서 시도한 3-line halo/glow/core 스택은 알파 0.18~0.45 가 chargeGlow 파티클에 묻혀 보이지 않아 single-line 으로 단순화. 글로우는 두께·밝기·길이 펄스로 표현.)
@@ -54,12 +56,14 @@ Idle
 각 텐드릴은 4개의 컨트롤 포인트로 정의된 cubic Bezier 곡선을 따라 그려져 슬라임 주변 지면에 떨어짐 ("쏟아져 내리는" 느낌).
 
 ```
-P0 = burstPoint                                   ← 머즐에서 branchDistance / distToTarget 만큼 떨어진 분기점
-P1 = burstPoint + (조준축 ± launchSpreadDegrees) * branchDistance·0.45    ← 측면 launch — 곡선의 lateral 발산
+P0 = lockedOrigin (muzzle 위치)                   ← 모든 텐드릴이 머즐에서 직접 출발
+P1 = origin + dir(조준축 ± launchSpreadDegrees) * tendrilLaunchDistance    ← 측면 발사 — 머즐에서 부채꼴로 흩어짐
 P2 = endpoint + Vector2.up * bendHeight           ← 위로 휘었다가 떨어지도록 끌어올리는 anchor
 P3 = SampleGroundEndpoint()                       ← target 주위 [-targetRadius, +targetRadius] 측면 오프셋,
                                                     Vector2.down 으로 groundSnapMask 레이캐스트해 지면 스냅
 
+segments = clamp(round(controlPolygonLength / tendrilSegmentLength), 6, 48)
+            ← 텐드릴별로 동적 결정. 거리 멀수록 정점 ↑, 짧으면 ↓.
 baseSamples[i] = CubicBezier(P0, P1, P2, P3, t)
 points[0]      = baseSamples[0]
 points[N-1]    = baseSamples[N-1]
@@ -68,7 +72,7 @@ points[i]      = baseSamples[i] + perp * Random(-jaggedness, jaggedness) * sin(t
 
 - `sin(t·π)` taper로 양 끝은 매끈, 중간만 kink → 번개 실루엣.
 - `groundSnapMask` 가 0 이면 `bulletHitMask` 로 fallback. 슬라임 자체에 스냅하지 않으려면 Environment 레이어만 지정 권장.
-- `spawnTrunk=true` 이면 머즐→분기점에 두꺼운 cosmetic 트렁크 (P1=P0, P2=P3) → 직선 + 작은 jaggedness.
+- 트렁크 없음 — 머즐 P0 에서 N개의 텐드릴이 각자 P1 lateral 발산으로 펼쳐지는 구조.
 
 ## 발사체 — Burst 모드 (`GraniteBlastBullet`)
 - `Rigidbody2D` (Kinematic) + `CircleCollider2D` (trigger).
@@ -91,11 +95,11 @@ points[i]      = baseSamples[i] + perp * Random(-jaggedness, jaggedness) * sin(t
 | Target | `target`, `detectionRange`, `lineOfSightBlockers` |
 | Muzzle | `muzzle`, `aimAtTarget` (true=live target 추적, false=muzzle.right) |
 | Phase Timing | `detectionDelay`, `preFireDuration`, `fireStartDuration`, `firingDuration`, `postFireDuration`, `cooldownDuration`, `loseSightGrace` |
-| Hit Mask | `maxRange`, `bulletHitMask`, `groundSnapMask` (Branching 텐드릴 endpoint 지면 스냅) |
+| Hit Mask | `maxRange`, `bulletHitMask`, `groundSnapMask` (Branching 텐드릴 endpoint 지면 스냅), `hitRadius` (CircleCast 반경 — 모든 모드 공통) |
 | Hazard | `knockbackForce`, `stunDuration` |
-| Branching | `tendrilCount`, `branchDistance`, `targetRadius`, `launchSpreadDegrees`, `bendHeight`, `tendrilSegments`, `tendrilJaggedness`, `tendrilDrawTime / Hold / Fade`, `spawnTrunk`, `trunkWidthMultiplier`, `tendrilCoreWidth`, `branchingFireStartFraction` |
+| Branching | `tendrilCount`, `targetRadius`, `launchSpreadDegrees`, `tendrilLaunchDistance`, `bendHeight`, `tendrilSegmentLength` (path-length 기반 동적 세그먼트), `tendrilJaggedness`, `tendrilDrawTime / Hold / Fade`, `tendrilCoreWidth`, `branchingFireStartFraction` |
 | Beam | `beamFadeTime`, `beamCoreWidth` (lifetime은 fireStart+firing+postFire) |
-| Burst | `burstFlashCount`, `burstSpreadDegrees`, `burstFlashDuration`, `burstFlashFadeTime`, `burstFlashCoreWidth`, `burstFireStartFraction` |
+| Burst | `burstFlashCount`, `burstSpreadDegrees`, `burstFlashDuration`, `burstFlashFadeTime`, `burstFlashCoreWidth`, `burstFireStartFraction` (batch 모드), `burstFlashInterval` (>0 → 한 발씩 N초 간격으로 순차 발사. fraction 무시) |
 | Visual Colors | `coreColor`, `lineZOffset` |
 | Telegraph | `showPreFireTelegraph`, `telegraphWidth`, `telegraphColor` |
 | Audio | `detectSound / preFireSound / fireStartSound / postFireSound` + 볼륨 |

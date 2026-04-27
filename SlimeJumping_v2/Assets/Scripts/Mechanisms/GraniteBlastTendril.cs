@@ -202,6 +202,10 @@ namespace SlimeJumping.Mechanisms
             LayerMask mask = owner.BulletHitMask;
             if (mask == 0) return;
 
+            // Per-segment CircleCast — gives each tendril a tube-shaped hit volume
+            // (radius = emitter.HitRadius) instead of a hairline ray, so the slime
+            // registers a hit anywhere the visible curve looks like it's touching it.
+            float radius = owner.HitRadius;
             for (int i = 0; i < points.Length - 1; i++)
             {
                 Vector2 a = points[i];
@@ -211,7 +215,7 @@ namespace SlimeJumping.Mechanisms
                 if (segLen < 0.0001f) continue;
                 Vector2 dir = seg / segLen;
 
-                var hits = Physics2D.RaycastAll(a, dir, segLen, mask);
+                var hits = Physics2D.CircleCastAll(a, radius, dir, segLen, mask);
                 for (int h = 0; h < hits.Length; h++)
                 {
                     var col = hits[h].collider;
@@ -219,7 +223,9 @@ namespace SlimeJumping.Mechanisms
                     var slime = col.GetComponentInParent<SlimeController>();
                     if (slime == null) continue;
                     var effect = owner.GetHazardEffect();
-                    effect.knockbackDirection = dir;
+                    Vector3 emitterOrigin = owner.AimOrigin();
+                    Vector2 away = (Vector2)slime.transform.position - new Vector2(emitterOrigin.x, emitterOrigin.y);
+                    effect.knockbackDirection = away.sqrMagnitude > 0.0001f ? away.normalized : dir;
                     slime.ApplyHazardEffect(effect);
                     SpawnImpact(hits[h].point, hits[h].normal);
                     return;

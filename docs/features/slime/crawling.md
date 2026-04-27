@@ -34,14 +34,20 @@ slideSpeed = gravAlongTangent * slideGravityScale − slideResistance
 중력을 가속도로 적분 → KE↔높이 자연 변환.
 ```
 slideAccel     = gravAlongTangent * slideGravityScale * slideGravityMultiplier  // [m/s²]
+slopeGain      = (sign(slideAccel) == sign(slideVelocity)) ? slideDownhillGain
+                                                            : slideUphillBrake   // 1=중립
+slideAccel    *= slopeGain
 slideVelocity += slideAccel * dt
-frictionDecel  = slideResistance * slideResistanceMultiplier                     // [m/s²]
+slideVelocity *= max(0, 1 - slideLinearDrag * dt)                                // 속도 비례 드래그
+frictionDecel  = slideResistance * slideResistanceMultiplier                     // [m/s²] 쿨롱 마찰
 slideVelocity  = MoveTowards(slideVelocity, 0, frictionDecel * dt)
 slideSpeed     = slideVelocity
 ```
 - 데드존(slideThreshold) / 램프업 미적용.
 - 착지 시 접선 속도는 `slideVelocity`로 들어가 마찰 외 감쇠 없음.
-- `slideResistance` 의미가 바뀜: 빼는 속도 → 친선 마찰 (m/s²).
+- `slideResistance` 의미가 바뀜: 빼는 속도 → 쿨롱 마찰 (m/s²). 속도 무관 일정 감속.
+- `slideLinearDrag` (1/s): 속도 비례 감속. 빠를수록 더 깎임 → 하프파이프에서 올라가는 쪽이 내려간 쪽보다 짧아짐.
+- `slideDownhillGain` / `slideUphillBrake`: 중력 접선 성분에 곱하는 게인. 내리막 가속과 오르막 감속을 비대칭으로 튜닝.
 - 자세한 내용은 [surface-material.md](surface-material.md#관성-슬라이드-모드-useinertialslide).
 
 ## 최종 속도

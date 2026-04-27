@@ -11,6 +11,9 @@ namespace SlimeJumping.Physics
         public AngleScaledValue slideResistance;
         public AngleScaledValue slideGravity;
         public AngleScaledValue slideRampUp;
+        public AngleScaledValue slideLinearDrag;
+        public AngleScaledValue slideDownhillGain;
+        public AngleScaledValue slideUphillBrake;
         public AngleScaledValue carrierFriction;
         public AngleScaledValue landingVelocityRetention;
         public AngleScaledValue stickDuration;
@@ -30,6 +33,9 @@ namespace SlimeJumping.Physics
             slideResistance = AngleScaledValue.Constant(1f),
             slideGravity = AngleScaledValue.Constant(1f),
             slideRampUp = AngleScaledValue.Constant(0f),
+            slideLinearDrag = AngleScaledValue.Constant(0f),
+            slideDownhillGain = AngleScaledValue.Constant(1f),
+            slideUphillBrake = AngleScaledValue.Constant(1f),
             carrierFriction = AngleScaledValue.Constant(1f),
             landingVelocityRetention = AngleScaledValue.Constant(0f),
             stickDuration = AngleScaledValue.Constant(1f),

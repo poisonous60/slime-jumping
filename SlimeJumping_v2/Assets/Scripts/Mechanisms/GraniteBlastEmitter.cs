@@ -56,6 +56,8 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private LayerMask bulletHitMask = (1 << 0) | (1 << 6) | (1 << 7);
         [Tooltip("Layers used as 'ground' when snapping Branching tendril endpoints. If 0, falls back to bulletHitMask.")]
         [SerializeField] private LayerMask groundSnapMask = 0;
+        [Tooltip("CircleCast radius used by all three modes for slime hit detection. Bigger = more forgiving 'sweep' feel; match visual line width for strict detection.")]
+        [SerializeField] private float hitRadius = 0.4f;
 
         [Header("Hazard")]
         [SerializeField] private float knockbackForce = 18f;
@@ -63,47 +65,46 @@ namespace SlimeJumping.Mechanisms
 
         [Header("Branching Mode")]
         [SerializeField] private int tendrilCount = 7;
-        [Tooltip("Distance from muzzle to the burst point where tendrils split off (clamped to first wall hit and to distance-to-target).")]
-        [SerializeField] private float branchDistance = 6f;
         [Tooltip("Lateral spread of impact points along the slime's surface tangent. Each tendril picks a random offset in [-targetRadius, +targetRadius].")]
         [SerializeField] private float targetRadius = 3.2f;
-        [Tooltip("How far sideways each tendril is launched (degrees off the down-toward-target direction). Higher = wider arc.")]
+        [Tooltip("How far sideways each tendril is launched (degrees off the aim axis at the muzzle). Higher = wider initial fan.")]
         [SerializeField] private float launchSpreadDegrees = 75f;
+        [Tooltip("Initial launch distance from the muzzle along the lateral kick — sets Bezier P1, controlling the curve's outward kick.")]
+        [SerializeField] private float tendrilLaunchDistance = 2.5f;
         [Tooltip("Distance the curve bends upward above the target before diving. Bigger = taller arc.")]
         [SerializeField] private float bendHeight = 3.5f;
-        [Tooltip("Number of vertices along each tendril Bezier curve. More = smoother curve.")]
-        [SerializeField] private int tendrilSegments = 14;
+        [Tooltip("World-space distance per Bezier segment. Total segments per tendril = path-length / this, clamped to [6, 48]. Lets long-range tendrils stay smooth and short ones stay cheap.")]
+        [SerializeField] private float tendrilSegmentLength = 0.6f;
         [Tooltip("Max perpendicular noise (units) along the curve, scaled by segment length.")]
         [SerializeField] private float tendrilJaggedness = 0.35f;
         [SerializeField] private float tendrilDrawTime = 0.2f;
         [SerializeField] private float tendrilHoldTime = 0.18f;
         [SerializeField] private float tendrilFadeTime = 0.28f;
-        [Tooltip("Spawn an extra thicker trunk tendril from muzzle to burst point (the central column).")]
-        [SerializeField] private bool spawnTrunk = true;
-        [SerializeField] private float trunkWidthMultiplier = 1.6f;
-        [Tooltip("Core line width for tendrils. Halo/Glow are computed from this.")]
+        [Tooltip("Core line width for tendrils.")]
         [SerializeField] private float tendrilCoreWidth = 0.12f;
-        [Tooltip("Fraction of terminal tendrils spawned at FireStart. The rest are staggered through Firing.")]
+        [Tooltip("Fraction of tendrils spawned at FireStart. The rest are staggered through Firing.")]
         [Range(0f, 1f)] [SerializeField] private float branchingFireStartFraction = 0.3f;
 
         [Header("Beam Mode")]
         [Tooltip("Time the beam takes to fade out at the end of its life.")]
-        [SerializeField] private float beamFadeTime = 0.22f;
+        [SerializeField] private float beamFadeTime = 0.18f;
         [Tooltip("Core line width for the beam.")]
-        [SerializeField] private float beamCoreWidth = 0.42f;
+        [SerializeField] private float beamCoreWidth = 0.55f;
 
         [Header("Burst Mode (multi-beam fan)")]
         [Tooltip("Number of beam-flashes in the fan.")]
         [SerializeField] private int burstFlashCount = 6;
         [Tooltip("Total cone spread in degrees (split half above / half below the aim line).")]
         [SerializeField] private float burstSpreadDegrees = 32f;
-        [Tooltip("Each flash's lifetime — how long the line stays visible after firing.")]
-        [SerializeField] private float burstFlashDuration = 0.18f;
-        [SerializeField] private float burstFlashFadeTime = 0.12f;
+        [Tooltip("Each flash's lifetime — long enough that the whole fan is visible at once.")]
+        [SerializeField] private float burstFlashDuration = 0.7f;
+        [SerializeField] private float burstFlashFadeTime = 0.25f;
         [Tooltip("Core line width for each burst flash. Thinner than the main Beam mode.")]
-        [SerializeField] private float burstFlashCoreWidth = 0.18f;
-        [Tooltip("Fraction of flashes fired at FireStart. The rest are staggered through Firing.")]
-        [Range(0f, 1f)] [SerializeField] private float burstFireStartFraction = 0.3f;
+        [SerializeField] private float burstFlashCoreWidth = 0.22f;
+        [Tooltip("Fraction of flashes fired at FireStart. Only used when burstFlashInterval == 0.")]
+        [Range(0f, 1f)] [SerializeField] private float burstFireStartFraction = 1f;
+        [Tooltip("Seconds between consecutive flash spawns. > 0 enables sequential 'one at a time' firing (overrides burstFireStartFraction). 0 = batch mode using fraction.")]
+        [SerializeField] private float burstFlashInterval = 0f;
 
         [Header("Visual Colors")]
         [Tooltip("Color of the beam / tendril line. Use a near-white core for max visibility.")]
@@ -150,10 +151,12 @@ namespace SlimeJumping.Mechanisms
         private Vector3 lockedOrigin;
         private Vector2 lockedDir;
 
-        // Branching scheduling: precomputed control points, consumed across FireStart + Firing.
+        // Branching scheduling: precomputed control points + segment count, consumed
+        // across FireStart + Firing.
         private struct PendingTendril
         {
             public Vector3 p0, p1, p2, p3;
+            public int segments;
         }
         private readonly List<PendingTendril> pendingTendrils = new List<PendingTendril>(16);
         private int tendrilsSpawned;
@@ -163,6 +166,9 @@ namespace SlimeJumping.Mechanisms
         private readonly List<Vector2> pendingBullets = new List<Vector2>(16);
         private int bulletsSpawned;
         private int bulletsAtFireStart;
+        // Time the active burst window started (FireStart entry). Used by interval mode
+        // to spawn one flash every burstFlashInterval seconds.
+        private float burstStartTime;
 
         // PreFire telegraph line.
         private LineRenderer telegraphLR;
@@ -187,6 +193,7 @@ namespace SlimeJumping.Mechanisms
         public Color CoreColor => coreColor;
         public float LineZOffset => lineZOffset;
         public ParticleSystem ImpactPrefab => impactPrefab;
+        public float HitRadius => Mathf.Max(0.01f, hitRadius);
 
         public Material GetCoreMaterial() => GetOrCreateMat(ref coreMatCached);
 
@@ -266,15 +273,26 @@ namespace SlimeJumping.Mechanisms
 
         public RaycastHit2D RaycastExcludingSelf(Vector2 origin, Vector2 dir, float maxDist, LayerMask mask)
         {
+            // Sort by distance so we always return the *closest* valid solid hit —
+            // Physics2D.RaycastAll's array order is not guaranteed.
             var hits = Physics2D.RaycastAll(origin, dir, maxDist, mask);
+            RaycastHit2D best = default;
+            float bestDist = float.PositiveInfinity;
             for (int i = 0; i < hits.Length; i++)
             {
                 var h = hits[i];
                 if (h.collider == null) continue;
+                // Skip triggers (InteractionSensor / Water / etc. on the bullet hit mask
+                // would otherwise block the beam at the muzzle).
+                if (h.collider.isTrigger) continue;
                 if (h.collider.transform.IsChildOf(transform)) continue;
-                return h;
+                if (h.distance < bestDist)
+                {
+                    bestDist = h.distance;
+                    best = h;
+                }
             }
-            return default;
+            return best;
         }
 
         // --- FSM ---
@@ -308,6 +326,9 @@ namespace SlimeJumping.Mechanisms
 
                 case State.FireStart:
                     UpdateChargeGlow(0f, preFireDuration); // hold full
+                    // Burst interval mode releases flashes one-at-a-time across the
+                    // FireStart + Firing window — drive its scheduler from FireStart too.
+                    SpawnFiringWaveIfDue();
                     stateTimer -= dt;
                     if (stateTimer <= 0f) EnterFiring();
                     break;
@@ -385,9 +406,27 @@ namespace SlimeJumping.Mechanisms
             // Pre-plan all spawns now, then dispatch the FireStart wave.
             switch (mode)
             {
-                case FireMode.Branching: PlanBranching(); SpawnTendrilsUpTo(tendrilsAtFireStart); break;
-                case FireMode.Beam: SpawnBeam(); break;
-                case FireMode.Burst: PlanBurst(); SpawnBulletsUpTo(bulletsAtFireStart); break;
+                case FireMode.Branching:
+                    PlanBranching();
+                    SpawnTendrilsUpTo(tendrilsAtFireStart);
+                    break;
+                case FireMode.Beam:
+                    SpawnBeam();
+                    break;
+                case FireMode.Burst:
+                    PlanBurst();
+                    burstStartTime = Time.time;
+                    if (burstFlashInterval > 0f)
+                    {
+                        // Interval mode: release just the first flash now; the rest are
+                        // dispatched by SpawnFiringWaveIfDue based on elapsed time.
+                        SpawnBulletsUpTo(1);
+                    }
+                    else
+                    {
+                        SpawnBulletsUpTo(bulletsAtFireStart);
+                    }
+                    break;
             }
         }
 
@@ -524,59 +563,45 @@ namespace SlimeJumping.Mechanisms
             int n = Mathf.Max(1, tendrilCount);
             tendrilsAtFireStart = Mathf.Clamp(Mathf.RoundToInt(n * branchingFireStartFraction), 1, n);
 
-            // Resolve the burst point: travel branchDistance along the locked aim,
-            // clamped to distance-to-target (so the "trunk" doesn't overshoot the
-            // slime), and shortened on a wall hit.
+            // Each tendril emits straight from the muzzle along its own curved path.
+            // No central trunk / burst point — the lateral launch fans them out from P0.
+            //   P0 = muzzle origin
+            //   P1 = origin + lateral kick (random angle off aim axis)
+            //   P2 = endpoint + upward bend (arches above target then dives)
+            //   P3 = ground-snapped point near target
+            // Segment count is derived per-tendril from the path length so far-away
+            // tendrils stay smooth and close-range ones stay cheap.
             Vector3 origin = lockedOrigin;
-            Vector2 dir = lockedDir;
-            float reach = branchDistance;
-            if (aimAtTarget && target != null)
-            {
-                float distToTarget = Vector2.Distance(new Vector2(origin.x, origin.y),
-                                                      new Vector2(target.position.x, target.position.y));
-                reach = Mathf.Min(branchDistance, distToTarget);
-            }
-            var hit = RaycastExcludingSelf(origin, dir, reach, bulletHitMask);
-            if (hit.collider != null) reach = Mathf.Max(0.1f, hit.distance - 0.1f);
-            Vector2 burst2D = (Vector2)origin + dir * reach;
-            Vector3 burst = new Vector3(burst2D.x, burst2D.y, origin.z);
+            Vector2 origin2D = new Vector2(origin.x, origin.y);
+            float baseAngle = Mathf.Atan2(lockedDir.y, lockedDir.x);
+            float segLen = Mathf.Max(0.1f, tendrilSegmentLength);
+            float launchDist = Mathf.Max(0.5f, tendrilLaunchDistance);
 
-            // Trunk tendril (cosmetic, no hit). Drawn straight from muzzle to burst.
-            if (spawnTrunk) SpawnTendril(origin, origin, burst, burst,
-                segments: Mathf.Max(3, tendrilSegments / 2),
-                jaggedness: tendrilJaggedness * 0.4f,
-                coreWidth: tendrilCoreWidth * trunkWidthMultiplier,
-                drawTime: tendrilDrawTime * 0.55f,
-                holdTime: tendrilHoldTime,
-                fadeTime: tendrilFadeTime,
-                canHit: false);
-
-            // Plan the curved terminal tendrils. Each gets a Bezier (P0, P1, P2, P3):
-            //   P0 = burst point
-            //   P1 = burst + lateral kick (sideways thrust off the aim line)
-            //   P2 = endpoint + upward bend (curve arches above the target)
-            //   P3 = ground-snapped point near the target
-            float baseAngle = Mathf.Atan2(dir.y, dir.x);
             for (int i = 0; i < n; i++)
             {
                 Vector2 endpoint2D = SampleGroundEndpoint();
                 Vector3 endpoint = new Vector3(endpoint2D.x, endpoint2D.y, origin.z);
 
-                // Lateral launch: angle off aim axis. Symmetric range [-launchSpread, +launchSpread].
                 float lateralRad = Random.Range(-launchSpreadDegrees, launchSpreadDegrees) * Mathf.Deg2Rad;
                 float launchAngle = baseAngle + lateralRad;
-                float launchDist = Mathf.Max(0.5f, branchDistance * 0.45f);
-                Vector2 p1 = burst2D + new Vector2(Mathf.Cos(launchAngle), Mathf.Sin(launchAngle)) * launchDist;
+                Vector2 p1 = origin2D + new Vector2(Mathf.Cos(launchAngle), Mathf.Sin(launchAngle)) * launchDist;
 
-                // Bend above target — pull the curve up so it dives down.
                 Vector2 p2 = endpoint2D + Vector2.up * Mathf.Max(0f, bendHeight);
+
+                // Control polygon length is an upper bound on the actual Bezier arc —
+                // good enough to drive segment density.
+                float pathLen = (p1 - origin2D).magnitude
+                              + (p2 - p1).magnitude
+                              + (endpoint2D - p2).magnitude;
+                int segments = Mathf.Clamp(Mathf.RoundToInt(pathLen / segLen), 6, 48);
 
                 pendingTendrils.Add(new PendingTendril
                 {
-                    p0 = burst,
+                    p0 = origin,
                     p1 = new Vector3(p1.x, p1.y, origin.z),
                     p2 = new Vector3(p2.x, p2.y, origin.z),
                     p3 = endpoint,
+                    segments = segments,
                 });
             }
         }
@@ -585,8 +610,10 @@ namespace SlimeJumping.Mechanisms
         {
             if (target == null)
             {
+                // No target — fire along the locked aim into the air. maxRange is a
+                // sane fallback distance.
                 Vector2 d = lockedDir;
-                return new Vector2(lockedOrigin.x, lockedOrigin.y) + d * branchDistance;
+                return new Vector2(lockedOrigin.x, lockedOrigin.y) + d * Mathf.Min(maxRange, 12f);
             }
             Vector2 t2D = new Vector2(target.position.x, target.position.y);
             float lateral = Random.Range(-targetRadius, targetRadius);
@@ -623,7 +650,7 @@ namespace SlimeJumping.Mechanisms
             {
                 var t = pendingTendrils[tendrilsSpawned++];
                 SpawnTendril(t.p0, t.p1, t.p2, t.p3,
-                    segments: tendrilSegments,
+                    segments: t.segments,
                     jaggedness: tendrilJaggedness,
                     coreWidth: tendrilCoreWidth,
                     drawTime: tendrilDrawTime,
@@ -641,6 +668,9 @@ namespace SlimeJumping.Mechanisms
                 {
                     int total = pendingTendrils.Count;
                     if (total <= 0) return;
+                    // Branching staggers across the Firing window only — FireStart already
+                    // dispatched its share. Skip while still in FireStart.
+                    if (state != State.Firing) return;
                     float prog = firingDuration > 0f
                         ? Mathf.Clamp01(1f - (stateTimer / firingDuration))
                         : 1f;
@@ -653,11 +683,24 @@ namespace SlimeJumping.Mechanisms
                 {
                     int total = pendingBullets.Count;
                     if (total <= 0) return;
-                    float prog = firingDuration > 0f
-                        ? Mathf.Clamp01(1f - (stateTimer / firingDuration))
-                        : 1f;
-                    int desired = bulletsAtFireStart
+                    int desired;
+                    if (burstFlashInterval > 0f)
+                    {
+                        // Interval mode: 1 flash every burstFlashInterval seconds since FireStart.
+                        // Spans both FireStart and Firing.
+                        float elapsed = Time.time - burstStartTime;
+                        desired = 1 + Mathf.FloorToInt(elapsed / burstFlashInterval);
+                    }
+                    else
+                    {
+                        // Batch mode: bulletsAtFireStart at FireStart, rest staggered through Firing.
+                        if (state != State.Firing) return;
+                        float prog = firingDuration > 0f
+                            ? Mathf.Clamp01(1f - (stateTimer / firingDuration))
+                            : 1f;
+                        desired = bulletsAtFireStart
                                   + Mathf.RoundToInt((total - bulletsAtFireStart) * prog);
+                    }
                     SpawnBulletsUpTo(desired);
                     break;
                 }
@@ -742,6 +785,18 @@ namespace SlimeJumping.Mechanisms
             Vector3 d3 = new Vector3(d.x, d.y, 0f);
             Gizmos.color = new Color(0.7f, 0.95f, 1f, 0.9f);
             Gizmos.DrawLine(origin, origin + d3 * Mathf.Min(maxRange, detectionRange));
+
+            // Hit-volume preview: a swept "tube" from muzzle along the aim direction
+            // shows the actual CircleCast radius used by all three modes.
+            float r = Mathf.Max(0.01f, hitRadius);
+            float previewLen = Mathf.Min(maxRange, detectionRange);
+            Vector3 perp = new Vector3(-d.y, d.x, 0f) * r;
+            Vector3 endP = origin + d3 * previewLen;
+            Gizmos.color = new Color(1f, 0.4f, 0.4f, 0.5f);
+            Gizmos.DrawWireSphere(origin, r);
+            Gizmos.DrawWireSphere(endP, r);
+            Gizmos.DrawLine(origin + perp, endP + perp);
+            Gizmos.DrawLine(origin - perp, endP - perp);
 
             if (mode == FireMode.Branching && target != null)
             {

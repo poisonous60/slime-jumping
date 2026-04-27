@@ -47,6 +47,8 @@ namespace SlimeJumping.TerrainShape.Editor
         float _procAngle = 0f;
         int _procSeed = 1;
         float _procFlatValue = 0.5f;
+        float _procMinValue = 0f; // blue/far end of generated range
+        float _procMaxValue = 1f; // red/near end of generated range
 
         struct EdgeDragSnap
         {
@@ -785,7 +787,8 @@ namespace SlimeJumping.TerrainShape.Editor
 
             HandleMarquee(e, _selectedOutlineIds,
                 () => CollectOutlineIdsInRect(src, layer),
-                () => TryFindClickedOutlineIndex(src, layer, e.mousePosition, out _),
+                () => TryFindClickedOutlineIndex(src, layer, e.mousePosition, out _)
+                   || TryFindClickedTangentHandle(src, layer, e.mousePosition, out _, out _),
                 (mode, mouseGUI) =>
                 {
                     // Shift+click on empty (no drag): insert outline point on closest edge.
@@ -916,6 +919,28 @@ namespace SlimeJumping.TerrainShape.Editor
                 Vector2 g = HandleUtility.WorldToGUIPoint(wp);
                 float d = Vector2.Distance(g, mouseGUI);
                 if (d < best) { best = d; index = i; }
+            }
+            return index >= 0;
+        }
+
+        // Returns true if the mouse is within CLICK_RADIUS_PX of either tangent endpoint
+        // of any smooth outline point on the active layer. `side` is 0 for tangentOut, 1 for tangentIn.
+        bool TryFindClickedTangentHandle(TerrainShape2D src, OutlineLayer layer, Vector2 mouseGUI, out int index, out int side)
+        {
+            index = -1;
+            side = -1;
+            float best = CLICK_RADIUS_PX;
+            var t = src.transform;
+            for (int i = 0; i < layer.outline.Count; i++)
+            {
+                var p = layer.outline[i];
+                if (!p.smooth) continue;
+                Vector3 wpOut = t.TransformPoint(new Vector3(p.pos.x + p.tangentOut.x, p.pos.y + p.tangentOut.y, layer.z));
+                Vector3 wpIn = t.TransformPoint(new Vector3(p.pos.x + p.tangentIn.x, p.pos.y + p.tangentIn.y, layer.z));
+                float dOut = Vector2.Distance(HandleUtility.WorldToGUIPoint(wpOut), mouseGUI);
+                float dIn = Vector2.Distance(HandleUtility.WorldToGUIPoint(wpIn), mouseGUI);
+                if (dOut < best) { best = dOut; index = i; side = 0; }
+                if (dIn < best) { best = dIn; index = i; side = 1; }
             }
             return index >= 0;
         }
@@ -1760,6 +1785,20 @@ namespace SlimeJumping.TerrainShape.Editor
                     break;
             }
 
+            // Output range: remap the generator's 0..1 result to [min..max]. Flat already
+            // writes a single value directly, so the remap doesn't apply there.
+            if (_procMode != HeightmapProcMode.Flat)
+            {
+                EditorGUILayout.LabelField(new GUIContent("Output range", "Remap the generator's 0..1 output to [min..max]. Min = blue/far end, Max = red/near end."), EditorStyles.miniBoldLabel);
+                float lo = _procMinValue, hi = _procMaxValue;
+                EditorGUILayout.MinMaxSlider(new GUIContent("Min (blue) / Max (red)"), ref lo, ref hi, 0f, 1f);
+                lo = EditorGUILayout.Slider(new GUIContent("Min (blue/far)", "Lowest value the generator can produce. 0 = full blue/far."), lo, 0f, 1f);
+                hi = EditorGUILayout.Slider(new GUIContent("Max (red/near)", "Highest value the generator can produce. 1 = full red/near."), hi, 0f, 1f);
+                if (hi < lo) hi = lo;
+                _procMinValue = lo;
+                _procMaxValue = hi;
+            }
+
             using (new EditorGUI.DisabledScope(!src.HasHeightmap))
             {
                 if (GUILayout.Button("Generate (overwrite heightmap)")) GenerateHeightmap(src);
@@ -1831,6 +1870,8 @@ namespace SlimeJumping.TerrainShape.Editor
                 angleDeg = _procAngle,
                 seed = _procSeed,
                 flatValue = _procFlatValue,
+                minValue = _procMinValue,
+                maxValue = _procMaxValue,
             };
             src.heightmapData = HeightmapProcGen.Generate(_procMode, src.heightmapW, src.heightmapH, p);
             EditorUtility.SetDirty(src);

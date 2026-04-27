@@ -620,6 +620,17 @@ namespace SlimeJumping.Controller
             return SurfaceProbe.GetSurfaceAngle(surfaceNormal, gravityUp);
         }
 
+        // Returns 1.0 on flat motion or zero accel; otherwise downhillGain when slideAccel pushes
+        // the slime in its current travel direction, uphillBrake when it opposes. Lets a surface
+        // tune descent speed-up and ascent slow-down independently.
+        private float ResolveSlopeGain(float slideAccel, float slideVel, float angle)
+        {
+            if (Mathf.Abs(slideAccel) < 1e-4f || Mathf.Abs(slideVel) < 1e-4f) return 1f;
+            return Mathf.Sign(slideAccel) == Mathf.Sign(slideVel)
+                ? surfaceMod.slideDownhillGain.Evaluate(angle)
+                : surfaceMod.slideUphillBrake.Evaluate(angle);
+        }
+
         private Vector2 GetSurfaceVelocity(Collider2D col)
         {
             var motor = col != null ? col.GetComponentInParent<PlatformMotor>() : null;
