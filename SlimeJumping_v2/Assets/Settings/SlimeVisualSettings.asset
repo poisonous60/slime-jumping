@@ -217,15 +217,15 @@ MonoBehaviour:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 0.17480554
-      outSlope: 0.17480554
+      inSlope: 0.3622891
+      outSlope: 0.3622891
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
-      outWeight: 0.109255224
+      outWeight: 0.060700677
     - serializedVersion: 3
-      time: 1.1439751
-      value: 0.097834006
+      time: 0.80481726
+      value: 0.15258117
       inSlope: 0.0069624553
       outSlope: 0.0069624553
       tangentMode: 0
@@ -233,8 +233,8 @@ MonoBehaviour:
       inWeight: 0.33333334
       outWeight: 0.100366004
     - serializedVersion: 3
-      time: 5.036456
-      value: 0.12204981
+      time: 4.893134
+      value: 0.161154
       inSlope: 0.0030098932
       outSlope: 0.0030098932
       tangentMode: 0
@@ -251,8 +251,8 @@ MonoBehaviour:
   chargingTremorFrequency: 25
   chargingTremorMax: 0.03
   chargingTremorThreshold: 9
-  fullAimTremorAmplitude: 0.04
-  fullAimTremorFrequency: 20
+  fullAimTremorAmplitude: 0.1
+  fullAimTremorFrequency: 22
   breathAmplitude: 0.02
   breathFrequency: 0.4
   faceOffsetScale: 0.1

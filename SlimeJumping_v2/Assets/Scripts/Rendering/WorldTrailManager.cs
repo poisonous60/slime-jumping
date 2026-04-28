@@ -426,21 +426,36 @@ namespace SlimeJumping.Rendering
 
         // -------------------- Debug ContextMenu --------------------
 
+        /// Clears the world RT immediately. Play-mode only — no-ops otherwise.
+        public void ClearWorldTrail()
+        {
+            if (!Application.isPlaying) return;
+            if (rt != null) Graphics.Blit(Texture2D.blackTexture, rt);
+            dirty = true;
+        }
+
+        /// Clears the world RT and every LocalTrailReceiver in the scene.
+        /// Play-mode only — no-ops otherwise.
+        public void ClearAllTrails()
+        {
+            if (!Application.isPlaying) return;
+            ClearWorldTrail();
+            var all = FindObjectsByType<LocalTrailReceiver>(FindObjectsSortMode.None);
+            for (int i = 0; i < all.Length; i++) all[i].ClearTrail();
+        }
+
         [ContextMenu("Trail / Clear World")]
         private void DebugClearWorld()
         {
             if (!Application.isPlaying) { Debug.LogWarning("[Trail] Play Mode only."); return; }
-            if (rt != null) Graphics.Blit(Texture2D.blackTexture, rt);
-            dirty = true;
+            ClearWorldTrail();
         }
 
         [ContextMenu("Trail / Clear All (World + Locals)")]
         private void DebugClearAll()
         {
             if (!Application.isPlaying) { Debug.LogWarning("[Trail] Play Mode only."); return; }
-            DebugClearWorld();
-            var all = FindObjectsByType<LocalTrailReceiver>(FindObjectsSortMode.None);
-            for (int i = 0; i < all.Length; i++) all[i].ClearTrail();
+            ClearAllTrails();
         }
 
         [ContextMenu("Trail / Save Snapshot \"A\"")]

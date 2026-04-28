@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using SlimeJumping.Settings;
 
 namespace SlimeJumping.Debugging
 {
@@ -23,6 +24,12 @@ namespace SlimeJumping.Debugging
         private UnityEngine.Camera cam;
         private RectTransform canvasRect;
 
+        // Tracks the controller's "should be shown" intent independent of the
+        // debug option. This way the option toggle can hide/restore visuals
+        // mid-charge without losing what the controller asked for.
+        private bool requestedVisible;
+        private bool optionEnabled = true;
+
         private void Awake()
         {
             cam = UnityEngine.Camera.main;
@@ -30,22 +37,47 @@ namespace SlimeJumping.Debugging
                 canvasRect = canvas.GetComponent<RectTransform>();
         }
 
+        private void OnEnable()
+        {
+            optionEnabled = GameOptions.ChargeVisualEnabled;
+            GameOptions.ChargeVisualEnabledChanged += OnOptionChanged;
+            ApplyVisibility();
+        }
+
+        private void OnDisable()
+        {
+            GameOptions.ChargeVisualEnabledChanged -= OnOptionChanged;
+        }
+
+        private void OnOptionChanged(bool on)
+        {
+            optionEnabled = on;
+            ApplyVisibility();
+        }
+
+        private void ApplyVisibility()
+        {
+            bool visible = requestedVisible && optionEnabled;
+            if (circleImage != null) circleImage.gameObject.SetActive(visible && showCircle);
+            if (aimDotImage != null) aimDotImage.gameObject.SetActive(visible && showAimDot);
+            if (aimLineImage != null) aimLineImage.gameObject.SetActive(visible && showAimDot);
+        }
+
         public void Show()
         {
-            if (circleImage != null) circleImage.gameObject.SetActive(showCircle);
-            if (aimDotImage != null) aimDotImage.gameObject.SetActive(showAimDot);
-            if (aimLineImage != null) aimLineImage.gameObject.SetActive(showAimDot);
+            requestedVisible = true;
+            ApplyVisibility();
         }
 
         public void Hide()
         {
-            if (circleImage != null) circleImage.gameObject.SetActive(false);
-            if (aimDotImage != null) aimDotImage.gameObject.SetActive(false);
-            if (aimLineImage != null) aimLineImage.gameObject.SetActive(false);
+            requestedVisible = false;
+            ApplyVisibility();
         }
 
         public void UpdateVisual(Vector2 worldCenter, Vector2 worldAimPoint, float chargeRadius)
         {
+            if (!optionEnabled || !requestedVisible) return;
             if (cam == null || canvasRect == null) return;
 
             // World → screen → canvas local position

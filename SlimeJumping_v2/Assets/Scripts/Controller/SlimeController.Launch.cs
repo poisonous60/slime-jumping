@@ -18,7 +18,7 @@ namespace SlimeJumping.Controller
                 currentRope.NotifyLaunchRebound(rb.position);
 
             ClearPlatformEffect();
-            surfaceMod = SurfaceModifiers.Default;
+            surfaceMod = settings.BuildDefaultModifiers();
             launchSpeed = velocity.magnitude;
             launchPosition = rb.position;
             launchedByHop = false;
@@ -149,10 +149,25 @@ namespace SlimeJumping.Controller
             float power = Mathf.Lerp(settings.hopPower, settings.hopPowerMin, hopT);
             Vector2 hopDir = settings.hopAlongSurfaceNormal ? surfaceNormal : gravityUp;
 
-            // Surface-defined tangent retention. 1 = preserve (ice), 0 = wipe (sticky mud).
-            float retention = surfaceMod.hopVelocityRetention.Evaluate(angle);
+            // Tangent and normal components of incoming velocity are scaled independently:
+            //   tangent: hopVelocityRetention   (1 = ice preserves tangent, 0 = sticky mud wipes)
+            //   normal:  hopNormalToTangentRatio (0 = discard normal speed [legacy],
+            //                                      >0 = redirect |normal| into tangent at this ratio)
+            // Normal-redirect direction follows the existing tangent sign, falling back to input
+            // direction when tangent speed is zero so a perpendicular drop into a flat surface
+            // still slingshots in the player's intended direction.
             float tangentSpeed = Vector2.Dot(velocity, surfaceTangent);
+            float normalSpeed = Vector2.Dot(velocity, surfaceNormal);
+            float retention = surfaceMod.hopVelocityRetention.Evaluate(angle);
+            float normalToTangent = surfaceMod.hopNormalToTangentRatio.Evaluate(angle);
             float preservedTangent = tangentSpeed * retention;
+            if (normalToTangent > 0f)
+            {
+                float sign = tangentSpeed != 0f
+                    ? Mathf.Sign(tangentSpeed)
+                    : -Mathf.Sign(inputReader.LastInputMove.x);
+                preservedTangent += sign * Mathf.Abs(normalSpeed) * normalToTangent;
+            }
             velocity = surfaceTangent * preservedTangent;
 
             if (stickTimer <= 0f)
@@ -163,8 +178,12 @@ namespace SlimeJumping.Controller
                 //       hopInstantFlip = false → decelerate toward 0 by bonus (inertial, e.g. ice).
                 //       hopInstantFlip = true  → zero existing + bonus in input direction (arcade, e.g. grass).
                 //   neutral input → no change.
+                // SurfaceMaterial.overrideHopMomentum = true → use the SurfaceMaterial's own
+                // hopMomentumBonus / hopMomentumMaxSpeed (per-surface tuning, e.g. icier ice).
                 float inputX = inputReader.LastInputMove.x;
-                if (settings.hopMomentumBonus > 0f && Mathf.Abs(inputX) > 0.01f)
+                float bonus = surfaceMod.overrideHopMomentum ? surfaceMod.hopMomentumBonus : settings.hopMomentumBonus;
+                float maxSpeed = surfaceMod.overrideHopMomentum ? surfaceMod.hopMomentumMaxSpeed : settings.hopMomentumMaxSpeed;
+                if (bonus > 0f && Mathf.Abs(inputX) > 0.01f)
                 {
                     float inputSign = -Mathf.Sign(inputX);
                     float currentSpeedSign = Mathf.Sign(preservedTangent);
@@ -172,18 +191,17 @@ namespace SlimeJumping.Controller
                     if (currentSpeedSign == 0f || currentSpeedSign == inputSign)
                     {
                         float currentInDir = preservedTangent * inputSign;
-                        float boosted = Mathf.Min(currentInDir + settings.hopMomentumBonus,
-                                                  settings.hopMomentumMaxSpeed);
+                        float boosted = Mathf.Min(currentInDir + bonus, maxSpeed);
                         newTangent = inputSign * boosted;
                     }
                     else if (surfaceMod.hopInstantFlip)
                     {
-                        float boosted = Mathf.Min(settings.hopMomentumBonus, settings.hopMomentumMaxSpeed);
+                        float boosted = Mathf.Min(bonus, maxSpeed);
                         newTangent = inputSign * boosted;
                     }
                     else
                     {
-                        newTangent = Mathf.MoveTowards(preservedTangent, 0f, settings.hopMomentumBonus);
+                        newTangent = Mathf.MoveTowards(preservedTangent, 0f, bonus);
                     }
                     velocity += surfaceTangent * (newTangent - preservedTangent);
                 }
@@ -214,15 +232,51 @@ namespace SlimeJumping.Controller
         private void ApplyGroundDash(float inputSign)
         {
             float dashAngle = GetSurfaceAngle();
-            float dashAngleScale = 1f - Mathf.InverseLerp(settings.groundDashAngleMin, settings.groundDashAngleMax, dashAngle);
-            float dashStrength = settings.groundDashImpulse * dashAngleScale * surfaceMod.groundDashScale.Evaluate(dashAngle);
+            // SurfaceMaterial.overrideGroundDash = true → use the SurfaceMaterial's own
+            // impulse / angle window / falloff (per-surface tuning, e.g. ice with longer falloff).
+            // groundDashScale (multiplier) still applies on top so existing 0-on-this-surface
+            // disables remain functional.
+            float impulse = surfaceMod.overrideGroundDash ? surfaceMod.groundDashImpulse : settings.groundDashImpulse;
+            float angleMin = surfaceMod.overrideGroundDash ? surfaceMod.groundDashAngleMin : settings.groundDashAngleMin;
+            float angleMax = surfaceMod.overrideGroundDash ? surfaceMod.groundDashAngleMax : settings.groundDashAngleMax;
+            float falloffStart = surfaceMod.overrideGroundDash ? surfaceMod.dashFalloffStart : settings.dashFalloffStart;
+            float falloffEnd = surfaceMod.overrideGroundDash ? surfaceMod.dashFalloffEnd : settings.dashFalloffEnd;
+
+            // Override surfaces evaluate angleScale through their own AnimationCurve. When
+            // override is off, fall back to SlimeSettings' global curve. Empty/null curves
+            // collapse to legacy 1 - InverseLerp(min, max, angle) for backward compatibility.
+            AnimationCurve angleCurve = surfaceMod.overrideGroundDash
+                ? surfaceMod.groundDashAngleFalloffCurve
+                : settings.groundDashAngleFalloffCurve;
+            float angleT = Mathf.InverseLerp(angleMin, angleMax, dashAngle);
+            float dashAngleScale = (angleCurve != null && angleCurve.length > 0)
+                ? angleCurve.Evaluate(angleT)
+                : 1f - angleT;
+            float dashStrength = impulse * dashAngleScale * surfaceMod.groundDashScale.Evaluate(dashAngle);
             if (dashStrength > 0f)
             {
                 // Inertial surfaces: read falloff from combined speed and impulse the inertial
                 // channel so the dash boost persists as kinetic energy through curves.
                 float currentTangent = surfaceMod.useInertialSlide ? (crawlVelocity + slideVelocity) : crawlVelocity;
                 float sameDirSpeed = Mathf.Max(0f, inputSign * currentTangent);
-                float falloff = 1f - Mathf.InverseLerp(settings.dashFalloffStart, settings.dashFalloffEnd, sameDirSpeed);
+                bool skipFalloff = surfaceMod.overrideGroundDash
+                    ? surfaceMod.disableDashFalloff
+                    : settings.disableDashFalloff;
+                AnimationCurve speedCurve = surfaceMod.overrideGroundDash
+                    ? surfaceMod.dashSpeedFalloffCurve
+                    : settings.dashSpeedFalloffCurve;
+                float falloff;
+                if (skipFalloff)
+                {
+                    falloff = 1f;
+                }
+                else
+                {
+                    float t = Mathf.InverseLerp(falloffStart, falloffEnd, sameDirSpeed);
+                    falloff = (speedCurve != null && speedCurve.length > 0)
+                        ? speedCurve.Evaluate(t)
+                        : 1f - t;
+                }
                 if (surfaceMod.useInertialSlide)
                     slideVelocity += inputSign * dashStrength * falloff;
                 else

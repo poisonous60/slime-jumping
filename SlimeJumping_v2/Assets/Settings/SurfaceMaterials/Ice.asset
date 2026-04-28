@@ -87,6 +87,61 @@ MonoBehaviour:
     fullValue: 2
     angleMin: 0
     angleMax: 90
+  overrideGroundDash: 0
+  groundDashImpulse: 4
+  groundDashAngleMin: 90
+  groundDashAngleMax: 180
+  groundDashAngleFalloffCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.994812
+      value: 0.56188965
+      inSlope: -1
+      outSlope: -1
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  dashFalloffStart: 10
+  dashFalloffEnd: 30
+  dashSpeedFalloffCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0.47143555
+      inSlope: -1
+      outSlope: -1
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  disableDashFalloff: 0
   wallAttachSpeedDampen:
     baseValue: 1
     fullValue: 1
@@ -98,4 +153,7 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   hopInstantFlip: 0
+  overrideHopMomentum: 1
+  hopMomentumBonus: 2
+  hopMomentumMaxSpeed: 30
   useInertialSlide: 1

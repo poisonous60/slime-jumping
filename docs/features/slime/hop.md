@@ -8,23 +8,30 @@ Attached 상태에서 W를 누르면 작은 점프. 접선 운동량을 보존�
 - **각도별 파워**: `hopMinAngle`(70°) 이하 = `hopPower`(2.25), `hopMaxAngle`(90°) = `hopPowerMin`(1.125), 사이 lerp.
 - **쿨타임**: `hopCooldown`(0.1초). Wall-clock.
 
-## 표면별 접선 보존 (hopVelocityRetention)
+## 표면별 접선 보존 (hopVelocityRetention + hopNormalToTangentRatio)
+접선 성분과 법선 성분을 독립 노브로 변환:
 ```
-preservedTangent = Dot(velocity, surfaceTangent) * retention
-velocity = surfaceTangent * preservedTangent + hopDir * power
+tangentSpeed     = Dot(velocity, surfaceTangent)
+normalSpeed      = Dot(velocity, surfaceNormal)
+sign             = (tangentSpeed != 0) ? sign(tangentSpeed) : -sign(inputX)
+preservedTangent = tangentSpeed * hopVelocityRetention
+                 + sign * |normalSpeed| * hopNormalToTangentRatio   // ratio=0이면 추가 항 없음
+velocity         = surfaceTangent * preservedTangent + hopDir * power
 ```
-- retention=1 (기본, Ice): 접선 유지 → 미끄러지면서 홉.
-- retention=0 (Mud): 접선 속도 완전 제거 → 접착면 탈출 감각.
+- **hopVelocityRetention** (접선): 1=Ice 유지, 0=Mud 제거.
+- **hopNormalToTangentRatio** (법선→접선): 0(기본)=법선 폐기(레거시), 1=법선 속도 전체를 접선으로 슬링샷. 빙판/하프파이프 비행 운동량 변환용.
 - stick/non-stick 경로 모두 동일 적용.
 
 ## 홉 모멘텀
 입력 방향과 현재 속도 방향 비교:
-- **같은 방향(또는 정지)**: `boosted = min(currentInDir + hopMomentumBonus, hopMomentumMaxSpeed)` — 가속. 모든 표면 동일.
+- **같은 방향(또는 정지)**: `boosted = min(currentInDir + hopMomentumBonus, hopMomentumMaxSpeed)` — 가속.
 - **반대 방향**: 표면별 분기 (`SurfaceMaterial.hopInstantFlip`):
   - `true` (기본, 아케이드, Grass/Mud): `newTangent = inputSign * min(hopMomentumBonus, hopMomentumMaxSpeed)` — 기존 속도 제거 후 입력 방향으로 즉시 스타트.
   - `false` (관성, Ice): `newTangent = MoveTowards(preservedTangent, 0, hopMomentumBonus)` — 감속만. 0 도달 이후 반대 방향 빌드업.
 - 입력 중립이면 보너스 미적용.
 - 스틱 중에는 모멘텀 블록 미적용.
+
+**표면별 오버라이드**: `SurfaceMaterial.overrideHopMomentum = true` 시 위 식의 `hopMomentumBonus`/`hopMomentumMaxSpeed`는 SlimeSettings 글로벌이 아닌 **해당 SurfaceMaterial의 값**으로 치환됨. 빙판처럼 가속감을 강화하려면 override on + 두 값 ↑.
 
 ## 입력 지연 처리 (Deferred flag)
 입력 콜백은 `hopRequested = true`만 set. 실제 `Hop()`은 `FixedUpdateAttached` 끝에서 호출 — velocity, surfaceTangent, surfaceNormal 신선한 상태.

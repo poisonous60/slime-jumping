@@ -24,7 +24,7 @@ namespace SlimeJumping.Controller
                 ClearPendingEnergyConversion(executeDeferredReset: false);
                 if (carrier != null) carrier.Detach();
                 ClearPlatformEffect();
-                surfaceMod = SurfaceModifiers.Default;
+                surfaceMod = settings.BuildDefaultModifiers();
                 ChangeState(SlimeState.Airborne);
                 return;
             }
@@ -150,11 +150,14 @@ namespace SlimeJumping.Controller
             else
                 crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, decelValue * dt);
 
-            // 3. Ground Dash: S impulse with input buffer
-            if (dashBufferTimer > 0f && Mathf.Abs(inputX) > 0.01f && dashCooldownTimer <= 0f)
+            // 3. Ground Dash: A/D double-tap impulse with input buffer.
+            // Direction is latched on the event from the keyboard sign — we don't read
+            // live inputX here so a quick double-tap (release before next FixedUpdate) still fires.
+            if (dashBufferTimer > 0f && dashPendingKeyboardSign != 0 && dashCooldownTimer <= 0f)
             {
-                ApplyGroundDash(-Mathf.Sign(inputX));
+                ApplyGroundDash(-dashPendingKeyboardSign);
                 dashBufferTimer = 0f;
+                dashPendingKeyboardSign = 0;
             }
 
             // 4. Final tangent velocity. Use arc-midpoint-compensated tangent so the
@@ -169,6 +172,22 @@ namespace SlimeJumping.Controller
             // corners this zeroes velocity into every tangent surface, avoiding the
             // Phase-A-pushes-back rubber-banding of the single-normal clip.
             surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
+
+            // Drain inertial slideVelocity when the slime is *wedged* — actual motion
+            // clipped to ~0 by ProjectVelocityAgainstContacts while gravAlongTangent
+            // keeps integrating into slideVelocity each frame. Without this drain the
+            // stored energy releases as a phantom launch when the wedge breaks (player
+            // crawls free, geometry shifts, etc.).
+            //
+            // Threshold-based, not proportional: a proportional clip-ratio drain bleeds
+            // slideVelocity on free curve sliding because ComputeArcCompensatedTangent
+            // rotates velocity by ω·dt/2, dropping Dot(velocity, surfaceTangent) by
+            // ~0.5% per frame even when nothing was actually clipped — that compounds
+            // into ~22%/sec loss on continuous curves. Free sliding and slope→flat
+            // redirection both preserve |velocity|, so guarding on velocity magnitude
+            // leaves them untouched and only fires when motion truly stalls.
+            if (surfaceMod.useInertialSlide && velocity.sqrMagnitude < 0.01f)
+                slideVelocity = 0f;
 
             SnapToSurface();
 

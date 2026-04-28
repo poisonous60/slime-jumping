@@ -38,16 +38,41 @@ namespace SlimeJumping.Physics
         [Header("Ground Dash")]
         [Tooltip("Ground dash impulse multiplier. 0 = no dash on this surface")]
         public AngleScaledValue groundDashScale = AngleScaledValue.Constant(1f);
+        [Tooltip("Override the SlimeSettings ground-dash tuning with the values below. OFF = use global SlimeSettings (default).")]
+        public bool overrideGroundDash = false;
+        [Min(0f)] public float groundDashImpulse = 8f;
+        [Tooltip("Domain start (deg) for the angle falloff curve. The surface angle is normalized to t ∈ [0,1] across [angleMin, angleMax] before being fed into the curve.")]
+        public float groundDashAngleMin = 30f;
+        [Tooltip("Domain end (deg) for the angle falloff curve.")]
+        public float groundDashAngleMax = 60f;
+        [Tooltip("Maps normalized angle t ∈ [0,1] (0 = at angleMin, 1 = at angleMax) → angle scale. Default linear (0,1)→(1,0) matches the legacy 1 - InverseLerp(min,max,angle) behavior. Use this to make floors get full dash and walls get nothing with a custom curve in between.")]
+        public AnimationCurve groundDashAngleFalloffCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
+        [Tooltip("Domain start (m/s) for the speed falloff curve. Same-direction tangent speed is normalized to t ∈ [0,1] across [dashFalloffStart, dashFalloffEnd] before being fed into the curve.")]
+        [Min(0f)] public float dashFalloffStart = 5f;
+        [Tooltip("Domain end (m/s) for the speed falloff curve.")]
+        [Min(0f)] public float dashFalloffEnd = 13f;
+        [Tooltip("Maps normalized same-direction speed t ∈ [0,1] (0 = at start, 1 = at end) → dash strength scale. Default linear (0,1)→(1,0) matches legacy 1 - InverseLerp(start,end,sameDirSpeed) behavior.")]
+        public AnimationCurve dashSpeedFalloffCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
+        [Tooltip("Skip dash speed falloff entirely — every dash applies full impulse regardless of current tangent speed. Use for ice where the player should keep stacking dashes. Requires overrideGroundDash = true. Overrides dashSpeedFalloffCurve.")]
+        public bool disableDashFalloff = false;
 
         [Header("Wall Attach")]
         [Tooltip("Speed multiplier when attaching to surface. 1 = no dampen, 0.5 = half speed")]
         public AngleScaledValue wallAttachSpeedDampen = AngleScaledValue.Constant(1f);
 
         [Header("Hop")]
-        [Tooltip("Tangent velocity retained on Hop. 1 = full preserve (default), 0 = wipe tangent (W acts as pure kill-brake). Ice → keep 1. Sticky mud → 0.")]
+        [Tooltip("Tangent velocity retained on Hop. 1 = full preserve (default), 0 = wipe tangent (W acts as pure kill-brake). Ice → keep 1. Sticky mud → 0. Operates on Dot(velocity, surfaceTangent).")]
         public AngleScaledValue hopVelocityRetention = AngleScaledValue.Constant(1f);
+        [Tooltip("Normal-component redirection on Hop. 0 (default) = discard normal velocity (legacy). 1 = the absolute value of |Dot(velocity, surfaceNormal)| is added to the tangent direction at full magnitude. Direction sign comes from existing tangent component, falling back to input direction. Use on ice/halfpipes where incoming flight perpendicular to the surface should slingshot along it.")]
+        public AngleScaledValue hopNormalToTangentRatio = AngleScaledValue.Constant(0f);
         [Tooltip("Opposing-input Hop behavior. ON (default) = zero existing tangent and build bonus in input direction same frame (arcade-responsive, good for grass/mud). OFF = decelerate toward 0 by hopMomentumBonus, never flip in one hop (inertial / ice).")]
         public bool hopInstantFlip = true;
+        [Tooltip("Override the SlimeSettings hop-momentum tuning with the values below. OFF = use global SlimeSettings (default).")]
+        public bool overrideHopMomentum = false;
+        [Tooltip("Tangent speed bonus added per hop in input direction.")]
+        [Min(0f)] public float hopMomentumBonus = 1.5f;
+        [Tooltip("Maximum tangent speed achievable via hop momentum accumulation.")]
+        [Min(0f)] public float hopMomentumMaxSpeed = 20f;
 
         [Header("Slide Physics")]
         [Tooltip("ON = inertial slide (gravity-along-tangent integrated as acceleration; slideResistance is friction in m/s²; landed tangent velocity flows into the inertial channel). OFF (default, untagged surfaces) = legacy steady-state slide where slideSpeed is recomputed each frame from current tangent gravity. Use ON for ice / halfpipes where kinetic energy must convert back to height.")]
@@ -72,7 +97,20 @@ namespace SlimeJumping.Physics
             wallAttachDampen = wallAttachSpeedDampen,
             groundDashScale = groundDashScale,
             hopVelocityRetention = hopVelocityRetention,
+            hopNormalToTangentRatio = hopNormalToTangentRatio,
             hopInstantFlip = hopInstantFlip,
+            overrideHopMomentum = overrideHopMomentum,
+            hopMomentumBonus = hopMomentumBonus,
+            hopMomentumMaxSpeed = hopMomentumMaxSpeed,
+            overrideGroundDash = overrideGroundDash,
+            groundDashImpulse = groundDashImpulse,
+            groundDashAngleMin = groundDashAngleMin,
+            groundDashAngleMax = groundDashAngleMax,
+            groundDashAngleFalloffCurve = groundDashAngleFalloffCurve,
+            dashFalloffStart = dashFalloffStart,
+            dashFalloffEnd = dashFalloffEnd,
+            dashSpeedFalloffCurve = dashSpeedFalloffCurve,
+            disableDashFalloff = disableDashFalloff,
             useInertialSlide = useInertialSlide
         };
     }

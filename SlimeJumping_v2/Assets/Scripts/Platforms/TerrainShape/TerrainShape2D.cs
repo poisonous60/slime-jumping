@@ -44,6 +44,9 @@ namespace SlimeJumping.TerrainShape
         JitteredGrid,
         PoissonDisk,
         Halton,
+        // Adaptive: per-cell most-interior pick. Spacing controls cell size; narrow
+        // strips (width < spacing) still receive one centerline point per cell.
+        Adaptive,
     }
 
     [ExecuteAlways]
@@ -66,7 +69,7 @@ namespace SlimeJumping.TerrainShape
         [Min(0.05f)]
         public float autoSpacing = 0.4f;
 
-        public AutoSubdivideMode autoMode = AutoSubdivideMode.PoissonDisk;
+        public AutoSubdivideMode autoMode = AutoSubdivideMode.Adaptive;
         public int autoSeed = 1;
         [Range(0, 8)]
         public int autoLloydIters = 0;

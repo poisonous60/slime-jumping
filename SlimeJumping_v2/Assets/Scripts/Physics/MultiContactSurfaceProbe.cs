@@ -156,7 +156,11 @@ namespace SlimeJumping.Physics
         {
             if (col is PolygonCollider2D poly)
             {
-                if (poly.OverlapPoint(pos)) return;
+                // No OverlapPoint early-return: edge enumeration with the
+                // Dot(toSlime, outward) <= 0 filter already rejects interior contacts
+                // correctly. Skipping when slime center is inside the polygon would
+                // emit zero contacts, and CheckSurface with prevCollider == null
+                // (Airborne) would then return false → slime wedged but unattached.
                 Transform t = poly.transform;
                 Vector2 offset = poly.offset;
                 int pathCount = poly.pathCount;
@@ -193,7 +197,6 @@ namespace SlimeJumping.Physics
             }
             else if (col is CompositeCollider2D composite)
             {
-                if (composite.OverlapPoint(pos)) return;
                 Transform t = composite.transform;
                 int pathCount = composite.pathCount;
                 for (int p = 0; p < pathCount; p++)
@@ -222,7 +225,7 @@ namespace SlimeJumping.Physics
                 if (distSq > maxDistSq) return;
                 float dist = Mathf.Sqrt(distSq);
                 Vector2 normal = toSlime / dist;
-                MergeOrAddContact(col, normal, dist, dedupeDot, firstNewIdx);
+                MergeOrAddContact(col, normal, dist, false, dedupeDot, firstNewIdx);
             }
         }
 
@@ -233,8 +236,9 @@ namespace SlimeJumping.Physics
             float abSq = ab.sqrMagnitude;
             if (abSq < 1e-8f) return;
 
-            float u = Vector2.Dot(pos - a, ab) / abSq;
-            if (u < 0f) u = 0f; else if (u > 1f) u = 1f;
+            float uRaw = Vector2.Dot(pos - a, ab) / abSq;
+            float u = uRaw < 0f ? 0f : (uRaw > 1f ? 1f : uRaw);
+            bool clamped = (uRaw < 0f) || (uRaw > 1f);
             Vector2 closest = a + ab * u;
 
             Vector2 toSlime = pos - closest;
@@ -242,23 +246,23 @@ namespace SlimeJumping.Physics
             if (distSq < 0.0001f) return;
             if (distSq > maxDistSq) return;
 
-            // Outward perpendicular of edge a→b. For a CCW path (positive signed area
-            // in Y-up world), the interior lies to the LEFT of edge direction, so
-            // outward is the RIGHT perpendicular (dy, -dx). For a CW path (hole) the
-            // sign flips. Combined via windingSign.
             Vector2 outward = new Vector2(ab.y * windingSign, -ab.x * windingSign);
             float outwardLen = outward.magnitude;
             if (outwardLen < 1e-6f) return;
             outward /= outwardLen;
 
-            // Slime must lie on the outward side of this edge's line. Interior contacts
-            // pass trivially (toSlime ‖ outward). Clamped-to-vertex contacts where slime
-            // sits across the edge's line are filtered — those are spurious "the closest
-            // point on this far/back edge happens to be a corner near the slime" cases.
             if (Vector2.Dot(toSlime, outward) <= 0f) return;
 
             float dist = Mathf.Sqrt(distSq);
-            MergeOrAddContact(col, outward, dist, dedupeDot, firstNewIdx);
+
+            // Vertex-clamped contacts get the bisector (toSlime/dist) so two adjacent
+            // edges meeting at a convex corner merge into one contact (lets the slime
+            // roll over a small lip without ProjectVel over-clipping). The clamped flag
+            // tells EffectiveNormal to skip them — otherwise the corner-bisector would
+            // contaminate the slope reading and produce phantom slide on flat tops.
+            // Interior contacts use outward (the real edge perpendicular).
+            Vector2 normal = clamped ? toSlime / dist : outward;
+            MergeOrAddContact(col, normal, dist, clamped, dedupeDot, firstNewIdx);
         }
 
         private void TryAddEdgePolylineContact(Collider2D col, Vector2 pos, Vector2 a, Vector2 b,
@@ -270,11 +274,20 @@ namespace SlimeJumping.Physics
             if (distSq < 0.0001f) return;
             if (distSq > maxDistSq) return;
             float dist = Mathf.Sqrt(distSq);
-            Vector2 normal = toSlime / dist;
-            MergeOrAddContact(col, normal, dist, dedupeDot, firstNewIdx);
+            // EdgeCollider2D has no inherent inside/outside. If a rotating edge swept
+            // past the slime in this fixed step, slime center is now on the side
+            // opposite lastGoodNormal — the radial normal would point further to the
+            // wrong side, causing the next depenetration to push it through. Flip to
+            // lastGoodNormal so the contact reads "still attached on the correct side".
+            Vector2 normal;
+            if (lastGoodNormal.sqrMagnitude > 0.5f && Vector2.Dot(toSlime, lastGoodNormal) < 0f)
+                normal = lastGoodNormal;
+            else
+                normal = toSlime / dist;
+            MergeOrAddContact(col, normal, dist, false, dedupeDot, firstNewIdx);
         }
 
-        private void MergeOrAddContact(Collider2D col, Vector2 n, float dist,
+        private void MergeOrAddContact(Collider2D col, Vector2 n, float dist, bool clamped,
             float dedupeDot, int firstNewIdx)
         {
             for (int c = firstNewIdx; c < contactCount; c++)
@@ -286,6 +299,18 @@ namespace SlimeJumping.Physics
                     {
                         contactNormals[c] = n;
                         contactDistances[c] = dist;
+                        contactClamped[c] = clamped;
+                    }
+                    // A non-clamped contact "wins" the slot regardless of distance —
+                    // an interior edge reading is always more authoritative than a
+                    // vertex-bisector at the same direction. Without this, a clamped
+                    // contact emitted first by edge-iteration order locks in and the
+                    // later interior contact gets dedupe-merged but keeps the clamped
+                    // flag, bouncing it out of EffectiveNormal.
+                    else if (!clamped && contactClamped[c])
+                    {
+                        contactClamped[c] = false;
+                        contactNormals[c] = n;
                     }
                     return;
                 }
@@ -294,6 +319,7 @@ namespace SlimeJumping.Physics
             contactColliders[contactCount] = col;
             contactNormals[contactCount] = n;
             contactDistances[contactCount] = dist;
+            contactClamped[contactCount] = clamped;
             contactCount++;
         }
 
@@ -304,7 +330,9 @@ namespace SlimeJumping.Physics
 
             if (col is PolygonCollider2D poly)
             {
-                if (poly.OverlapPoint(pos)) return 0;
+                // No OverlapPoint guard — would block depenetration when slime center
+                // has entered the polygon, leaving it stuck inside. Edge-enumeration
+                // pushes already handle interior positions correctly.
                 Transform t = poly.transform;
                 Vector2 offset = poly.offset;
                 int pathCount = poly.pathCount;
@@ -341,7 +369,6 @@ namespace SlimeJumping.Physics
             }
             else if (col is CompositeCollider2D composite)
             {
-                if (composite.OverlapPoint(pos)) return 0;
                 Transform t = composite.transform;
                 int pathCount = composite.pathCount;
                 for (int p = 0; p < pathCount; p++)
@@ -384,8 +411,9 @@ namespace SlimeJumping.Physics
             float abSq = ab.sqrMagnitude;
             if (abSq < 1e-8f) return;
 
-            float u = Vector2.Dot(pos - a, ab) / abSq;
-            if (u < 0f) u = 0f; else if (u > 1f) u = 1f;
+            float uRaw = Vector2.Dot(pos - a, ab) / abSq;
+            float u = uRaw < 0f ? 0f : (uRaw > 1f ? 1f : uRaw);
+            bool clamped = (uRaw < 0f) || (uRaw > 1f);
             Vector2 closest = a + ab * u;
 
             Vector2 toSlime = pos - closest;
@@ -403,20 +431,26 @@ namespace SlimeJumping.Physics
             float dist = Mathf.Sqrt(distSq);
             float depth = radius - dist;
 
+            // Same bisector-vs-outward split as the contact path: clamped vertices push
+            // along the bisector (radial) so a slime caught on a small convex corner is
+            // depenetrated AWAY from the corner rather than along the edge perpendicular,
+            // letting it roll over the lip; interior contacts use outward (= bisector).
+            Vector2 normal = clamped ? toSlime / dist : outward;
+
             for (int p = 0; p < pushCount; p++)
             {
-                if (Vector2.Dot(outward, pushNormals[p]) > dedupeDot)
+                if (Vector2.Dot(normal, pushNormals[p]) > dedupeDot)
                 {
                     if (depth > pushDepths[p])
                     {
-                        pushNormals[p] = outward;
+                        pushNormals[p] = normal;
                         pushDepths[p] = depth;
                     }
                     return;
                 }
             }
             if (pushCount >= pushNormals.Length) return;
-            pushNormals[pushCount] = outward;
+            pushNormals[pushCount] = normal;
             pushDepths[pushCount] = depth;
             pushCount++;
         }
@@ -427,11 +461,27 @@ namespace SlimeJumping.Physics
             Vector2 closest = ClosestPointOnSegment(pos, a, b);
             Vector2 toSlime = pos - closest;
             float distSq = toSlime.sqrMagnitude;
-            if (distSq < 0.0001f) return;
             if (distSq >= radiusSq) return;
-            float dist = Mathf.Sqrt(distSq);
-            Vector2 n = toSlime / dist;
-            float depth = radius - dist;
+
+            // Wrong-side detection (rotating SpringyBranch swept past slime):
+            // push along lastGoodNormal so we cross back to the intended side. Depth
+            // is computed along that normal — when slime is on the wrong side
+            // Dot(toSlime, lastGoodNormal) is negative, so depth = radius − that dot
+            // exceeds radius, restoring the slime to clearance + radius.
+            Vector2 n;
+            float depth;
+            if (lastGoodNormal.sqrMagnitude > 0.5f && Vector2.Dot(toSlime, lastGoodNormal) < 0f)
+            {
+                n = lastGoodNormal;
+                depth = radius - Vector2.Dot(toSlime, lastGoodNormal);
+            }
+            else
+            {
+                if (distSq < 0.0001f) return;
+                float dist = Mathf.Sqrt(distSq);
+                n = toSlime / dist;
+                depth = radius - dist;
+            }
 
             for (int p = 0; p < pushCount; p++)
             {

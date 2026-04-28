@@ -160,9 +160,13 @@ namespace SlimeJumping.Controller
         private bool wasStuck;
         private bool preserveLandingVelocity;
 
-        // Ground Dash (S impulse boost)
+        // Ground Dash (A/D double-tap impulse boost)
         private float dashCooldownTimer;
         private float dashBufferTimer;
+        // Latched at event-fire time so a quick double-tap doesn't fail when the second
+        // press is already released by the time FixedUpdate samples LastInputMove.
+        // Keyboard sign: -1 = A (left), +1 = D (right). Crawl-direction sign is the negation.
+        private int dashPendingKeyboardSign;
 
         // Air Dash (Shift, driven by external SlimeAirDash component).
         // Non-zero = FixedUpdateAirborne suspends gravity + air control for the remainder.
@@ -268,6 +272,9 @@ namespace SlimeJumping.Controller
 
         private SurfaceProbe surfaceProbe;
 
+        // CCD scratch for the Attached/Charging position-teleport sweep.
+        private readonly RaycastHit2D[] ccdHitBuffer = new RaycastHit2D[8];
+
         // --- Landing event (for VFX, sound, etc.) ---
         public event System.Action<Vector2, Vector2> OnLanded; // (contactPoint, surfaceNormal)
 
@@ -356,7 +363,7 @@ namespace SlimeJumping.Controller
         {
             inputReader.OnJumpPressed += HandleJumpPressed;
             inputReader.OnJumpReleased += HandleJumpReleased;
-            inputReader.OnVerticalDownPressed += HandleVerticalDownPressed;
+            inputReader.OnGroundDashRequested += HandleGroundDashRequested;
             inputReader.OnVerticalUpPressed += HandleVerticalUpPressed;
             inputReader.OnInteractPressed += HandleInteractPressed;
         }
@@ -365,7 +372,7 @@ namespace SlimeJumping.Controller
         {
             inputReader.OnJumpPressed -= HandleJumpPressed;
             inputReader.OnJumpReleased -= HandleJumpReleased;
-            inputReader.OnVerticalDownPressed -= HandleVerticalDownPressed;
+            inputReader.OnGroundDashRequested -= HandleGroundDashRequested;
             inputReader.OnVerticalUpPressed -= HandleVerticalUpPressed;
             inputReader.OnInteractPressed -= HandleInteractPressed;
         }
@@ -426,6 +433,15 @@ namespace SlimeJumping.Controller
             gravityRight = new Vector2(gravityUp.y, -gravityUp.x);
 
             ignoredColliderList.Tick(dt, rb.position, settings.slimeRadius, settings.launchClearanceThreshold);
+
+            // Probe-mode decision must happen BEFORE CheckSurface — the new probe
+            // populates contacts during CheckSurface, and a post-check swap would
+            // discard those (TransferStateFrom only carries lastGoodNormal). On a
+            // landing frame that swap-too-late path leaves the state handler with
+            // empty contacts, ProjectVelocityAgainstContacts no-ops, slide gravity
+            // teleports the slime past a thin edge before Phase A can catch it.
+            DecideProbeMode();
+
             float surfaceMultiplier = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 ? settings.attachedCheckMultiplier : settings.airborneCheckMultiplier;
             float inputX = (currentState == SlimeState.Charging) ? 0f : inputReader.LastInputMove.x;
@@ -552,18 +568,47 @@ namespace SlimeJumping.Controller
                 + platformVel * surfaceMod.carrierFriction.Evaluate(frictionAngle)
                 + ropeVel;
 
-            // Attached/Charging: integrate explicitly and re-snap so the post-physics
-            // rb.position (the value rendering interpolates between) lands on our
-            // surface anchor every frame. Letting Unity integrate `rb.linearVelocity *
-            // dt` and run its contact solver instead lets the engine apply per-frame
-            // position corrections at facet boundaries that we never see in
-            // SnapToSurface — visible as crawl jitter on faceted polygon terrain.
-            // linearVelocity is zeroed so Unity's step is a no-op for movement; other
-            // systems read our `velocity` field directly. Airborne/Stunned keep the
-            // physics-driven path so projectile motion stays Unity-native.
-            if (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
+            // Attached/Charging movement model is per-probe-mode:
+            //
+            //   Multi  → teleport-then-snap. Letting Unity integrate `linearVelocity * dt`
+            //            and run its contact solver applies per-frame position corrections
+            //            at facet boundaries we never see in SnapToSurface (visible as
+            //            crawl jitter on faceted polygon terrain). This is the ice-tremor
+            //            fix. Trade-off: bypasses Unity's CCD + contact solver, so moving
+            //            thin colliders that *are* the slime's surface (rotating SpringyBranch)
+            //            can phase the slime through.
+            //
+            //   Single → legacy `rb.linearVelocity = finalVel`. Unity-native physics with
+            //            CCD enabled handles moving thin colliders correctly. Used per-platform
+            //            via SurfaceProbeModeOverride. linearVelocity is *not* zeroed in this
+            //            branch — Unity drives movement from it.
+            //
+            // Airborne/Stunned always use the physics-driven path so projectile motion stays
+            // Unity-native.
+            bool useTeleport = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
+                && currentProbeMode == SurfaceProbeMode.Multi;
+            if (useTeleport)
             {
-                rb.position += finalVel * dt;
+                // CCD against thin moving colliders (SpringyBranch EdgeCollider2D) that
+                // teleport-by-rb.position would otherwise skip past. Cast only when the
+                // step is non-trivial and clamp to the first non-ignored hit.
+                Vector2 delta = finalVel * dt;
+                float dist = delta.magnitude;
+                if (dist > 1e-5f)
+                {
+                    int hits = Physics2D.CircleCastNonAlloc(rb.position, settings.slimeRadius,
+                        delta / dist, ccdHitBuffer, dist, settings.groundLayer);
+                    float clamped = dist;
+                    for (int i = 0; i < hits; i++)
+                    {
+                        var h = ccdHitBuffer[i];
+                        if (h.collider == null) continue;
+                        if (ignoredColliderList.Colliders.Contains(h.collider)) continue;
+                        if (h.collider == surfaceCollider) continue;
+                        if (h.distance < clamped) clamped = h.distance;
+                    }
+                    rb.position += (delta / dist) * Mathf.Max(0f, clamped - settings.contactSkin);
+                }
                 surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
                 rb.linearVelocity = Vector2.zero;
             }
@@ -587,7 +632,9 @@ namespace SlimeJumping.Controller
                 }
             }
             bool wasInertial = surfaceMod.useInertialSlide;
-            surfaceMod = tag != null ? tag.GetModifiers() : SurfaceModifiers.Default;
+            surfaceMod = (tag != null && tag.material != null)
+                ? tag.material.ToModifiers()
+                : settings.BuildDefaultModifiers();
 
             // Transition between inertial and legacy slide surfaces: keep tangent speed
             // consistent by moving the inertial channel into crawl when leaving inertial,
@@ -602,6 +649,31 @@ namespace SlimeJumping.Controller
                 slideVelocity += crawlVelocity;
                 crawlVelocity = 0f;
             }
+        }
+
+        // Scratch for the per-frame probe-mode broadphase scan.
+        private readonly Collider2D[] modeProbeBuffer = new Collider2D[8];
+
+        // Probe-mode broadphase scan range. Independent from surfaceCheckDistance — that
+        // governs *contact* detection (must hug the collider tightly), whereas this only
+        // needs to find an override-bearing collider in the slime's neighborhood so the
+        // mode swap happens well before contact. Wide = safe.
+        private const float PROBE_MODE_SCAN_RADIUS = 4f;
+
+        private void DecideProbeMode()
+        {
+            Vector2 pos = rb.position;
+            int n = Physics2D.OverlapCircleNonAlloc(pos, PROBE_MODE_SCAN_RADIUS, modeProbeBuffer, settings.groundLayer);
+            SurfaceProbeMode desired = settings.surfaceProbeMode;
+            for (int i = 0; i < n; i++)
+            {
+                var c = modeProbeBuffer[i];
+                if (c == null) continue;
+                if (ignoredColliderList.Colliders.Contains(c)) continue;
+                var ovr = c.GetComponentInParent<SurfaceProbeModeOverride>();
+                if (ovr != null) { desired = ovr.mode; break; }
+            }
+            if (desired != currentProbeMode) SetProbeMode(desired);
         }
 
         // Rope reference cache. Called on surface change.
@@ -892,7 +964,7 @@ namespace SlimeJumping.Controller
             // Detach
             if (carrier != null) carrier.Detach();
             ClearPlatformEffect();
-            surfaceMod = SurfaceModifiers.Default;
+            surfaceMod = settings.BuildDefaultModifiers();
 
             // Compute knockback direction
             Vector2 kbDir = effect.knockbackDirection;
@@ -1003,7 +1075,7 @@ namespace SlimeJumping.Controller
             }
             if (carrier != null) carrier.Detach();
             ClearPlatformEffect();
-            surfaceMod = SurfaceModifiers.Default;
+            surfaceMod = settings.BuildDefaultModifiers();
             blockAttachCount = 0;
             inFluidCount = 0;
             stunTimer = 0f;

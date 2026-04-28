@@ -33,7 +33,7 @@ namespace SlimeJumping.Controller
             // Carrier detach
             if (carrier != null) carrier.Detach();
             ClearPlatformEffect();
-            surfaceMod = SurfaceModifiers.Default;
+            surfaceMod = settings.BuildDefaultModifiers();
 
             // Clear ignored colliders (old location irrelevant)
             ignoredColliderList.Clear();

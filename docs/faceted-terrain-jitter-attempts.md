@@ -159,3 +159,41 @@ else
 ### 미시도지만 더 깊이 가려면
 
 문서 위쪽 "다음에 시도해 볼 만한 방향" 의 1, 2 번은 여전히 유효 — 콜라이더 메쉬 smooth / spline-based motion. 현재 수정으로 떨림이 "허용 범위" 까지 줄었다면 거기서 멈추고, 더 까다로운 곡면 (낮은 R, 높은 v) 에서 다시 떨림이 부각되면 검토.
+
+---
+
+## 후속 회귀 (2026-04-28): SpringyBranch 통과 / Airborne 박힘
+
+위 수정 (`MultiContactSurfaceProbe` + `rb.position += finalVel * dt` teleport-then-snap) 이후 두 가지 회귀가 보고됨.
+
+### 1. SpringyBranch (회전하는 EdgeCollider2D / 얇은 PolygonCollider2D) 를 슬라임이 통과
+
+**원인**: 새 movement model 이 Unity 의 `linearVelocity` 채널과 CCD / contact solver 를 우회. teleport-then-snap 의 `SnapToSurface` 는 *현재* surfaceCollider 에만 anchor 하고, 회전 중인 collider 가 슬라임을 휩쓸고 지나가는 케이스에 대한 방어가 없음. 추가로:
+
+- `MultiContactSurfaceProbe` 의 EdgeCollider2D depenetration 은 push 방향이 `toSlime/dist` (radial). 슬라임이 회전하는 edge 를 가로질러 반대편으로 떨어진 순간 — radial 은 *반대편 바깥쪽* 을 가리키고, depenetration 이 슬라임을 더 잘못된 쪽으로 밀어버림.
+- 얇은 PolygonCollider2D 는 `outward` perpendicular 자체가 "이 edge 의 바깥쪽" 인데, 회전으로 슬라임이 대체된 쪽 edge 의 outward 가 가리키는 방향은 슬라임이 원래 있어야 할 곳의 *반대편*.
+
+Unity 의 CCD 는 *슬라임 collider* 가 빠르게 이동하는 케이스만 다룸. *콜라이더 자체* 가 빠르게 휩쓰는 케이스는 물리 엔진 차원의 비대칭 — `MultiContactSurfaceProbe` + teleport 모델로는 깔끔히 풀리지 않음.
+
+**해결: 프로브 모드 + 무브먼트 모델 분리 (per-platform)**
+
+- 새 컴포넌트 `SurfaceProbeModeOverride` ([SlimeJumping_v2/Assets/Scripts/Physics/SurfaceProbeModeOverride.cs](../SlimeJumping_v2/Assets/Scripts/Physics/SurfaceProbeModeOverride.cs)): 플랫폼 GameObject (콜라이더의 부모 체인 어딘가) 에 붙이면 그 표면을 사용하는 동안 프로브 모드가 강제됨. SpringyBranch 에는 `Single` 로 설정.
+- `SlimeController.DecideProbeMode()`: 매 FixedUpdate **CheckSurface 직전** 에 broadphase `OverlapCircle` (반경 4 unit, `surfaceCheckDistance` 와 무관) 으로 주변 콜라이더 스캔, 어느 하나라도 override 컴포넌트를 가지면 그 모드로 swap. CheckSurface 이후가 아닌 *이전* 에 결정해야 그 프레임의 contacts 가 올바른 프로브로 채워짐 (`SetProbeMode` 는 새 프로브를 만들고 contacts 는 transferred 되지 않으므로 mid-frame swap 시 한 프레임 동안 contact 가 비게 됨).
+- 무브먼트 모델도 모드 따라감:
+  - `Multi` → 기존 teleport-then-snap (ice tremor 억제용으로 필요).
+  - `Single` → `rb.linearVelocity = finalVel` (legacy). Unity 가 CCD + contact solver 로 회전하는 thin collider 를 정상적으로 처리.
+
+코드: [SlimeController.cs](../SlimeJumping_v2/Assets/Scripts/Controller/SlimeController.cs) 의 `DecideProbeMode`, `useTeleport` 분기. Per-scene 이 아니라 per-platform 이라 한 씬에 ice 표면과 SpringyBranch 가 공존해도 슬라임이 어떤 표면 근처에 있느냐에 따라 자동 전환.
+
+### 2. 폴리곤에 박혀서 Airborne 으로 멈춤
+
+**원인**: `MultiContactSurfaceProbe.AddContactsForCollider` / `CollectPushesForCollider` 의 `poly.OverlapPoint(pos)` 조기 return guard. 슬라임 중심이 폴리곤 내부로 약간 들어간 프레임 (강한 충돌 직후, Phase A 가 아직 수렴 안 한 경우) 에 그 폴리곤은 contact 0 개를 emit 함. `CheckSurface` 가 `contactCount == 0 && hasNearby == true && prevCollider == null` (Airborne 진입) 경로에서 false 를 반환 → 슬라임은 분명히 콜라이더에 박혀 있는데 *공중* 으로 판정.
+
+이 guard 는 ring-sample 시절 interior probe 가 가짜 contact 을 만들던 잔재. edge enumeration 에서는 `Dot(toSlime, outward) <= 0` 필터가 interior 케이스를 정확히 거름 — guard 가 redundant 하고 해롭기까지 함.
+
+**해결: 4 곳의 `OverlapPoint` early-return 삭제** ([MultiContactSurfaceProbe.cs](../SlimeJumping_v2/Assets/Scripts/Physics/MultiContactSurfaceProbe.cs) 의 PolygonCollider2D / CompositeCollider2D 분기, contact 와 push 양쪽).
+
+### 부수 정리
+
+- `EffectiveNormal` 에 vertex-clamped contact 가 섞여 들어가 평평한 면 위에서도 8.9° 같은 가짜 슬로프가 잡히던 문제 — `contactClamped[]` 플래그 추가 ([SurfaceProbe.cs](../SlimeJumping_v2/Assets/Scripts/Physics/SurfaceProbe.cs)), `MergeOrAddContact` 에서 set, `EffectiveNormal` 가중 합산에서 skip. clamped contact 는 여전히 emit 되므로 `SelectPrimary` / corner roll-over 는 영향 없음.
+- ice tremor fix 가 필요했던 핵심 — edge enumeration + soft-band EffectiveNormal — 은 그대로 보존. 이번 수정은 모두 그 위에 얹은 분기 / 플래그.

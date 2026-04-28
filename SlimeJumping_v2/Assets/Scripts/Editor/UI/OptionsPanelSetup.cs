@@ -17,7 +17,8 @@ namespace SlimeJumping.EditorTools.UI
         public const string PrefabPath = UISetupCommon.PanelPrefabRoot + "/OptionsPanel.prefab";
 
         private const float BoxWidth = 820f;
-        private const float BoxHeight = 1000f;
+        private const float BoxHeight = 720f;
+        private const float TabHeight = 56f;
         private const float RowHeight = 56f;
         private const float LabelWidth = 240f;
         private const float CycleButtonWidth = 60f;
@@ -56,50 +57,95 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.AddLayoutElement(title.gameObject, minHeight: 88f, preferredHeight: 96f);
             UISetupCommon.TagSlot(title.gameObject, UISlotType.Title);
 
-            // --- GRAPHICS ---
-            AddSectionHeader(box.transform, "Graphics");
+            // Tab strip
+            var tabs = UISetupCommon.CreateChild(box.transform, "Tabs", typeof(RectTransform));
+            UISetupCommon.AddHorizontalLayout(tabs, padding: 0, spacing: 12, childAlign: TextAnchor.MiddleCenter, expandWidth: false);
+            UISetupCommon.AddLayoutElement(tabs, minHeight: TabHeight, preferredHeight: TabHeight);
+            var graphicsTabBtn = CreateTabButton(tabs.transform, "GraphicsTabButton", "Graphics", out TextMeshProUGUI graphicsTabText);
+            UISetupCommon.TagSlot(graphicsTabBtn.gameObject, UISlotType.Tab_Graphics);
+            var audioTabBtn = CreateTabButton(tabs.transform, "AudioTabButton", "Audio", out TextMeshProUGUI audioTabText);
+            UISetupCommon.TagSlot(audioTabBtn.gameObject, UISlotType.Tab_Audio);
+            var displayTabBtn = CreateTabButton(tabs.transform, "DisplayTabButton", "Display", out TextMeshProUGUI displayTabText);
+            UISetupCommon.TagSlot(displayTabBtn.gameObject, UISlotType.Tab_Display);
+            var debugTabBtn = CreateTabButton(tabs.transform, "DebugTabButton", "Debug", out TextMeshProUGUI debugTabText);
+            UISetupCommon.TagSlot(debugTabBtn.gameObject, UISlotType.Tab_Debug);
 
-            var frameLimitRow = CreateCyclerRow(box.transform, "FrameLimitRow", "Frame Limit",
+            // Page containers — only one is active at a time, controlled at runtime by SelectTab.
+            var graphicsPage = UISetupCommon.CreateChild(box.transform, "GraphicsPage", typeof(RectTransform));
+            UISetupCommon.AddVerticalLayout(graphicsPage, padding: 0, spacing: 10, childAlign: TextAnchor.UpperCenter);
+            UISetupCommon.TagSlot(graphicsPage, UISlotType.Page_Graphics);
+
+            var audioPage = UISetupCommon.CreateChild(box.transform, "AudioPage", typeof(RectTransform));
+            UISetupCommon.AddVerticalLayout(audioPage, padding: 0, spacing: 10, childAlign: TextAnchor.UpperCenter);
+            UISetupCommon.TagSlot(audioPage, UISlotType.Page_Audio);
+
+            var displayPage = UISetupCommon.CreateChild(box.transform, "DisplayPage", typeof(RectTransform));
+            UISetupCommon.AddVerticalLayout(displayPage, padding: 0, spacing: 10, childAlign: TextAnchor.UpperCenter);
+            UISetupCommon.TagSlot(displayPage, UISlotType.Page_Display);
+
+            var debugPage = UISetupCommon.CreateChild(box.transform, "DebugPage", typeof(RectTransform));
+            UISetupCommon.AddVerticalLayout(debugPage, padding: 0, spacing: 10, childAlign: TextAnchor.UpperCenter);
+            UISetupCommon.TagSlot(debugPage, UISlotType.Page_Debug);
+
+            // --- GRAPHICS PAGE ---
+            AddSectionHeader(graphicsPage.transform, "Graphics");
+
+            var frameLimitRow = CreateCyclerRow(graphicsPage.transform, "FrameLimitRow", "Frame Limit",
                 out Button frameLimitPrev, out Button frameLimitNext, out TextMeshProUGUI frameLimitValue);
             UISetupCommon.TagSlot(frameLimitRow, UISlotType.Row_FrameLimit);
 
-            var vsyncRow = CreateCyclerRow(box.transform, "VSyncRow", "VSync",
+            var vsyncRow = CreateCyclerRow(graphicsPage.transform, "VSyncRow", "VSync",
                 out Button vsyncPrev, out Button vsyncNext, out TextMeshProUGUI vsyncValue);
             UISetupCommon.TagSlot(vsyncRow, UISlotType.Row_VSync);
 
-            // --- AUDIO ---
-            AddSectionHeader(box.transform, "Audio");
+            // --- AUDIO PAGE ---
+            AddSectionHeader(audioPage.transform, "Audio");
 
-            var playerSfxRow = CreateSliderRow(box.transform, "PlayerSfxRow", "Player SFX",
+            var playerSfxRow = CreateSliderRow(audioPage.transform, "PlayerSfxRow", "Player SFX",
                 out Slider playerSfxSlider, out TextMeshProUGUI playerSfxValue);
             UISetupCommon.TagSlot(playerSfxRow, UISlotType.Row_PlayerSfx);
 
-            var worldSfxRow = CreateSliderRow(box.transform, "WorldSfxRow", "World SFX",
+            var worldSfxRow = CreateSliderRow(audioPage.transform, "WorldSfxRow", "World SFX",
                 out Slider worldSfxSlider, out TextMeshProUGUI worldSfxValue);
             UISetupCommon.TagSlot(worldSfxRow, UISlotType.Row_WorldSfx);
 
-            var bgmRow = CreateSliderRow(box.transform, "BgmRow", "BGM",
+            var bgmRow = CreateSliderRow(audioPage.transform, "BgmRow", "BGM",
                 out Slider bgmSlider, out TextMeshProUGUI bgmValue);
             UISetupCommon.TagSlot(bgmRow, UISlotType.Row_Bgm);
 
-            var uiRow = CreateSliderRow(box.transform, "UiRow", "UI",
+            var uiRow = CreateSliderRow(audioPage.transform, "UiRow", "UI",
                 out Slider uiSlider, out TextMeshProUGUI uiValue);
             UISetupCommon.TagSlot(uiRow, UISlotType.Row_Ui);
 
-            // --- DISPLAY ---
-            AddSectionHeader(box.transform, "Display");
+            // --- DISPLAY PAGE ---
+            AddSectionHeader(displayPage.transform, "Display");
 
-            var windowModeRow = CreateCyclerRow(box.transform, "WindowModeRow", "Window Mode",
+            var windowModeRow = CreateCyclerRow(displayPage.transform, "WindowModeRow", "Window Mode",
                 out Button windowModePrev, out Button windowModeNext, out TextMeshProUGUI windowModeValue);
             UISetupCommon.TagSlot(windowModeRow, UISlotType.Row_WindowMode);
 
-            var resolutionRow = CreateDropdownRow(box.transform, "ResolutionRow", "Resolution",
+            var resolutionRow = CreateDropdownRow(displayPage.transform, "ResolutionRow", "Resolution",
                 out TMP_Dropdown resolutionDropdown);
             UISetupCommon.TagSlot(resolutionRow, UISlotType.Row_Resolution);
 
-            var bgCameraRow = CreateCyclerRow(box.transform, "BackgroundCameraRow", "Background Camera",
+            var bgCameraRow = CreateCyclerRow(displayPage.transform, "BackgroundCameraRow", "Background Camera",
                 out Button bgCameraPrev, out Button bgCameraNext, out TextMeshProUGUI bgCameraValue);
             UISetupCommon.TagSlot(bgCameraRow, UISlotType.Row_BackgroundCamera);
+
+            // --- DEBUG PAGE ---
+            AddSectionHeader(debugPage.transform, "Debug");
+
+            var chargeVisualRow = CreateCyclerRow(debugPage.transform, "ChargeVisualRow", "Charge Visual",
+                out Button chargeVisualPrev, out Button chargeVisualNext, out TextMeshProUGUI chargeVisualValue);
+            UISetupCommon.TagSlot(chargeVisualRow, UISlotType.Row_ChargeVisual);
+
+            var mouseTeleportRow = CreateCyclerRow(debugPage.transform, "MouseTeleportDebugRow", "Mouse Teleport",
+                out Button mouseTeleportPrev, out Button mouseTeleportNext, out TextMeshProUGUI mouseTeleportValue);
+            UISetupCommon.TagSlot(mouseTeleportRow, UISlotType.Row_MouseTeleportDebug);
+
+            var clearTrailRow = CreateActionRow(debugPage.transform, "ClearTrailRow", "Clear Trail", "Clear",
+                out Button clearTrailBtn);
+            UISetupCommon.TagSlot(clearTrailRow, UISlotType.Row_ClearTrail);
 
             // Spacer
             var spacer = UISetupCommon.CreateChild(box.transform, "Spacer", typeof(RectTransform));
@@ -149,6 +195,29 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("backgroundCameraNextButton").objectReferenceValue = bgCameraNext;
             so.FindProperty("backgroundCameraValueLabel").objectReferenceValue = bgCameraValue;
 
+            so.FindProperty("chargeVisualPrevButton").objectReferenceValue = chargeVisualPrev;
+            so.FindProperty("chargeVisualNextButton").objectReferenceValue = chargeVisualNext;
+            so.FindProperty("chargeVisualValueLabel").objectReferenceValue = chargeVisualValue;
+
+            so.FindProperty("mouseTeleportDebugPrevButton").objectReferenceValue = mouseTeleportPrev;
+            so.FindProperty("mouseTeleportDebugNextButton").objectReferenceValue = mouseTeleportNext;
+            so.FindProperty("mouseTeleportDebugValueLabel").objectReferenceValue = mouseTeleportValue;
+
+            so.FindProperty("clearTrailButton").objectReferenceValue = clearTrailBtn;
+
+            so.FindProperty("graphicsTabButton").objectReferenceValue = graphicsTabBtn;
+            so.FindProperty("audioTabButton").objectReferenceValue = audioTabBtn;
+            so.FindProperty("displayTabButton").objectReferenceValue = displayTabBtn;
+            so.FindProperty("debugTabButton").objectReferenceValue = debugTabBtn;
+            so.FindProperty("graphicsPage").objectReferenceValue = graphicsPage;
+            so.FindProperty("audioPage").objectReferenceValue = audioPage;
+            so.FindProperty("displayPage").objectReferenceValue = displayPage;
+            so.FindProperty("debugPage").objectReferenceValue = debugPage;
+            so.FindProperty("graphicsTabLabel").objectReferenceValue = graphicsTabText;
+            so.FindProperty("audioTabLabel").objectReferenceValue = audioTabText;
+            so.FindProperty("displayTabLabel").objectReferenceValue = displayTabText;
+            so.FindProperty("debugTabLabel").objectReferenceValue = debugTabText;
+
             so.FindProperty("closeButton").objectReferenceValue = closeBtn;
             so.FindProperty("quitButton").objectReferenceValue = quitBtn;
             so.ApplyModifiedPropertiesWithoutUndo();
@@ -190,6 +259,67 @@ namespace SlimeJumping.EditorTools.UI
             next = UISetupCommon.CreateButton(row.transform, "NextButton", ">");
             UISetupCommon.AddLayoutElement(next.gameObject, preferredWidth: CycleButtonWidth, preferredHeight: RowHeight, flexibleWidth: 0f);
             UISetupCommon.TagSlot(next.gameObject, UISlotType.NextButton);
+
+            return row;
+        }
+
+        private static Button CreateTabButton(Transform parent, string name, string text, out TextMeshProUGUI label)
+        {
+            var go = UISetupCommon.CreateChild(parent, name,
+                typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            var img = go.GetComponent<Image>();
+            img.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+            img.type = Image.Type.Sliced;
+            img.color = UISetupCommon.ColorButtonBG;
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = img;
+
+            var le = go.AddComponent<LayoutElement>();
+            le.minWidth = 150f;
+            le.preferredWidth = 170f;
+            le.minHeight = TabHeight;
+            le.preferredHeight = TabHeight;
+            le.flexibleWidth = 0f;
+
+            var labelGo = UISetupCommon.CreateChild(go.transform, "Label", typeof(RectTransform));
+            label = labelGo.AddComponent<TextMeshProUGUI>();
+            label.text = text;
+            label.fontSize = UISetupCommon.FontButton;
+            label.alignment = TextAlignmentOptions.Center;
+            label.fontStyle = FontStyles.Bold;
+            label.enableAutoSizing = false;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.overflowMode = TextOverflowModes.Overflow;
+            var font = UISetupCommon.LoadSharedFont();
+            if (font != null) label.font = font;
+
+            // Configure the RectTransform AFTER AddComponent<TextMeshProUGUI>,
+            // since adding the TMP component resets the rect to its preferred
+            // text size and would clobber any anchors/offsets we set first.
+            var rt = label.rectTransform;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.offsetMin = new Vector2(12f, 4f);
+            rt.offsetMax = new Vector2(-12f, -4f);
+            return btn;
+        }
+
+        private static GameObject CreateActionRow(Transform parent, string name, string labelText,
+            string buttonText, out Button button)
+        {
+            var row = UISetupCommon.CreateChild(parent, name, typeof(RectTransform));
+            UISetupCommon.AddHorizontalLayout(row, padding: 0, spacing: 8, childAlign: TextAnchor.MiddleLeft);
+            UISetupCommon.AddLayoutElement(row, minHeight: RowHeight, preferredHeight: RowHeight);
+
+            var label = UISetupCommon.CreateText(row.transform, "Label", labelText,
+                UISetupCommon.FontRowLabel, TextAlignmentOptions.MidlineLeft);
+            label.color = UISetupCommon.ColorRowLabel;
+            UISetupCommon.AddLayoutElement(label.gameObject, preferredWidth: LabelWidth, flexibleWidth: 0f);
+
+            button = UISetupCommon.CreateButton(row.transform, "ActionButton", buttonText);
+            UISetupCommon.AddLayoutElement(button.gameObject, minWidth: 200f, flexibleWidth: 1f, preferredHeight: RowHeight);
 
             return row;
         }

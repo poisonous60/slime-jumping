@@ -26,6 +26,10 @@ namespace SlimeJumping.Physics
         protected readonly Vector2[] contactNormals = new Vector2[16];
         protected readonly float[] contactDistances = new float[16];
         protected readonly bool[] contactActive = new bool[16];
+        // True for contacts whose closest-point clamped to a polygon vertex (i.e. the
+        // contact is a corner-bisector, not a real edge-perpendicular). Excluded from
+        // EffectiveNormal so corner artefacts don't fake a 20–45° slope on flat ground.
+        protected readonly bool[] contactClamped = new bool[16];
         protected int contactCount;
 
         // Diagnostic state
@@ -364,6 +368,7 @@ namespace SlimeJumping.Physics
                 Vector2 sum = Vector2.zero;
                 for (int i = 0; i < contactCount; i++)
                 {
+                    if (contactClamped[i]) continue;
                     if (Vector2.Dot(contactNormals[i], lastGravityUp) < lastCeilingThreshold) continue;
                     float w = radius + fullBand - contactDistances[i];
                     if (w <= 0f) continue;

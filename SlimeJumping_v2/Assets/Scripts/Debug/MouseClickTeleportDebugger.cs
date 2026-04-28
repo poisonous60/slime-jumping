@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using SlimeJumping.Controller;
+using SlimeJumping.Settings;
 
 namespace SlimeJumping.Debugging
 {
@@ -28,6 +29,8 @@ namespace SlimeJumping.Debugging
 
         private void Update()
         {
+            if (!GameOptions.MouseTeleportDebugEnabled) return;
+
             var mouse = Mouse.current;
             if (mouse == null || slimeController == null) return;
 

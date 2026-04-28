@@ -97,7 +97,7 @@
 
 ## 관련
 
-- [ground-dash.md](ground-dash.md) — 별개 시스템 (Attached S 임펄스), 유지.
+- [ground-dash.md](ground-dash.md) — 별개 시스템 (Attached A/D 더블탭 임펄스), 유지.
 - [hyper-dash.md](hyper-dash.md) — 대시 속도가 다음 점프에 실리는 원리.
 - [airborne.md](airborne.md) — gravity / air control 분기 위치.
 - [vfx-infra.md](../infra/vfx-infra.md) — HitStopService + ImpulseEmitter.

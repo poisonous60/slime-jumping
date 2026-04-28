@@ -235,7 +235,8 @@ namespace SlimeJumping.TerrainShape.Editor
                     "Grid: deterministic regular grid (clean but mechanical).\n" +
                     "JitteredGrid: grid + random offset per cell.\n" +
                     "PoissonDisk: Bridson's blue-noise sampling — organic, even spacing, no clustering.\n" +
-                    "Halton: low-discrepancy quasi-random — even coverage, deterministic, less regular than grid."),
+                    "Halton: low-discrepancy quasi-random — even coverage, deterministic, less regular than grid.\n" +
+                    "Adaptive: per-cell most-interior pick — narrow strips (width < Spacing) still receive one centerline point per cell."),
                 src.autoMode);
             float newSpacing = EditorGUILayout.Slider(
                 new GUIContent("Spacing", "Grid cell size, or minimum point distance for PoissonDisk/Halton."),
@@ -1437,6 +1438,7 @@ namespace SlimeJumping.TerrainShape.Editor
                 case AutoSubdivideMode.JitteredGrid: candidates = SampleJitteredGrid(pts, spacing, existing, rng); break;
                 case AutoSubdivideMode.PoissonDisk:  candidates = SamplePoissonDisk(pts, spacing, existing, rng); break;
                 case AutoSubdivideMode.Halton:       candidates = SampleHalton(pts, spacing, existing); break;
+                case AutoSubdivideMode.Adaptive:     candidates = SampleAdaptive(pts, spacing, existing); break;
                 case AutoSubdivideMode.Grid:
                 default:                             candidates = SampleGrid(pts, spacing, existing); break;
             }
@@ -1626,6 +1628,65 @@ namespace SlimeJumping.TerrainShape.Editor
                 var p = new Vector2(min.x + Halton(i, 2) * size.x, min.y + Halton(i, 3) * size.y);
                 if (!AcceptCandidate(p, poly, minDist, buf, all)) continue;
                 all.Add(p); result.Add(p);
+            }
+            return result;
+        }
+
+        // Adaptive: each spacing×spacing cell yields its single most-interior point
+        // (sub-sampled approximation of the local medial-axis anchor). Unlike the
+        // other samplers there is no fixed boundary buffer — narrow strips of width
+        // W < spacing still receive one centerline point per cell instead of being
+        // entirely rejected. The min-distance check between accepted points is
+        // relaxed in proportion to local thickness (bestD), so two adjacent
+        // strip-cells can both keep their centerline anchor.
+        static List<Vector2> SampleAdaptive(List<Vector2> poly, float spacing, List<Vector2> existing)
+        {
+            var result = new List<Vector2>();
+            if (poly.Count < 3) return result;
+            PolyBounds(poly, out var min, out var max);
+            Vector2 size = max - min;
+            if (size.x <= 0f || size.y <= 0f) return result;
+
+            var all = new List<Vector2>(existing);
+
+            const int SUB = 5;
+            int nx = Mathf.Max(1, Mathf.CeilToInt(size.x / spacing));
+            int ny = Mathf.Max(1, Mathf.CeilToInt(size.y / spacing));
+
+            for (int cy = 0; cy < ny; cy++)
+            for (int cx = 0; cx < nx; cx++)
+            {
+                Vector2 cellMin = new Vector2(min.x + cx * spacing, min.y + cy * spacing);
+
+                Vector2 bestP = default;
+                float bestD = -1f;
+                for (int sy = 0; sy < SUB; sy++)
+                for (int sx = 0; sx < SUB; sx++)
+                {
+                    float t = (sx + 0.5f) / SUB;
+                    float u = (sy + 0.5f) / SUB;
+                    Vector2 p = new Vector2(
+                        cellMin.x + spacing * t,
+                        cellMin.y + spacing * u);
+                    if (p.x > max.x || p.y > max.y) continue;
+                    if (!TerrainShape2DMeshBuilder.IsPointInside(poly, p)) continue;
+                    float d = TerrainShape2DMeshBuilder.DistanceToPolyline(p, poly);
+                    if (d > bestD) { bestD = d; bestP = p; }
+                }
+
+                if (bestD <= 0f) continue;
+
+                float minDist = Mathf.Min(spacing * 0.6f, bestD * 1.5f);
+                bool tooClose = false;
+                float md2 = minDist * minDist;
+                for (int k = 0; k < all.Count; k++)
+                {
+                    if (Vector2.SqrMagnitude(all[k] - bestP) < md2) { tooClose = true; break; }
+                }
+                if (tooClose) continue;
+
+                all.Add(bestP);
+                result.Add(bestP);
             }
             return result;
         }

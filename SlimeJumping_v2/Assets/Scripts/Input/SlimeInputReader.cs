@@ -7,6 +7,7 @@ namespace SlimeJumping.InputHandling
     public class SlimeInputReader : MonoBehaviour
     {
         [SerializeField] private InputActionAsset inputActionAsset;
+        [SerializeField] private float horizontalDoubleTapWindow = 0.25f;
 
         public Vector2 AimInput { get; private set; }
         /// <summary>Last-input-wins variant. Use for air control so charging→airborne transitions feel responsive.</summary>
@@ -18,7 +19,8 @@ namespace SlimeJumping.InputHandling
         public event Action OnJumpPressed;
         public event Action OnJumpReleased;
         public event Action OnVerticalUpPressed;
-        public event Action OnVerticalDownPressed;
+        /// <summary>Fires on A/D double-tap (ground-dash request). Argument is keyboard sign: -1 for A, +1 for D.</summary>
+        public event Action<int> OnGroundDashRequested;
         public event Action OnInteractPressed;
 
         private InputAction aimAction;
@@ -30,6 +32,10 @@ namespace SlimeJumping.InputHandling
         // Last-input-wins tracking
         private bool prevLeft, prevRight, prevUp, prevDown;
         private float lastHDir, lastVDir;
+
+        // A/D double-tap tracking (ground-dash trigger)
+        private float lastLeftPressTime = -999f;
+        private float lastRightPressTime = -999f;
 
         private void OnEnable()
         {
@@ -43,7 +49,6 @@ namespace SlimeJumping.InputHandling
             jumpAction.started += HandleJumpStarted;
             jumpAction.canceled += HandleJumpCanceled;
             verticalUpAction.started += HandleVerticalUpStarted;
-            verticalDownAction.started += HandleVerticalDownStarted;
             interactAction.started += HandleInteractStarted;
 
             playerMap.Enable();
@@ -54,7 +59,6 @@ namespace SlimeJumping.InputHandling
             jumpAction.started -= HandleJumpStarted;
             jumpAction.canceled -= HandleJumpCanceled;
             verticalUpAction.started -= HandleVerticalUpStarted;
-            verticalDownAction.started -= HandleVerticalDownStarted;
             interactAction.started -= HandleInteractStarted;
 
             inputActionAsset.FindActionMap("Player").Disable();
@@ -72,8 +76,26 @@ namespace SlimeJumping.InputHandling
             bool left = kb.aKey.isPressed, right = kb.dKey.isPressed;
             bool up = kb.wKey.isPressed, down = kb.sKey.isPressed;
 
-            if (left && !prevLeft) lastHDir = -1f;
-            if (right && !prevRight) lastHDir = 1f;
+            if (left && !prevLeft)
+            {
+                lastHDir = -1f;
+                if (Time.unscaledTime - lastLeftPressTime <= horizontalDoubleTapWindow)
+                {
+                    OnGroundDashRequested?.Invoke(-1);
+                    lastLeftPressTime = -999f;
+                }
+                else lastLeftPressTime = Time.unscaledTime;
+            }
+            if (right && !prevRight)
+            {
+                lastHDir = 1f;
+                if (Time.unscaledTime - lastRightPressTime <= horizontalDoubleTapWindow)
+                {
+                    OnGroundDashRequested?.Invoke(+1);
+                    lastRightPressTime = -999f;
+                }
+                else lastRightPressTime = Time.unscaledTime;
+            }
             if (down && !prevDown) lastVDir = -1f;
             if (up && !prevUp) lastVDir = 1f;
 
@@ -99,11 +121,6 @@ namespace SlimeJumping.InputHandling
         private void HandleVerticalUpStarted(InputAction.CallbackContext ctx)
         {
             OnVerticalUpPressed?.Invoke();
-        }
-
-        private void HandleVerticalDownStarted(InputAction.CallbackContext ctx)
-        {
-            OnVerticalDownPressed?.Invoke();
         }
 
         private void HandleInteractStarted(InputAction.CallbackContext ctx)

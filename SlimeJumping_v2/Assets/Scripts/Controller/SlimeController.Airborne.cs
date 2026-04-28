@@ -279,10 +279,11 @@ namespace SlimeJumping.Controller
                         return;
                     }
 
-                    if (dashBufferTimer > 0f && Mathf.Abs(inputReader.LastInputMove.x) > 0.01f && dashCooldownTimer <= 0f)
+                    if (dashBufferTimer > 0f && dashPendingKeyboardSign != 0 && dashCooldownTimer <= 0f)
                     {
-                        ApplyGroundDash(-Mathf.Sign(inputReader.LastInputMove.x));
+                        ApplyGroundDash(-dashPendingKeyboardSign);
                         dashBufferTimer = 0f;
+                        dashPendingKeyboardSign = 0;
                     }
                 }
                 return;

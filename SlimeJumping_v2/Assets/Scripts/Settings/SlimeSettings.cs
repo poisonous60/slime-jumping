@@ -201,5 +201,69 @@ namespace SlimeJumping.Settings
         public float defaultStunDuration = 0.5f;
         [Tooltip("Default knockback force if hazard doesn't specify.")]
         public float defaultKnockbackForce = 8f;
+
+        [Header("Default Surface Modifiers (used when no SurfaceTag is present, or as the override-off fallback for tagged surfaces)")]
+        public AngleScaledValue carrierFriction = AngleScaledValue.Constant(1f);
+        public AngleScaledValue crawlSpeedMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue crawlAccelerationMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue crawlDecelerationMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue crawlOverspeedDecelerationMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue slideResistanceMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue slideGravityMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue slideRampUpTime = AngleScaledValue.Constant(0f);
+        public AngleScaledValue slideLinearDrag = AngleScaledValue.Constant(0f);
+        public AngleScaledValue slideDownhillGain = AngleScaledValue.Constant(1f);
+        public AngleScaledValue slideUphillBrake = AngleScaledValue.Constant(1f);
+        public AngleScaledValue landingVelocityRetention = AngleScaledValue.Constant(0f);
+        public AngleScaledValue stickDurationMultiplier = AngleScaledValue.Constant(1f);
+        public AngleScaledValue impactRedirectRatio = AngleScaledValue.Constant(0f);
+        public AngleScaledValue groundDashScale = AngleScaledValue.Constant(1f);
+        public AngleScaledValue wallAttachSpeedDampen = AngleScaledValue.Constant(1f);
+        public AngleScaledValue hopVelocityRetention = AngleScaledValue.Constant(1f);
+        public AngleScaledValue hopNormalToTangentRatio = AngleScaledValue.Constant(0f);
+        public bool hopInstantFlip = true;
+        public bool useInertialSlide = false;
+        [Tooltip("Default angle falloff curve for ground dash on untagged surfaces / when overrideGroundDash is off. Domain is [groundDashAngleMin, groundDashAngleMax] normalized to [0,1]. Empty curve = legacy linear.")]
+        public AnimationCurve groundDashAngleFalloffCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
+        [Tooltip("Default speed falloff curve for ground dash on untagged surfaces / when overrideGroundDash is off. Domain is [dashFalloffStart, dashFalloffEnd] normalized to [0,1]. Empty curve = legacy linear.")]
+        public AnimationCurve dashSpeedFalloffCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
+        [Tooltip("Skip dash speed falloff entirely (every dash applies full impulse). Global default — surface tags with overrideGroundDash override this.")]
+        public bool disableDashFalloff = false;
+
+        public SurfaceModifiers BuildDefaultModifiers() => new SurfaceModifiers
+        {
+            crawlSpeed = crawlSpeedMultiplier,
+            crawlAccel = crawlAccelerationMultiplier,
+            crawlDecel = crawlDecelerationMultiplier,
+            crawlOverspeedDecel = crawlOverspeedDecelerationMultiplier,
+            slideResistance = slideResistanceMultiplier,
+            slideGravity = slideGravityMultiplier,
+            slideRampUp = slideRampUpTime,
+            slideLinearDrag = slideLinearDrag,
+            slideDownhillGain = slideDownhillGain,
+            slideUphillBrake = slideUphillBrake,
+            carrierFriction = carrierFriction,
+            landingVelocityRetention = landingVelocityRetention,
+            stickDuration = stickDurationMultiplier,
+            impactRedirect = impactRedirectRatio,
+            wallAttachDampen = wallAttachSpeedDampen,
+            groundDashScale = groundDashScale,
+            overrideGroundDash = false,
+            groundDashImpulse = 0f,
+            groundDashAngleMin = 0f,
+            groundDashAngleMax = 0f,
+            groundDashAngleFalloffCurve = null,
+            dashFalloffStart = 0f,
+            dashFalloffEnd = 0f,
+            dashSpeedFalloffCurve = null,
+            disableDashFalloff = false,
+            hopVelocityRetention = hopVelocityRetention,
+            hopNormalToTangentRatio = hopNormalToTangentRatio,
+            hopInstantFlip = hopInstantFlip,
+            overrideHopMomentum = false,
+            hopMomentumBonus = 0f,
+            hopMomentumMaxSpeed = 0f,
+            useInertialSlide = useInertialSlide
+        };
     }
 }

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using SlimeJumping.Rendering;
 using SlimeJumping.Settings;
 using SlimeJumping.UI.Framework;
 
@@ -43,6 +44,29 @@ namespace SlimeJumping.UI.Panels
         [SerializeField] private Button backgroundCameraNextButton;
         [SerializeField] private TextMeshProUGUI backgroundCameraValueLabel;
 
+        [Header("Debug")]
+        [SerializeField] private Button chargeVisualPrevButton;
+        [SerializeField] private Button chargeVisualNextButton;
+        [SerializeField] private TextMeshProUGUI chargeVisualValueLabel;
+        [SerializeField] private Button mouseTeleportDebugPrevButton;
+        [SerializeField] private Button mouseTeleportDebugNextButton;
+        [SerializeField] private TextMeshProUGUI mouseTeleportDebugValueLabel;
+        [SerializeField] private Button clearTrailButton;
+
+        [Header("Tabs")]
+        [SerializeField] private Button graphicsTabButton;
+        [SerializeField] private Button audioTabButton;
+        [SerializeField] private Button displayTabButton;
+        [SerializeField] private Button debugTabButton;
+        [SerializeField] private GameObject graphicsPage;
+        [SerializeField] private GameObject audioPage;
+        [SerializeField] private GameObject displayPage;
+        [SerializeField] private GameObject debugPage;
+        [SerializeField] private TextMeshProUGUI graphicsTabLabel;
+        [SerializeField] private TextMeshProUGUI audioTabLabel;
+        [SerializeField] private TextMeshProUGUI displayTabLabel;
+        [SerializeField] private TextMeshProUGUI debugTabLabel;
+
         [Header("Actions")]
         [SerializeField] private Button closeButton;
         [SerializeField] private Button quitButton;
@@ -51,9 +75,13 @@ namespace SlimeJumping.UI.Panels
         private int windowModeIndex;
         private int backgroundCameraIndex;
         private int vsyncIndex;
+        private int chargeVisualIndex;
+        private int mouseTeleportDebugIndex;
         private static readonly WindowMode[] WindowModes = { WindowMode.Windowed, WindowMode.Borderless, WindowMode.Fullscreen };
         private static readonly bool[] BackgroundCameraStates = { false, true };
         private static readonly bool[] VSyncStates = { false, true };
+        private static readonly bool[] ChargeVisualStates = { false, true };
+        private static readonly bool[] MouseTeleportDebugStates = { false, true };
 
         protected override void OnAfterAwake()
         {
@@ -104,6 +132,24 @@ namespace SlimeJumping.UI.Panels
             if (backgroundCameraPrevButton != null) backgroundCameraPrevButton.onClick.AddListener(() => CycleBackgroundCamera(-1));
             if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.AddListener(() => CycleBackgroundCamera(+1));
 
+            chargeVisualIndex = IndexOfChargeVisual(GameOptions.ChargeVisualEnabled);
+            UpdateChargeVisualLabel();
+            if (chargeVisualPrevButton != null) chargeVisualPrevButton.onClick.AddListener(() => CycleChargeVisual(-1));
+            if (chargeVisualNextButton != null) chargeVisualNextButton.onClick.AddListener(() => CycleChargeVisual(+1));
+
+            mouseTeleportDebugIndex = IndexOfMouseTeleportDebug(GameOptions.MouseTeleportDebugEnabled);
+            UpdateMouseTeleportDebugLabel();
+            if (mouseTeleportDebugPrevButton != null) mouseTeleportDebugPrevButton.onClick.AddListener(() => CycleMouseTeleportDebug(-1));
+            if (mouseTeleportDebugNextButton != null) mouseTeleportDebugNextButton.onClick.AddListener(() => CycleMouseTeleportDebug(+1));
+
+            if (clearTrailButton != null) clearTrailButton.onClick.AddListener(HandleClearTrail);
+
+            if (graphicsTabButton != null) graphicsTabButton.onClick.AddListener(() => SelectTab(0));
+            if (audioTabButton != null)    audioTabButton.onClick.AddListener(() => SelectTab(1));
+            if (displayTabButton != null)  displayTabButton.onClick.AddListener(() => SelectTab(2));
+            if (debugTabButton != null)    debugTabButton.onClick.AddListener(() => SelectTab(3));
+            SelectTab(0);
+
             if (closeButton != null) closeButton.onClick.AddListener(HandleClose);
             if (quitButton != null) quitButton.onClick.AddListener(GameFlow.QuitGame);
         }
@@ -112,6 +158,27 @@ namespace SlimeJumping.UI.Panels
         {
             if (UIManager.Instance != null) UIManager.Instance.Close(this);
             else Close();
+        }
+
+        private void HandleClearTrail()
+        {
+            var mgr = WorldTrailManager.Instance;
+            if (mgr != null) mgr.ClearAllTrails();
+        }
+
+        private static readonly Color TabActiveColor   = new Color(0.02f, 0.06f, 0.04f, 1f);
+        private static readonly Color TabInactiveColor = new Color(0.20f, 0.26f, 0.22f, 1f);
+
+        private void SelectTab(int index)
+        {
+            if (graphicsPage != null) graphicsPage.SetActive(index == 0);
+            if (audioPage != null)    audioPage.SetActive(index == 1);
+            if (displayPage != null)  displayPage.SetActive(index == 2);
+            if (debugPage != null)    debugPage.SetActive(index == 3);
+            if (graphicsTabLabel != null) graphicsTabLabel.color = index == 0 ? TabActiveColor : TabInactiveColor;
+            if (audioTabLabel != null)    audioTabLabel.color    = index == 1 ? TabActiveColor : TabInactiveColor;
+            if (displayTabLabel != null)  displayTabLabel.color  = index == 2 ? TabActiveColor : TabInactiveColor;
+            if (debugTabLabel != null)    debugTabLabel.color    = index == 3 ? TabActiveColor : TabInactiveColor;
         }
 
         protected override void OnDestroy()
@@ -131,6 +198,15 @@ namespace SlimeJumping.UI.Panels
             if (resolutionDropdown != null) resolutionDropdown.onValueChanged.RemoveAllListeners();
             if (backgroundCameraPrevButton != null) backgroundCameraPrevButton.onClick.RemoveAllListeners();
             if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.RemoveAllListeners();
+            if (chargeVisualPrevButton != null) chargeVisualPrevButton.onClick.RemoveAllListeners();
+            if (chargeVisualNextButton != null) chargeVisualNextButton.onClick.RemoveAllListeners();
+            if (mouseTeleportDebugPrevButton != null) mouseTeleportDebugPrevButton.onClick.RemoveAllListeners();
+            if (mouseTeleportDebugNextButton != null) mouseTeleportDebugNextButton.onClick.RemoveAllListeners();
+            if (clearTrailButton != null) clearTrailButton.onClick.RemoveAllListeners();
+            if (graphicsTabButton != null) graphicsTabButton.onClick.RemoveAllListeners();
+            if (audioTabButton != null)    audioTabButton.onClick.RemoveAllListeners();
+            if (displayTabButton != null)  displayTabButton.onClick.RemoveAllListeners();
+            if (debugTabButton != null)    debugTabButton.onClick.RemoveAllListeners();
             if (closeButton != null) closeButton.onClick.RemoveAllListeners();
             if (quitButton != null) quitButton.onClick.RemoveAllListeners();
             base.OnDestroy();
@@ -201,6 +277,22 @@ namespace SlimeJumping.UI.Panels
             UpdateVSyncLabel();
         }
 
+        private void CycleChargeVisual(int dir)
+        {
+            int len = ChargeVisualStates.Length;
+            chargeVisualIndex = ((chargeVisualIndex + dir) % len + len) % len;
+            GameOptions.SetChargeVisualEnabled(ChargeVisualStates[chargeVisualIndex]);
+            UpdateChargeVisualLabel();
+        }
+
+        private void CycleMouseTeleportDebug(int dir)
+        {
+            int len = MouseTeleportDebugStates.Length;
+            mouseTeleportDebugIndex = ((mouseTeleportDebugIndex + dir) % len + len) % len;
+            GameOptions.SetMouseTeleportDebugEnabled(MouseTeleportDebugStates[mouseTeleportDebugIndex]);
+            UpdateMouseTeleportDebugLabel();
+        }
+
         private void OnResolutionDropdownChanged(int index)
         {
             int clamped = Mathf.Clamp(index, 0, GameOptions.ResolutionOptions.Length - 1);
@@ -243,6 +335,18 @@ namespace SlimeJumping.UI.Panels
             vsyncValueLabel.text = VSyncStates[vsyncIndex] ? "On" : "Off";
         }
 
+        private void UpdateChargeVisualLabel()
+        {
+            if (chargeVisualValueLabel == null) return;
+            chargeVisualValueLabel.text = ChargeVisualStates[chargeVisualIndex] ? "On" : "Off";
+        }
+
+        private void UpdateMouseTeleportDebugLabel()
+        {
+            if (mouseTeleportDebugValueLabel == null) return;
+            mouseTeleportDebugValueLabel.text = MouseTeleportDebugStates[mouseTeleportDebugIndex] ? "On" : "Off";
+        }
+
         private static int IndexOfFrameLimit(int fps)
         {
             for (int i = 0; i < GameOptions.FrameLimitOptions.Length; i++)
@@ -268,6 +372,20 @@ namespace SlimeJumping.UI.Panels
         {
             for (int i = 0; i < VSyncStates.Length; i++)
                 if (VSyncStates[i] == on) return i;
+            return 1;
+        }
+
+        private static int IndexOfChargeVisual(bool on)
+        {
+            for (int i = 0; i < ChargeVisualStates.Length; i++)
+                if (ChargeVisualStates[i] == on) return i;
+            return 1;
+        }
+
+        private static int IndexOfMouseTeleportDebug(bool on)
+        {
+            for (int i = 0; i < MouseTeleportDebugStates.Length; i++)
+                if (MouseTeleportDebugStates[i] == on) return i;
             return 1;
         }
     }

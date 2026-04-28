@@ -22,6 +22,8 @@ namespace SlimeJumping.Settings
         private const string KeyResolutionIndex       = "opt.resolutionIndex";
         private const string KeyBackgroundCameraOn    = "opt.backgroundCameraEnabled";
         private const string KeyVSyncOn               = "opt.vsyncEnabled";
+        private const string KeyChargeVisualOn        = "opt.chargeVisualEnabled";
+        private const string KeyMouseTeleportDebugOn  = "opt.mouseTeleportDebugEnabled";
 
         // Legacy key used before the SFX split (single combined slider).
         // Migrated into PlayerSfxVolume on first load so existing users don't lose their setting.
@@ -35,6 +37,8 @@ namespace SlimeJumping.Settings
         public const WindowMode DefaultWindowMode            = WindowMode.Fullscreen;
         public const bool       DefaultBackgroundCameraOn    = true;
         public const bool       DefaultVSyncOn               = true;
+        public const bool       DefaultChargeVisualOn        = true;
+        public const bool       DefaultMouseTeleportDebugOn  = true;
 
         // -1 = Unlimited (Application.targetFrameRate = -1)
         public static readonly int[] FrameLimitOptions = { 30, 60, 120, -1 };
@@ -58,12 +62,22 @@ namespace SlimeJumping.Settings
         public static int        ResolutionIndex         { get; private set; }
         public static bool       BackgroundCameraEnabled { get; private set; } = DefaultBackgroundCameraOn;
         public static bool       VSyncEnabled            { get; private set; } = DefaultVSyncOn;
+        public static bool       ChargeVisualEnabled     { get; private set; } = DefaultChargeVisualOn;
+        public static bool       MouseTeleportDebugEnabled { get; private set; } = DefaultMouseTeleportDebugOn;
 
         public static Vector2Int Resolution => ResolutionOptions[ResolutionIndex];
 
         /// Raised when BackgroundCameraEnabled is changed. Scene components
         /// subscribe to toggle the BG camera + overlay stack live.
         public static event Action<bool> BackgroundCameraEnabledChanged;
+
+        /// Debug-only. Raised when ChargeVisualEnabled is changed so the
+        /// SlimeChargeVisual can hide/show without restart.
+        public static event Action<bool> ChargeVisualEnabledChanged;
+
+        /// Debug-only. Raised when MouseTeleportDebugEnabled changes so the
+        /// MouseClickTeleportDebugger can enable/disable click-to-teleport.
+        public static event Action<bool> MouseTeleportDebugEnabledChanged;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void BootstrapLoadAndApplyFrame()
@@ -84,6 +98,8 @@ namespace SlimeJumping.Settings
                 0, ResolutionOptions.Length - 1);
             BackgroundCameraEnabled = PlayerPrefs.GetInt(KeyBackgroundCameraOn, DefaultBackgroundCameraOn ? 1 : 0) != 0;
             VSyncEnabled            = PlayerPrefs.GetInt(KeyVSyncOn, DefaultVSyncOn ? 1 : 0) != 0;
+            ChargeVisualEnabled     = PlayerPrefs.GetInt(KeyChargeVisualOn, DefaultChargeVisualOn ? 1 : 0) != 0;
+            MouseTeleportDebugEnabled = PlayerPrefs.GetInt(KeyMouseTeleportDebugOn, DefaultMouseTeleportDebugOn ? 1 : 0) != 0;
             ApplyDisplayPacing();
             ApplyDisplay(ResolutionOptions[ResolutionIndex], WindowMode);
         }
@@ -169,6 +185,24 @@ namespace SlimeJumping.Settings
             PlayerPrefs.SetInt(KeyBackgroundCameraOn, on ? 1 : 0);
             PlayerPrefs.Save();
             var handler = BackgroundCameraEnabledChanged;
+            if (handler != null) handler(on);
+        }
+
+        public static void SetChargeVisualEnabled(bool on)
+        {
+            ChargeVisualEnabled = on;
+            PlayerPrefs.SetInt(KeyChargeVisualOn, on ? 1 : 0);
+            PlayerPrefs.Save();
+            var handler = ChargeVisualEnabledChanged;
+            if (handler != null) handler(on);
+        }
+
+        public static void SetMouseTeleportDebugEnabled(bool on)
+        {
+            MouseTeleportDebugEnabled = on;
+            PlayerPrefs.SetInt(KeyMouseTeleportDebugOn, on ? 1 : 0);
+            PlayerPrefs.Save();
+            var handler = MouseTeleportDebugEnabledChanged;
             if (handler != null) handler(on);
         }
 

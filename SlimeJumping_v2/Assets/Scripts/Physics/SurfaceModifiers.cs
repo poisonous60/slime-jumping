@@ -21,7 +21,20 @@ namespace SlimeJumping.Physics
         public AngleScaledValue wallAttachDampen;
         public AngleScaledValue groundDashScale;
         public AngleScaledValue hopVelocityRetention;
+        public AngleScaledValue hopNormalToTangentRatio;
         public bool hopInstantFlip;
+        public bool overrideHopMomentum;
+        public float hopMomentumBonus;
+        public float hopMomentumMaxSpeed;
+        public bool overrideGroundDash;
+        public float groundDashImpulse;
+        public float groundDashAngleMin;
+        public float groundDashAngleMax;
+        public AnimationCurve groundDashAngleFalloffCurve;
+        public float dashFalloffStart;
+        public float dashFalloffEnd;
+        public AnimationCurve dashSpeedFalloffCurve;
+        public bool disableDashFalloff;
         public bool useInertialSlide;
 
         public static readonly SurfaceModifiers Default = new()
@@ -43,7 +56,20 @@ namespace SlimeJumping.Physics
             wallAttachDampen = AngleScaledValue.Constant(1f),
             groundDashScale = AngleScaledValue.Constant(1f),
             hopVelocityRetention = AngleScaledValue.Constant(1f),
+            hopNormalToTangentRatio = AngleScaledValue.Constant(0f),
             hopInstantFlip = true,
+            overrideHopMomentum = false,
+            hopMomentumBonus = 0f,
+            hopMomentumMaxSpeed = 0f,
+            overrideGroundDash = false,
+            groundDashImpulse = 0f,
+            groundDashAngleMin = 0f,
+            groundDashAngleMax = 0f,
+            groundDashAngleFalloffCurve = null,
+            dashFalloffStart = 0f,
+            dashFalloffEnd = 0f,
+            dashSpeedFalloffCurve = null,
+            disableDashFalloff = false,
             useInertialSlide = false
         };
     }

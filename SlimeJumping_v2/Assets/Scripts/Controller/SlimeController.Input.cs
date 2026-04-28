@@ -40,8 +40,13 @@ namespace SlimeJumping.Controller
             driftDirection = -surfaceNormal;
             prevSurfaceNormal = surfaceNormal;
 
-            // Charge entry stick grace: artificial stick event for smooth decel + slide suppression
-            impactTangentSpeed = Vector2.Dot(velocity, surfaceTangent);
+            // Charge entry stick grace: artificial stick event for smooth decel + slide suppression.
+            // Capture from the inertia channels (crawl + slide) rather than `velocity`: on a
+            // frame-perfect Airborne→Attached→Charging transition the Attached entry zeroed
+            // `velocity` and the next FixedUpdateAttached hasn't run yet to rebuild it from the
+            // channels, so reading `velocity` would falsely capture 0 and stick-lerp the slime
+            // to a halt despite live tangent inertia.
+            impactTangentSpeed = crawlVelocity + slideVelocity;
             stickTimer += settings.chargeEntryStickBonus;
             stickDeccelTimer = 0f;
             slideRampTimer = 0f;
@@ -108,11 +113,14 @@ namespace SlimeJumping.Controller
             Launch();
         }
 
-        private void HandleVerticalDownPressed()
+        private void HandleGroundDashRequested(int keyboardSign)
         {
             if (_override != null || currentState == SlimeState.Stunned) return;
             if (currentState == SlimeState.Attached || currentState == SlimeState.Airborne)
+            {
                 dashBufferTimer = settings.groundDashInputBuffer;
+                dashPendingKeyboardSign = keyboardSign;
+            }
         }
 
         private void HandleVerticalUpPressed()

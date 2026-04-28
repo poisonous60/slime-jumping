@@ -23,8 +23,11 @@ struct AngleScaledValue {
 
 ## 조회 타이밍
 - **착지 시** (carrier.Attach 시점): `GetComponentInParent<SurfaceTag>()` 한 번 조회 → 캐싱.
-- **Airborne 전환 시**: `SurfaceModifiers.Default`로 리셋.
+- **Airborne 전환 시**: `settings.BuildDefaultModifiers()`로 리셋 (이전엔 하드코딩 `SurfaceModifiers.Default`).
 - **표면 전환**: `FixedUpdate`에서 `surfaceCollider != prevSurfaceCollider`일 때 재호출.
+
+## 글로벌 디폴트 (SlimeSettings)
+SurfaceTag 가 없거나 material이 비어있는 표면은 `SlimeSettings`의 "Default Surface Modifiers" 섹션 값을 사용. 이전엔 `SurfaceModifiers.Default` (하드코딩 1.0/0.0)를 썼지만 이제 인스펙터에서 조정 가능. 동일한 필드 셋 (carrierFriction, crawlSpeedMultiplier, ..., hopVelocityRetention, hopNormalToTangentRatio, hopInstantFlip, useInertialSlide) + dash 관련 (`groundDashAngleFalloffCurve`, `dashSpeedFalloffCurve`, `disableDashFalloff`)을 SlimeSettings 에서 직접 설정 가능. 태그 없는 표면 = SlimeSettings 값 그대로, 태그 있고 override off = SlimeSettings dash 값 fallback (impulse/min/max/falloff/curve/disable 모두), 태그 있고 override on = SurfaceMaterial 값.
 
 ## 파라미터
 | 파라미터 | 기본 | 설명 |
@@ -45,8 +48,21 @@ struct AngleScaledValue {
 | impactRedirectRatio | 0 | 법선 충돌 → 접선 전환 (벽에서만 자동 활성) |
 | wallAttachSpeedDampen | 1 | 착지 접선 속도 감쇠 |
 | groundDashScale | 1 | 대시 impulse 배율 (0=대시 불가) |
-| hopVelocityRetention | 1 | 홉 시 접선 보존 (1=ice, 0=mud) |
+| hopVelocityRetention | 1 | 홉 시 접선 성분 보존 비율. `Dot(velocity, surfaceTangent) × retention`. 1=ice, 0=mud |
+| hopNormalToTangentRatio | 0 | 홉 시 법선 성분 → 접선 변환 비율. `\|Dot(velocity, surfaceNormal)\| × ratio`만큼 접선에 가산. 부호는 기존 접선 성분, 0이면 입력 방향 폴백. 0(기본)=법선 성분 폐기(레거시), 1=법선 속도 전체를 접선으로 슬링샷. 빙판/하프파이프에서 비행 후 표면 미끄러짐 변환에 사용 |
 | hopInstantFlip | true | 홉 반대 방향 즉시 반전 (true=mud/grass, false=ice 관성) |
+| **overrideHopMomentum** | false | true 시 아래 두 값으로 SlimeSettings의 `hopMomentumBonus`/`hopMomentumMaxSpeed`를 표면 단위로 덮어씀. false면 글로벌 SlimeSettings 사용 |
+| hopMomentumBonus | 1.5 | (override 시) 같은 방향 입력 홉당 가산되는 접선 속도 |
+| hopMomentumMaxSpeed | 20 | (override 시) 홉 모멘텀 누적 최대 접선 속도 캡 |
+| **overrideGroundDash** | false | true 시 아래 5개 값으로 SlimeSettings의 ground-dash 튜닝을 덮어씀. false면 글로벌 SlimeSettings 사용. `groundDashScale` 곱셈은 override와 무관하게 항상 적용 |
+| groundDashImpulse | 8 | (override 시) 대시 임펄스 |
+| groundDashAngleMin | 30 | (override 시) 각도 falloff curve의 입력 도메인 시작 (deg) |
+| groundDashAngleMax | 60 | (override 시) 각도 falloff curve의 입력 도메인 끝 (deg) |
+| groundDashAngleFalloffCurve | Linear (0,1)→(1,0) | (override 시) `t = InverseLerp(angleMin, angleMax, surfaceAngle)` 후 이 곡선이 t∈[0,1]을 angleScale로 매핑. 기본은 선형이라 레거시(`1 - t`)와 동일. ease-out, 절벽형, 다단 cliff 등 자유 표현 가능 |
+| dashFalloffStart | 5 | (override 시) 속도 falloff curve의 입력 도메인 시작 (m/s) |
+| dashFalloffEnd | 13 | (override 시) 속도 falloff curve의 입력 도메인 끝 (m/s) |
+| dashSpeedFalloffCurve | Linear (0,1)→(1,0) | (override 시) `t = InverseLerp(dashFalloffStart, dashFalloffEnd, sameDirSpeed)` 후 이 곡선이 t∈[0,1]을 falloff로 매핑. 기본은 선형이라 레거시(`1 - t`)와 동일. ease-out, plateau, 다단 cliff 자유 표현 |
+| disableDashFalloff | false | (override 시) true면 dashSpeedFalloffCurve를 무시하고 항상 풀 임펄스 적용 — 빙판에서 속도 무한 누적용 |
 | useInertialSlide | false | 관성 슬라이드 사용 (true=ice/halfpipe — 운동에너지↔높이 보존, false=기존 정상상태 슬라이드) |
 
 ## 표면별 상호작용
@@ -59,7 +75,7 @@ struct AngleScaledValue {
 | 표면 | carrierFriction | slideResistance | crawlSpeed | retention | stickDuration | impactRedirect | useInertialSlide | 느낌 |
 |------|----|----|----|----|----|----|----|------|
 | 기본 | 1.0 | 1.0 | 1.0 | 0 | 1.0 | 0 | false | 기본 |
-| 빙판 | 0.2 | 0.1 | 1.0 | 0.8 | 0 | 0.5 | true | 미끄러움, 벽 타기, 하프파이프 KE 보존 |
+| 빙판 | 0.2 | 0.1 | 1.0 | 0.8 | 0 | 0.5 | true | 미끄러움, 벽 타기, 하프파이프 KE 보존. `overrideHopMomentum=true` + bonus/maxSpeed ↑, `overrideGroundDash=true` + falloffEnd ↑로 가속감 강화 |
 | 진흙 | 1.0 | 3.0 | 0.5 | 0 | 1.0 | 0 | false | 느리고 안 미끄러움 |
 
 > 빙판 행의 `slideResistance`(0.1)는 관성 모드에서 **친선 마찰 (m/s²)** 단위로 해석됨 — 아래 [관성 슬라이드 모드](#관성-슬라이드-모드-useinertialslide) 참조.
