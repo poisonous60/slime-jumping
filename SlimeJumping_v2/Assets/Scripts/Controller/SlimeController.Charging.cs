@@ -214,7 +214,7 @@ namespace SlimeJumping.Controller
                     crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, chargingDecel * dt);
 
                     float finalTangent = slideSpeed + crawlVelocity;
-                    velocity = surfaceTangent * finalTangent;
+                    velocity = ComputeArcCompensatedTangent(surfaceTangent) * finalTangent;
 
                     surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
 

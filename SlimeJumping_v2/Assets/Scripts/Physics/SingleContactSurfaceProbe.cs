@@ -52,6 +52,7 @@ namespace SlimeJumping.Physics
 
             int count = Physics2D.OverlapCircleNonAlloc(pos, radius + skin, depenetrationBuffer, mask);
             bool anyPenetration = false;
+            Vector2 totalPush = Vector2.zero;
 
             for (int i = 0; i < count; i++)
             {
@@ -66,9 +67,22 @@ namespace SlimeJumping.Physics
 
                 if (dist < radius)
                 {
-                    pos += (toSlime / dist) * (radius - dist);
+                    Vector2 push = (toSlime / dist) * (radius - dist);
+                    pos += push;
+                    totalPush += push;
                     anyPenetration = true;
                 }
+            }
+
+            if (anyPenetration)
+            {
+                lastDepenPushMag = totalPush.magnitude;
+                lastDepenPushDir = lastDepenPushMag > 1e-8f ? totalPush / lastDepenPushMag : Vector2.zero;
+            }
+            else
+            {
+                lastDepenPushDir = Vector2.zero;
+                lastDepenPushMag = 0f;
             }
 
             return anyPenetration;

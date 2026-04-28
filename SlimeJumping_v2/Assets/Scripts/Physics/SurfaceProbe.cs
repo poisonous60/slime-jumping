@@ -33,11 +33,21 @@ namespace SlimeJumping.Physics
         protected int selectedIdx = -1;
         protected int phaseAIterCount;
         protected float phaseARemainPen;
+        // Last applied Phase A push (overwritten each DepenetratePass call). Reset
+        // to zero by SnapToSurface before the iter loop. Diagnostics read these to
+        // verify the smoothed depenetration converges to ~0 push in steady state.
+        protected Vector2 lastDepenPushDir;
+        protected float lastDepenPushMag;
 
         // Cached gravity/ceiling context from last CheckSurface (used by EffectiveNormal
         // and ProjectVelocityAgainstContacts — they run after CheckSurface in the same frame).
         protected Vector2 lastGravityUp = Vector2.up;
         protected float lastCeilingThreshold;
+        // Broadphase detect range used by the most recent CheckSurface call. Edge-enumerating
+        // probes filter contacts to within (slimeRadius + lastDetectRange) so they match the
+        // broadphase OverlapCircle radius and don't overflow the contact buffer with far edges
+        // of large polygons.
+        protected float lastDetectRange;
 
         // Diagnostic accessors
         public int ContactCount => contactCount;
@@ -45,6 +55,8 @@ namespace SlimeJumping.Physics
         public int SelectedIndex => selectedIdx;
         public int PhaseAIterations => phaseAIterCount;
         public float PhaseARemainingPenetration => phaseARemainPen;
+        public Vector2 LastDepenPushDir => lastDepenPushDir;
+        public float LastDepenPushMag => lastDepenPushMag;
         public Collider2D GetContactCollider(int i) => contactColliders[i];
         public Vector2 GetContactNormal(int i) => contactNormals[i];
         public float GetContactDistance(int i) => contactDistances[i];
@@ -83,6 +95,7 @@ namespace SlimeJumping.Physics
 
             lastGravityUp = gravityUp;
             lastCeilingThreshold = settings.ceilingThreshold;
+            lastDetectRange = detectRange;
 
             normal = gravityUp;
             col = null;
@@ -436,6 +449,8 @@ namespace SlimeJumping.Physics
 
             // Phase A: Depenetrate against all nearby colliders (push only).
             // Implementation delegates to DepenetratePass for single- vs multi-probe style.
+            lastDepenPushDir = Vector2.zero;
+            lastDepenPushMag = 0f;
             bool anyPush = false;
             int iterationsRun = 0;
             for (int iter = 0; iter < 3; iter++)
@@ -464,9 +479,15 @@ namespace SlimeJumping.Physics
                 }
             }
 
-            // Phase B: Primary pull — only when Phase A found nothing to fix (genuine drift).
-            // If Phase A pushed, slime is on Minkowski boundary — pulling back risks oscillation.
-            if (!anyPush)
+            // Phase B: Primary pull — anchor to primary surface every frame so the
+            // slime sits on the chord-offset boundary instead of bouncing between
+            // "barely penetrating (Phase A pushes)" and "just outside (no push)".
+            // Without this, smoothed Phase A leaves a 50 Hz magnitude oscillation
+            // because some frames have penetration to fix and some don't.
+            // ClosestPoint on a PolygonCollider2D is continuous across edges (only
+            // the edge-normal flips at vertices, not the closest point itself), so
+            // pulling to closest+(pos-closest).normalized*radius gives a continuous
+            // anchor. Skin tolerance keeps Phase B from undoing tiny Phase A pushes.
             {
                 Vector2 closest = surfaceCollider.ClosestPoint(pos);
                 Vector2 toSlime = pos - closest;

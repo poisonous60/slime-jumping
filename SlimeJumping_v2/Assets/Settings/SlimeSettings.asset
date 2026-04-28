@@ -105,7 +105,10 @@ MonoBehaviour:
   surfaceProbeDedupeDot: 0.97
   effectiveNormalWeightRampBand: 1
   effectiveNormalSoftBandMultiplier: 5
-  surfaceNormalSmoothRate: 20
+  depenetrationUseSmoothedAggregation: 1
+  useSurfaceTangentArcCompensation: 1
+  projectVelocitySameDirectionDot: 0.7
+  surfaceNormalSmoothRate: 40
   surfaceNormalSmoothRotatingMultiplier: 1
   surfaceNormalSmoothAngularThreshold: 10
   postLaunchIgnoreTime: 0.05

@@ -63,6 +63,10 @@ namespace SlimeJumping.EditorTools.UI
                 out Button frameLimitPrev, out Button frameLimitNext, out TextMeshProUGUI frameLimitValue);
             UISetupCommon.TagSlot(frameLimitRow, UISlotType.Row_FrameLimit);
 
+            var vsyncRow = CreateCyclerRow(box.transform, "VSyncRow", "VSync",
+                out Button vsyncPrev, out Button vsyncNext, out TextMeshProUGUI vsyncValue);
+            UISetupCommon.TagSlot(vsyncRow, UISlotType.Row_VSync);
+
             // --- AUDIO ---
             AddSectionHeader(box.transform, "Audio");
 
@@ -123,6 +127,10 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("frameLimitPrevButton").objectReferenceValue = frameLimitPrev;
             so.FindProperty("frameLimitNextButton").objectReferenceValue = frameLimitNext;
             so.FindProperty("frameLimitValueLabel").objectReferenceValue = frameLimitValue;
+
+            so.FindProperty("vsyncPrevButton").objectReferenceValue = vsyncPrev;
+            so.FindProperty("vsyncNextButton").objectReferenceValue = vsyncNext;
+            so.FindProperty("vsyncValueLabel").objectReferenceValue = vsyncValue;
 
             so.FindProperty("playerSfxVolumeSlider").objectReferenceValue = playerSfxSlider;
             so.FindProperty("playerSfxVolumeValueLabel").objectReferenceValue = playerSfxValue;

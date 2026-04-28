@@ -165,6 +165,14 @@ namespace SlimeJumping.Settings
                  "Higher = wider window, smoother active-set transitions on fast curve slides at the cost of looser into-surface clipping.\n" +
                  "Recommended: 6~10. At slime speed v, gap per frame ≈ v × dt; band must exceed expected gap for continuity.")]
         [Range(1f, 15f)] public float effectiveNormalSoftBandMultiplier = 8f;
+        [Tooltip("Phase A depenetration aggregation:\n" +
+                 "ON (default): per-collider net push = soft-banded weighted average of unique-face contacts (smooth bisector direction × weighted average depth). Eliminates chord-junction transverse kick on Bezier-sampled curves at high tangent speed.\n" +
+                 "OFF (legacy): per-collider net push = Σ n[p]·depth[p]. May produce jitter at chord junctions on concave curves but pushes harder at sharp V-notches.")]
+        public bool depenetrationUseSmoothedAggregation = true;
+        [Tooltip("Velocity midpoint arc compensation (Phase 2A):\n" +
+                 "ON (default): in Attached / Charging, the rewritten `velocity = surfaceTangent × speed` is rotated by ω·dt/2 (ω estimated from prev-frame Δθ). Aims each fixed-step chord at the midpoint of the predicted arc, halving chord-arc sagitta visible through Rigidbody2D interpolation on tight curves at high tangent speed.\n" +
+                 "OFF: velocity uses the leading-edge tangent unmodified (legacy).")]
+        public bool useSurfaceTangentArcCompensation = true;
         [Tooltip("ProjectVelocityAgainstContacts: contacts whose normal aligns with fallbackNormal (smoothed surfaceNormal) by more than this dot threshold are treated as 'same surface' samples and skipped from multi-clip.\n" +
                  "Same-direction multi-probe samples are noisy; clipping against all of them produces vel jitter as the active set toggles.\n" +
                  "0.7 ≈ 45° tolerance (default). Lower = stricter, more contacts skipped (smoother but less corner safety). Higher = original behavior with more multi-clip.\n" +

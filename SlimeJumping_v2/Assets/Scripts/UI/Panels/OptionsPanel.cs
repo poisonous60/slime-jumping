@@ -19,6 +19,11 @@ namespace SlimeJumping.UI.Panels
         [SerializeField] private Button frameLimitNextButton;
         [SerializeField] private TextMeshProUGUI frameLimitValueLabel;
 
+        [Header("VSync")]
+        [SerializeField] private Button vsyncPrevButton;
+        [SerializeField] private Button vsyncNextButton;
+        [SerializeField] private TextMeshProUGUI vsyncValueLabel;
+
         [Header("Audio")]
         [SerializeField] private Slider playerSfxVolumeSlider;
         [SerializeField] private TextMeshProUGUI playerSfxVolumeValueLabel;
@@ -45,8 +50,10 @@ namespace SlimeJumping.UI.Panels
         private int frameLimitIndex;
         private int windowModeIndex;
         private int backgroundCameraIndex;
+        private int vsyncIndex;
         private static readonly WindowMode[] WindowModes = { WindowMode.Windowed, WindowMode.Borderless, WindowMode.Fullscreen };
         private static readonly bool[] BackgroundCameraStates = { false, true };
+        private static readonly bool[] VSyncStates = { false, true };
 
         protected override void OnAfterAwake()
         {
@@ -54,6 +61,11 @@ namespace SlimeJumping.UI.Panels
             UpdateFrameLimitLabel();
             if (frameLimitPrevButton != null) frameLimitPrevButton.onClick.AddListener(() => CycleFrameLimit(-1));
             if (frameLimitNextButton != null) frameLimitNextButton.onClick.AddListener(() => CycleFrameLimit(+1));
+
+            vsyncIndex = IndexOfVSync(GameOptions.VSyncEnabled);
+            UpdateVSyncLabel();
+            if (vsyncPrevButton != null) vsyncPrevButton.onClick.AddListener(() => CycleVSync(-1));
+            if (vsyncNextButton != null) vsyncNextButton.onClick.AddListener(() => CycleVSync(+1));
 
             BindSlider(playerSfxVolumeSlider, GameOptions.PlayerSfxVolume, OnPlayerSfxVolumeChanged);
             UpdatePercentLabel(playerSfxVolumeValueLabel, GameOptions.PlayerSfxVolume);
@@ -108,6 +120,8 @@ namespace SlimeJumping.UI.Panels
             // These are attached in OnAfterAwake and never otherwise cleared.
             if (frameLimitPrevButton != null) frameLimitPrevButton.onClick.RemoveAllListeners();
             if (frameLimitNextButton != null) frameLimitNextButton.onClick.RemoveAllListeners();
+            if (vsyncPrevButton != null) vsyncPrevButton.onClick.RemoveAllListeners();
+            if (vsyncNextButton != null) vsyncNextButton.onClick.RemoveAllListeners();
             if (playerSfxVolumeSlider != null) playerSfxVolumeSlider.onValueChanged.RemoveAllListeners();
             if (worldSfxVolumeSlider != null) worldSfxVolumeSlider.onValueChanged.RemoveAllListeners();
             if (bgmVolumeSlider != null) bgmVolumeSlider.onValueChanged.RemoveAllListeners();
@@ -179,6 +193,14 @@ namespace SlimeJumping.UI.Panels
             UpdateBackgroundCameraLabel();
         }
 
+        private void CycleVSync(int dir)
+        {
+            int len = VSyncStates.Length;
+            vsyncIndex = ((vsyncIndex + dir) % len + len) % len;
+            GameOptions.SetVSyncEnabled(VSyncStates[vsyncIndex]);
+            UpdateVSyncLabel();
+        }
+
         private void OnResolutionDropdownChanged(int index)
         {
             int clamped = Mathf.Clamp(index, 0, GameOptions.ResolutionOptions.Length - 1);
@@ -215,6 +237,12 @@ namespace SlimeJumping.UI.Panels
             backgroundCameraValueLabel.text = BackgroundCameraStates[backgroundCameraIndex] ? "On" : "Off";
         }
 
+        private void UpdateVSyncLabel()
+        {
+            if (vsyncValueLabel == null) return;
+            vsyncValueLabel.text = VSyncStates[vsyncIndex] ? "On" : "Off";
+        }
+
         private static int IndexOfFrameLimit(int fps)
         {
             for (int i = 0; i < GameOptions.FrameLimitOptions.Length; i++)
@@ -233,6 +261,13 @@ namespace SlimeJumping.UI.Panels
         {
             for (int i = 0; i < BackgroundCameraStates.Length; i++)
                 if (BackgroundCameraStates[i] == on) return i;
+            return 1;
+        }
+
+        private static int IndexOfVSync(bool on)
+        {
+            for (int i = 0; i < VSyncStates.Length; i++)
+                if (VSyncStates[i] == on) return i;
             return 1;
         }
     }

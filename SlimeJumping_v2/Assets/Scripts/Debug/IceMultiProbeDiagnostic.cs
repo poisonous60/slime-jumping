@@ -78,8 +78,10 @@ namespace SlimeJumping.Debugging
             public int activeChurn;     // samples that flipped active state this frame
             public int phaseAIter;
             public float phaseARemPen;
-            public float netPushMag;    // recomputed Phase-A-equivalent push magnitude
+            public float netPushMag;    // recomputed legacy-equivalent push magnitude (from contact buffer)
             public Vector2 netPushDir;
+            public float appliedPushMag; // actual last-iter Phase A push magnitude (probe.LastDepenPushMag)
+            public Vector2 appliedPushDir;
             public int selectedIdx;
             public string primaryName;
             // Per-contact (only first MAX_CONTACTS captured for the dump)
@@ -222,6 +224,8 @@ namespace SlimeJumping.Debugging
             s.phaseARemPen = probe.PhaseARemainingPenetration;
             s.netPushMag = netPush.magnitude;
             s.netPushDir = netPush.sqrMagnitude > 1e-8f ? netPush.normalized : Vector2.zero;
+            s.appliedPushMag = probe.LastDepenPushMag;
+            s.appliedPushDir = probe.LastDepenPushDir;
             s.selectedIdx = probe.SelectedIndex;
             var primaryCol = slime.SurfaceCollider;
             s.primaryName = primaryCol != null ? primaryCol.name : "<none>";
@@ -342,17 +346,18 @@ namespace SlimeJumping.Debugging
             var sb = new StringBuilder(8192);
             sb.AppendLine(header);
             sb.AppendLine(
-                "  idx frame   t      state    mat            cC aC churn iter remPen  netPushMag netPushDir       surfNΔ°  surfN              effN               tangent            dPos                 |dPos|  vel                primary");
+                "  idx frame   t      state    mat            cC aC churn iter remPen  appliedMag appliedDir        netPushMag netPushDir       surfNΔ°  surfN              effN               tangent            dPos                 |dPos|  vel                primary");
 
             int start = (ringHead - ringCount + RING) % RING;
             for (int i = 0; i < ringCount; i++)
             {
                 var s = ring[(start + i) % RING];
                 sb.AppendFormat(
-                    "  {0,3} {1,6} {2,5:F2}  {3,-8} {4,-13}  {5,2} {6,2}  {7,3}    {8,2}  {9,5:F4}  {10,8:F5}  ({11,5:F2},{12,5:F2})  {13,5:F1}    ({14,5:F2},{15,5:F2})  ({16,5:F2},{17,5:F2})  ({18,5:F2},{19,5:F2})  ({20,7:F4},{21,7:F4})  {22,6:F4}  ({23,6:F2},{24,6:F2})  {25}\n",
+                    "  {0,3} {1,6} {2,5:F2}  {3,-8} {4,-13}  {5,2} {6,2}  {7,3}    {8,2}  {9,5:F4}  {10,8:F5}  ({11,5:F2},{12,5:F2})   {13,8:F5}  ({14,5:F2},{15,5:F2})  {16,5:F1}    ({17,5:F2},{18,5:F2})  ({19,5:F2},{20,5:F2})  ({21,5:F2},{22,5:F2})  ({23,7:F4},{24,7:F4})  {25,6:F4}  ({26,6:F2},{27,6:F2})  {28}\n",
                     i, s.frame, s.time, s.state, Trunc(s.materialName, 13),
                     s.contactCount, s.activeCount, s.activeChurn,
                     s.phaseAIter, s.phaseARemPen,
+                    s.appliedPushMag, s.appliedPushDir.x, s.appliedPushDir.y,
                     s.netPushMag, s.netPushDir.x, s.netPushDir.y,
                     s.surfNDeltaDeg,
                     s.surfN.x, s.surfN.y,

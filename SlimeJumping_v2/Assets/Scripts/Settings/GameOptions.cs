@@ -21,6 +21,7 @@ namespace SlimeJumping.Settings
         private const string KeyWindowMode            = "opt.windowMode";
         private const string KeyResolutionIndex       = "opt.resolutionIndex";
         private const string KeyBackgroundCameraOn    = "opt.backgroundCameraEnabled";
+        private const string KeyVSyncOn               = "opt.vsyncEnabled";
 
         // Legacy key used before the SFX split (single combined slider).
         // Migrated into PlayerSfxVolume on first load so existing users don't lose their setting.
@@ -33,6 +34,7 @@ namespace SlimeJumping.Settings
         public const float      DefaultUiVolume              = 0.8f;
         public const WindowMode DefaultWindowMode            = WindowMode.Fullscreen;
         public const bool       DefaultBackgroundCameraOn    = true;
+        public const bool       DefaultVSyncOn               = true;
 
         // -1 = Unlimited (Application.targetFrameRate = -1)
         public static readonly int[] FrameLimitOptions = { 30, 60, 120, -1 };
@@ -55,6 +57,7 @@ namespace SlimeJumping.Settings
         public static WindowMode WindowMode              { get; private set; } = DefaultWindowMode;
         public static int        ResolutionIndex         { get; private set; }
         public static bool       BackgroundCameraEnabled { get; private set; } = DefaultBackgroundCameraOn;
+        public static bool       VSyncEnabled            { get; private set; } = DefaultVSyncOn;
 
         public static Vector2Int Resolution => ResolutionOptions[ResolutionIndex];
 
@@ -80,7 +83,8 @@ namespace SlimeJumping.Settings
                 PlayerPrefs.GetInt(KeyResolutionIndex, FindNativeResolutionIndex()),
                 0, ResolutionOptions.Length - 1);
             BackgroundCameraEnabled = PlayerPrefs.GetInt(KeyBackgroundCameraOn, DefaultBackgroundCameraOn ? 1 : 0) != 0;
-            ApplyFrameLimit(FrameLimit);
+            VSyncEnabled            = PlayerPrefs.GetInt(KeyVSyncOn, DefaultVSyncOn ? 1 : 0) != 0;
+            ApplyDisplayPacing();
             ApplyDisplay(ResolutionOptions[ResolutionIndex], WindowMode);
         }
 
@@ -100,7 +104,15 @@ namespace SlimeJumping.Settings
             FrameLimit = fps;
             PlayerPrefs.SetInt(KeyFrameLimit, fps);
             PlayerPrefs.Save();
-            ApplyFrameLimit(fps);
+            ApplyDisplayPacing();
+        }
+
+        public static void SetVSyncEnabled(bool on)
+        {
+            VSyncEnabled = on;
+            PlayerPrefs.SetInt(KeyVSyncOn, on ? 1 : 0);
+            PlayerPrefs.Save();
+            ApplyDisplayPacing();
         }
 
         public static void SetPlayerSfxVolume(float linear01)
@@ -160,10 +172,21 @@ namespace SlimeJumping.Settings
             if (handler != null) handler(on);
         }
 
-        private static void ApplyFrameLimit(int fps)
+        // VSync and frame limit interact: when vsync is on Unity ignores
+        // targetFrameRate, so the meaningful pacing comes from vsync alone.
+        // When vsync is off, targetFrameRate is the soft cap.
+        private static void ApplyDisplayPacing()
         {
-            QualitySettings.vSyncCount = 0;
-            Application.targetFrameRate = fps <= 0 ? -1 : fps;
+            if (VSyncEnabled)
+            {
+                QualitySettings.vSyncCount = 1;
+                Application.targetFrameRate = -1;
+            }
+            else
+            {
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = FrameLimit <= 0 ? -1 : FrameLimit;
+            }
         }
 
         private static void ApplyPlayerSfxVolume(float linear01)

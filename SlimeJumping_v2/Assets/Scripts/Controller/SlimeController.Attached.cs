@@ -157,9 +157,13 @@ namespace SlimeJumping.Controller
                 dashBufferTimer = 0f;
             }
 
-            // 4. Final tangent velocity
+            // 4. Final tangent velocity. Use arc-midpoint-compensated tangent so the
+            // chord drawn between this frame and next by Rigidbody2D.Interpolate lands
+            // on the predicted arc midpoint instead of the leading-edge tangent. Without
+            // compensation, fast tangent rotation (5–8°/frame at U-bottom of Ice curves)
+            // produces visible chord-arc sagitta even when rb.position is anchored each frame.
             float finalTangent = slideSpeed + crawlVelocity;
-            velocity = surfaceTangent * finalTangent;
+            velocity = ComputeArcCompensatedTangent(surfaceTangent) * finalTangent;
 
             // Cancel velocity into all active contacts (multi-constraint). At concave
             // corners this zeroes velocity into every tangent surface, avoiding the

@@ -62,21 +62,23 @@ surfaceNormal = lerp(prevSmoothedNormal, raw, k)
 
 ## 표면 스냅 (2-Phase Depenetration)
 - **Phase A — Depenetration**: OverlapCircle로 콜라이더 모은 뒤 각 콜라이더 ClosestPoint 기반 침투 판단 push (최대 3회). Minkowski boundary로 코너 수렴.
-- **Phase B — Primary Pull**: primary와 거리가 `slimeRadius + contactSkin` 초과 시에만 끌어당김. 코너에서는 미발동.
+  - **콜라이더당 통합**: Multi-probe 모드는 unique-face contact 들을 dedupe 한 뒤, `depenetrationUseSmoothedAggregation=true` (default) 시 `EffectiveNormal` 과 동일한 soft-band smoothstep weight 로 **단일 push** 산출 — `dir = (Σ n_p × w_p).normalized`, `mag = Σ depth_p × w_p / Σ w_p`. chord junction 에서 push 방향이 매 프레임 ±20° 튀던 패턴 제거. `false` 로 끄면 legacy `Σ n_p × depth_p` (합 벡터).
+  - Single-probe 모드는 콜라이더당 contact 1 개 → 통합 무관.
+- **Phase B — Primary Pull**: primary 콜라이더의 `ClosestPoint(pos)` + 법선 × radius 로 매 프레임 anchor (`dist > radius + contactSkin` 인 경우에만 적용 → skin tolerance 안에서는 no-op). PolygonCollider2D 의 ClosestPoint 자체는 edge 사이를 부드럽게 미끄러지므로 (vertex 에서 edge normal 만 flip, closest point 는 연속) chord-junction kick 없음. Phase A 만 쓰면 "막 침투 → push" / "boundary 위 → no-op" 가 매 프레임 번갈아 나오면서 50Hz magnitude 진동이 생김 → 매 프레임 anchor 로 제거.
 - `rb.position` 직접 설정.
 
 ## 표면 전환 감지
 `FixedUpdate`에서 `surfaceCollider != prevSurfaceCollider`일 때 `carrier.Attach` + `UpdateSurfaceModifiers` 재호출.
 
 ## 곡면 떨림 (Curve Judder) 해결 히스토리
-Multi-probe 모드에서 Ice / 저-decel 표면을 빠르게 슬라이드할 때 슬라임 위치가 매 프레임 1~3px 진동하던 문제. 진단 (IceMultiProbeDiagnostic) 으로 메커니즘 파악 후 4단계 누적 적용:
+Multi-probe 모드에서 Ice / 저-decel 표면을 빠르게 슬라이드할 때 슬라임 위치가 매 프레임 1~3px 진동하던 문제. 진단 (IceMultiProbeDiagnostic) 으로 메커니즘 파악 후 5단계 누적 적용:
 
 1. **EffectiveNormal soft band** — `effectiveNormalSoftBandMultiplier=8`. active toggle 의 step discontinuity 를 smoothstep ramp 로 변환 → contact 가 boundary 를 넘나들어도 가중치가 연속.
 2. **Project same-direction filter** — `projectVelocitySameDirectionDot=0.7`. 같은 곡면의 multi-probe sample 끼리는 clip 하지 않음 → vy 가 active set 토글마다 ±5 m/s 로 튀는 패턴 제거.
 3. **SurfaceNormal 항상 smoothing** — 회전 플랫폼 전용이던 IIR 필터를 정적 곡면에도 적용. surfNΔ° per frame 12~22° → 1~3°.
-4. **Multi-probe Phase A net push 검증** — sum push 로 over-push 가설은 진단 결과 기각 (실제 netPushMag < 0.005).
-
-이후 잔여 미세 떨림은 카메라 측 smoothing 으로 잡으려 시도 (`SlimeCameraTargetProxy`) 했으나 IIR catch-up 진동이 더 크게 보여 **rollback**. 카메라는 Cinemachine PositionComposer + Damping=0 직접 추적 유지. 슬라임 rb.position 자체의 잔여 떨림은 받아들임.
+4. **Multi-probe Phase A net push 검증** — moderate-speed 영역에서는 sum push over-push 가설은 진단 결과 기각 (netPushMag < 0.005). 그러나 v ≈ 14 m/s × R ≈ 2.5 m 의 U-bottom 에서는 chord junction 마다 sum push 가 0.005~0.02 로 spike 하고 방향이 (0.50, 0.87) → (0.69, 0.72) → (0.57, 0.82) 로 매 프레임 횡진동 → 시각적 "덜컹".
+5. **Multi-probe Phase A smoothed aggregation** (`depenetrationUseSmoothedAggregation=true`, default ON) — Phase A 가 같은 콜라이더의 unique-face contact 들을 EffectiveNormal 과 동일한 soft-band smoothstep weight 로 통합. push 방향 = 가중 평균 법선 (smooth bisector), magnitude = 가중 평균 침투 깊이. chord 사이를 슬라이드해도 두 입력이 모두 slime 위치의 연속함수라 push 가 매 프레임 일관 → 횡진동 제거. SurfaceProbe.cs 에 `LastDepenPushDir` / `LastDepenPushMag` 진단 필드도 추가 (last-iter push 표시), IceMultiProbeDiagnostic 가 컬럼으로 노출.
+6. **Phase B unconditional anchor** — Phase A push 여부에 무관하게 매 프레임 primary `ClosestPoint(pos) + n × radius` 로 anchor (skin tolerance 적용). 5번 단독으로는 "penetrating → push" / "on boundary → no push" 패턴이 50Hz magnitude oscillation 을 만듦. PolygonCollider2D 의 ClosestPoint 가 edge 사이에서 연속이므로 anchor 자체는 부드러움.
 
 설정 위치: [SlimeSettings.cs](../../../SlimeJumping_v2/Assets/Scripts/Settings/SlimeSettings.cs) `Surface Probe` / `Surface Normal Smoothing` 섹션.
 
@@ -88,4 +90,4 @@ Multi-probe 모드에서 Ice / 저-decel 표면을 빠르게 슬라이드할 때
 - [MultiContactSurfaceProbe.cs](../../../SlimeJumping_v2/Assets/Scripts/Physics/MultiContactSurfaceProbe.cs) — N-probe ring sampling
 - [SurfaceProbeMode.cs](../../../SlimeJumping_v2/Assets/Scripts/Physics/SurfaceProbeMode.cs) — enum
 - [IgnoredColliderList.cs](../../../SlimeJumping_v2/Assets/Scripts/Physics/IgnoredColliderList.cs) — ReattachGuard / Passthrough 모드 분리
-- [SlimeSettings.cs](../../../SlimeJumping_v2/Assets/Scripts/Settings/SlimeSettings.cs) — `surfaceProbeMode`, `surfaceProbeSamples`, `surfaceProbeRingScale`, `surfaceProbeDedupeDot`, `effectiveNormalSoftBandMultiplier`, `effectiveNormalWeightRampBand`, `projectVelocitySameDirectionDot`, `surfaceNormalSmoothRate`, `surfaceNormalSmoothRotatingMultiplier`, `surfaceNormalSmoothAngularThreshold`
+- [SlimeSettings.cs](../../../SlimeJumping_v2/Assets/Scripts/Settings/SlimeSettings.cs) — `surfaceProbeMode`, `surfaceProbeSamples`, `surfaceProbeRingScale`, `surfaceProbeDedupeDot`, `effectiveNormalSoftBandMultiplier`, `effectiveNormalWeightRampBand`, `depenetrationUseSmoothedAggregation`, `projectVelocitySameDirectionDot`, `surfaceNormalSmoothRate`, `surfaceNormalSmoothRotatingMultiplier`, `surfaceNormalSmoothAngularThreshold`

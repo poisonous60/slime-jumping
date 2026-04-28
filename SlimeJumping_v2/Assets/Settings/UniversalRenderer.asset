@@ -17,6 +17,20 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   injectionPoint: 300
+--- !u!114 &-3386626550313339302
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 01873333221985f48a15859b37837d7e, type: 3}
+  m_Name: SpaceWarpSourceFeature
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Rendering.SpaceWarpSourceFeature
+  m_Active: 1
+  injectionPoint: 450
 --- !u!114 &-1519943674095479027
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -87,7 +101,8 @@ MonoBehaviour:
   - {fileID: -3445935403105086725}
   - {fileID: 3883396894834175494}
   - {fileID: -1519943674095479027}
-  m_RendererFeatureMap: 3f3da5e8984d0ef3fb92fa1a02942dd0062e7296e698e4350dd7ef0a4813e8ea
+  - {fileID: -3386626550313339302}
+  m_RendererFeatureMap: 3f3da5e8984d0ef3fb92fa1a02942dd0062e7296e698e4350dd7ef0a4813e8ea329bfbffffffffff
   m_UseNativeRenderPass: 0
   xrSystemData: {fileID: 0}
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}

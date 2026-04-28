@@ -211,6 +211,17 @@ namespace SlimeJumping.Controller
         // jitter when contact faces flicker in/out of active range as a wheel rotates.
         private Vector2 prevSmoothedSurfaceNormal;
         private bool hasPrevSmoothedNormal;
+        // Previous frame's surfaceTangent — used by ComputeArcCompensatedTangent to
+        // estimate angular velocity ω of the smoothed tangent and aim each step at
+        // the chord midpoint of the predicted arc. Reset implicitly on Airborne→
+        // Attached transition (hasPrevSmoothedNormal goes false→true → first frame
+        // skips compensation, second frame onwards has a valid prev).
+        private Vector2 prevSmoothedSurfaceTangent;
+        // Snapshot of prev-tangent state at start of current FixedUpdate, captured before
+        // the prev fields are overwritten. Read by ComputeArcCompensatedTangent in the
+        // state handlers (Attached/Charging) which run later in the same FixedUpdate.
+        private Vector2 arcPrevTangent;
+        private bool arcHasPrevTangent;
 
         // Attach debounce: prevent rapid Attached↔Airborne oscillation at corners/edges
         private int attachToggleCount;
@@ -450,9 +461,19 @@ namespace SlimeJumping.Controller
                 surfaceNormal = rawSurfaceNormal;
             }
             prevSmoothedSurfaceNormal = surfaceNormal;
+            // Capture tangent for next-frame arc compensation. Note: hasPrevSmoothedNormal
+            // here still reflects the PREVIOUS frame's touch state (set at line below);
+            // updated to current state right after, so consumers reading it later in
+            // this same FixedUpdate see "did we have a valid prev tangent at frame start".
+            Vector2 lastFrameTangent = prevSmoothedSurfaceTangent;
+            bool hadPrevTangent = hasPrevSmoothedNormal;
             hasPrevSmoothedNormal = isTouchingSurface;
 
             surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
+            prevSmoothedSurfaceTangent = surfaceTangent;
+            // Stash for ComputeArcCompensatedTangent (read by Attached/Charging handlers below)
+            arcPrevTangent = lastFrameTangent;
+            arcHasPrevTangent = hadPrevTangent;
 
             if (isTouchingSurface && surfaceCollider != prevSurfaceCollider
                 && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
@@ -527,9 +548,29 @@ namespace SlimeJumping.Controller
                     ropeVel = ropeVel.normalized * cap;
             }
 
-            rb.linearVelocity = velocity
+            Vector2 finalVel = velocity
                 + platformVel * surfaceMod.carrierFriction.Evaluate(frictionAngle)
                 + ropeVel;
+
+            // Attached/Charging: integrate explicitly and re-snap so the post-physics
+            // rb.position (the value rendering interpolates between) lands on our
+            // surface anchor every frame. Letting Unity integrate `rb.linearVelocity *
+            // dt` and run its contact solver instead lets the engine apply per-frame
+            // position corrections at facet boundaries that we never see in
+            // SnapToSurface — visible as crawl jitter on faceted polygon terrain.
+            // linearVelocity is zeroed so Unity's step is a no-op for movement; other
+            // systems read our `velocity` field directly. Airborne/Stunned keep the
+            // physics-driven path so projectile motion stays Unity-native.
+            if (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
+            {
+                rb.position += finalVel * dt;
+                surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
+                rb.linearVelocity = Vector2.zero;
+            }
+            else
+            {
+                rb.linearVelocity = finalVel;
+            }
         }
 
         // --- Surface Modifiers ---
@@ -618,6 +659,39 @@ namespace SlimeJumping.Controller
         private float GetSurfaceAngle()
         {
             return SurfaceProbe.GetSurfaceAngle(surfaceNormal, gravityUp);
+        }
+
+        /// <summary>
+        /// Predicts the chord-midpoint of the arc the slime will trace this fixed step.
+        /// Without this, `velocity = surfaceTangent * speed` writes the leading-edge
+        /// tangent; Unity's interpolation then draws a chord that lies inside the arc
+        /// by `R(1−cos(Δθ/2))` (~3–5 mm at the U-bottom of an Ice curve). Rotating the
+        /// tangent by ω·dt/2 (ω estimated from prev-frame Δθ, constant-curvature) puts
+        /// the velocity vector at the midpoint of the predicted arc, halving the visible
+        /// chord-arc gap. Reset implicit on Attached entry (hasPrevSmoothedNormal goes
+        /// false→true → arcHasPrevTangent is false on first frame).
+        /// </summary>
+        private Vector2 ComputeArcCompensatedTangent(Vector2 currentTangent)
+        {
+            if (!settings.useSurfaceTangentArcCompensation) return currentTangent;
+            if (!arcHasPrevTangent) return currentTangent;
+            if (arcPrevTangent.sqrMagnitude < 0.5f) return currentTangent;
+
+            float cross = arcPrevTangent.x * currentTangent.y - arcPrevTangent.y * currentTangent.x;
+            float dot = arcPrevTangent.x * currentTangent.x + arcPrevTangent.y * currentTangent.y;
+            float dTheta = Mathf.Atan2(cross, dot);
+
+            // Reject spurious large rotations (re-attach, surface flip, very sharp corner).
+            // 30° per frame is well above any plausible smooth-curve curvature.
+            const float MAX_DTHETA = 0.5236f;
+            if (dTheta > MAX_DTHETA) dTheta = MAX_DTHETA;
+            else if (dTheta < -MAX_DTHETA) dTheta = -MAX_DTHETA;
+
+            float halfTheta = dTheta * 0.5f;
+            float c = Mathf.Cos(halfTheta);
+            float s = Mathf.Sin(halfTheta);
+            return new Vector2(currentTangent.x * c - currentTangent.y * s,
+                               currentTangent.x * s + currentTangent.y * c);
         }
 
         // Returns 1.0 on flat motion or zero accel; otherwise downhillGain when slideAccel pushes
