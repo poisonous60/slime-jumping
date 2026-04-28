@@ -78,6 +78,16 @@ namespace SlimeJumping.Physics
         [Tooltip("ON = inertial slide (gravity-along-tangent integrated as acceleration; slideResistance is friction in m/s²; landed tangent velocity flows into the inertial channel). OFF (default, untagged surfaces) = legacy steady-state slide where slideSpeed is recomputed each frame from current tangent gravity. Use ON for ice / halfpipes where kinetic energy must convert back to height.")]
         public bool useInertialSlide = false;
 
+        [Header("Ceiling")]
+        [Tooltip("Override the global ceiling thresholds with the values below. ON lets sticky surfaces extend the attachable arc past 107° (e.g. 180° = slime climbs full overhangs) or slippery surfaces tighten it.")]
+        public bool overrideCeilingAngle = false;
+        [Range(90f, 180f)]
+        [Tooltip("Detach / probe-filter angle. surfaceUp below cos(this) → contact treated as ceiling.")]
+        public float ceilingAngle = 107f;
+        [Range(90f, 180f)]
+        [Tooltip("Re-attach angle (Airborne landing). Hysteresis: must be ≤ ceilingAngle.")]
+        public float ceilingReattachAngle = 101f;
+
         public SurfaceModifiers ToModifiers() => new SurfaceModifiers
         {
             crawlSpeed = crawlSpeedMultiplier,
@@ -111,7 +121,10 @@ namespace SlimeJumping.Physics
             dashFalloffEnd = dashFalloffEnd,
             dashSpeedFalloffCurve = dashSpeedFalloffCurve,
             disableDashFalloff = disableDashFalloff,
-            useInertialSlide = useInertialSlide
+            useInertialSlide = useInertialSlide,
+            overrideCeilingAngle = overrideCeilingAngle,
+            ceilingThresholdOverride = Mathf.Cos(ceilingAngle * Mathf.Deg2Rad),
+            ceilingReattachThresholdOverride = Mathf.Cos(ceilingReattachAngle * Mathf.Deg2Rad)
         };
     }
 }

@@ -53,14 +53,14 @@ Idle
 - (이전 버전에서 시도한 3-line halo/glow/core 스택은 알파 0.18~0.45 가 chargeGlow 파티클에 묻혀 보이지 않아 single-line 으로 단순화. 글로우는 두께·밝기·길이 펄스로 표현.)
 
 ## 텐드릴 path 생성 (Branching 모드 — 곡선 + 지면 강하)
-각 텐드릴은 4개의 컨트롤 포인트로 정의된 cubic Bezier 곡선을 따라 그려져 슬라임 주변 지면에 떨어짐 ("쏟아져 내리는" 느낌).
+각 텐드릴은 4개의 컨트롤 포인트로 정의된 cubic Bezier 곡선을 따라 그려져 슬라임의 **과거 위치 트레일** 위에 차례차례 떨어짐 ("뒤쫓아 오는" 체이스 느낌).
 
 ```
 P0 = lockedOrigin (muzzle 위치)                   ← 모든 텐드릴이 머즐에서 직접 출발
 P1 = origin + dir(조준축 ± launchSpreadDegrees) * tendrilLaunchDistance    ← 측면 발사 — 머즐에서 부채꼴로 흩어짐
 P2 = endpoint + Vector2.up * bendHeight           ← 위로 휘었다가 떨어지도록 끌어올리는 anchor
-P3 = SampleGroundEndpoint()                       ← target 주위 [-targetRadius, +targetRadius] 측면 오프셋,
-                                                    Vector2.down 으로 groundSnapMask 레이캐스트해 지면 스냅
+P3 = SampleGroundEndpoint(trailSnapshot[i])       ← FireStart 시 스냅샷된 트레일 샘플 i를 중심으로
+                                                    [-targetRadius, +targetRadius] 측면 오프셋 후 지면 스냅
 
 segments = clamp(round(controlPolygonLength / tendrilSegmentLength), 6, 48)
             ← 텐드릴별로 동적 결정. 거리 멀수록 정점 ↑, 짧으면 ↓.
@@ -74,6 +74,15 @@ points[i]      = baseSamples[i] + perp * Random(-jaggedness, jaggedness) * sin(t
 - `groundSnapMask` 가 0 이면 `bulletHitMask` 로 fallback. 슬라임 자체에 스냅하지 않으려면 Environment 레이어만 지정 권장.
 - 트렁크 없음 — 머즐 P0 에서 N개의 텐드릴이 각자 P1 lateral 발산으로 펼쳐지는 구조.
 
+### Trail-tracking (체이스 효과 + 라이브 추적)
+- 매 `Update` 마다 `trailSampleInterval` (기본 0.04 s) 간격으로 `target.position` 을 `trailBuffer` 에 기록. (`trailDuration + trailLagOffset`) 보다 오래된 샘플은 폐기.
+- 각 텐드릴 i 는 `lagFraction = 1 - i/(N-1)` 를 보유. **i=0 (먼저 스폰) → lagFraction=1 (가장 과거), i=N-1 (마지막 스폰) → lagFraction=0 (가장 최근)**.
+- 텐드릴 P3 (지면 강하 지점) 는 **스폰 시점에** `QueryTrailAt(Time.time - (trailLagOffset + lagFraction * trailDuration))` 으로 실시간 결정. 즉 PreFire 이후 (FireStart/Firing 단계에서) 도 아직 안 나간 텐드릴들은 슬라임의 새 위치를 따라감.
+- `trailLagOffset` (기본 0): 가장 최근 텐드릴조차 슬라임이 N초 전에 있던 위치를 노림. 0 이면 최신 텐드릴은 라이브 위치, 0.3 이면 항상 0.3초 뒤처져서 박힘.
+- `trailDuration` (기본 0.6): 체이스 스프레드. 가장 오래된 텐드릴은 `trailLagOffset + trailDuration` 초 전 위치를 노림.
+- 두 값 모두 0 이면 모든 텐드릴이 슬라임의 라이브 위치를 노리는 라이브 추적 모드.
+- 텔레그래프(PreFire) 의 `lockedDir` 은 PreFire 시작 시점에 고정 — 텐드릴 머즐 출발 방향(P1) 만 영향. 끝점(P3) 은 항상 라이브 트레일 쿼리 기반.
+
 ## 발사체 — Burst 모드 (`GraniteBlastBullet`)
 - `Rigidbody2D` (Kinematic) + `CircleCollider2D` (trigger).
 - 매 `FixedUpdate`: `rb.position = rb.position + dir * speed * dt` (프로젝트 룰: `transform.position` 대신 `rb.position`).
@@ -85,8 +94,16 @@ points[i]      = baseSamples[i] + perp * Random(-jaggedness, jaggedness) * sin(t
 - 탐지: `detectionIndicator` 활성 + `detectSound`.
 - 차징: `chargeGlow` ParticleSystem 스케일링 + `chargeSound`.
 - 발사: `muzzleFlash` 버스트 + `fireSound`.
-- 임팩트: `impactPrefab`을 `Instantiate + Destroy(duration + lifetime + 0.2)`로 자동 해제.
-- 오디오: `SoundService.PlayAt(clip, muzzlePos, SFX_Object, volume)`로 믹서 라우팅.
+- 임팩트 VFX: `impactPrefab` 을 `Instantiate + Destroy(duration + lifetime + 0.2)` 로 자동 해제.
+- **임팩트 SFX**: `groundImpactSound` 가 각 라인 프로젝타일이 지면에 닿을 때 1회 재생됨.
+  - Branching: 텐드릴 풀 드로우 시점 (`drawT >= 1`) 에 P3 endpoint 위치에서 재생 → 텐드릴 N개 = N번.
+  - Beam: 첫 프레임 ground 차폐 감지 시 hitPoint 에서 1회.
+  - Burst: 각 GraniteBlastBeam flash 가 동일 로직으로 1회씩 → flash 수만큼.
+  - `groundImpactPitchJitter` (기본 0.1) 로 ±10% pitch 랜덤화 → 다중 발생 시 단조로움 방지.
+- 오디오 라우팅: `SoundService.PlayAt(clip, worldPos, SFX_Object, volume, pitch)`.
+
+## Inspector 표시
+`GraniteBlastEmitterEditor` (`Assets/Scripts/Editor/`) 가 [Header] attribute 를 reflection 으로 읽어 현재 `mode` 와 무관한 모드 섹션 (Branching/Beam/Burst) 을 자동으로 숨김. 새 필드 추가 시 동일 헤더 아래에 두면 자동 분류됨.
 
 ## 인스펙터 파라미터 요약
 | Header | 키 |
@@ -97,12 +114,12 @@ points[i]      = baseSamples[i] + perp * Random(-jaggedness, jaggedness) * sin(t
 | Phase Timing | `detectionDelay`, `preFireDuration`, `fireStartDuration`, `firingDuration`, `postFireDuration`, `cooldownDuration`, `loseSightGrace` |
 | Hit Mask | `maxRange`, `bulletHitMask`, `groundSnapMask` (Branching 텐드릴 endpoint 지면 스냅), `hitRadius` (CircleCast 반경 — 모든 모드 공통) |
 | Hazard | `knockbackForce`, `stunDuration` |
-| Branching | `tendrilCount`, `targetRadius`, `launchSpreadDegrees`, `tendrilLaunchDistance`, `bendHeight`, `tendrilSegmentLength` (path-length 기반 동적 세그먼트), `tendrilJaggedness`, `tendrilDrawTime / Hold / Fade`, `tendrilCoreWidth`, `branchingFireStartFraction` |
+| Branching | `tendrilCount`, `targetRadius`, `launchSpreadDegrees`, `tendrilLaunchDistance`, `bendHeight`, `tendrilSegmentLength` (path-length 기반 동적 세그먼트), `tendrilJaggedness`, `tendrilDrawTime / Hold / Fade`, `tendrilCoreWidth`, `branchingFireStartFraction`, `trailDuration` (체이스 스프레드 sec), `trailLagOffset` (최신 텐드릴의 기본 랙 sec), `trailSampleInterval` |
 | Beam | `beamFadeTime`, `beamCoreWidth` (lifetime은 fireStart+firing+postFire) |
 | Burst | `burstFlashCount`, `burstSpreadDegrees`, `burstFlashDuration`, `burstFlashFadeTime`, `burstFlashCoreWidth`, `burstFireStartFraction` (batch 모드), `burstFlashInterval` (>0 → 한 발씩 N초 간격으로 순차 발사. fraction 무시) |
 | Visual Colors | `coreColor`, `lineZOffset` |
 | Telegraph | `showPreFireTelegraph`, `telegraphWidth`, `telegraphColor` |
-| Audio | `detectSound / preFireSound / fireStartSound / postFireSound` + 볼륨 |
+| Audio | `detectSound / preFireSound / fireStartSound / postFireSound / groundImpactSound` + 각 볼륨, `groundImpactPitchJitter` |
 | VFX | `chargeGlow`, `muzzleFlash`, `impactPrefab`, `detectionIndicator` |
 
 ## 레퍼런스

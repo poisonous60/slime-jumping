@@ -10,7 +10,7 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateAttached(float dt)
         {
-            if (!isTouchingSurface || Vector2.Dot(surfaceNormal, gravityUp) < settings.ceilingThreshold
+            if (!isTouchingSurface || Vector2.Dot(surfaceNormal, gravityUp) < surfaceMod.GetCeilingThreshold(settings)
                 || blockAttachCount > 0)
             {
                 hopRequested = false;

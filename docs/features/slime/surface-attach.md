@@ -4,6 +4,7 @@
 - 원형 콜라이더가 표면에 접촉하면 Attached 진입.
 - 착지 시 `velocity = 0` (점성 슬라임 — 모든 운동량 흡수).
 - **천장 히스테리시스**: 탈출 `surfaceUp < ceilingThreshold`(-0.3, ~107°), 진입 `surfaceUp >= ceilingReattachThreshold`(-0.2, ~101°). 사이 구간에서는 현재 상태 유지 → 구체 표면에서 상태 떨림 방지.
+  - 두 임계값은 `SurfaceMaterial.overrideCeilingAngle` 로 표면 단위 오버라이드 가능. 컨택트별로 자기 표면의 임계값을 사용 → 끈끈이 표면(180°=오버행 부착) / 미끄러운 표면(예: 95°에서 천장) 등 표현. 기본 표면은 SlimeSettings 글로벌 값.
 
 ## 표면 감지 (CheckSurface)
 1. `OverlapCircleNonAlloc(pos, slimeRadius + detectRange, mask)` — 주변 콜라이더 수집 (`ignoredColliders` 필터링).

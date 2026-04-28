@@ -30,6 +30,11 @@ namespace SlimeJumping.Physics
         // contact is a corner-bisector, not a real edge-perpendicular). Excluded from
         // EffectiveNormal so corner artefacts don't fake a 20–45° slope on flat ground.
         protected readonly bool[] contactClamped = new bool[16];
+        // Per-contact ceiling threshold (cos of ceilingAngle). Resolved from each contact's
+        // SurfaceTag in CheckSurface so different materials at a multi-contact corner each
+        // get their own attachable arc — Step 1.5 ceiling filter and EffectiveNormal use
+        // this instead of a single global threshold.
+        protected readonly float[] contactCeilingThreshold = new float[16];
         protected int contactCount;
 
         // Diagnostic state
@@ -43,10 +48,9 @@ namespace SlimeJumping.Physics
         protected Vector2 lastDepenPushDir;
         protected float lastDepenPushMag;
 
-        // Cached gravity/ceiling context from last CheckSurface (used by EffectiveNormal
+        // Cached gravity context from last CheckSurface (used by EffectiveNormal
         // and ProjectVelocityAgainstContacts — they run after CheckSurface in the same frame).
         protected Vector2 lastGravityUp = Vector2.up;
-        protected float lastCeilingThreshold;
         // Broadphase detect range used by the most recent CheckSurface call. Edge-enumerating
         // probes filter contacts to within (slimeRadius + lastDetectRange) so they match the
         // broadphase OverlapCircle radius and don't overflow the contact buffer with far edges
@@ -85,7 +89,6 @@ namespace SlimeJumping.Physics
             if (other == null) return;
             this.lastGoodNormal = other.lastGoodNormal;
             this.lastGravityUp = other.lastGravityUp;
-            this.lastCeilingThreshold = other.lastCeilingThreshold;
         }
 
         public bool CheckSurface(out Vector2 normal, out Collider2D col,
@@ -98,7 +101,6 @@ namespace SlimeJumping.Physics
             Vector2 pos = rb.position;
 
             lastGravityUp = gravityUp;
-            lastCeilingThreshold = settings.ceilingThreshold;
             lastDetectRange = detectRange;
 
             normal = gravityUp;
@@ -123,6 +125,16 @@ namespace SlimeJumping.Physics
                     return true;
                 }
                 return false;
+            }
+
+            // Resolve per-contact ceiling threshold from each collider's SurfaceTag.
+            // SelectPrimary's ceiling filter and EffectiveNormal both index into this array
+            // so a sticky overhang at 130° can mix with a normal-tagged 30° floor without
+            // the global threshold dictating a uniform answer.
+            for (int i = 0; i < contactCount; i++)
+            {
+                SurfaceTag.ResolveCeilingThresholds(contactColliders[i], settings,
+                    out contactCeilingThreshold[i], out _);
             }
 
             // Identify active contacts (within slimeRadius + contactSkin)
@@ -178,15 +190,17 @@ namespace SlimeJumping.Physics
             // Step 1.5: Ceiling filter — when active contacts mix ceiling and
             // non-ceiling, exclude ceiling contacts from steps 2-5.
             // Prevents a marginally-deeper ceiling from winning over a valid floor.
+            // "Ceiling" is per-contact: each collider's SurfaceTag may override the
+            // attachable arc, so a sticky-tagged overhang stays attachable while an
+            // adjacent normal-tagged surface still treats the same angle as ceiling.
             bool filterCeiling = false;
-            float ceilThresh = settings.ceilingThreshold;
             {
                 int attachableCount = 0;
                 int firstAttachable = -1;
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
-                    if (Vector2.Dot(contactNormals[i], gravityUp) >= ceilThresh)
+                    if (Vector2.Dot(contactNormals[i], gravityUp) >= contactCeilingThreshold[i])
                     {
                         attachableCount++;
                         if (firstAttachable < 0) firstAttachable = i;
@@ -214,7 +228,7 @@ namespace SlimeJumping.Physics
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
-                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < contactCeilingThreshold[i]) continue;
                     Collider2D c = contactColliders[i];
                     if (c == null) continue;
                     IPlatformEffect eff = c.GetComponentInParent<IPlatformEffect>();
@@ -248,7 +262,7 @@ namespace SlimeJumping.Physics
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
-                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < contactCeilingThreshold[i]) continue;
                     if (contactColliders[i] == prevCollider)
                     {
                         float pen = radius - contactDistances[i];
@@ -267,7 +281,7 @@ namespace SlimeJumping.Physics
                         if (i == prevIdx) continue;
                         if (!contactActive[i]) continue;
                         if (contactColliders[i] == prevCollider) continue; // other samples of same collider don't count as "other"
-                        if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
+                        if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < contactCeilingThreshold[i]) continue;
                         float pen = radius - contactDistances[i];
                         if (pen > maxOtherPen) maxOtherPen = pen;
                     }
@@ -281,7 +295,7 @@ namespace SlimeJumping.Physics
             for (int i = 0; i < contactCount; i++)
             {
                 if (!contactActive[i]) continue;
-                if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
+                if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < contactCeilingThreshold[i]) continue;
                 float pen = radius - contactDistances[i];
                 if (pen > deepestPen)
                 {
@@ -302,7 +316,7 @@ namespace SlimeJumping.Physics
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
-                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < contactCeilingThreshold[i]) continue;
                     float d = -Vector2.Dot(contactNormals[i], inputDir);
                     if (d > bestDot)
                     {
@@ -327,7 +341,7 @@ namespace SlimeJumping.Physics
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (!contactActive[i]) continue;
-                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < ceilThresh) continue;
+                    if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < contactCeilingThreshold[i]) continue;
                     float g = Vector2.Dot(contactNormals[i], gravityUp);
                     if (g > bestGrav)
                     {
@@ -369,7 +383,7 @@ namespace SlimeJumping.Physics
                 for (int i = 0; i < contactCount; i++)
                 {
                     if (contactClamped[i]) continue;
-                    if (Vector2.Dot(contactNormals[i], lastGravityUp) < lastCeilingThreshold) continue;
+                    if (Vector2.Dot(contactNormals[i], lastGravityUp) < contactCeilingThreshold[i]) continue;
                     float w = radius + fullBand - contactDistances[i];
                     if (w <= 0f) continue;
                     if (rampWidth > 1e-6f)

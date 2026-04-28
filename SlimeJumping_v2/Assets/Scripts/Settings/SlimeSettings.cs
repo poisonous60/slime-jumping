@@ -263,7 +263,10 @@ namespace SlimeJumping.Settings
             overrideHopMomentum = false,
             hopMomentumBonus = 0f,
             hopMomentumMaxSpeed = 0f,
-            useInertialSlide = useInertialSlide
+            useInertialSlide = useInertialSlide,
+            overrideCeilingAngle = false,
+            ceilingThresholdOverride = 0f,
+            ceilingReattachThresholdOverride = 0f
         };
     }
 }

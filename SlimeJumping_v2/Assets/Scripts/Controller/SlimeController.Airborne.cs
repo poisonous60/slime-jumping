@@ -68,8 +68,14 @@ namespace SlimeJumping.Controller
             {
                 float surfaceUp = Vector2.Dot(surfaceNormal, gravityUp);
 
+                // Resolve per-surface ceiling reattach threshold from the candidate's
+                // SurfaceTag — surfaceMod still reflects the previous attach, so we look
+                // up from the new collider directly.
+                SurfaceTag.ResolveCeilingThresholds(surfaceCollider, settings,
+                    out _, out float landingReattachThreshold);
+
                 // Ceiling: don't attach, just cancel normal velocity and stay airborne
-                if (surfaceUp < settings.ceilingReattachThreshold)
+                if (surfaceUp < landingReattachThreshold)
                 {
                     surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
                     return;

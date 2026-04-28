@@ -152,8 +152,16 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
-  hopInstantFlip: 0
+  hopNormalToTangentRatio:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  hopInstantFlip: 1
   overrideHopMomentum: 1
-  hopMomentumBonus: 2
+  hopMomentumBonus: 1
   hopMomentumMaxSpeed: 30
   useInertialSlide: 1
+  overrideCeilingAngle: 1
+  ceilingAngle: 150
+  ceilingReattachAngle: 140

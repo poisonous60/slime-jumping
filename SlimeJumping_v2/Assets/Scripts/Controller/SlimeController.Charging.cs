@@ -74,7 +74,7 @@ namespace SlimeJumping.Controller
 
             // Surface/coyote physics — with probe hysteresis (absorb 1-frame misses)
             bool probeValid = isTouchingSurface
-                && Vector2.Dot(surfaceNormal, gravityUp) >= settings.ceilingThreshold;
+                && Vector2.Dot(surfaceNormal, gravityUp) >= surfaceMod.GetCeilingThreshold(settings);
 
             bool onValidSurface;
             if (probeValid)

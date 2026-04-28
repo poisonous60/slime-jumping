@@ -1,4 +1,5 @@
 using UnityEngine;
+using SlimeJumping.Settings;
 
 namespace SlimeJumping.Physics
 {
@@ -36,6 +37,14 @@ namespace SlimeJumping.Physics
         public AnimationCurve dashSpeedFalloffCurve;
         public bool disableDashFalloff;
         public bool useInertialSlide;
+        public bool overrideCeilingAngle;
+        public float ceilingThresholdOverride;
+        public float ceilingReattachThresholdOverride;
+
+        public float GetCeilingThreshold(SlimeSettings settings) =>
+            overrideCeilingAngle ? ceilingThresholdOverride : settings.ceilingThreshold;
+        public float GetCeilingReattachThreshold(SlimeSettings settings) =>
+            overrideCeilingAngle ? ceilingReattachThresholdOverride : settings.ceilingReattachThreshold;
 
         public static readonly SurfaceModifiers Default = new()
         {
@@ -70,7 +79,10 @@ namespace SlimeJumping.Physics
             dashFalloffEnd = 0f,
             dashSpeedFalloffCurve = null,
             disableDashFalloff = false,
-            useInertialSlide = false
+            useInertialSlide = false,
+            overrideCeilingAngle = false,
+            ceilingThresholdOverride = 0f,
+            ceilingReattachThresholdOverride = 0f
         };
     }
 }

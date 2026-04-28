@@ -24,6 +24,16 @@ namespace SlimeJumping.Mechanisms
         private bool hitResolved;
         private bool canHit;
 
+        // Projectile-style halt tracking. Each frame the tip's previous→current chord
+        // is CircleCast against the world; on hit the bolt freezes at that point.
+        // Slime that was on the line at fire time but moved away by the time the tip
+        // arrives no longer halts the bolt — it just keeps going.
+        private bool tipHalted;
+        private int haltedLastFullIdx;
+        private Vector3 haltedTipWorld;
+        private float haltedAge = -1f;
+        private float prevDrawT;
+
         public void Init(GraniteBlastEmitter emitter,
                          Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3,
                          int segments, float jaggedness, float coreWidth,
@@ -130,17 +140,23 @@ namespace SlimeJumping.Mechanisms
         void Update()
         {
             age += Time.deltaTime;
-
             float drawT = Mathf.Clamp01(age / drawTime);
-            ApplyDrawProgress(drawT);
 
-            if (drawT >= 1f && !hitResolved)
+            if (!tipHalted)
             {
-                hitResolved = true;
-                if (canHit) TryApplyHit();
+                CheckCollisionStep(prevDrawT, drawT);
+                prevDrawT = drawT;
             }
 
-            float holdEnd = drawTime + holdTime;
+            if (tipHalted) ApplyHaltedDraw();
+            else ApplyDrawProgress(drawT);
+
+            // Hold + fade timing is anchored at the moment the bolt actually stopped
+            // advancing — either on collision (haltedAge) or on full-range completion
+            // (drawTime). This way an early-halted bolt doesn't "wait" for the
+            // would-have-been full draw before starting its hold/fade.
+            float effectiveDrawEnd = haltedAge >= 0f ? haltedAge : drawTime;
+            float holdEnd = effectiveDrawEnd + holdTime;
             float fadeEnd = holdEnd + fadeTime;
 
             if (age >= fadeEnd)
@@ -149,7 +165,7 @@ namespace SlimeJumping.Mechanisms
                 return;
             }
 
-            if (age >= drawTime)
+            if (age >= effectiveDrawEnd)
             {
                 float pulse = 1f + 0.18f * (Mathf.PerlinNoise(age * 14f, 0f) - 0.5f);
                 lr.widthMultiplier = baseWidth * pulse;
@@ -164,6 +180,71 @@ namespace SlimeJumping.Mechanisms
                 lr.startColor = c;
                 lr.endColor = c;
             }
+        }
+
+        private void CheckCollisionStep(float prevT, float currT)
+        {
+            if (points == null || points.Length < 2 || owner == null) return;
+            LayerMask mask = owner.BulletHitMask;
+            if (mask == 0) return;
+
+            Vector3 prevTip = TipAt(prevT);
+            Vector3 currTip = TipAt(currT);
+            Vector2 a = prevTip;
+            Vector2 delta = (Vector2)currTip - a;
+            float dist = delta.magnitude;
+            if (dist < 0.0001f) return;
+
+            Vector2 dir = delta / dist;
+            float radius = Mathf.Max(0.01f, owner.HitRadius);
+            var hit = owner.CircleCastExcludingSelf(a, radius, dir, dist, mask);
+            if (hit.collider == null) return;
+
+            // Halt the bolt right at the hit point.
+            tipHalted = true;
+            haltedAge = age;
+            haltedTipWorld = new Vector3(hit.point.x, hit.point.y, prevTip.z);
+
+            int n = points.Length;
+            int segs = n - 1;
+            float exact = Mathf.Clamp01(currT) * segs;
+            haltedLastFullIdx = Mathf.Clamp(Mathf.FloorToInt(exact), 0, n - 1);
+
+            // Slime hazard if the hit is a slime — once per tendril.
+            var slime = hit.collider.GetComponentInParent<SlimeController>();
+            if (slime != null && canHit && !hitResolved)
+            {
+                hitResolved = true;
+                var effect = owner.GetHazardEffect();
+                Vector3 emitterOrigin = owner.AimOrigin();
+                Vector2 away = (Vector2)slime.transform.position - new Vector2(emitterOrigin.x, emitterOrigin.y);
+                effect.knockbackDirection = away.sqrMagnitude > 0.0001f ? away.normalized : dir;
+                slime.ApplyHazardEffect(effect);
+            }
+
+            SpawnImpact(hit.point, hit.normal);
+            owner.PlayGroundImpactSound(hit.point);
+        }
+
+        private Vector3 TipAt(float t)
+        {
+            int n = points.Length;
+            int segs = n - 1;
+            float exact = Mathf.Clamp01(t) * segs;
+            int lastFull = Mathf.FloorToInt(exact);
+            if (lastFull >= segs) return points[n - 1];
+            float frac = exact - lastFull;
+            return Vector3.Lerp(points[lastFull], points[lastFull + 1], frac);
+        }
+
+        private void ApplyHaltedDraw()
+        {
+            if (lr == null || points == null) return;
+            int visibleVerts = Mathf.Min(points.Length, haltedLastFullIdx + 2);
+            if (visibleVerts < 2) visibleVerts = 2;
+            lr.positionCount = visibleVerts;
+            for (int i = 0; i < visibleVerts - 1; i++) lr.SetPosition(i, points[i]);
+            lr.SetPosition(visibleVerts - 1, haltedTipWorld);
         }
 
         private void ApplyDrawProgress(float t)
@@ -194,43 +275,6 @@ namespace SlimeJumping.Mechanisms
             int last = visibleVerts - 1;
             for (int i = 0; i < last; i++) lr.SetPosition(i, points[i]);
             lr.SetPosition(last, overrideTip ? tipOverride : points[last]);
-        }
-
-        private void TryApplyHit()
-        {
-            if (owner == null || points == null) return;
-            LayerMask mask = owner.BulletHitMask;
-            if (mask == 0) return;
-
-            // Per-segment CircleCast — gives each tendril a tube-shaped hit volume
-            // (radius = emitter.HitRadius) instead of a hairline ray, so the slime
-            // registers a hit anywhere the visible curve looks like it's touching it.
-            float radius = owner.HitRadius;
-            for (int i = 0; i < points.Length - 1; i++)
-            {
-                Vector2 a = points[i];
-                Vector2 b = points[i + 1];
-                Vector2 seg = b - a;
-                float segLen = seg.magnitude;
-                if (segLen < 0.0001f) continue;
-                Vector2 dir = seg / segLen;
-
-                var hits = Physics2D.CircleCastAll(a, radius, dir, segLen, mask);
-                for (int h = 0; h < hits.Length; h++)
-                {
-                    var col = hits[h].collider;
-                    if (col == null) continue;
-                    var slime = col.GetComponentInParent<SlimeController>();
-                    if (slime == null) continue;
-                    var effect = owner.GetHazardEffect();
-                    Vector3 emitterOrigin = owner.AimOrigin();
-                    Vector2 away = (Vector2)slime.transform.position - new Vector2(emitterOrigin.x, emitterOrigin.y);
-                    effect.knockbackDirection = away.sqrMagnitude > 0.0001f ? away.normalized : dir;
-                    slime.ApplyHazardEffect(effect);
-                    SpawnImpact(hits[h].point, hits[h].normal);
-                    return;
-                }
-            }
         }
 
         private void SpawnImpact(Vector3 point, Vector3 normal)

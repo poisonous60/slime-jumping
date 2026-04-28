@@ -42,7 +42,7 @@ shadowSpeedSq = launchSpeed² + 2 * |gravity| * heightDelta
 ## 착지 분기
 | 조건 | 결과 |
 |------|------|
-| 천장 (`surfaceUp < ceilingReattachThreshold`) | 부착 안 함. 법선 속도 상쇄, Airborne 유지 |
+| 천장 (`surfaceUp < ceilingReattachThreshold`) | 부착 안 함. 법선 속도 상쇄, Airborne 유지. 임계값은 후보 콜라이더의 `SurfaceMaterial.overrideCeilingAngle` 로 오버라이드 가능 |
 | Space 홀드 + 실제 비행 (체공 > 0.1초) | 에너지 전환 → Charging 직행 |
 | Space 미홀드 + 실제 비행 | velocity = 0, Attached 전환, 스틱 타이머 적용 |
 | 코너 튕김 (체공 < 0.1초) | 법선 속도만 상쇄, Attached 전환 |
