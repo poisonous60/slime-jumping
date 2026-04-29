@@ -41,6 +41,23 @@ namespace SlimeJumping.Controller
         /// Always non-negative (absolute value).
         public float ImpactNormalSpeed => impactNormalSpeed;
         public void AddExternalVelocity(Vector2 deltaV) { externalDeltaV += deltaV; }
+
+        /// Hazard-driven push channel. Adds the deltaV through the same external-velocity
+        /// channel as wind/conveyors, but ALSO fires OnHazardPushed so visual systems
+        /// (SlimeBurnVisual etc.) can react. Used by GraniteBlast hits — no stun, no
+        /// input lockout, just pushes the slime around with a side signal.
+        /// hitPoint is the world position of the actual contact (used by visuals to
+        /// place burn-mark decals); pass slime.Position when no specific contact exists.
+        public void ApplyHazardPush(Vector2 deltaV, Vector2 hitPoint)
+        {
+            externalDeltaV += deltaV;
+            OnHazardPushed?.Invoke(deltaV, hitPoint);
+        }
+
+        /// Fired whenever ApplyHazardPush is called. Payload: (deltaV, worldHitPoint).
+        /// Subscribers: SlimeBurnVisual (places burn-mark decals at hit point + drives
+        /// stuck-compression visual).
+        public event System.Action<Vector2, Vector2> OnHazardPushed;
         public float CoyoteTimer => coyoteTimer;
         public float EnergyCoyoteTimer => energyCoyoteTimer;
         public float PostLaunchTimer => postLaunchTimer;

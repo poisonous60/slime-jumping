@@ -1,6 +1,5 @@
 using UnityEngine;
 using SlimeJumping.Controller;
-using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
 {
@@ -52,6 +51,28 @@ namespace SlimeJumping.Mechanisms
             ApplyDrawProgress(0f);
         }
 
+        // Polyline-init variant for NavGraph A* paths. Walks the world-space waypoint
+        // list, samples each segment at segmentLength resolution, and applies the same
+        // perp jaggedness noise as the bezier path. The rest of the runtime pipeline
+        // (collision sweep, halt, draw) is path-agnostic — it just consumes points[].
+        public void InitPath(GraniteBlastEmitter emitter,
+                             System.Collections.Generic.List<Vector3> worldPath,
+                             float segmentLength, float jaggedness, float coreWidth,
+                             float drawTime, float holdTime, float fadeTime,
+                             bool canHit)
+        {
+            this.owner = emitter;
+            this.drawTime = Mathf.Max(0.001f, drawTime);
+            this.holdTime = Mathf.Max(0f, holdTime);
+            this.fadeTime = Mathf.Max(0.001f, fadeTime);
+            this.canHit = canHit;
+            this.baseWidth = Mathf.Max(0.001f, coreWidth);
+
+            BuildPolylineJaggedPath(worldPath, Mathf.Max(0.05f, segmentLength), jaggedness);
+            CreateLine();
+            ApplyDrawProgress(0f);
+        }
+
         private void BuildCurvedJaggedPath(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3,
                                            int segments, float jaggedness)
         {
@@ -59,7 +80,6 @@ namespace SlimeJumping.Mechanisms
             points = new Vector3[vertCount];
 
             float zOffset = owner != null ? owner.LineZOffset : -0.5f;
-            float baseZ = p0.z;
 
             Vector3[] baseSamples = new Vector3[vertCount];
             for (int i = 0; i < vertCount; i++)
@@ -73,8 +93,11 @@ namespace SlimeJumping.Mechanisms
             float avgSeg = totalLen / Mathf.Max(1, vertCount - 1);
             float maxOff = jaggedness * avgSeg * 1.5f;
 
-            points[0] = WithZ(baseSamples[0], baseZ + zOffset);
-            points[vertCount - 1] = WithZ(baseSamples[vertCount - 1], baseZ + zOffset);
+            // Endpoints inherit each bezier sample's own Z (so muzzle Z != 0 setups
+            // and Z-bowed control points produce a curve that actually leaves the
+            // muzzle plane in the middle and returns at the end).
+            points[0] = baseSamples[0]; points[0].z += zOffset;
+            points[vertCount - 1] = baseSamples[vertCount - 1]; points[vertCount - 1].z += zOffset;
 
             for (int i = 1; i < vertCount - 1; i++)
             {
@@ -83,6 +106,8 @@ namespace SlimeJumping.Mechanisms
                 Vector3 tangent = b - a;
                 if (tangent.sqrMagnitude < 0.0001f) tangent = Vector3.right;
                 Vector3 axis = tangent.normalized;
+                // Perp jitter is XY-only — Z swerve already comes from the bezier
+                // control polygon, so layering perp Z noise on top would just smear it.
                 Vector3 perp = new Vector3(-axis.y, axis.x, 0f);
 
                 float t = (float)i / (vertCount - 1);
@@ -90,7 +115,8 @@ namespace SlimeJumping.Mechanisms
                 float off = Random.Range(-maxOff, maxOff) * taper;
 
                 Vector3 p = baseSamples[i] + perp * off;
-                points[i] = WithZ(p, baseZ + zOffset);
+                p.z += zOffset;
+                points[i] = p;
             }
         }
 
@@ -102,7 +128,72 @@ namespace SlimeJumping.Mechanisms
             return uuu * a + 3f * uu * t * b + 3f * u * tt * c + ttt * d;
         }
 
-        private static Vector3 WithZ(Vector3 v, float z) => new Vector3(v.x, v.y, z);
+        private void BuildPolylineJaggedPath(System.Collections.Generic.List<Vector3> waypoints,
+                                             float segmentLength, float jaggedness)
+        {
+            float zOffset = owner != null ? owner.LineZOffset : -0.5f;
+
+            // Walk waypoints, sub-sampling each leg by segmentLength so the resulting
+            // vertex count matches the bezier path's density. baseSamples preserves
+            // the polyline's own Z (so navgraph nodes with non-zero Z keep their depth).
+            var samples = new System.Collections.Generic.List<Vector3>(64);
+            if (waypoints == null || waypoints.Count < 2)
+            {
+                // Degenerate input — make a 2-vertex line at whatever we got.
+                Vector3 a = waypoints != null && waypoints.Count > 0 ? waypoints[0] : Vector3.zero;
+                samples.Add(a);
+                samples.Add(a + Vector3.right * 0.01f);
+            }
+            else
+            {
+                samples.Add(waypoints[0]);
+                for (int i = 0; i < waypoints.Count - 1; i++)
+                {
+                    Vector3 a = waypoints[i];
+                    Vector3 b = waypoints[i + 1];
+                    float legLen = Vector3.Distance(a, b);
+                    int divs = Mathf.Max(1, Mathf.CeilToInt(legLen / segmentLength));
+                    for (int j = 1; j <= divs; j++)
+                    {
+                        float t = (float)j / divs;
+                        samples.Add(Vector3.Lerp(a, b, t));
+                    }
+                }
+            }
+
+            int vertCount = samples.Count;
+            points = new Vector3[vertCount];
+
+            // Compute perp jitter scale from average sample length.
+            float totalLen = 0f;
+            for (int i = 0; i < vertCount - 1; i++)
+                totalLen += (samples[i + 1] - samples[i]).magnitude;
+            float avgSeg = totalLen / Mathf.Max(1, vertCount - 1);
+            float maxOff = jaggedness * avgSeg * 1.5f;
+
+            points[0] = samples[0]; points[0].z += zOffset;
+            points[vertCount - 1] = samples[vertCount - 1]; points[vertCount - 1].z += zOffset;
+
+            for (int i = 1; i < vertCount - 1; i++)
+            {
+                Vector3 a = samples[i - 1];
+                Vector3 b = samples[i + 1];
+                Vector3 tangent = b - a;
+                if (tangent.sqrMagnitude < 0.0001f) tangent = Vector3.right;
+                Vector3 axis = tangent.normalized;
+                Vector3 perp = new Vector3(-axis.y, axis.x, 0f);
+
+                // Taper: zero at endpoints, peak at the middle. For polylines with sharp
+                // corners, we still want the noise to dampen at the very ends.
+                float t = (float)i / (vertCount - 1);
+                float taper = Mathf.Sin(t * Mathf.PI);
+                float off = Random.Range(-maxOff, maxOff) * taper;
+
+                Vector3 p = samples[i] + perp * off;
+                p.z += zOffset;
+                points[i] = p;
+            }
+        }
 
         private void CreateLine()
         {
@@ -210,19 +301,23 @@ namespace SlimeJumping.Mechanisms
             float exact = Mathf.Clamp01(currT) * segs;
             haltedLastFullIdx = Mathf.Clamp(Mathf.FloorToInt(exact), 0, n - 1);
 
-            // Slime hazard if the hit is a slime — once per tendril.
+            // Slime push if the hit is a slime — one impulse per tendril, no stun.
+            // Direction is muzzle→slime so the slime is shoved away from the cannon.
             var slime = hit.collider.GetComponentInParent<SlimeController>();
-            if (slime != null && canHit && !hitResolved)
+            bool isSlime = slime != null;
+            if (isSlime && canHit && !hitResolved)
             {
                 hitResolved = true;
-                var effect = owner.GetHazardEffect();
                 Vector3 emitterOrigin = owner.AimOrigin();
                 Vector2 away = (Vector2)slime.transform.position - new Vector2(emitterOrigin.x, emitterOrigin.y);
-                effect.knockbackDirection = away.sqrMagnitude > 0.0001f ? away.normalized : dir;
-                slime.ApplyHazardEffect(effect);
+                Vector2 pushDir = away.sqrMagnitude > 0.0001f ? away.normalized : dir;
+                slime.ApplyHazardPush(pushDir * owner.KnockbackImpulse, hit.point);
             }
 
             SpawnImpact(hit.point, hit.normal);
+            // Big explosion VFX is for ground impacts only — slime hits keep just the
+            // small spark from SpawnImpact.
+            if (!isSlime) owner.SpawnGroundExplosion(hit.point, hit.normal);
             owner.PlayGroundImpactSound(hit.point);
         }
 

@@ -63,6 +63,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect
 - [Turret Hazard](features/mechanisms/turret-hazard.md) — CCTV 확장 사격
 - [Icicle Hazard](features/mechanisms/icicle-hazard.md) — 낙하 고드름 (진동 → 낙하 → 파괴)
+- [Falling Train](features/mechanisms/falling-train.md) — 1회 한정 낙하 기차 (텔레그래프 → 연결부 분리 → 곡선 낙하 → 숏컷)
 - [Tier 1 Interactables](features/mechanisms/tier1-interactables.md) — E키 (Sit, TV, Shrine 등)
 - [Tier 1 Fullscreen Hazards](features/mechanisms/tier1-fullscreen-hazards.md) — Jumpscare, CameraFlash
 - [Memo](features/mechanisms/memo.md) — 월드 스페이스 내레이션

@@ -71,7 +71,9 @@ namespace SlimeJumping.Controller
             hopBufferTimer = 0f;
             dashBufferTimer = 0f;
             chargeBufferTimer = 0f;
-            float preLaunchCrawl = chargeEntryCrawl;
+            float preLaunchCrawl = settings.hyperDashInertiaSource == HyperDashInertiaSource.LaunchMoment
+                ? (crawlVelocity + slideVelocity)
+                : chargeEntryCrawl;
             chargeEntryCrawl = 0f;
             crawlVelocity = 0f;
             slideVelocity = 0f;

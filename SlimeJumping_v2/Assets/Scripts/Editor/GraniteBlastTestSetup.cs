@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEditor;
 using SlimeJumping.Mechanisms;
+using SlimeJumping.Controller;
+using SlimeJumping.Visual;
 
 namespace SlimeJumping.Editor
 {
@@ -46,6 +48,281 @@ namespace SlimeJumping.Editor
                 "- Three emitters: Branching (left), Beam (centre), Burst (right).\n" +
                 "- Each detects the slime, charges, then fires in its mode.\n" +
                 "- Tune mode/spread/colors on the emitter inspector. AudioClips are unset by default.");
+        }
+
+        // Stage 2 menu — drops a rig that exercises every Stage 2 feature in one place.
+        // Anchored relative to the slime so it works in SampleScene OR MainScene without
+        // hard-coded coordinates. Wires SlimeBurnVisual onto the slime if not present.
+        // Re-runnable: deletes any prior "GraniteBlast_Stage2_Test" root before building.
+        [MenuItem("SlimeJumping/Mechanism/Setup Granite Blast Stage 2 Test")]
+        public static void SetupStage2()
+        {
+            var slime = Object.FindFirstObjectByType<SlimeController>(FindObjectsInactive.Exclude);
+            if (slime == null)
+            {
+                EditorUtility.DisplayDialog("Granite Blast Stage 2 Test",
+                    "No SlimeController found in the active scene. Open SampleScene or MainScene first, then re-run this menu.",
+                    "OK");
+                return;
+            }
+
+            var existing = GameObject.Find("GraniteBlast_Stage2_Test");
+            if (existing != null) Undo.DestroyObjectImmediate(existing);
+
+            // Anchor relative to the slime so the rig is always visible at scene load.
+            // Slightly above so the muzzles aren't buried in any ground collider.
+            Vector3 slimePos = slime.transform.position;
+            Vector3 anchor = new Vector3(slimePos.x, slimePos.y + 6f, slimePos.z);
+
+            var root = new GameObject("GraniteBlast_Stage2_Test");
+            root.transform.position = anchor;
+            Undo.RegisterCreatedObjectUndo(root, "Create Stage 2 Test");
+
+            // 1. Wire SlimeBurnVisual onto the slime if not already present.
+            EnsureSlimeBurnVisual(slime);
+
+            // 2. NavGraph — small zig-zag arc with 5 nodes so A* visibly weaves around.
+            var navGraph = BuildSampleNavGraph(root.transform, anchor);
+
+            // 3. Three emitters showcasing the new modes.
+            var explosion = CreateExplosionTemplate(root.transform);
+
+            // (a) Branching with NavGraph + Z bow + Z jitter (auto-fire when slime in range).
+            var navEmitter = CreateEmitter("Emitter_NavBranching_Auto", root.transform,
+                hostPos: anchor + new Vector3(-12f, 0f, 0f),
+                muzzleEulerZ: 25f,
+                mode: GraniteBlastEmitter.FireMode.Branching);
+            ConfigureEmitter(navEmitter, em =>
+            {
+                em.FindProperty("navGraph").objectReferenceValue = navGraph;
+                em.FindProperty("bowDepthZ").floatValue = -1.6f;
+                em.FindProperty("controlPointZJitter").floatValue = 0.5f;
+                em.FindProperty("groundExplosionPrefab").objectReferenceValue = explosion;
+                em.FindProperty("knockbackImpulse").floatValue = 14f;
+                em.FindProperty("tendrilCount").intValue = 5;
+                em.FindProperty("detectionRange").floatValue = 30f;
+                em.FindProperty("cooldownDuration").floatValue = 2.5f;
+            });
+
+            // (b) Sustained Beam (auto-fire). Slime walking into the beam keeps getting
+            // pushed via knockbackAcceleration each frame.
+            var sustainedEmitter = CreateEmitter("Emitter_SustainedBeam_Auto", root.transform,
+                hostPos: anchor + new Vector3(12f, 4f, 0f),
+                muzzleEulerZ: -160f,
+                mode: GraniteBlastEmitter.FireMode.Beam);
+            ConfigureEmitter(sustainedEmitter, em =>
+            {
+                em.FindProperty("sustainedHit").boolValue = true;
+                em.FindProperty("knockbackAcceleration").floatValue = 90f;
+                em.FindProperty("groundExplosionPrefab").objectReferenceValue = explosion;
+                em.FindProperty("preFireDuration").floatValue = 1.0f;
+                em.FindProperty("fireStartDuration").floatValue = 0.05f;
+                em.FindProperty("firingDuration").floatValue = 2.5f;
+                em.FindProperty("postFireDuration").floatValue = 0.2f;
+                em.FindProperty("cooldownDuration").floatValue = 1.5f;
+                em.FindProperty("beamCoreWidth").floatValue = 0.7f;
+                em.FindProperty("detectionRange").floatValue = 30f;
+            });
+
+            // (c) Triggered one-shot beam (autoFire=false) — walks-into-trigger fires
+            // a big slow telegraphed laser. Demonstrates GraniteBlastTrigger + FireOnce.
+            var oneShotEmitter = CreateEmitter("Emitter_BigOneShot_Triggered", root.transform,
+                hostPos: anchor + new Vector3(0f, 9f, 0f),
+                muzzleEulerZ: -90f,
+                mode: GraniteBlastEmitter.FireMode.Beam);
+            ConfigureEmitter(oneShotEmitter, em =>
+            {
+                em.FindProperty("autoFire").boolValue = false;
+                em.FindProperty("preFireDuration").floatValue = 1.5f;
+                em.FindProperty("fireStartDuration").floatValue = 0.08f;
+                em.FindProperty("firingDuration").floatValue = 1.0f;
+                em.FindProperty("beamCoreWidth").floatValue = 1.4f;
+                em.FindProperty("knockbackImpulse").floatValue = 28f;
+                em.FindProperty("groundExplosionPrefab").objectReferenceValue = explosion;
+            });
+
+            // Trigger volume below the one-shot emitter — slime walks under, beam fires.
+            BuildTriggerVolume(root.transform,
+                worldPos: anchor + new Vector3(0f, 0.75f, 0f),
+                size: new Vector2(4f, 1.5f),
+                emitter: oneShotEmitter.GetComponent<GraniteBlastEmitter>(),
+                allowRetrigger: true,
+                retriggerCooldown: 4f);
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
+                UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+
+            Selection.activeGameObject = root;
+            Debug.Log("[GraniteBlastStage2Test] Built.\n" +
+                "- Slime now has SlimeBurnVisual (burnt color + stuck-compression visual on hit).\n" +
+                "- NavBranching emitter (left) — fires auto. Tendrils route through the NavGraph zig-zag arc.\n" +
+                "- SustainedBeam emitter (right) — fires auto. Walk into the beam to feel cumulative push.\n" +
+                "- BigOneShot emitter (above) — fires only when slime enters the trigger box at the bottom. 4s cooldown.\n" +
+                "Move the GraniteBlast_Stage2_Test root if it overlaps existing scene geometry.");
+        }
+
+        private static void EnsureSlimeBurnVisual(SlimeController slime)
+        {
+            var existing = slime.GetComponentInChildren<SlimeBurnVisual>(true);
+            if (existing != null) return;
+
+            // Pick a body transform for the burn-mark decals to parent under.
+            // Prefer the 3D mesh root (body3d), fall back to the legacy 2D sprite root.
+            var slimeVisual = slime.GetComponentInChildren<SlimeVisual>(true);
+            Transform bodyT = null;
+            if (slimeVisual != null)
+            {
+                if (slimeVisual.Body3d != null) bodyT = slimeVisual.Body3d;
+                else if (slimeVisual.Body != null) bodyT = slimeVisual.Body;
+            }
+
+            var burnGO = new GameObject("BurnVisual");
+            burnGO.transform.SetParent(slime.transform, false);
+            Undo.RegisterCreatedObjectUndo(burnGO, "Add SlimeBurnVisual");
+            var burn = burnGO.AddComponent<SlimeBurnVisual>();
+
+            var so = new SerializedObject(burn);
+            so.FindProperty("slimeController").objectReferenceValue = slime;
+            so.FindProperty("slimeVisual").objectReferenceValue = slimeVisual;
+            so.FindProperty("body3d").objectReferenceValue = bodyT;
+            // burnShellShader auto-resolves via Shader.Find in SlimeBurnVisual.Awake
+            // — no need to wire it here.
+            so.ApplyModifiedProperties();
+        }
+
+        private static GraniteBlastNavGraph BuildSampleNavGraph(Transform parent, Vector3 anchor)
+        {
+            var navGO = new GameObject("NavGraph");
+            navGO.transform.SetParent(parent, false);
+            navGO.transform.position = anchor;
+            var nav = navGO.AddComponent<GraniteBlastNavGraph>();
+
+            // Zigzag from the NavBranching emitter (left) toward the slime area.
+            // Local-space, so the whole rig moves together if the user drags the root.
+            // X spans -10..+10 around anchor; Y dips so the path visibly bows.
+            var nodes = new[]
+            {
+                new Vector3(-10f, 0f, 0f),
+                new Vector3(-6f,  3f, 0.6f),
+                new Vector3(-2f,  6f, -0.4f),
+                new Vector3( 2f,  6f, 0.6f),
+                new Vector3( 6f,  3f, -0.4f),
+                new Vector3( 10f, 0f, 0f),
+            };
+            var edges = new[]
+            {
+                new Vector2Int(0, 1),
+                new Vector2Int(1, 2),
+                new Vector2Int(2, 3),
+                new Vector2Int(3, 4),
+                new Vector2Int(4, 5),
+            };
+
+            var so = new SerializedObject(nav);
+            var nodesProp = so.FindProperty("nodes");
+            nodesProp.arraySize = nodes.Length;
+            for (int i = 0; i < nodes.Length; i++)
+                nodesProp.GetArrayElementAtIndex(i).vector3Value = nodes[i];
+            var edgesProp = so.FindProperty("edges");
+            edgesProp.arraySize = edges.Length;
+            for (int i = 0; i < edges.Length; i++)
+                edgesProp.GetArrayElementAtIndex(i).vector2IntValue = edges[i];
+            so.ApplyModifiedProperties();
+            return nav;
+        }
+
+        private static void BuildTriggerVolume(Transform parent, Vector3 worldPos, Vector2 size,
+                                               GraniteBlastEmitter emitter, bool allowRetrigger, float retriggerCooldown)
+        {
+            var go = new GameObject("Trigger_OneShotZone");
+            go.transform.SetParent(parent, false);
+            go.transform.position = worldPos;
+            var box = go.AddComponent<BoxCollider2D>();
+            box.size = size;
+            box.isTrigger = true;
+            var trig = go.AddComponent<GraniteBlastTrigger>();
+            var so = new SerializedObject(trig);
+            so.FindProperty("emitter").objectReferenceValue = emitter;
+            so.FindProperty("allowRetrigger").boolValue = allowRetrigger;
+            so.FindProperty("retriggerCooldown").floatValue = retriggerCooldown;
+            so.ApplyModifiedProperties();
+
+            // Visualize the trigger zone with a small flat quad so designers see where it is.
+            var preview = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            preview.name = "TriggerPreview";
+            Object.DestroyImmediate(preview.GetComponent<MeshCollider>());
+            preview.transform.SetParent(go.transform, false);
+            preview.transform.localPosition = Vector3.zero;
+            preview.transform.localScale = new Vector3(size.x, size.y, 1f);
+            var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            mat.color = new Color(1f, 0.6f, 0.2f, 0.25f);
+            mat.SetFloat("_Surface", 1f); // transparent
+            preview.GetComponent<MeshRenderer>().sharedMaterial = mat;
+        }
+
+        // Apply additional SerializedObject edits on top of CreateEmitter's defaults.
+        // CreateEmitter already finalizes basic config; this opens a fresh SerializedObject
+        // for the caller to tweak mode-specific fields.
+        private static void ConfigureEmitter(GameObject emitterGO, System.Action<SerializedObject> cfg)
+        {
+            var em = emitterGO.GetComponent<GraniteBlastEmitter>();
+            if (em == null) return;
+            var so = new SerializedObject(em);
+            cfg(so);
+            so.ApplyModifiedProperties();
+        }
+
+        // Larger, slower-fading variant of the small impactPrefab spark — used as the
+        // groundExplosionPrefab on Stage 2 emitters so designers see the difference between
+        // slime-hit (spark) and ground-hit (chunky).
+        static ParticleSystem CreateExplosionTemplate(Transform parent)
+        {
+            var go = new GameObject("ExplosionTemplate");
+            go.transform.SetParent(parent, false);
+            go.SetActive(false);
+
+            var ps = go.AddComponent<ParticleSystem>();
+            var main = ps.main;
+            main.duration = 0.8f;
+            main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.6f, 1.0f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(3f, 9f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.3f, 0.8f);
+            main.startColor = new ParticleSystem.MinMaxGradient(
+                new Color(0.95f, 0.99f, 1f, 1f), new Color(0.45f, 0.75f, 1f, 1f));
+            main.stopAction = ParticleSystemStopAction.None;
+            main.playOnAwake = false;
+            main.gravityModifier = 0.4f;
+
+            var emission = ps.emission;
+            emission.rateOverTime = 0f;
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 60) });
+
+            var shape = ps.shape;
+            shape.shapeType = ParticleSystemShapeType.Hemisphere;
+            shape.radius = 0.4f;
+
+            var col = ps.colorOverLifetime;
+            col.enabled = true;
+            var grad = new Gradient();
+            grad.SetKeys(
+                new[] { new GradientColorKey(new Color(1f, 1f, 1f), 0f), new GradientColorKey(new Color(0.3f, 0.6f, 1f), 1f) },
+                new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.7f, 0.4f), new GradientAlphaKey(0f, 1f) });
+            col.color = new ParticleSystem.MinMaxGradient(grad);
+
+            var size = ps.sizeOverLifetime;
+            size.enabled = true;
+            size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 1.2f, 1f, 0f));
+
+            var renderer = ps.GetComponent<ParticleSystemRenderer>();
+            var mat = new Material(Shader.Find("Sprites/Default"));
+            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One);
+            mat.SetInt("_ZWrite", 0);
+            mat.mainTexture = Texture2D.whiteTexture;
+            renderer.material = mat;
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            return ps;
         }
 
         static GameObject CreateEmitter(string name, Transform parent, Vector3 hostPos, float muzzleEulerZ,
@@ -121,11 +398,8 @@ namespace SlimeJumping.Editor
                 so.FindProperty("maxRange").floatValue = 30f;
                 // Default (0) | SlimeNode (6) | Environment (7) — same as TurretHazard.
                 so.FindProperty("bulletHitMask").intValue = (1 << 0) | (1 << 6) | (1 << 7);
-                // Snap branching tendril endpoints onto Environment (layer 7) only —
-                // avoids snapping onto the slime itself.
-                so.FindProperty("groundSnapMask").intValue = (1 << 7);
-                so.FindProperty("knockbackForce").floatValue = 18f;
-                so.FindProperty("stunDuration").floatValue = 0.5f;
+                so.FindProperty("knockbackImpulse").floatValue = 18f;
+                so.FindProperty("knockbackAcceleration").floatValue = 60f;
                 so.FindProperty("chargeGlow").objectReferenceValue = chargeGlow;
                 so.FindProperty("muzzleFlash").objectReferenceValue = muzzleFlash;
                 so.FindProperty("impactPrefab").objectReferenceValue = impactTemplate;

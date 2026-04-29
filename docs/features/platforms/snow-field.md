@@ -1,0 +1,235 @@
+# Snow Field
+
+Stage 2 눈 비주얼. 플랫폼의 위쪽 면에 자동으로 눈이 깔리고, 슬라임이 착지할 때 파묻히고, 시간이 지나면 다시 채워지는 시스템 — Trail/DeformableMud 두 패턴의 조합. 현재 Phase 3 (fragment 폴리시: footprint detail / fresnel rim / glitter, 키워드 토글) 까지 구현.
+
+## 전체 목표 (전체 vision)
+
+1. **눈은 비주얼 전용**. 콜라이더 없음, SurfaceTag 없음. 슬라임은 항상 호스트 플랫폼의 콜라이더 위에서 attach/이동.
+2. **호스트 플랫폼**의 콜라이더에 별도 `Snow.asset` SurfaceMaterial 할당 (Mud-like 접착감). SnowField와 결합 없음 — 디자이너가 per-level 셋업.
+3. **자동 적층** — 슬로프 ≤ `maxSnowSlopeDeg` (기본 45°)인 윗면에만 눈이 형성. 수직 벽이나 오버행은 비어있음.
+4. **3D 굴곡 따라가기** — 호스트의 실제 윗면 triangulation을 그대로 복사해 vertex normal 방향으로 offset (surface-offset shell). 평지/슬로프/언덕/heightmap 변위 모두 정확히 따라감.
+5. **착지 carve** — 슬라임이 떨어진 X 위치에 가우시안 dip. Trail-style 누적 (한 번 = 얕은 자국, 반복 = 깊은 자국).
+6. **시간 회복** — 눈이 내리며 `heightCurrent[v]`가 `heightRest[v]`를 향해 lerp. 자국이 점진적으로 채워짐.
+7. **지붕 occlusion** — 위에 천장이 있는 영역은 `heightRest`가 작아 그 이상 안 쌓임. `Physics2D.Raycast`로 한 번 계산.
+8. **부드러운 가장자리** — 패치 경계에서 두께 0으로 taper, 호스트 표면으로 둥글게 내려감.
+9. **저폴리 룩** — Quibli 셰이더 스택과 어울리는 폭신한 눈 비주얼: 푸른 그늘 ramp + 글리터 + Fresnel rim.
+
+## 현재 구현 (Phase 1 + 2 + 3) ✓
+
+> **Phase 경계 메모**: Phase 1 의 원래 설계 (mesh 에 변위를 baked, heightCurrent = heightRest 고정, 셰이더 없음)는 Phase 2 작업 때 폐기됐다. 현재 코드는 Phase 1 의 **자동 추출 파이프라인 + edge taper + lifecycle** 만 그대로 유지하고, **mesh 포맷 / 데이터 모델 / 셰이더 / routing** 은 Phase 2 가 처음부터 다시 짠 결과다. Phase 3 는 약속대로 fragment stage 만 갈아끼웠다 — `SnowMeshBuilder` 에서 uv2.y 를 heightRest 로 채우는 한 줄 변경 외에 vertex 셰이더 / 데이터 모델 / CPU 파이프라인 손 안 댔다. 그래서 세 phase 를 분리하지 않고 한 섹션으로 묶었다. Phase 4 부터는 다시 CPU 데이터 (heightRest 를 ceiling raycast 로 결정) 와 fragment 단 합쳐서 작업해야 한다.
+
+### Tuning 자산 — `SnowSettings` ScriptableObject
+
+ScriptableObject 한 개에 모든 snow tuning 이 모임 (deposit / mesh / render / carve / recovery). SnowField 가 `settings` 필드로 참조; 여러 SnowField 가 같은 자산을 공유하면 한 번 튜닝으로 모두 업데이트. settings 가 null 이면 SnowField 가 baked-in 기본값으로 fallback (시스템 안 깨짐). 다른 비주얼이 필요한 레벨은 별도 `SnowSettings` 자산을 만들어 그 SnowField 의 `settings` 슬롯에 끼움.
+
+기본 자산 위치: `Assets/Settings/Snow_Default.asset` (`Tools → SlimeJumping → Snow → Create Default Settings Asset` 으로 생성).
+
+### 자동 생성 파이프라인 (Phase 1 origin, 손 안 댐)
+
+`SnowField` 컴포넌트를 호스트 GameObject (`MeshFilter`가 있는 플랫폼)에 추가하면 `[ExecuteAlways]` + `OnValidate→delayCall` 패턴으로 자동 rebuild:
+
+1. `SnowTopSurfaceExtractor.Extract(mesh, maxSnowSlopeDeg)` — 호스트 메쉬의 모든 triangle 중 face normal.y ≥ cos(maxSnowSlopeDeg)인 것만 채택.
+2. position-quantized vertex welding (flat-shaded 메쉬의 중복 정점 합침).
+3. union-find로 연결된 component마다 별도의 `TopPatch`로 분리.
+4. 각 패치별로 verts/per-vertex normals/CCW tris/directed boundary edges 출력.
+
+### Subdivision (Phase 2 신규)
+
+low-poly 호스트 메쉬에서도 carve 가 보이도록, `SnowPatchSubdivider.Subdivide` 가 BFS taper 전에 host triangle 들을 barycentric 으로 재귀 세분화. midpoint normal/heightRest 는 endpoint 보간으로 계산 → **3D 굴곡 보존**, 단지 vertex 만 dense 해짐. `subdivLevels` (0~3, 기본 1 = 4× verts) 은 SnowSettings 에 있음.
+
+### Edge taper (Phase 1 origin)
+
+graph BFS로 boundary로부터 hop count 계산. `edgeTaperHops` 설정 (기본 1):
+- hop=0 (boundary): 두께 0 — 호스트 표면에 닿음
+- hop≥hops (interior): 풀 `restThickness`
+- 그 사이: smoothstep ramp
+
+좁은 패치/긴 strip 패치도 일관된 결과 — vertex normal 절대값 대신 토폴로지 hop 사용. 결과는 `heightRest[v]` 배열에 저장 → SnowStrip 데이터 모델로 그대로 들어감.
+
+### Mesh 포맷 (Phase 2 에서 전면 재설계 — 셰이더-friendly)
+
+`SnowMeshBuilder.Build` — 호스트 patch tris 를 정점은 **un-displaced** 채로 (`mesh.verts[i] = patch.verts[i]`) emit. 변위는 셰이더가 GPU 에서 처리. **Phase 1 의 baked-displacement (`top[i] = verts + normal * heightCurrent[i]`) 는 폐기됐다.**
+
+| 채널 | 내용 | 셰이더 사용처 |
+|------|------|------|
+| `position` | un-displaced patch.verts (호스트 표면 위) | `SnowVertex` 가 `_SnowHeightTex` 로 displace |
+| `normal` | per-tri face normal at REST 변위 위치 (flat shading) | Quibli 스톡 라이팅 |
+| `tangent.xyz` | top 정점 = patch.vertNormals (변위 방향), base 정점 = 0 (anchored) | 셰이더 displacement axis |
+| `uv (TEXCOORD0)` | (patch.verts.x, patch.verts.y) | Phase 3 footprint/glitter 샘플링 + Phase 2 procedural noise sampling |
+| `uv2 (TEXCOORD1)` | `((origIdx + 0.5) / V, heightRest[origIdx])` — x = 1D heightTex sample 좌표, y = 휴식 두께 (Phase 3 신규) | x: `SAMPLE_TEXTURE2D_LOD(_SnowHeightTex, ...)` / y: vertex stage 에서 carve mask `1 - h/heightRest` 계산 |
+
+**양면 emit** (top + side strip 모두 reversed-winding 페어 포함) → material 무관하게 어떤 카메라 각도에서도 보임. AABB 는 un-displaced 정점 기준이라 `bounds.Expand(2 * maxRest)` 로 padding 해서 frustum culling 클립 방지.
+
+### 데이터 모델 — `SnowStrip` (Phase 2 에서 확장)
+
+`SnowStrip` 컴포넌트가 각 자식 GO 에:
+
+- `verts[]`, `vertNormals[]`, `tris[]`, `boundaryEdges[]` — 패치 토폴로지 (Phase 1)
+- `heightRest[]` — taper-shaped 휴식 두께 (Phase 1 origin, 변경 없음)
+- `heightCurrent[]` — per-vertex 현재 두께. **Phase 2 부터 carve/recovery 로 mutate** (Phase 1 에선 항상 = heightRest)
+- `heightTex` (Texture2D V × 1 RFloat) + `MaterialPropertyBlock cachedRenderer` + `bool dirty` — heightCurrent 의 GPU 미러 (**Phase 2 신규**)
+- `aabbMin/aabbMax` (Vector2) — xy AABB pre-filter 용 (Phase 2 신규)
+- `host` — 호스트 transform 참조. **Phase 2 에선 미사용**, Phase 4 ceiling raycast / Phase 5 slope diffusion 대비 보존
+
+### Carve / recovery (Phase 2 신규 — CPU 데이터 layer)
+
+- **Carve 이벤트**: `SnowStamper` 가 slime 에 1개 부착, `SlimeController.OnLanded` 단일 구독. `slimeController.SurfaceCollider` 를 `SnowFieldRegistry` 로 O(1) 조회 → 매치되는 SnowField 의 `HandleLanded(world, impactSpeed)` 호출 (raw impact 만 전달; depth/radius 매핑은 stamper 가 안 함).
+- **세기 매핑**: `SnowField.HandleLanded` 가 자기 `SnowSettings` 에서 `minImpactSpeed`/`depthPerImpact`/`depthMax`/`radiusPerImpact`/`radiusMax` 읽어 `depth = min(depthMax, impact * depthPerImpact)`, `radius = min(radiusMax, impact * radiusPerImpact)` 산출. `impact < minImpactSpeed` 면 reject. settings null 이면 baked-in 기본값.
+- **Per-vertex carve**: SnowField 가 contact 를 mesh-local 로 변환, 자식 SnowStrip 마다 `CarveLocal(localImpact, depth, radius)` 호출. 각 strip 은 자기 xy AABB 로 pre-filter (radius padding) → 무관 strip 의 V 순회 0. 영향권 vertex 마다 `falloff = exp(-4 * (dist/radius)^2)`, `heightCurrent[v] = max(0, heightCurrent[v] - depth * falloff)`.
+- **회복 lerp**: `SnowField.FixedUpdate` 가 dirty/회복 중인 strip 만 `activeStrips` HashSet 에서 추적. 각 active strip `TickRecovery(dt, settings.accumulationRate)` 로 `heightCurrent[v] += accumulationRate * dt` (cap heightRest). 모든 vertex 가 heightRest 도달하면 active set 에서 제거 → idle FixedUpdate cost 0.
+
+### GPU 업로드 + vertex displacement 셰이더 (Phase 2 신규)
+
+- **per-strip 1D heightTex**: `Texture2D V × 1 RFloat`, `Point Clamp`. 변경 발생 (`dirty=true`) 시에만 `SetPixelData(heightCurrent) + Apply()` 그리고 `MaterialPropertyBlock.SetTexture(_SnowHeightTex, ...)` 푸시. material 자산은 read-only.
+- **`Ground_Quibli_Snow.shader`** — Quibli StylizedLit 클론. ForwardLit pass 만 vertex/fragment pragma 를 snow 래퍼로 교체. 다른 pass (Outline / ShadowCaster / DepthOnly / DepthNormals / GBuffer / Meta / Universal2D) 는 stock 그대로.
+- **`Ground_SnowVertexInject.hlsl`** — `SnowVertex` 가 `input.staticLightmapUV.x` (TEXCOORD1.x, mesh.uv2.x) 로 heightTex sample (`SAMPLE_TEXTURE2D_LOD` 강제 — vertex stage LOD 자동 안 됨), 옵션 `_SnowSurfaceNoise` multiply, `input.tangentOS.xyz * h * _SnowHeightScale` 변위. Phase 3 부터는 `staticLightmapUV.y` 의 heightRest 와 비교해서 `mask = saturate(1 - h/heightRest)` 계산 후 `SnowVaryings { v = LitPassVertex(input), snowExtras = (mask, 0) }` 반환.
+
+### Fragment 폴리시 (Phase 3 신규 — 셰이더 단)
+
+Phase 3 는 약속대로 fragment stage 만 갈아끼웠다 — vertex / mesh / 데이터 모델 / CPU 파이프라인 손 안 댔고, mesh.uv2.y 가 0.5 → heightRest 로 바뀐 한 줄만 mesh builder 에 추가됐다.
+
+- **wrap 전략**: stock `StylizedPassFragment` 를 직접 갈아엎지 않고 wrapper `SnowFragment` 가 먼저 호출 → 결과에 snow 폴리시 (footprint / fresnel / glitter) 를 post-blend. 푸른 그늘 ramp 는 Quibli 가 이미 가지고 있는 `_GradientRamp` 슬롯 (NdotL toon ramp) 에 디자이너가 blue→white 그라데이션 텍스처를 할당하면 끝 — 셰이더 작업 없음.
+- **`Ground_SnowFragmentInject.hlsl`** (신규) — `SnowVaryings` wrapper struct 정의 (`Varyings v` + `float2 snowExtras : TEXCOORD9`). Quibli `Varyings` 는 TEXCOORD0~8 까지 조건부로 사용, TEXCOORD9 은 비어 있어 안전. 그리고 `SnowFragment(SnowVaryings i)`:
+  1. `half4 base = StylizedPassFragment(i.v);` — Quibli stock 라이팅 + 그늘 ramp 그대로
+  2. `_SNOW_FOOTPRINT` (gated by `mask > 1e-3`): `_FootprintAlbedo` 를 host-local `i.v.uv * _FootprintTiling` 으로 샘플 → carve 영역 만 `lerp(base, base*albedo, mask * _FootprintBlend)`
+  3. `_SNOW_FRESNEL`: `pow(1 - saturate(dot(N, V)), _SnowFresnelPower)` 의 그레이징 highlight 가산
+  4. `_SNOW_GLITTER`: `_GlitterNoise` 노이즈 step + view-direction `pow(NdotV, _GlitterViewSharpness)` modulate → sparkle 가산
+- **키워드 토글**: `_SNOW_FOOTPRINT` / `_SNOW_FRESNEL` / `_SNOW_GLITTER` 모두 `shader_feature_local_fragment`. `SnowSettings` 의 토글 bool 3개 + 텍스처 슬롯 3개 (shadowRamp / footprintAlbedo / glitterNoise) 가 **runtime material clone** 에 push 되어 디자이너는 SnowSettings 한 곳만 만지면 됨. SnowField 가 rebuild 마다 `new Material(snowMaterial)` 클론을 만들고 (HideFlags.DontSave) Phase 3 텍스처/키워드 적용 후 자식 SnowStrip 들에 sharedMaterial 로 할당, OnDestroy 에서 dispose. 원본 `Ground_Quibli_Snow.mat` 자산은 read-only 유지 — heightTex MPB 와 동일한 invariant. 기본값은 모두 off → Phase 2 와 시각적으로 동일 (안전한 기본값).
+- **Quibli 파일 미수정**: 모든 추가는 클론 셰이더 / 신규 inject HLSL 에서만. `Assets/ThirdParty/Quibli/` 트리는 read-only 유지.
+- **노멀 양자화**: 별도 fragment 작업 없음 — `SnowMeshBuilder` 가 per-tri face normal 을 굽기 때문에 자연스럽게 flat 셰이딩 = patch 느낌. 변위 후 normal 재계산은 안 함 (cost 무시 가능 변위라 Phase 2 부터 채택).
+
+### Routing — registry + stamper (Phase 2 신규)
+
+`SnowField.OnEnable` 에서 `hostCollider → this` 를 `SnowFieldRegistry` 정적 dict 에 등록. 슬라임 한 개의 `SnowStamper` 가 OnLanded 단일 구독 → registry 조회 → 해당 SnowField 만 dispatch. SnowField 들이 모두 OnLanded 구독하는 N-callback 폭증 회피 (TrailColliderRegistry 패턴).
+
+### 컴포넌트 lifecycle (Phase 1 + 2 합본)
+
+- `Reset` / `OnValidate` / `Awake` → ScheduleRebuild → delayCall 로 `RebuildNow` (Phase 1)
+- `OnEnable` (play): `SnowFieldRegistry.Register` (Phase 2)
+- `OnDisable`: dirty strips flush + activeStrips clear + registry unregister (Phase 2)
+- `FixedUpdate` (play, idle 일 땐 no-op): activeStrips 에 있는 strip 만 TickRecovery + FlushIfDirty (Phase 2)
+- `OnDestroy` → 자식 `SnowStrip_*` GO 자동 destroy (각 SnowStrip 도 자기 heightTex destroy) (Phase 1 + 2)
+- 호스트 mesh 해시 watcher — 인스펙터 repaint 마다 mesh 변경 감지, `Rebuild Now` 안내 HelpBox (Phase 1)
+- 작은 noise patch 필터 — `minPatchTris` 이하 connected component drop (Phase 1)
+
+### 에디터 도구
+
+- `[CustomEditor]` SnowFieldEditor — Rebuild Now 버튼, mesh 변경 알림 (Phase 1)
+- `Tools → SlimeJumping → Snow → Rebuild Selected / Rebuild All In Scene` (Phase 1)
+- `Tools → SlimeJumping → Snow → Create Default Settings Asset` — `Snow_Default.asset` 생성 + 머티리얼 자동 seed (Phase 2, idempotent)
+- `Tools → SlimeJumping → Snow → Wire MainScene + SampleScene` — slime 에 SnowStamper 추가, SnowField 의 settings/hostCollider 자동 wire (Phase 2, idempotent)
+- 디버그 기즈모: 패치 외곽선 (초록 line), per-vertex 노멀 (파란 line)
+
+### Snow `SurfaceMaterial` 자산 (orthogonal task)
+
+`Assets/Settings/SurfaceMaterials/Snow.asset` — Mud-derived. `slideResistance` 1.0 (vs Mud 1.3, 살짝 더 미끄럼), 그 외는 Mud 값 그대로. 디자이너가 호스트 콜라이더의 SurfaceTag에 수동 할당. **SnowField와 결합 없음** — 별개 시스템 (SnowField 비주얼 스택과 완전 직교).
+
+### 의도적으로 안 한 것
+
+- **Disk persistence**: 메모리 only, scene 재로드 시 fresh. snow carve 는 일시 비주얼이라 Trail 처럼 디스크 저장 불필요.
+- **Sliding carve** (Phase 6 옵션 A): doc 의 leaning B 채택. 게임필 잡힌 후 결정.
+- **Fragment-stage 폴리시** (Phase 3): 푸른 ramp / glitter / Fresnel rim / 발자국 detail texture.
+- **Spatial hash / KD-tree**: V < 2000 면 brute force 충분.
+- **다른 pass vertex displacement**: ForwardLit 만. 그림자/depth 는 un-displaced rest 모양으로 캐스트 — 얇은 carve (≤ 0.2m) 면 시각 차이 미미.
+
+## 미구현 (Phase 4 이후)
+
+> Phase 4+ 는 Phase 2/3 의 mesh / vertex / fragment 셰이더 contract 를 그대로 두고 heightRest 결정 로직 (Phase 4) · neighbour 시뮬 (Phase 5) 만 갈아끼우는 추가 작업이다. Phase 1 ↔ Phase 2 사이 같은 mesh-format 재설계는 더 일어나지 않을 예정.
+
+### Phase 4: 지붕 occlusion
+
+- 시작 시 (또는 N프레임마다) 각 vertex에서 위로 `Physics2D.Raycast` → `ceilingMask` 충돌 거리에 따라 `heightRest[v]` 결정
+- 기존 `SnowCameraEmitter.emitterArea` (PolygonCollider2D) 와 occlusion 영역 공유 가능
+
+### Phase 5: 슬로프 diffusion
+
+- 휴식각 (~38°) 기반 셀룰러 오토마타 — 매 프레임 인접 vertex 두께 차이가 휴식각 넘으면 일부 흘림
+- 슬로프 위 눈이 자연스럽게 평형으로 settling
+
+### Phase 6 (open): Differential deformation
+
+- "스쳐 지나가는" 슬라이딩 carve를 landing carve와 다르게 처리할지 미결정
+- 옵션 A: stampOnCrawl 패턴 (가벼운 carve)
+- 옵션 B: 슬라이딩은 carve 안 함 (현재 leaning)
+- Phase 2 carve가 게임필 잡힌 후 결정
+
+## 파라미터 (현재)
+
+### SnowSettings (`Assets/Settings/Snow_Default.asset`)
+
+**모든 snow tuning 이 한 자산에 모임** — 여러 SnowField 가 같은 자산을 참조해 동시 튜닝 가능. `Tools → SlimeJumping → Snow → Create Default Settings Asset` 메뉴로 생성.
+
+| 그룹 | 필드 | 기본값 | 설명 |
+|---|---|---|---|
+| Deposit | Max Snow Slope Deg | 45 | face normal y ≥ cos(this) 인 face 만 패치 채택 |
+| | Min Patch Tris | 3 | 이 미만 connected component 는 노이즈로 drop |
+| Mesh | Rest Thickness | 0.25 | vertex normal 방향 perpendicular 두께 (m) |
+| | Edge Taper Hops | 1 | boundary 로부터 풀 두께까지의 graph hop 수 |
+| | Subdiv Levels | 1 | barycentric 세분화 단계 (0 = host 그대로, 3 = 64× verts) |
+| Render | Snow Material | None | 자식 SnowStrip MeshRenderer 에 할당될 머티리얼 템플릿 (`Ground_Quibli_Snow.mat`). 실제 할당은 SnowField 가 rebuild 시 만든 **runtime clone** — 아래 텍스처/키워드 SnowSettings 필드들은 그 clone 에만 push 되어 원본 .mat 자산은 read-only 유지. |
+| | Shadow Ramp | None | Quibli 의 NdotL toon ramp (`_GradientRamp`) 슬롯에 push. blue→white 그라데이션 텍스처를 할당하면 그늘 부분에 푸른 톤. null 이면 머티리얼 자산의 기본값 유지. |
+| | Footprint Albedo | None | Carve 영역 detail 블렌드용 (`_FootprintAlbedo`). `_SNOW_FOOTPRINT` 키워드 켜야 효과 있음. |
+| | Glitter Noise | None | Glitter sparkle 노이즈 (`_GlitterNoise`). Perlin 등 고대비 노이즈 텍스처 할당. `_SNOW_GLITTER` 키워드 켜야 효과 있음. |
+| Phase 3 effects | Footprint Enabled | false | `_SNOW_FOOTPRINT` 키워드 토글 (runtime material clone 에 EnableKeyword/DisableKeyword) |
+| | Fresnel Enabled | false | `_SNOW_FRESNEL` 키워드 토글 |
+| | Glitter Enabled | false | `_SNOW_GLITTER` 키워드 토글 |
+| Carve | Min Impact Speed | 1.5 | 이 미만 임팩트는 carve 안 함 (m/s) |
+| | Depth Per Impact | 0.012 | dip 깊이 계수 (m per m/s) |
+| | Depth Max | 0.20 | dip 깊이 상한 (m) |
+| | Radius Per Impact | 0.05 | dip 반경 계수 (m per m/s) |
+| | Radius Max | 0.8 | dip 반경 상한 (m) |
+| Recovery | Accumulation Rate | 0.05 | 회복 속도 (m/s) — heightCurrent → heightRest |
+
+### SnowField (호스트 GO 에 부착)
+
+per-instance reference 만 — tuning 은 settings asset 으로.
+
+| 인스펙터 | 기본값 | 설명 |
+|---------|--------|------|
+| Settings | None | `SnowSettings` 자산 참조. null 이면 baked-in 기본값 |
+| Source Mesh Filter | auto | 호스트 메쉬. 같은 GO 또는 자식에서 자동 resolve |
+| Host Collider | None | 슬라임 SurfaceCollider 와 매칭될 호스트의 Collider2D — registry 키 |
+| Draw Patch Outlines | true | scene 기즈모: 패치 외곽 초록 line |
+| Draw Vert Normals | false | per-vertex 노멀 파란 line |
+
+### SnowStamper (슬라임 GO 에 1개 부착, TrailStamper 옆)
+
+| 인스펙터 | 기본값 | 설명 |
+|---------|--------|------|
+| Slime Controller | auto | OnLanded 발신자 |
+| Log Landings | false | 디버그: 매 carve 의 impact/SnowField 로그 |
+
+depth/radius 매핑은 SnowField 가 settings 에서 읽어 처리. stamper 는 raw `ImpactNormalSpeed` 만 전달하는 thin router.
+
+## 관련 파일
+
+- [SnowField.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/Snow/SnowField.cs) — 호스트 컴포넌트 + rebuild + carve dispatch + recovery
+- [SnowTopSurfaceExtractor.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/Snow/SnowTopSurfaceExtractor.cs) — face slope 필터 + connected component 분리
+- [SnowPatchSubdivider.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/Snow/SnowPatchSubdivider.cs) — barycentric 재귀 세분화
+- [SnowMeshBuilder.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/Snow/SnowMeshBuilder.cs) — un-displaced + tangent + uv2 mesh emit
+- [SnowStrip.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/Snow/SnowStrip.cs) — 자식 GO 데이터 + heightTex/MPB + Carve/Tick/Flush
+- [SnowFieldRegistry.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/Snow/SnowFieldRegistry.cs) — Collider2D → SnowField static dict
+- [SnowStamper.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/Snow/SnowStamper.cs) — 슬라임 측 OnLanded 구독자 (raw impact 만 전달)
+- [SnowSettings.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/Snow/SnowSettings.cs) — 모든 tuning 의 ScriptableObject. 여러 SnowField 가 공유
+- [SnowFieldEditor.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/Snow/SnowFieldEditor.cs) — 인스펙터 + 메뉴
+- [SnowSceneWirer.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/Snow/SnowSceneWirer.cs) — MainScene / SampleScene 자동 wire 메뉴
+- [SnowDefaultSettingsBootstrap.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/Snow/SnowDefaultSettingsBootstrap.cs) — 기본 settings 자산 생성 메뉴
+- [Ground_Quibli_Snow.shader](../../../SlimeJumping_v2/Assets/Art/Shader/Ground_Quibli_Snow.shader) — Quibli StylizedLit 클론, ForwardLit pass 의 vertex displacement + fragment polish inject
+- [Ground_SnowVertexInject.hlsl](../../../SlimeJumping_v2/Assets/Art/Shader/Ground_SnowVertexInject.hlsl) — `SnowVertex` 래퍼: heightTex 변위 + carve mask 계산, `SnowVaryings` 반환
+- [Ground_SnowFragmentInject.hlsl](../../../SlimeJumping_v2/Assets/Art/Shader/Ground_SnowFragmentInject.hlsl) — `SnowVaryings` struct + `SnowFragment` (footprint / fresnel / glitter post-blend), Phase 3 신규
+- [Ground_Quibli_Snow.mat](../../../SlimeJumping_v2/Assets/Art/Materials/Ground_Quibli_Snow.mat) — Phase 2/3 default material; Phase 3 키워드 (`_SNOW_FOOTPRINT` / `_SNOW_FRESNEL` / `_SNOW_GLITTER`) 모두 default off
+- [Snow.asset](../../../SlimeJumping_v2/Assets/Settings/SurfaceMaterials/Snow.asset) — Mud 변형 SurfaceMaterial (디자이너 수동 wire)
+
+## 알려진 한계 / 트레이드오프
+
+- **Slope 컷오프의 이중 효과** — `maxSnowSlopeDeg`가 face filter (어떤 face가 패치에 속하나) + 자연스러운 boundary 위치를 동시에 결정. 너무 strict면 (예: 30°) 작은 jagged jitter face가 빠지면서 host 노출. 너무 관대하면 (예: 80°) 패치가 옆면까지 늘어나 거의 모든 vertex가 boundary로 분류 → taper로 두께 거의 0. **45° 내외가 sweet spot**, 호스트 jitter 정도에 따라 튜닝.
+- **`frontInteriorJitter` 강한 host 메쉬에서 작은 노출 가능** — 아주 가파른 jagged tri는 패치 가장자리에 안 들어가 host 그대로 보임. 호스트 mesh 측에서 jitter 줄이거나 maxSnowSlopeDeg 키우면 완화.
+- **두께 0 face의 z-fighting** — 현재 두께 0인 vertex는 정확히 호스트 위에 겹침. 카메라에 따라 z-fighting 가능. 미세 baseOffset 추가는 미구현.
+- **다중 `SnowField` per host 미지원** — `[DisallowMultipleComponent]`. 한 호스트에 여러 눈 영역이 필요하면 호스트를 분리.
+
+## 동작 불변식 (Trail 시스템과 동일 원칙)
+
+1. **비주얼 전용**: 충돌/물리/표면 판정/상태 머신에 일절 영향 없음. SnowField/SnowStrip 전부 제거해도 게임플레이 픽셀 동일.
+2. **호스트 비파괴**: 호스트 mesh, 호스트 transform, 호스트 collider 절대 안 건드림. SnowField가 자식 GO만 spawn/destroy.
+3. **idempotent rebuild**: RebuildNow N번 호출해도 자식 개수 일정. 메쉬 자산 누수 없음.
+4. **`Gameplay → Snow` 결합 금지**: 슬라임이 눈 위에 있는지 여부로 분기 금지.

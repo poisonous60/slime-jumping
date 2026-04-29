@@ -1,8 +1,6 @@
-using System.Collections.Generic;
 using UnityEngine;
 using SlimeJumping.Audio;
 using SlimeJumping.Controller;
-using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
 {
@@ -12,12 +10,20 @@ namespace SlimeJumping.Mechanisms
     /// Beam: a sustained thick laser drawn from muzzle to first blocker.
     /// Burst: a cone of fast bullet projectiles.
     /// FSM: Idle → Detecting → PreFire (준비) → FireStart (시작) → Firing (중) → PostFire (이후) → Cooldown.
-    /// All hits route through SlimeController.ApplyHazardEffect.
+    /// Hits push the slime via SlimeController.AddExternalVelocity (no stun, no input lockout).
+    ///
+    /// This is the Core partial: serialized fields, FSM dispatch, transitions, public API.
+    /// Mode-specific code lives in sibling partial files (Branching/Beam/Burst), and the
+    /// support helpers (Targeting/Telegraph/Impact) live next to them.
     /// </summary>
-    public class GraniteBlastEmitter : MonoBehaviour, IHazardSource
+    public partial class GraniteBlastEmitter : MonoBehaviour
     {
         public enum FireMode { Branching, Beam, Burst }
         public enum State { Idle, Detecting, PreFire, FireStart, Firing, PostFire, Cooldown }
+
+        [Header("Firing Mode Control")]
+        [Tooltip("When true (default), the emitter auto-detects targets and fires on its own. When false, the emitter stays Idle until external code calls FireOnce() — used for scripted/triggered shots (e.g., GraniteBlastTrigger volumes).")]
+        [SerializeField] private bool autoFire = true;
 
         [Header("Mode")]
         [SerializeField] private FireMode mode = FireMode.Branching;
@@ -57,18 +63,30 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("CircleCast radius used by all three modes for slime hit detection. Bigger = more forgiving 'sweep' feel; match visual line width for strict detection.")]
         [SerializeField] private float hitRadius = 0.4f;
 
-        [Header("Hazard")]
-        [SerializeField] private float knockbackForce = 18f;
-        [SerializeField] private float stunDuration = 0.5f;
+        [Header("Knockback")]
+        [Tooltip("One-shot KB applied per discrete bolt hit (Branching tendril, single-shot Beam, Burst flash). Units: m/s — added to slime velocity once.")]
+        [SerializeField] private float knockbackImpulse = 18f;
+        [Tooltip("Sustained KB applied every frame the slime stays inside a sustained Beam. Units: m/s² — multiplied by Time.deltaTime per push.")]
+        [SerializeField] private float knockbackAcceleration = 60f;
+        [Tooltip("Beam mode only. When true, the beam keeps re-sweeping each frame and pushes whatever slime sits in the path; the slime is not stunned and can keep playing — but cannot easily walk into the beam. False = legacy single-hit halt behavior (each beam halts on the first slime, applies impulse once).")]
+        [SerializeField] private bool sustainedHit = false;
 
         [Header("Branching Mode")]
+        [Tooltip("Optional A* navigation graph. When set, Branching tendrils route through navGraph.FindPath(muzzle, slime) ONLY IF a direct line from muzzle to slime is blocked by walls (navWallMask). Direct LOS clear → bezier direct fire. Behind a wall → A* through navGraph. No clean entry/exit nodes → bezier fallback. Leave null to disable graph routing entirely.")]
+        [SerializeField] private GraniteBlastNavGraph navGraph;
+        [Tooltip("Layers that count as walls for NavGraph LOS gating. Used by IsDirectPathClear (direct shortcut) and ClosestVisibleNode (entry/exit selection). Should NOT include the slime layer — slime in path is fine, walls aren't. Default = Environment (layer 7). 0 disables LOS gating (NavGraph reverts to legacy Euclidean nearest-node selection).")]
+        [SerializeField] private LayerMask navWallMask = (1 << 7);
         [SerializeField] private int tendrilCount = 7;
         [Tooltip("World-space horizontal jitter (±units) on the captured slime XY before computing the fire direction. Adds variety to the bolt fan.")]
         [SerializeField] private float targetRadius = 0f;
         [Tooltip("World-space upward bow added to the Bezier control points along the muzzle→target line. 0 = perfectly straight bolt directly at the target. Higher = bolt arches upward over the path.")]
         [SerializeField] private float bowHeight = 0f;
+        [Tooltip("World-space Z bow added to the Bezier control points (depth). 0 = bolt stays in the muzzle's Z plane. >0 pushes the midpoint forward (toward camera with default URP setup), <0 pushes it back. Combined with bowHeight gives the bolt a 3D arc.")]
+        [SerializeField] private float bowDepthZ = 0f;
         [Tooltip("World-space perpendicular jitter (±units) on each Bezier control point, so the bolts don't all overlap on the same straight line.")]
         [SerializeField] private float controlPointJitter = 0.3f;
+        [Tooltip("World-space Z jitter (±units) on each Bezier control point. Independent from controlPointJitter — adds depth wobble per tendril so a fan of bolts doesn't all sit in the same plane. 0 = all bolts share the muzzle's Z plane (legacy 2D behavior).")]
+        [SerializeField] private float controlPointZJitter = 0f;
         [Tooltip("World-space distance per Bezier segment. Total segments per tendril = path-length / this, clamped to [6, 48].")]
         [SerializeField] private float tendrilSegmentLength = 0.6f;
         [Tooltip("Max perpendicular noise (units) along the curve, scaled by segment length.")]
@@ -152,8 +170,10 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private ParticleSystem chargeGlow;
         [Tooltip("Particle burst at the muzzle on FireStart.")]
         [SerializeField] private ParticleSystem muzzleFlash;
-        [Tooltip("Particle prefab spawned at each tendril/beam impact point, and at bullet impacts.")]
+        [Tooltip("Particle prefab spawned at each tendril/beam impact point, and at bullet impacts. Plays for both slime hits and ground hits — a small spark per contact.")]
         [SerializeField] private ParticleSystem impactPrefab;
+        [Tooltip("Optional larger explosion VFX spawned only on GROUND hits (not slime hits). Use a chunkier, brighter prefab — visual flair, no AoE damage.")]
+        [SerializeField] private ParticleSystem groundExplosionPrefab;
         [Tooltip("Enabled while a target is detected.")]
         [SerializeField] private GameObject detectionIndicator;
 
@@ -163,53 +183,14 @@ namespace SlimeJumping.Mechanisms
         private float graceTimer;
         private bool indicatorOn;
 
-        // Locked at FireStart so all phases use the same aim.
+        // Locked at PreFire entry so all phases use the same aim.
         private Vector3 lockedOrigin;
         private Vector2 lockedDir;
 
-        // Branching: only the per-tendril LAG (in trail-buffer index units) is frozen
-        // at FireStart. The actual direction reference is looked up from the LIVE
-        // trail at each tendril's spawn moment, so still-pending tendrils continue
-        // to chase the slime through the Firing window. Once a tendril has been
-        // spawned (GraniteBlastTendril GameObject created), its bolt is baked.
-        private struct PendingTendril
-        {
-            public int lagSamples;        // trail-index offset back from newest at spawn time
-        }
-        private readonly List<PendingTendril> pendingTendrils = new List<PendingTendril>(16);
-        private int tendrilsSpawned;
-        private int tendrilsAtFireStart;
-
-        // Slime XY trail — purely world-space positions, oldest at index 0. Sampled
-        // every Update at trailSampleInterval, trimmed to trailDuration. PlanBranching
-        // takes a one-shot snapshot at FireStart.
-        private readonly List<Vector2> slimeWorldTrail = new List<Vector2>(64);
-        private float lastTrailSampleTime = -999f;
-
-        // Burst scheduling: precomputed bullet directions, consumed across FireStart + Firing.
-        private readonly List<Vector2> pendingBullets = new List<Vector2>(16);
-        private int bulletsSpawned;
-        private int bulletsAtFireStart;
-        // Time the active burst window started (FireStart entry). Used by interval mode
-        // to spawn one flash every burstFlashInterval seconds.
-        private float burstStartTime;
-
-        // PreFire telegraph line.
-        private LineRenderer telegraphLR;
-
-        // --- shared material for line projectiles ---
-        private Material coreMatCached;
-
-        // --- IHazardSource ---
-        public bool IsActive => isActiveAndEnabled;
-
-        public HazardEffect GetHazardEffect() => new HazardEffect
-        {
-            knockbackForce = knockbackForce,
-            knockbackDirection = Vector2.zero,
-            stunDuration = stunDuration,
-            damageType = DamageType.Lightning,
-        };
+        // Charge-glow runtime — base scale captured on first Play. Lives here (Core)
+        // because charge-glow drive is shared across modes.
+        private Vector3 chargeGlowBaseScale = Vector3.one;
+        private bool chargeGlowCaptured;
 
         // --- public access for spawned projectiles ---
         public LayerMask BulletHitMask => bulletHitMask;
@@ -217,32 +198,14 @@ namespace SlimeJumping.Mechanisms
         public Color CoreColor => coreColor;
         public float LineZOffset => lineZOffset;
         public ParticleSystem ImpactPrefab => impactPrefab;
+        public ParticleSystem GroundExplosionPrefab => groundExplosionPrefab;
         public float HitRadius => Mathf.Max(0.01f, hitRadius);
-
-        public Material GetCoreMaterial() => GetOrCreateMat(ref coreMatCached);
-
-        // Called by tendril / beam / burst-flash on ground impact. Each spawned
-        // projectile is responsible for invoking this once when its line first
-        // reaches the ground (or completes its draw to a ground-snapped endpoint).
-        public void PlayGroundImpactSound(Vector3 worldPos)
-        {
-            if (groundImpactSound == null) return;
-            float pitch = 1f;
-            if (groundImpactPitchJitter > 0f)
-                pitch = 1f + Random.Range(-groundImpactPitchJitter, groundImpactPitchJitter);
-            SoundService.PlayAt(groundImpactSound, worldPos, SoundCategory.SFX_Object, groundImpactVolume, pitch);
-        }
-
-        private Material GetOrCreateMat(ref Material slot)
-        {
-            if (slot != null) return slot;
-            // Same setup as TurretHazard's bulletTracer — known to render visibly in this project.
-            Shader sh = Shader.Find("Sprites/Default");
-            if (sh == null) sh = Shader.Find("UI/Default");
-            slot = new Material(sh);
-            slot.mainTexture = Texture2D.whiteTexture;
-            return slot;
-        }
+        public float KnockbackImpulse => knockbackImpulse;
+        public float KnockbackAcceleration => knockbackAcceleration;
+        public bool SustainedHit => sustainedHit;
+        public LayerMask NavWallMask => navWallMask;
+        public State CurrentState => state;
+        public bool IsBusy => state != State.Idle && state != State.Cooldown;
 
         void Start()
         {
@@ -268,99 +231,15 @@ namespace SlimeJumping.Mechanisms
             slimeWorldTrail.Clear();
         }
 
-        // --- fire direction / origin ---
-
-        public Vector3 AimOrigin() => muzzle != null ? muzzle.position : transform.position;
-
-        public Vector2 AimDirection2D()
+        // External trigger entry point. Skips auto-detection and goes straight into
+        // PreFire (so the configured telegraph still plays). Ignored if the emitter
+        // is already firing — prevents trigger double-fires from chained re-entries.
+        // Returns true on accepted, false if rejected.
+        public bool FireOnce()
         {
-            if (aimAtTarget && target != null)
-            {
-                Vector3 origin = AimOrigin();
-                Vector2 d = new Vector2(target.position.x - origin.x, target.position.y - origin.y);
-                if (d.sqrMagnitude > 0.0001f) return d.normalized;
-            }
-            Transform t = muzzle != null ? muzzle : transform;
-            Vector3 r = t.right;
-            Vector2 dr = new Vector2(r.x, r.y);
-            return dr.sqrMagnitude < 0.0001f ? Vector2.right : dr.normalized;
-        }
-
-        // --- detection ---
-
-        private bool IsTargetVisible()
-        {
-            if (target == null) return false;
-            Vector3 origin = AimOrigin();
-            Vector3 delta = target.position - origin;
-            float distSqr = delta.sqrMagnitude;
-            if (distSqr > detectionRange * detectionRange) return false;
-            if (lineOfSightBlockers == 0) return true;
-
-            float dist = Mathf.Sqrt(distSqr);
-            Vector2 dir = new Vector2(delta.x, delta.y);
-            if (dir.sqrMagnitude < 0.0001f) return true;
-            dir.Normalize();
-
-            var hit = RaycastExcludingSelf(origin, dir, dist, lineOfSightBlockers);
-            if (hit.collider == null) return true;
-            var slime = hit.collider.GetComponentInParent<SlimeController>();
-            return slime != null && slime.transform == target;
-        }
-
-        public RaycastHit2D RaycastExcludingSelf(Vector2 origin, Vector2 dir, float maxDist, LayerMask mask)
-        {
-            // Sort by distance so we always return the *closest* valid solid hit —
-            // Physics2D.RaycastAll's array order is not guaranteed.
-            var hits = Physics2D.RaycastAll(origin, dir, maxDist, mask);
-            RaycastHit2D best = default;
-            float bestDist = float.PositiveInfinity;
-            for (int i = 0; i < hits.Length; i++)
-            {
-                var h = hits[i];
-                if (h.collider == null) continue;
-                // Skip triggers (InteractionSensor / Water / etc. on the bullet hit mask
-                // would otherwise block the beam at the muzzle).
-                if (h.collider.isTrigger) continue;
-                if (h.collider.transform.IsChildOf(transform)) continue;
-                if (h.distance < bestDist)
-                {
-                    bestDist = h.distance;
-                    best = h;
-                }
-            }
-            return best;
-        }
-
-        // Same exclusion logic as the line raycast above, but sweeps a circle of
-        // `radius`, giving the swept tube some forgiveness — used for tendril
-        // endpoint resolution so a slightly stale direction (slime moved a hair off
-        // the line) still terminates on slime/terrain instead of overshooting to
-        // maxRange in mid-air.
-        // Triggers are skipped EXCEPT those belonging to a SlimeController: the bolt
-        // must stop at the slime's body even when that body collider is configured
-        // as a trigger (otherwise the line passes through and ends in mid-air past
-        // the slime). Foreign triggers (water zones, interaction sensors, etc.)
-        // remain pass-through.
-        public RaycastHit2D CircleCastExcludingSelf(Vector2 origin, float radius, Vector2 dir, float maxDist, LayerMask mask)
-        {
-            var hits = Physics2D.CircleCastAll(origin, radius, dir, maxDist, mask);
-            RaycastHit2D best = default;
-            float bestDist = float.PositiveInfinity;
-            for (int i = 0; i < hits.Length; i++)
-            {
-                var h = hits[i];
-                if (h.collider == null) continue;
-                if (h.collider.transform.IsChildOf(transform)) continue;
-                if (h.collider.isTrigger
-                    && h.collider.GetComponentInParent<SlimeController>() == null) continue;
-                if (h.distance < bestDist)
-                {
-                    bestDist = h.distance;
-                    best = h;
-                }
-            }
-            return best;
+            if (state != State.Idle && state != State.Cooldown) return false;
+            EnterPreFire();
+            return true;
         }
 
         // --- FSM ---
@@ -371,14 +250,14 @@ namespace SlimeJumping.Mechanisms
 
             SampleTrail();
 
-            bool seen = IsTargetVisible();
+            bool seen = autoFire && IsTargetVisible();
             graceTimer = seen ? loseSightGrace : Mathf.Max(0f, graceTimer - dt);
             bool effectivelySeen = seen || graceTimer > 0f;
 
             switch (state)
             {
                 case State.Idle:
-                    if (effectivelySeen) EnterDetecting();
+                    if (autoFire && effectivelySeen) EnterDetecting();
                     break;
 
                 case State.Detecting:
@@ -418,7 +297,7 @@ namespace SlimeJumping.Mechanisms
                     stateTimer -= dt;
                     if (stateTimer <= 0f)
                     {
-                        if (effectivelySeen) EnterPreFire();
+                        if (autoFire && effectivelySeen) EnterPreFire();
                         else EnterIdle();
                     }
                     break;
@@ -539,9 +418,6 @@ namespace SlimeJumping.Mechanisms
 
         // --- charge glow scaling (tied to PreFire progress) ---
 
-        private Vector3 chargeGlowBaseScale = Vector3.one;
-        private bool chargeGlowCaptured;
-
         private void StartChargeGlow()
         {
             if (chargeGlow == null) return;
@@ -570,216 +446,6 @@ namespace SlimeJumping.Mechanisms
             chargeGlow.Stop(true, ParticleSystemStopBehavior.StopEmitting);
             if (chargeGlowCaptured)
                 chargeGlow.transform.localScale = chargeGlowBaseScale;
-        }
-
-        // --- PreFire telegraph (thin warning line from muzzle to slime — LIVE) ---
-
-        private void ShowTelegraph()
-        {
-            if (!showPreFireTelegraph) return;
-            EnsureTelegraph();
-            if (telegraphLR == null) return;
-            telegraphLR.enabled = true;
-        }
-
-        private void HideTelegraph()
-        {
-            if (telegraphLR != null) telegraphLR.enabled = false;
-        }
-
-        private void UpdateTelegraph()
-        {
-            if (telegraphLR == null || !telegraphLR.enabled) return;
-            // Live origin + direction — telegraph chases the slime through PreFire
-            // instead of locking at PreFire entry. No "FireStart locks position"
-            // concept; the line just shows where the bolt will currently aim.
-            Vector3 origin = AimOrigin();
-            Vector2 dir = AimDirection2D();
-            float reach = maxRange;
-            if (bulletHitMask != 0)
-            {
-                var hit = RaycastExcludingSelf(origin, dir, maxRange, bulletHitMask);
-                if (hit.collider != null) reach = hit.distance;
-            }
-            Vector3 a = new Vector3(origin.x, origin.y, origin.z + lineZOffset);
-            Vector3 b = new Vector3(origin.x + dir.x * reach,
-                                    origin.y + dir.y * reach,
-                                    origin.z + lineZOffset);
-            telegraphLR.SetPosition(0, a);
-            telegraphLR.SetPosition(1, b);
-        }
-
-        private void EnsureTelegraph()
-        {
-            if (telegraphLR != null) return;
-            var go = new GameObject("PreFireTelegraph_Auto");
-            go.transform.SetParent(transform, false);
-            telegraphLR = go.AddComponent<LineRenderer>();
-            telegraphLR.useWorldSpace = true;
-            telegraphLR.positionCount = 2;
-            telegraphLR.widthMultiplier = telegraphWidth;
-            telegraphLR.numCapVertices = 2;
-            telegraphLR.alignment = LineAlignment.View;
-            telegraphLR.textureMode = LineTextureMode.Stretch;
-            telegraphLR.sortingOrder = 99;
-            var sh = Shader.Find("Sprites/Default");
-            var m = new Material(sh);
-            m.mainTexture = Texture2D.whiteTexture;
-            telegraphLR.material = m;
-            telegraphLR.startColor = telegraphColor;
-            telegraphLR.endColor = telegraphColor;
-            telegraphLR.enabled = false;
-        }
-
-        // --- Branching: plan + spawn ---
-
-        // ───────────────────────────────────────────────────────────────────
-        // World-space targeting (rebuild). All math operates on world XY directly:
-        // no atan2, no sin/cos, no muzzle-relative angles. P0/P1/P2/P3 are derived by
-        // adding world axes (Vector2.up, Vector2.right) and lerping world midpoints.
-        // ───────────────────────────────────────────────────────────────────
-
-        private void SampleTrail()
-        {
-            if (target == null) return;
-            float now = Time.time;
-            float interval = Mathf.Max(0.001f, trailSampleInterval);
-            if (now - lastTrailSampleTime < interval) return;
-            lastTrailSampleTime = now;
-
-            slimeWorldTrail.Add(new Vector2(target.position.x, target.position.y));
-
-            // Cap to (trailDuration + trailLagOffset) so even the oldest tendril
-            // (lagFrac=1) at the largest lagOffset still has a sample available.
-            float maxBackSec = Mathf.Max(0f, trailDuration) + Mathf.Max(0f, trailLagOffset);
-            int maxSamples = Mathf.CeilToInt(maxBackSec / interval) + 2;
-            while (slimeWorldTrail.Count > maxSamples) slimeWorldTrail.RemoveAt(0);
-        }
-
-        private void PlanBranching()
-        {
-            pendingTendrils.Clear();
-            tendrilsSpawned = 0;
-
-            int n = Mathf.Max(1, tendrilCount);
-            tendrilsAtFireStart = Mathf.Clamp(Mathf.RoundToInt(n * branchingFireStartFraction), 1, n);
-
-            // Snapshot the slime's world-XY trail. Tendril i (0..N-1) maps onto a
-            // sample from oldest (i=0) to newest (i=N-1). All work is plain index math
-            // on a list of world Vector2 — no time interpolation, no angles. After this
-            // function returns, no further tracking happens; slime movement cannot
-            // shift any pending tendril.
-            // Convert seconds → buffer-index counts using the fixed sample interval.
-            //   lagOffsetSamples = how many indices back from newest even the latest tendril references
-            //   spreadSamples    = additional spread distributed across tendrils for chase
-            float interval = Mathf.Max(0.001f, trailSampleInterval);
-            int lagOffsetSamples = Mathf.RoundToInt(Mathf.Max(0f, trailLagOffset) / interval);
-            int spreadSamples = Mathf.RoundToInt(Mathf.Max(0f, trailDuration) / interval);
-
-            for (int i = 0; i < n; i++)
-            {
-                // Tendril i: lagFrac=1 (i=0, fires first) → lag = lagOffset + duration.
-                //            lagFrac=0 (i=N-1, fires last) → lag = lagOffset only.
-                float lagFrac = n == 1 ? 0f : 1f - (float)i / (n - 1);
-                int lagSamples = lagOffsetSamples + Mathf.RoundToInt(lagFrac * spreadSamples);
-                pendingTendrils.Add(new PendingTendril { lagSamples = lagSamples });
-            }
-        }
-
-        private void SpawnTendrilsUpTo(int targetCount)
-        {
-            int t = Mathf.Min(targetCount, pendingTendrils.Count);
-            float segLen = Mathf.Max(0.1f, tendrilSegmentLength);
-            float bow = Mathf.Max(0f, bowHeight);
-
-            while (tendrilsSpawned < t)
-            {
-                var pt = pendingTendrils[tendrilsSpawned++];
-
-                // LIVE muzzle position — re-read every spawn so a moving emitter (or
-                // an emitter rotated to track) keeps the bolts coming out of the
-                // current barrel position, not a frozen PreFire snapshot.
-                Vector3 muzzleOrigin = AimOrigin();
-                float muzzleZ = muzzleOrigin.z;
-                Vector2 muzzle2D = new Vector2(muzzleOrigin.x, muzzleOrigin.y);
-
-                // Per-tendril fire SFX so each bolt has its own muzzle crack.
-                if (fireStartSound != null)
-                {
-                    float pitch = 1f;
-                    if (fireStartPitchJitter > 0f)
-                        pitch = 1f + Random.Range(-fireStartPitchJitter, fireStartPitchJitter);
-                    SoundService.PlayAt(fireStartSound, muzzleOrigin, SoundCategory.SFX_Object, fireStartVolume, pitch);
-                }
-
-                // LIVE trail lookup at this tendril's spawn moment — pending tendrils
-                // continue to track the slime through the Firing window. Only THIS
-                // tendril's direction is computed now; future tendrils will resample
-                // when they spawn.
-                int bufLen = slimeWorldTrail.Count;
-                Vector2 slimePos;
-                if (bufLen > 0)
-                {
-                    int idx = Mathf.Clamp((bufLen - 1) - pt.lagSamples, 0, bufLen - 1);
-                    slimePos = slimeWorldTrail[idx];
-                }
-                else
-                {
-                    slimePos = target != null
-                        ? new Vector2(target.position.x, target.position.y)
-                        : muzzle2D;
-                }
-                slimePos.x += Random.Range(-targetRadius, targetRadius);
-
-                // Direction-only reference. The bolt's full-length path is laid out
-                // to maxRange and the Tendril itself does per-frame projectile-style
-                // collision sweeps at its tip — if at the moment the tip reaches a
-                // position there's a slime/terrain collider there, the bolt halts;
-                // if not, it continues. So a slime that was on the line at fire time
-                // but moved away by the time the tip arrives no longer halts the bolt.
-                Vector2 delta = slimePos - muzzle2D;
-                float dlen = delta.magnitude;
-                Vector2 dir = dlen > 0.0001f ? delta / dlen : Vector2.right;
-                Vector2 worldTarget = muzzle2D + dir * maxRange;
-
-                // World-space bezier control points — pure XY arithmetic on the
-                // muzzle→target straight line. No upward bias unless bowHeight > 0.
-                Vector3 p0 = muzzleOrigin;
-                Vector3 p3 = new Vector3(worldTarget.x, worldTarget.y, muzzleZ);
-
-                Vector3 line33 = Vector3.Lerp(p0, p3, 0.33f);
-                Vector3 line67 = Vector3.Lerp(p0, p3, 0.67f);
-                float j1x = Random.Range(-controlPointJitter, controlPointJitter);
-                float j1y = Random.Range(-controlPointJitter, controlPointJitter);
-                float j2x = Random.Range(-controlPointJitter, controlPointJitter);
-                float j2y = Random.Range(-controlPointJitter, controlPointJitter);
-                Vector3 p1 = new Vector3(line33.x + j1x, line33.y + bow + j1y, muzzleZ);
-                Vector3 p2 = new Vector3(line67.x + j2x, line67.y + bow + j2y, muzzleZ);
-
-                // Segment count uses the bezier control polygon length (upper bound on
-                // arc length) — denser segments for longer bolts.
-                float controlPolyLen = Vector3.Distance(p0, p1)
-                                     + Vector3.Distance(p1, p2)
-                                     + Vector3.Distance(p2, p3);
-                int segments = Mathf.Clamp(Mathf.RoundToInt(controlPolyLen / segLen), 6, 48);
-
-                // Travel time uses the straight-line chord (muzzle → maxRange endpoint)
-                // so the tip's world-space speed along the line of fire matches
-                // `tendrilTravelSpeed` exactly, regardless of bow/jitter on the curve.
-                float chordLen = Vector3.Distance(p0, p3);
-                float drawTime = tendrilTravelSpeed > 0f
-                    ? Mathf.Max(0.001f, chordLen / tendrilTravelSpeed)
-                    : tendrilDrawTime;
-
-                SpawnTendril(p0, p1, p2, p3,
-                    segments: segments,
-                    jaggedness: tendrilJaggedness,
-                    coreWidth: tendrilCoreWidth,
-                    drawTime: drawTime,
-                    holdTime: tendrilHoldTime,
-                    fadeTime: tendrilFadeTime,
-                    canHit: true);
-            }
         }
 
         private void SpawnFiringWaveIfDue()
@@ -826,106 +492,6 @@ namespace SlimeJumping.Mechanisms
                     SpawnBulletsUpTo(desired);
                     break;
                 }
-            }
-        }
-
-        private void SpawnTendril(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3,
-                                  int segments, float jaggedness, float coreWidth,
-                                  float drawTime, float holdTime, float fadeTime, bool canHit)
-        {
-            var go = new GameObject("GraniteBlast_Tendril");
-            go.transform.position = p0;
-            var t = go.AddComponent<GraniteBlastTendril>();
-            t.Init(this, p0, p1, p2, p3,
-                segments: segments, jaggedness: jaggedness, coreWidth: coreWidth,
-                drawTime: drawTime, holdTime: holdTime, fadeTime: fadeTime, canHit: canHit);
-        }
-
-        // --- Beam ---
-
-        private void SpawnBeam()
-        {
-            // Beam lives across all three firing phases so it stays committed.
-            float beamLife = fireStartDuration + firingDuration + postFireDuration;
-            var go = new GameObject("GraniteBlast_Beam");
-            go.transform.position = lockedOrigin;
-            var beam = go.AddComponent<GraniteBlastBeam>();
-            beam.Init(this, muzzle != null ? muzzle : transform, lockedDir,
-                duration: beamLife,
-                fadeTime: beamFadeTime,
-                coreWidth: beamCoreWidth,
-                travelSpeed: beamTravelSpeed);
-        }
-
-        // --- Burst (multi-beam fan) ---
-        // Each "burst flash" is a short-lived GraniteBlastBeam — same visual as Beam mode,
-        // just thinner, briefer, and many at once across the spread cone.
-
-        private void PlanBurst()
-        {
-            pendingBullets.Clear();
-            bulletsSpawned = 0;
-            int n = Mathf.Max(1, burstFlashCount);
-            bulletsAtFireStart = Mathf.Clamp(Mathf.RoundToInt(n * burstFireStartFraction), 1, n);
-
-            float halfSpread = burstSpreadDegrees * 0.5f;
-            float baseAngle = Mathf.Atan2(lockedDir.y, lockedDir.x);
-            for (int i = 0; i < n; i++)
-            {
-                float t = n == 1 ? 0.5f : (float)i / (n - 1);
-                float angleDeg = Mathf.Lerp(-halfSpread, halfSpread, t);
-                float jitter = Random.Range(-2f, 2f);
-                float a = baseAngle + (angleDeg + jitter) * Mathf.Deg2Rad;
-                pendingBullets.Add(new Vector2(Mathf.Cos(a), Mathf.Sin(a)));
-            }
-        }
-
-        private void SpawnBulletsUpTo(int targetCount)
-        {
-            int target = Mathf.Min(targetCount, pendingBullets.Count);
-            while (bulletsSpawned < target)
-            {
-                Vector2 v = pendingBullets[bulletsSpawned++];
-                var go = new GameObject("GraniteBlast_BurstFlash");
-                go.transform.position = lockedOrigin;
-                var beam = go.AddComponent<GraniteBlastBeam>();
-                beam.Init(this, muzzle != null ? muzzle : transform, v,
-                    duration: burstFlashDuration,
-                    fadeTime: burstFlashFadeTime,
-                    coreWidth: burstFlashCoreWidth,
-                    travelSpeed: burstFlashTravelSpeed);
-            }
-        }
-
-        // --- Gizmos ---
-
-        void OnDrawGizmosSelected()
-        {
-            Vector3 origin = AimOrigin();
-            Gizmos.color = new Color(0.5f, 0.85f, 1f, 0.35f);
-            Gizmos.DrawWireSphere(origin, detectionRange);
-
-            Vector2 d = AimDirection2D();
-            Vector3 d3 = new Vector3(d.x, d.y, 0f);
-            Gizmos.color = new Color(0.7f, 0.95f, 1f, 0.9f);
-            Gizmos.DrawLine(origin, origin + d3 * Mathf.Min(maxRange, detectionRange));
-
-            // Hit-volume preview: a swept "tube" from muzzle along the aim direction
-            // shows the actual CircleCast radius used by all three modes.
-            float r = Mathf.Max(0.01f, hitRadius);
-            float previewLen = Mathf.Min(maxRange, detectionRange);
-            Vector3 perp = new Vector3(-d.y, d.x, 0f) * r;
-            Vector3 endP = origin + d3 * previewLen;
-            Gizmos.color = new Color(1f, 0.4f, 0.4f, 0.5f);
-            Gizmos.DrawWireSphere(origin, r);
-            Gizmos.DrawWireSphere(endP, r);
-            Gizmos.DrawLine(origin + perp, endP + perp);
-            Gizmos.DrawLine(origin - perp, endP - perp);
-
-            if (mode == FireMode.Branching && target != null)
-            {
-                Gizmos.color = new Color(1f, 0.7f, 0.3f, 0.5f);
-                Gizmos.DrawWireSphere(target.position, targetRadius);
             }
         }
     }

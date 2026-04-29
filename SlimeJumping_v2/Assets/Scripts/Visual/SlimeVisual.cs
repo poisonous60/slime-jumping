@@ -127,6 +127,12 @@ public class SlimeVisual : MonoBehaviour
     private Vector3? _externalFaceOffset;
     private Vector3 faceRestLocalPosition;
 
+    // Additive scale overlay that external systems push in via SetExternalCompression
+    // (e.g. SlimeBurnVisual when the slime is being squeezed by a sustained granite
+    // beam against a wall). Added on top of the normal squash/stretch pipeline; not
+    // gated by IsExternallyAnimated. Default zero = no contribution.
+    private Vector2 externalCompression;
+
     // External animation gate — when true, body is externally driven; face keeps its own pipeline.
     // Used by IExternalController implementers (sit-pose, firework recoil, pipe transit, etc.).
     private bool isExternallyAnimated;
@@ -211,7 +217,7 @@ public class SlimeVisual : MonoBehaviour
         Vector2 breath = ComputeBreathing();
         Vector2 chargeTremor = ComputeChargingTremor();
         Vector2 coyoteSq = ComputeCoyoteSquash();
-        Vector2 finalScale = smoothedScale + impact + breath + chargeTremor + coyoteSq;
+        Vector2 finalScale = smoothedScale + impact + breath + chargeTremor + coyoteSq + externalCompression;
         finalScale.x = Mathf.Clamp(finalScale.x, settings.deformScaleMin, settings.deformScaleMax);
         finalScale.y = Mathf.Clamp(finalScale.y, settings.deformScaleMin, settings.deformScaleMax);
 
@@ -382,6 +388,7 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetVector(VelocityDirWSID, velocityDirWS);
             mpb.SetFloat(VelocityStretchAmountID, velocityStretchAmount);
             bodyMeshRenderer.SetPropertyBlock(mpb);
+            MirrorMpbToRegistered();
         }
 
         UpdateFaceOffset();
@@ -485,6 +492,52 @@ public class SlimeVisual : MonoBehaviour
         _externalFaceOffset = offset;
     }
 
+    // Additive overlay onto the body scale pipeline. extraScale is added to the
+    // composed (smoothedScale + impact + breath + tremor + coyote) before clamping,
+    // so e.g. (0.15, -0.15) squashes Y by 15% on top of whatever is already happening.
+    // Set to Vector2.zero to release. Caller is responsible for smoothing the input.
+    public void SetExternalCompression(Vector2 extraScale)
+    {
+        externalCompression = extraScale;
+    }
+
+    // Public refs for systems that need to attach decals/effects on the slime visual
+    // (e.g. SlimeBurnVisual placing burn marks). body is the legacy 2D sprite root,
+    // body3d is the 3D mesh root. Either can be null depending on visual setup;
+    // SlimeBurnVisual prefers body3d if present.
+    public Transform Body => body;
+    public Transform Body3d => body3d;
+
+    // Renderers registered here receive the SAME MaterialPropertyBlock push as
+    // bodyMeshRenderer at the end of every LateUpdate / SetExternalDeform /
+    // ResetDeformationState. Used by SlimeBurnVisual's shell so its shader runs
+    // SlimeDeform_float with identical inputs and stays glued to the body
+    // silhouette through velocity stretch / charge dip / asymmetric squash.
+    private readonly System.Collections.Generic.List<MeshRenderer> mirroredRenderers
+        = new System.Collections.Generic.List<MeshRenderer>(2);
+
+    public void RegisterMirroredRenderer(MeshRenderer mr)
+    {
+        if (mr == null) return;
+        if (!mirroredRenderers.Contains(mr)) mirroredRenderers.Add(mr);
+    }
+
+    public void UnregisterMirroredRenderer(MeshRenderer mr)
+    {
+        if (mr == null) return;
+        mirroredRenderers.Remove(mr);
+    }
+
+    private void MirrorMpbToRegistered()
+    {
+        if (mpb == null) return;
+        for (int i = 0; i < mirroredRenderers.Count; i++)
+        {
+            var mr = mirroredRenderers[i];
+            if (mr != null) mr.SetPropertyBlock(mpb);
+        }
+    }
+
     private void ApplyExternalFaceOffset()
     {
         if (!_externalFaceOffset.HasValue || face == null) return;
@@ -546,6 +599,7 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetVector(VelocityDirWSID, Vector4.zero);
             mpb.SetFloat(VelocityStretchAmountID, 0f);
             bodyMeshRenderer.SetPropertyBlock(mpb);
+            MirrorMpbToRegistered();
         }
     }
 
@@ -562,6 +616,7 @@ public class SlimeVisual : MonoBehaviour
         chargingCurve = 0f;
         smoothedSquashStrength = 0f;
         squashStrengthVel = 0f;
+        externalCompression = Vector2.zero;
 
         // Clear external overrides so stale state from a previous override session
         // (e.g. SitPose followed by BoxSleep) can't leak into the next.
@@ -603,6 +658,7 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetVector(VelocityDirWSID, Vector4.zero);
             mpb.SetFloat(VelocityStretchAmountID, 0f);
             bodyMeshRenderer.SetPropertyBlock(mpb);
+            MirrorMpbToRegistered();
         }
     }
 

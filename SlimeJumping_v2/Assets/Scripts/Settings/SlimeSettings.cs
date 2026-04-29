@@ -3,6 +3,8 @@ using SlimeJumping.Physics;
 
 namespace SlimeJumping.Settings
 {
+    public enum HyperDashInertiaSource { ChargeStart, LaunchMoment }
+
     [CreateAssetMenu(fileName = "SlimeSettings", menuName = "SlimeJumping/Slime Physical Settings")]
     public class SlimeSettings : ScriptableObject
     {
@@ -45,6 +47,8 @@ namespace SlimeJumping.Settings
         [Min(0f)] public float hopMomentumMaxSpeed = 20f;
 
         [Header("Hyper Dash")]
+        [Tooltip("ChargeStart: capture tangent speed at the moment charging begins (legacy). LaunchMoment: read tangent speed at the launch frame so any deceleration during the charge actually reduces the inherited momentum.")]
+        public HyperDashInertiaSource hyperDashInertiaSource = HyperDashInertiaSource.ChargeStart;
         [Range(0f, 1f)] public float tangentInheritanceFactor = 0.7f;
         [Tooltip("Crawl speed below this threshold is ignored during tangent inheritance. 0 = inherit full crawl speed.")]
         [Min(0f)] public float hyperDashDeduction = 5f;

@@ -34,7 +34,14 @@ Idle
 | PostFire | (스폰 없음 — fade 진행 중) | 내부 fade 시작 | (스폰 없음) |
 
 ## 명중 처리
-공통: `HazardEffect { knockbackForce, knockbackDirection = (slimePos − emitterMuzzlePos).normalized, stunDuration, DamageType.Lightning }` → `SlimeController.ApplyHazardEffect`. 슬라임은 항상 발사 주체로부터 멀어지는 방향으로 밀려남 (빔 진행 방향 아님 — 비스듬히 맞아도 표면에서 떼어내는 동작).
+**2026-04-29 stage2 개편 이후**: 더 이상 `ApplyHazardEffect` 를 거치지 않음 — granite blast 는 stun-less push 채널. `SlimeController.ApplyHazardPush(deltaV)` 로 외부 velocity 채널(`AddExternalVelocity` 와 동일 경로)에 직접 누적되며, `OnHazardPushed` 이벤트가 동시에 발화 (SlimeBurnVisual 이 구독). 슬라임은 입력이 살아있는 상태로 발사 주체에서 멀어지도록 밀려남.
+
+| Mode | impulse 처리 | 다중 명중 |
+|------|---------------|-----------|
+| Branching | 텐드릴이 슬라임에 halt 시 `slime.ApplyHazardPush(awayDir * knockbackImpulse)` 1회. | 텐드릴 1개당 최대 1회. |
+| Beam (단발) | 첫 hit 시 1회 `awayDir * knockbackImpulse`, 그 다음 빔은 halt 상태로 끝까지 유지. | 빔 인스턴스 1개당 최대 1회. |
+| Beam (`sustainedHit=true`) | 매 프레임 muzzle→maxRange 재-sweep. 슬라임이 path 안에 있으면 매 프레임 `awayDir * knockbackAcceleration * dt` 누적. 슬라임이 빔에서 빠져나가면 빔이 다음 차폐물까지 통과. | 매 프레임 — 가속도 채널이라 오래 머물수록 deltaV 가 커짐. |
+| Burst | 각 flash 가 단발 Beam 과 동일 — flash 1개당 최대 1회 impulse. | flash 수만큼. |
 
 | Mode | 검출 방식 | 다중 명중 |
 |------|----------|-----------|
@@ -113,7 +120,8 @@ points[i]      = baseSamples[i] + perp * Random(-jaggedness, jaggedness) * sin(t
 | Muzzle | `muzzle`, `aimAtTarget` (true=live target 추적, false=muzzle.right) |
 | Phase Timing | `detectionDelay`, `preFireDuration`, `fireStartDuration`, `firingDuration`, `postFireDuration`, `cooldownDuration`, `loseSightGrace` |
 | Hit Mask | `maxRange`, `bulletHitMask`, `groundSnapMask` (Branching 텐드릴 endpoint 지면 스냅), `hitRadius` (CircleCast 반경 — 모든 모드 공통) |
-| Hazard | `knockbackForce`, `stunDuration` |
+| Knockback | `knockbackImpulse` (one-shot deltaV m/s), `knockbackAcceleration` (sustained deltaV/s² m/s²), `sustainedHit` (Beam 한정) — 2026-04-29 stage2 개편 후 stunDuration 제거됨 |
+| Firing Mode Control | `autoFire` (false 면 외부 `FireOnce()` 호출에서만 발사) |
 | Branching | `tendrilCount`, `targetRadius`, `launchSpreadDegrees`, `tendrilLaunchDistance`, `bendHeight`, `tendrilSegmentLength` (path-length 기반 동적 세그먼트), `tendrilJaggedness`, `tendrilDrawTime / Hold / Fade`, `tendrilCoreWidth`, `branchingFireStartFraction`, `trailDuration` (체이스 스프레드 sec), `trailLagOffset` (최신 텐드릴의 기본 랙 sec), `trailSampleInterval` |
 | Beam | `beamFadeTime`, `beamCoreWidth` (lifetime은 fireStart+firing+postFire) |
 | Burst | `burstFlashCount`, `burstSpreadDegrees`, `burstFlashDuration`, `burstFlashFadeTime`, `burstFlashCoreWidth`, `burstFireStartFraction` (batch 모드), `burstFlashInterval` (>0 → 한 발씩 N초 간격으로 순차 발사. fraction 무시) |
@@ -127,7 +135,106 @@ points[i]      = baseSamples[i] + perp * Random(-jaggedness, jaggedness) * sin(t
 - 출처: [Granite Blast — Jujutsu Kaisen Wiki](https://jujutsu-kaisen.fandom.com/wiki/Granite_Blast).
 
 ## 관련 파일
-- [GraniteBlastEmitter.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.cs)
-- [GraniteBlastTendril.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastTendril.cs)
-- [GraniteBlastBeam.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastBeam.cs) — Beam 모드 + Burst flash 양쪽에서 사용
+- [GraniteBlastEmitter.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.cs) — Core (FSM, public API, 모든 SerializeField, Start/Update/transitions)
+- [GraniteBlastEmitter.Targeting.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Targeting.cs) — partial: aim 해석, LOS, raycast/circlecast, slime trail
+- [GraniteBlastEmitter.Telegraph.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Telegraph.cs) — partial: PreFire telegraph LineRenderer
+- [GraniteBlastEmitter.Branching.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Branching.cs) — partial: PlanBranching/SpawnTendrilsUpTo + NavGraph A* 분기
+- [GraniteBlastEmitter.Beam.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Beam.cs) — partial: SpawnBeam
+- [GraniteBlastEmitter.Burst.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Burst.cs) — partial: PlanBurst/SpawnBulletsUpTo
+- [GraniteBlastEmitter.Impact.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Impact.cs) — partial: PlayGroundImpactSound, SpawnGroundExplosion, GetCoreMaterial, OnDrawGizmosSelected
+- [GraniteBlastTendril.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastTendril.cs) — Bezier `Init` + 폴리라인 `InitPath` (NavGraph A* 결과)
+- [GraniteBlastBeam.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastBeam.cs) — Beam 모드 + Burst flash 양쪽에서 사용. `sustainedHit` 분기 포함.
+- [GraniteBlastNavGraph.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastNavGraph.cs) — 디자이너 노드/엣지 + A*
+- [GraniteBlastTrigger.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastTrigger.cs) — 트리거 진입 시 `FireOnce()`
+- [SlimeBurnVisual.cs](../../../SlimeJumping_v2/Assets/Scripts/Visual/SlimeBurnVisual.cs) — 화상 색 + 막혔을 때 압축 시각
 - [GraniteBlastTestSetup.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/GraniteBlastTestSetup.cs) — `SlimeJumping/Mechanism/Setup Granite Blast Test`
+
+## Stage 2 개편 (2026-04-29)
+
+Stage 2 기믹 사용을 위해 다음과 같이 확장됨:
+
+### 1. partial class 분할
+`GraniteBlastEmitter` 가 7개 partial 파일로 분할 (위 "관련 파일" 참고). 모든 SerializeField 와 FSM 은 Core 에 남고, 모드별 로직 / 타겟팅 / 텔레그래프 / 임팩트는 sibling partial 로 이동. Inspector 동작은 그대로 (`GraniteBlastEmitterEditor` reflection 기반이라 partial 분할 영향 없음).
+
+### 2. 외부 트리거 발사
+- `[Header("Firing Mode Control")] autoFire` — false 면 자동 감지 비활성, `FireOnce()` 외부 호출만으로 발사.
+- `public bool FireOnce()` — Idle/Cooldown 상태에서 PreFire 로 진입 (preFireDuration 텔레그래프 정상 재생). Firing 중이면 거부 (false 반환).
+- `GraniteBlastTrigger` 컴포넌트 — 트리거 콜라이더 진입 시 슬라임 감지 → `FireOnce()`. `allowRetrigger=false` 기본 (1회성), `retriggerCooldown` 으로 반복 fire 가능.
+- 사용 패턴: 큰 1회성 레이저 이벤트 (특정 장소 진입 시 전조 + 발사) → emitter 의 `autoFire=false` + `GraniteBlastTrigger` 1개 배치.
+
+### 3. KB 채널 (stun 제거)
+- 기존 `HazardEffect / ApplyHazardEffect` 경로 제거. `IHazardSource` 인터페이스도 더 이상 implement 하지 않음.
+- 새 `SlimeController.ApplyHazardPush(Vector2 deltaV)` 가 `AddExternalVelocity` 채널로 누적하면서 `OnHazardPushed` 이벤트 발화. SlimeBurnVisual 이 구독.
+- emitter 인스펙터: `knockbackImpulse` (one-shot, 단발 hit), `knockbackAcceleration` (sustained, m/s²), `sustainedHit` (Beam 한정 토글).
+- 결과: 슬라임은 stun 없이 그저 밀림 — 격투게임 zoning 게임플레이 가능. 하지만 가속도 채널이 누적되므로 sustained 빔에 오래 노출되면 큰 push 가 됨.
+
+### 4. Beam sustainedHit 모드
+- `sustainedHit=true` 시 빔이 매 프레임 muzzle 부터 maxRange 까지 재-sweep, 슬라임이 path 위에 있으면 그 자리에 halt + `knockbackAcceleration * dt` 인가. 슬라임이 빠져나가면 다음 차폐물까지 통과.
+- 기존 `sustainedHit=false` 빔은 첫 hit 에서 halt + impulse 1회 (legacy 동작 유지).
+- ground impact VFX/SFX 는 첫 ground 접촉에서 1회만 발화 (`groundImpactPlayed` 가드).
+
+### 5. Z 축 path 지원
+- muzzle Z != 0: 이미 자동 지원. `transform.position.z` 가 매 spawn 마다 라이브로 읽혀 P0/P3 기준 Z 가 됨.
+- 새 인스펙터 필드:
+  - `bowDepthZ` (Branching, Z 방향 중간 부풀림. >0 = 카메라 쪽으로, <0 = 뒤쪽으로)
+  - `controlPointZJitter` (Branching, ±units 의 P1/P2 Z 노이즈 — 텐드릴마다 깊이가 흔들리도록)
+- `GraniteBlastTendril.BuildCurvedJaggedPath` 가 더 이상 baseZ 한 평면으로 강제 평탄화하지 않음 — 베지어 샘플의 자체 Z 를 보존, perp jitter 는 XY-only.
+- Beam/Burst 는 여전히 직선 (Z 적용 시 그릴 라인이 곡선이 되어야 해서 큰 변경 필요 — 추후 작업).
+- 충돌 검출은 그대로 `Physics2D.CircleCast` (XY 평면 투영). Z 는 시각 효과만.
+
+### 6. NavGraph A* 경로
+- `GraniteBlastNavGraph` 컴포넌트: 디자이너가 Vector3 노드 + (a,b) 엣지 인덱스 페어를 인스펙터에 배치. local-space 저장 (zone 이동 시 따라옴). `OnDrawGizmos` 로 노드/엣지 시각화.
+- 내부 구현: 바이너리 min-heap, 스크래치 버퍼 재사용, 작은 그래프(<100 node) 기준 발사당 alloc 거의 0.
+- emitter 인스펙터의 `[Header("Branching Mode")] navGraph` 슬롯에 wire 시 활성화. null 이면 기존 직선 발사.
+
+#### LOS-aware 라우팅 게이트 (2026-04-30)
+NavGraph 가 켜져있어도 무조건 그래프를 통과하지 않음 — 3-way 게이트:
+
+1. **Direct LOS**: `IsDirectPathClear(muzzle, slime, navWallMask)` 통과 시 (`Physics2D.Linecast` 가 벽을 못 만남) → NavGraph 스킵, 베지어 직선 발사. 벽 없는 일반 케이스에서 NavGraph 가 안 끼어들어 유도성 유지.
+2. **Routed**: 직선이 막혀 있고 `FindPath` 가 LOS-clear entry/exit 노드를 찾으면 → 폴리라인 텐드릴.
+3. **Fallback**: 직선 막힘 + 깨끗한 entry/exit 노드 없음 (또는 그래프 단절) → 베지어 폴백.
+
+핵심 로직:
+- `ClosestVisibleNode(query, wallMask)` 가 노드 순회하면서 query → 노드 사이에 `Physics2D.Linecast(wallMask)` 통과한 노드만 후보로 채택, 그 중 거리 최소를 선택. 모두 차단되면 -1 반환.
+- `wallMask = emitter.NavWallMask` (default = Environment 레이어 7). 0 이면 LOS 게이트 비활성 (legacy Euclidean nearest 동작).
+- Slime 레이어 (6) 는 wallMask 에 포함하면 안 됨 — slime in path 는 정상 (보트가 슬라임 맞으면 됨), 벽만 차단해야 함. default 가 Environment-only 인 이유.
+- A* edge 자체는 런타임에 LOS 검사 안 함 (디자이너가 손수 깐 edge 신뢰). 디자이너 실수는 아래 edge validation 으로 편집 시 잡음.
+
+#### Edit-time edge validation (2026-04-30)
+- NavGraph 인스펙터의 `edgeValidationMask` (default = Environment) 로 `OnDrawGizmos` 마다 각 edge 에 `Physics2D.Linecast` 검사. 차단된 edge 는 `blockedEdgeColor` (빨간색) 로 그려짐 → 디자이너가 즉시 발견.
+- 캐시는 `OnValidate` 에서 dirty 표시 후 다음 gizmo draw 시 재계산. dirty 가 아니면 raycast 안 도림.
+- 런타임에는 안 읽힘 — 순수 authoring aid. (런타임은 위 LOS-aware FindPath 가 안전망)
+- 텐드릴은 `InitPath` (폴리라인) 경로로 생성 — 베지어 대신 waypoint 따라 `tendrilSegmentLength` 단위로 sub-sample, 동일한 perp jaggedness 적용. travelSpeed 는 폴리라인 전체 길이 기준이라 길수록 오래 걸림.
+- Beam/Burst 는 NavGraph 미지원 (직선 빔이 그래프 따라 휘는 시각이 어색해서 의도적으로 제외).
+- 사용 패턴: 한 zone 의 슬라임 동선 위에 노드를 깔고 emitter 를 zone 입구에 두면 레이저가 zone 의 안전 라인을 따라 슬라임을 추격.
+
+### 7. groundExplosion VFX
+- `[Header("VFX")] groundExplosionPrefab` (ParticleSystem) — 지면 hit 일 때만 인스턴스화 (슬라임 hit 은 `impactPrefab` 작은 spark 만). 폭발 반경/AoE 는 없음 — 순수 VFX.
+- Tendril/Beam 둘 다 슬라임 vs 환경 분기에서 `owner.SpawnGroundExplosion` 호출. 슬라임 hit 시에는 호출 안 함.
+
+### 8. SlimeBurnVisual (피격 표현)
+- 슬라임 GO 에 부착. `SlimeController.OnHazardPushed (Vector2 deltaV, Vector2 hitPoint)` 구독.
+- **화상 자국 (directional mesh shell)** [2026-04-30 final redesign — 데칼 cluster 방식 폐기]: 슬라임 body3d 메시와 동일한 mesh 를 가진 child shell GO 를 자동 생성. shell 은 [SlimeBurnShell.shader](../../../SlimeJumping_v2/Assets/Art/Shader/SlimeBurnShell.shader) (URP unlit, transparent queue) 로 렌더 — 슬라임 표면 위에 입혀진 검정 셸 형태. 셸 vertex 는 normal 방향으로 `shellInflate` (기본 0.01m) 인플레이트되어 본체 메시와 z-fighting 방지.
+- **단일 누적 state**: `Vector3 burnDir` (slime center → hit point 방향), `float burnStrength` (0..1). 모든 hit 이 이 둘에 누적되며 데칼 cluster 같은 분산 저장 X.
+  - hit 시: `burnStrength = min(burnStrength + perHitStrength, maxStrength)`, `burnDir = Slerp(burnDir, hitDir, dirRecencyBlend)`. 같은 쪽 반복 hit 시 strength 가 누적되어 max(1) 까지 진해짐. 다른 쪽 hit 시 burnDir 이 점진 회전 (recencyBlend 가 회전 속도 결정).
+- **셸 셰이더 출력**: per-fragment `dot(worldNormal, burnDir)` → 4-step cel posterize (1.0 / 0.7 / 0.38 / 0.15 / 0) → 검정 alpha. burn 방향 면이 짙은 검정, 반대 면은 투명. Quibli 스타일 hard-edge cel 띠.
+- **회복 (delayed shared)**: 마지막 hit 후 `recoveryStartDelay` (기본 1.5s) 동안 strength 유지. 그 후 `recoveryRate` (기본 0.4/s) 로 한꺼번에 0 까지 감쇠. 부분 회복 X — 전체가 같이 옅어짐. burnDir 은 그대로 유지되어 회복 중에도 같은 쪽이 점점 옅어지는 모양.
+- 셸은 body3d 의 MeshFilter 자식으로 parent → bulk localScale 의 squash/stretch 자동 상속.
+- **셰이더 vertex 디스플레이스먼트 매칭** [2026-04-30 후속 개선]: 셸 셰이더가 SlimeBody3D 와 동일한 `SlimeDeform_float` 호출을 vertex 패스에서 실행. SlimeVisual 이 자체 MaterialPropertyBlock 을 등록된 mirror 렌더러 리스트(`mirroredRenderers`)에 매 LateUpdate 끝과 SetExternalDeform / ResetDeformationState 끝에 일괄 push → 셸이 본체와 완전히 동일한 7개 deform 입력 (`_Asymmetry`, `_ChargeDip`, `_SurfaceNormalWS`, `_DipDirWS`, `_VelocityDirWS`, `_VelocityStretchAmount`, `_VertexDisplaceScale`/`_VolumePreservation`/`_VelocityFrontCompress` defaults) 을 받음. SlimeBurnVisual 은 `[DefaultExecutionOrder(100)]` 로 SlimeVisual 이후에 LateUpdate 가 돌도록 강제 → 미러된 MPB 위에 `_BurnDir` + `_Inflate` 만 layered push (GetPropertyBlock → 변경 → SetPropertyBlock 으로 deform 값 보존). 결과: velocity stretch / charge dip / asymmetric squash 모두 본체와 lock-step 으로 변형. SnowField 의 `Ground_Quibli_Snow.shader` vertex pragma 교체 패턴과 동일.
+- `MaterialPropertyBlock` 로 매 프레임 `_BurnDir` (Vector4 xyz=dir, w=strength) + `_Inflate` 푸시. strength=0 일 때는 `MeshRenderer.enabled = false` 로 draw 호출 절약.
+- **막혔을 때 압축** (기존 그대로): rb.position 슬라이딩 윈도우 (0.18s) 안에서 슬라임이 `stuckPositionEpsilon` 미만 이동 + 최근 `pushReceiveWindow` 내 hit 이면 → `SlimeVisual.SetExternalCompression(compressionPeak)` 펌프.
+- 폐기: `SlimeBurnMark.cs` (이전 cluster decal 컴포넌트), 글로벌 sprite tint, 절차적 scorch 텍스처 생성.
+- 신규 helper: `SlimeVisual.Body / Body3d` public Transform 게터 — SlimeBurnVisual Awake 에서 body3d 우선, body 폴백.
+
+### 9. 인스펙터 신규 필드 요약
+| Header | 신규 필드 |
+|--------|----------|
+| Firing Mode Control | `autoFire` |
+| Knockback | `knockbackImpulse`, `knockbackAcceleration`, `sustainedHit` |
+| Branching Mode | `navGraph`, `navWallMask` (Environment 기본), `bowDepthZ`, `controlPointZJitter` |
+| VFX | `groundExplosionPrefab` |
+
+NavGraph 인스펙터에도 `edgeValidationMask` (default Environment), `blockedEdgeColor` (빨간색) 추가됨.
+
+### 10. 제거된 필드
+- `knockbackForce`, `stunDuration` — `IHazardSource.GetHazardEffect()` 까지 함께 삭제.

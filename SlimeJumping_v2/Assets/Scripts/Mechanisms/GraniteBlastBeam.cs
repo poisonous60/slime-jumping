@@ -1,6 +1,5 @@
 using UnityEngine;
 using SlimeJumping.Controller;
-using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
 {
@@ -130,9 +129,11 @@ namespace SlimeJumping.Mechanisms
             Vector2 dir = lockedDir;
             float maxRange = owner.MaxRange;
 
-            // Advance the tip toward maxRange at travelSpeed (or jump straight to
-            // maxRange when speed=0). Once halted on a collision, the reach is frozen.
-            if (!tipHalted)
+            if (owner.SustainedHit)
+            {
+                UpdateSustainedSweep(origin, dir, maxRange);
+            }
+            else if (!tipHalted)
             {
                 if (travelSpeed > 0f)
                 {
@@ -159,16 +160,17 @@ namespace SlimeJumping.Mechanisms
                         currentReach = prevReach + hit.distance;
 
                         var slime = hit.collider.GetComponentInParent<SlimeController>();
-                        if (slime != null && !hitResolved)
+                        bool isSlime = slime != null;
+                        if (isSlime && !hitResolved)
                         {
                             hitResolved = true;
-                            var effect = owner.GetHazardEffect();
                             Vector2 away = (Vector2)slime.transform.position - (Vector2)origin;
-                            effect.knockbackDirection = away.sqrMagnitude > 0.0001f ? away.normalized : dir;
-                            slime.ApplyHazardEffect(effect);
+                            Vector2 pushDir = away.sqrMagnitude > 0.0001f ? away.normalized : dir;
+                            slime.ApplyHazardPush(pushDir * owner.KnockbackImpulse, hit.point);
                         }
 
                         SpawnImpactAt(hit.point, hit.normal);
+                        if (!isSlime) owner.SpawnGroundExplosion(hit.point, hit.normal);
                         if (!groundImpactPlayed)
                         {
                             groundImpactPlayed = true;
@@ -201,6 +203,57 @@ namespace SlimeJumping.Mechanisms
             }
 
             if (age >= duration) Destroy(gameObject);
+        }
+
+        // Sustained-hit mode: every frame, re-sweep from muzzle to maxRange and resolve
+        // hit live. The visible reach is what was actually hit *this frame* — so a slime
+        // that moves out of the path lets the beam pass through to whatever is behind
+        // it next frame. Slime hits accumulate KB acceleration each frame instead of a
+        // one-shot impulse. tipHalted is never used in this branch; reach is rewritten
+        // from scratch every frame.
+        private void UpdateSustainedSweep(Vector3 origin, Vector2 dir, float maxRange)
+        {
+            float dt = Time.deltaTime;
+            // Tip still respects travelSpeed for the very first frames so the beam
+            // visibly grows from muzzle the first time it appears. After that it
+            // saturates at maxRange and is cropped per-frame by the live hit.
+            if (travelSpeed > 0f && currentReach < maxRange)
+                currentReach = Mathf.Min(currentReach + travelSpeed * dt, maxRange);
+            else
+                currentReach = maxRange;
+
+            float reachThisFrame = currentReach;
+            if (owner.BulletHitMask != 0)
+            {
+                float radius = Mathf.Max(0.01f, owner.HitRadius);
+                var hit = owner.CircleCastExcludingSelf((Vector2)origin, radius, dir, currentReach, owner.BulletHitMask);
+                if (hit.collider != null)
+                {
+                    reachThisFrame = hit.distance;
+                    var slime = hit.collider.GetComponentInParent<SlimeController>();
+                    bool isSlime = slime != null;
+                    if (isSlime)
+                    {
+                        // Acceleration channel — push grows the longer the slime stays in
+                        // the beam. Per-frame deltaV = accel * dt.
+                        Vector2 away = (Vector2)slime.transform.position - (Vector2)origin;
+                        Vector2 pushDir = away.sqrMagnitude > 0.0001f ? away.normalized : dir;
+                        slime.ApplyHazardPush(pushDir * owner.KnockbackAcceleration * dt, hit.point);
+                    }
+                    else if (!groundImpactPlayed)
+                    {
+                        // Ground impact effects fire once per beam, on the first ground
+                        // contact. Subsequent frames keep showing the beam halted at the
+                        // ground without re-spawning explosion VFX every frame.
+                        groundImpactPlayed = true;
+                        owner.PlayGroundImpactSound(hit.point);
+                        owner.SpawnGroundExplosion(hit.point, hit.normal);
+                        SpawnImpactAt(hit.point, hit.normal);
+                    }
+                }
+            }
+            currentReach = reachThisFrame;
+            prevReach = currentReach;
         }
 
         private ParticleSystem SpawnImpactAt(Vector3 point, Vector3 normal)
