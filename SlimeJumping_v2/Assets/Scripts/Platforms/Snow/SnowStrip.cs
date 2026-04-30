@@ -151,6 +151,41 @@ namespace SlimeJumping.Platforms.Snow
             return anyChange;
         }
 
+        /// <summary>Sample remaining snow coverage at a mesh-local xy position. Returns
+        /// 0 outside the patch xy AABB or when the strip has no data, otherwise the
+        /// nearest-vertex ratio clamp01(heightCurrent / heightRest). 0 = bare ground
+        /// (carved through or natural taper edge), 1 = full untouched thickness.
+        ///
+        /// Nearest-vertex (vs barycentric tri walk) is intentional: subdivLevels >= 1
+        /// makes vertex spacing well below the slime's contact resolution, and the
+        /// caller is per-FixedUpdate hot-path (slide gravity blend) — a tri walk would
+        /// dominate cost without a perceptible quality gain.</summary>
+        public float SampleDepthRatio01(Vector3 localXY)
+        {
+            if (heightCurrent == null || heightRest == null || verts == null) return 0f;
+            if (heightCurrent.Length == 0) return 0f;
+
+            // AABB pre-filter — the slide blend asks every strip on every FU; skip the
+            // V loop entirely for unrelated patches on the same SnowField.
+            if (localXY.x < aabbMin.x || localXY.x > aabbMax.x ||
+                localXY.y < aabbMin.y || localXY.y > aabbMax.y)
+                return 0f;
+
+            float bestD2 = float.PositiveInfinity;
+            int bestIdx = -1;
+            for (int i = 0; i < verts.Length; i++)
+            {
+                float dx = verts[i].x - localXY.x;
+                float dy = verts[i].y - localXY.y;
+                float d2 = dx * dx + dy * dy;
+                if (d2 < bestD2) { bestD2 = d2; bestIdx = i; }
+            }
+            if (bestIdx < 0) return 0f;
+            float rest = heightRest[bestIdx];
+            if (rest <= 1e-5f) return 0f;
+            return Mathf.Clamp01(heightCurrent[bestIdx] / rest);
+        }
+
         /// <summary>Lerp heightCurrent toward heightRest. Returns true while any vertex
         /// is still below its rest value (i.e., this strip should keep ticking next
         /// frame); false once everything is fully recovered.</summary>

@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2236ec45af50b3347b7f485493f44e06, type: 3}
+  m_Name: Snow
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceMaterial
+  carrierFriction:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  crawlSpeedMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  crawlAccelerationMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  crawlDecelerationMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  crawlOverspeedDecelerationMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  slideResistanceMultiplier:
+    baseValue: 1.0
+    fullValue: 1.0
+    angleMin: 0
+    angleMax: 90
+  slideGravityMultiplier:
+    baseValue: 0.2
+    fullValue: 0.2
+    angleMin: 0
+    angleMax: 90
+  slideRampUpTime:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  landingVelocityRetention:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  stickDurationMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  impactRedirectRatio:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  groundDashScale:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  wallAttachSpeedDampen:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  hopVelocityRetention:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  hopInstantFlip: 1

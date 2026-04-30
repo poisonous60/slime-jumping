@@ -93,6 +93,21 @@ namespace SlimeJumping.Controller
             float power = isEnergyConversion
                 ? curvedRatio * settings.baseLaunchPower
                 : settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
+            // Snow burial nerf: depthToLaunchScale curve on the platform's SnowSettings
+            // maps current snow coverage (0..1) → power scalar. Default flat 1.0 means
+            // no effect; designers pull the right side down to weaken jumps from
+            // deeply-covered snow. snowDepthRatio01 was refreshed by the most recent
+            // FixedUpdate's RefreshSnowBlend.
+            if (cachedSnowField != null)
+            {
+                var snowSettings = cachedSnowField.settings;
+                if (snowSettings != null && snowSettings.depthToLaunchScale != null)
+                {
+                    float scale = snowSettings.depthToLaunchScale.Evaluate(snowDepthRatio01);
+                    if (scale < 0f) scale = 0f;
+                    power *= scale;
+                }
+            }
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
             velocity = dir * power;
 

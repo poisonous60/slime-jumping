@@ -120,9 +120,9 @@ Phase 3 는 약속대로 fragment stage 만 갈아끼웠다 — vertex / mesh / 
 - `Tools → SlimeJumping → Snow → Wire MainScene + SampleScene` — slime 에 SnowStamper 추가, SnowField 의 settings/hostCollider 자동 wire (Phase 2, idempotent)
 - 디버그 기즈모: 패치 외곽선 (초록 line), per-vertex 노멀 (파란 line)
 
-### Snow `SurfaceMaterial` 자산 (orthogonal task)
+### Snow `SurfaceMaterial` 자산 (Phase 7 부터 SnowField 와 결합)
 
-`Assets/Settings/SurfaceMaterials/Snow.asset` — Mud-derived. `slideResistance` 1.0 (vs Mud 1.3, 살짝 더 미끄럼), 그 외는 Mud 값 그대로. 디자이너가 호스트 콜라이더의 SurfaceTag에 수동 할당. **SnowField와 결합 없음** — 별개 시스템 (SnowField 비주얼 스택과 완전 직교).
+`Assets/Settings/SurfaceMaterials/Snow.asset` — Mud-derived. `slideResistance` 1.0 (vs Mud 1.3, 살짝 더 미끄럼), 그 외는 Mud 값 그대로. **Phase 7 부터** 호스트 SurfaceTag 에 수동 할당하는 대신 `SnowSettings.snowSurfaceMaterial` 슬롯에 들어감. SnowField 가 attach 된 host 위에서만, 슬라임 contact 위치의 carve 깊이에 따라 host 의 SurfaceTag 와 동적으로 blend (벽처럼 눈이 안 쌓이는 가파른 면 = 0% blend = host 그대로 / 평지 풀-thickness = curve(1) 만큼 blend).
 
 ### 의도적으로 안 한 것
 
@@ -131,6 +131,77 @@ Phase 3 는 약속대로 fragment stage 만 갈아끼웠다 — vertex / mesh / 
 - **Fragment-stage 폴리시** (Phase 3): 푸른 ramp / glitter / Fresnel rim / 발자국 detail texture.
 - **Spatial hash / KD-tree**: V < 2000 면 brute force 충분.
 - **다른 pass vertex displacement**: ForwardLit 만. 그림자/depth 는 un-displaced rest 모양으로 캐스트 — 얇은 carve (≤ 0.2m) 면 시각 차이 미미.
+
+## Phase 7 — Gameplay 결합 (read-only sampler) ✓
+
+Phase 1~3 의 mesh / vertex / fragment 파이프는 손대지 않음. SnowField 가 이미 들고 있는 `heightCurrent` 데이터를 *read-only* 채널로 노출해 슬라임 측이 surface 마찰 / 점프 파워에 반영하도록 한 single 진입점 추가. 기존 invariants (snow 가 collider/event push 안 함, 비주얼 vs 게임플레이 결합 금지) 중 *write* 측은 그대로, *read* 측만 허용하는 형태로 완화.
+
+### 새 read API
+
+- `SnowStrip.SampleDepthRatio01(Vector3 localXY) → float`: AABB pre-filter + nearest-vertex 로 `clamp01(heightCurrent / heightRest)` 반환. 0 = 눈 없음 / 풀로 carve 됨, 1 = 풀 두께. Carve 가 사용하는 동일한 mesh-local 좌표계.
+- `SnowField.SampleDepthRatio01(Vector2 worldXY) → float`: world→local 변환 후 자식 strip 들에 위임, 겹치는 patch 는 max.
+- `SnowFieldRegistry.SampleDepthRatio01(Collider2D host, Vector2 worldXY) → float`: gameplay 가 호출하는 단 하나의 entry point. 미등록 host 는 0.
+
+### 새 generic Carve API
+
+- `SnowField.Carve(Vector2 worldCenter, float depth, float radius)`: 슬라임 착지 외 (blast / 발사체 / 디버그 도구) 도 직접 carve 할 수 있는 generic entry. impact-speed 매핑 없이 raw depth/radius. `HandleLanded` 는 settings → depth/radius 매핑만 거친 뒤 `Carve` 로 위임 (외부 동작 회귀 0).
+
+### 슬라임 측 blend (`SlimeController`)
+
+- 새 필드: `hostSurfaceMod` (host SurfaceTag → modifiers, attach 시 캐시), `cachedSnowField` + `cachedSnowMods` (snow 측 pre-resolved, attach 시 캐시), `snowDepthRatio01` (per-FU sampler 결과).
+- `UpdateSurfaceModifiers(col)`: 기존 host SurfaceTag 빌드 후 SnowFieldRegistry 조회 → 캐시 업데이트 → `RefreshSnowBlend()` 호출.
+- `RefreshSnowBlend()`: contact 점에서 depth 샘플 → `SnowSettings.depthToSnowBlend` curve 평가 → `SurfaceModifiers.Lerp(host, snow, t)`. `useInertialSlide` / `overrideHopMomentum` / `overrideGroundDash` / `overrideCeilingAngle` / `disableDashFalloff` 등 discrete 필드는 host 값으로 pin (mid-attach 모델 flip 방지).
+- 매 FixedUpdate, 같은 host 상에서 attached/charging 이고 snow 캐시가 있으면 `RefreshSnowBlend()` 재호출 → carve / recovery 진행이 slide gravity 에 즉시 반영.
+
+### 점프 파워 nerf
+
+`SnowSettings.depthToLaunchScale` (AnimationCurve, default flat 1.0). `SlimeController.Launch.cs` 의 `power = ...` 다음 줄에서 `power *= depthToLaunchScale.Evaluate(snowDepthRatio01)`. flat 1.0 = 효과 0 (회귀 없음); 디자이너가 `(1, 0.6)` 등으로 끝점을 내리면 깊이 묻힌 곳에서 점프 약해짐.
+
+### `SurfaceModifiers.Lerp` / `AngleScaledValue.Lerp`
+
+snow 결합의 부산물로 두 helper static 추가. `SurfaceModifiers.Lerp` 는 모든 `AngleScaledValue` 필드를 component-wise lerp (`AngleScaledValue.Lerp` 가 baseValue/fullValue/angleMin/angleMax 4 scalar lerp), float 필드 lerp, bool/curve 는 t≥0.5 snap. 사용처는 현재 슬라임의 snow blend 한 곳뿐이지만 향후 다른 layered surface (얼음/이끼 위에 눈) 도 동일 패턴 재사용 가능.
+
+### Plow drag (슬라임이 눈을 밀고 들어감)
+
+벽 타고 내려와 눈에 박혔을 때 "눈이 밀리며 멈춰야" 하는 동작 — surface tag blend 만으론 부족 (slide friction 의 선형 감속이라 고속 진입 시 즉시 stop 안 됨). 별도 메커닉.
+
+매 FixedUpdate, 슬라임 위치의 `SnowDepthRatio01` 이 `plowMinDepthRatio` 이상이면:
+
+1. **지수 감쇠**: `decay = exp(-plowDragK * depth * dt)` 곱이 `slideVelocity`, `crawlVelocity`, `velocity` (Attached / Charging) 또는 `velocity` (Airborne) 에 적용. 깊이 × 계수가 클수록 빨리 정지.
+2. **연속 carve**: `field.Carve(slimePos, plowCarveDepthPerSecond * dt, slimeRadius)` — 슬라임이 지나는 자리에 실시간 자국. 시각적으로 "눈을 밀고 가는" 효과 + **자기-제한**: 자기가 판 자리는 depth 떨어져 drag 도 약해지므로 영원히 멈춰 있지 않음 (recovery 가 다시 묻고 → drag 다시 작동).
+3. **Stop snap**: `|v| < plowStopSpeed` 면 0 으로 클램프 → 박힘. asymptote twitch 방지.
+
+State 별 hook:
+- **Attached / Charging**: `cachedSnowField` 재사용, contact 점 (`rb.position - surfaceNormal * slimeRadius`) 에서 sample.
+- **Airborne**: surfaceCollider 없으므로 `Physics2D.OverlapCircleNonAlloc(rb.position, slimeRadius, ..., groundLayer)` 로 host 검출 → registry 조회. 99% 의 airborne frame 은 host 없어 즉시 return.
+- **Stunned**: skip (이미 lockout).
+
+새 SnowSettings 필드:
+
+| 필드 | 기본값 | 설명 |
+|------|--------|------|
+| Plow Drag K | 4 | 풀-burial 에서 1/s 단위 지수 drag rate. 0 = plow 비활성. 4 ≈ 0.75s 안에 95% 감속. |
+| Plow Carve Depth Per Second | 0.3 | 이동 중 자동 carve 깊이 (m/s). 0 = drag 만, 시각 자국 없음. |
+| Plow Min Depth Ratio | 0.1 | 이 미만 depth 는 drag 0 — 자연 bare 영역 (carve 자국 / patch edge) 에서 자유. |
+| Plow Stop Speed | 0.5 | 이하 속도는 0 으로 snap. m/s. |
+
+### 디버그: `SnowMouseDebug`
+
+런타임 컴포넌트 (별도 GO 에 부착). 좌클릭 (또는 hold) 시 cursor 아래 host collider 를 OverlapPoint 로 찾고 SnowFieldRegistry 조회 → `field.HandleLanded(world, debugImpactSpeed)` 호출. 별도 carve 시스템이 아니라 슬라임 착지와 동일한 path 재사용 → recovery 도 자동. 인스펙터: `targetCamera`, `debugImpactSpeed` (default 5), `hostLayerMask`, `stampWhileHeld`, `useRightButton`, `drawCursorGizmo`.
+
+### 동작 불변식 (Phase 7 갱신)
+
+1. **비주얼 측 write 는 여전히 격리**: snow 가 collider 를 만들거나 event 를 push 하지 않음. 슬라임 충돌 / 상태 머신은 snow 쪽으로 흘러가는 데이터 없음.
+2. **Gameplay → Snow read 만 허용**: `SnowFieldRegistry.SampleDepthRatio01` (또는 `SnowField.SampleDepthRatio01` 직접 호출) 단 한 채널. 다른 곳에서 snow 내부 상태 (heightCurrent[], strips, settings) 를 직접 만지지 않음.
+3. 나머지 invariants (호스트 비파괴, idempotent rebuild, 자식 GO 만 spawn/destroy) 그대로.
+
+### 새 SnowSettings 필드
+
+| 필드 | 기본값 | 설명 |
+|------|--------|------|
+| Snow Surface Material | None | 슬라임이 눈 위에 있을 때 host SurfaceTag 와 blend 될 SurfaceMaterial. 보통 `Assets/Settings/SurfaceMaterials/Snow.asset`. null = 결합 비활성. |
+| Depth To Snow Blend | (0,0)→(1,1) linear | X = 남은 두께 비율 (0 bare, 1 풀), Y = snow material blend 가중치. 좌측 평탄 = 일정 깊이 이상부터만 효과 (step). |
+| Depth To Launch Scale | flat 1.0 | X = depth, Y = 점프 파워 multiplier. flat = 효과 없음. 우측 0.6 등으로 깎으면 깊이 묻힌 곳에서 점프 약해짐. |
 
 ## 미구현 (Phase 4 이후)
 
@@ -218,7 +289,8 @@ depth/radius 매핑은 SnowField 가 settings 에서 읽어 처리. stamper 는 
 - [Ground_SnowVertexInject.hlsl](../../../SlimeJumping_v2/Assets/Art/Shader/Ground_SnowVertexInject.hlsl) — `SnowVertex` 래퍼: heightTex 변위 + carve mask 계산, `SnowVaryings` 반환
 - [Ground_SnowFragmentInject.hlsl](../../../SlimeJumping_v2/Assets/Art/Shader/Ground_SnowFragmentInject.hlsl) — `SnowVaryings` struct + `SnowFragment` (footprint / fresnel / glitter post-blend), Phase 3 신규
 - [Ground_Quibli_Snow.mat](../../../SlimeJumping_v2/Assets/Art/Materials/Ground_Quibli_Snow.mat) — Phase 2/3 default material; Phase 3 키워드 (`_SNOW_FOOTPRINT` / `_SNOW_FRESNEL` / `_SNOW_GLITTER`) 모두 default off
-- [Snow.asset](../../../SlimeJumping_v2/Assets/Settings/SurfaceMaterials/Snow.asset) — Mud 변형 SurfaceMaterial (디자이너 수동 wire)
+- [Snow.asset](../../../SlimeJumping_v2/Assets/Settings/SurfaceMaterials/Snow.asset) — Mud 변형 SurfaceMaterial. Phase 7 부터 `SnowSettings.snowSurfaceMaterial` 슬롯을 통해 자동 wire
+- [SnowMouseDebug.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/Snow/SnowMouseDebug.cs) — Phase 7 런타임 마우스 carve 디버그 컴포넌트
 
 ## 알려진 한계 / 트레이드오프
 

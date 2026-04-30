@@ -15,18 +15,74 @@ MonoBehaviour:
   maxSnowSlopeDeg: 45
   minPatchTris: 3
   restThickness: 0.25
-  edgeTaperHops: 1
-  subdivLevels: 1
+  edgeTaperHops: 0
+  subdivLevels: 3
   snowMaterial: {fileID: 2100000, guid: 40b7f5c92be68bf42a39e9cc55455a66, type: 2}
-  shadowRamp: {fileID: 2800000, guid: 8f6ea3fc16781c04ea5d682d0b2258f9, type: 3}
+  shadowRamp: {fileID: 2800000, guid: 18e09faf472bb014d8b4e9497bb8c0be, type: 3}
   footprintAlbedo: {fileID: 0}
-  glitterNoise: {fileID: 0}
+  glitterNoise: {fileID: 2800000, guid: d96e50eec907e1c428a285fb1124a713, type: 3}
   footprintEnabled: 0
-  fresnelEnabled: 0
-  glitterEnabled: 0
+  fresnelEnabled: 1
+  glitterEnabled: 1
+  rampShadowDeep: {r: 0.3764706, g: 0.5254902, b: 0.69803923, a: 1}
+  rampShadowEdge: {r: 0.627451, g: 0.7529412, b: 0.87058824, a: 1}
+  rampLitEdge: {r: 0.9607843, g: 0.972549, b: 0.9882353, a: 1}
+  rampLitPeak: {r: 1, g: 1, b: 1, a: 1}
+  rampStepCenter: 0.5
+  rampStepWidth: 0.06
+  rampWidth: 256
   minImpactSpeed: 1.5
   depthPerImpact: 0.012
   depthMax: 0.2
   radiusPerImpact: 0.05
   radiusMax: 0.8
   accumulationRate: 0.01
+  snowSurfaceMaterial: {fileID: 0}
+  depthToSnowBlend:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 1
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 1
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  depthToLaunchScale:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4

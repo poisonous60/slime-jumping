@@ -22,9 +22,13 @@ struct AngleScaledValue {
 ```
 
 ## 조회 타이밍
-- **착지 시** (carrier.Attach 시점): `GetComponentInParent<SurfaceTag>()` 한 번 조회 → 캐싱.
+- **착지 시** (carrier.Attach 시점): `GetComponentInParent<SurfaceTag>()` 한 번 조회 → 캐싱 (`hostSurfaceMod`).
 - **Airborne 전환 시**: `settings.BuildDefaultModifiers()`로 리셋 (이전엔 하드코딩 `SurfaceModifiers.Default`).
 - **표면 전환**: `FixedUpdate`에서 `surfaceCollider != prevSurfaceCollider`일 때 재호출.
+- **Snow 결합 (Phase 7)**: 매 FixedUpdate, attached/charging 이고 host 가 SnowField 등록되어 있으면 `RefreshSnowBlend` 가 contact 점의 carve depth (`SnowFieldRegistry.SampleDepthRatio01`) 를 샘플 → `SnowSettings.depthToSnowBlend` curve 평가 → `SurfaceModifiers.Lerp(host, snow, t)` 로 슬라임이 읽는 `surfaceMod` 갱신. 같은 호스트 위 벽 (눈 0%) 과 평지 (눈 풀) 가 다른 마찰을 갖게 됨. discrete fields (useInertialSlide, override flags, curves) 는 host 값으로 pin — mid-attach 모델 flip 금지.
+
+## SurfaceModifiers.Lerp / AngleScaledValue.Lerp (Phase 7)
+두 surface 프로필 사이를 0..1 weight 로 component-wise lerp 하는 helper. 모든 `AngleScaledValue` 필드는 4 scalar (baseValue/fullValue/angleMin/angleMax) lerp, 일반 float 필드는 lerp, bool/curve 는 t≥0.5 snap. snow 결합이 첫 사용처 — 향후 다른 layered surface (얼음/이끼 위에 눈 등) 도 동일 패턴 재사용 가능.
 
 ## 글로벌 디폴트 (SlimeSettings)
 SurfaceTag 가 없거나 material이 비어있는 표면은 `SlimeSettings`의 "Default Surface Modifiers" 섹션 값을 사용. 이전엔 `SurfaceModifiers.Default` (하드코딩 1.0/0.0)를 썼지만 이제 인스펙터에서 조정 가능. 동일한 필드 셋 (carrierFriction, crawlSpeedMultiplier, ..., hopVelocityRetention, hopNormalToTangentRatio, hopInstantFlip, useInertialSlide) + dash 관련 (`groundDashAngleFalloffCurve`, `dashSpeedFalloffCurve`, `disableDashFalloff`)을 SlimeSettings 에서 직접 설정 가능. 태그 없는 표면 = SlimeSettings 값 그대로, 태그 있고 override off = SlimeSettings dash 값 fallback (impulse/min/max/falloff/curve/disable 모두), 태그 있고 override on = SurfaceMaterial 값.

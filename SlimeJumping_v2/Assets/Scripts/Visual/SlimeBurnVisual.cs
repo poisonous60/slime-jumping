@@ -68,6 +68,11 @@ namespace SlimeJumping.Visual
         [SerializeField] private float compressionDecayTime = 0.22f;
 
         // --- runtime ---
+        // burnDir is stored in MESH OBJECT SPACE so it stays glued to the same
+        // vertices on the body. World-space hit direction is converted to OS at
+        // hit time via Quaternion.Inverse(meshTransform.rotation) — that way when
+        // the slime walks on a curved surface (body3d rotates) or jumps with any
+        // body rotation, the burn stays on the spot it was hit on the body.
         private Vector3 burnDir = Vector3.right;
         private float burnStrength;
         private float lastHitTime = -999f;
@@ -75,6 +80,7 @@ namespace SlimeJumping.Visual
         private GameObject shellGO;
         private MeshRenderer shellMR;
         private MeshFilter shellMF;
+        private Transform meshTransform;   // the body's actual MeshFilter.transform
         private Material shellMatInstance;
         private MaterialPropertyBlock mpb;
 
@@ -140,8 +146,10 @@ namespace SlimeJumping.Visual
             if (bodyMF == null || bodyMF.sharedMesh == null) return;
             if (burnShellShader == null) return;
 
+            meshTransform = bodyMF.transform;
+
             shellGO = new GameObject("BurnShell");
-            shellGO.transform.SetParent(bodyMF.transform, false);
+            shellGO.transform.SetParent(meshTransform, false);
             shellGO.transform.localPosition = Vector3.zero;
             shellGO.transform.localRotation = Quaternion.identity;
             shellGO.transform.localScale = Vector3.one;
@@ -166,15 +174,29 @@ namespace SlimeJumping.Visual
             // a roughly-spherical body picks out the side facing hitPoint.
             Vector2 slimeCenter = slimeController != null ? slimeController.Position : (Vector2)transform.position;
             Vector2 d2 = hitPoint - slimeCenter;
-            Vector3 hitDir;
-            if (d2.sqrMagnitude < 0.0001f) hitDir = burnDir;
-            else hitDir = new Vector3(d2.x, d2.y, 0f).normalized;
+            Vector3 worldHitDir;
+            if (d2.sqrMagnitude < 0.0001f) worldHitDir = Vector3.right;
+            else worldHitDir = new Vector3(d2.x, d2.y, 0f).normalized;
 
-            // Smooth-blend toward the latest hit direction so consecutive hits at
-            // similar spots reinforce, while opposite-side hits gradually rotate
-            // the burn around. Slerp on Vector3 keeps the result on the unit sphere.
-            burnDir = Vector3.Slerp(burnDir.sqrMagnitude > 0.0001f ? burnDir : hitDir,
-                                    hitDir,
+            // Convert world hit direction → mesh object-space direction so it's
+            // anchored to specific vertices on the body. Use Quaternion.Inverse on
+            // the mesh transform's world rotation (ignores translation/scale).
+            // After this, the body can rotate / move freely and the burn stays on
+            // the same triangles — the shader dots OS normals against this OS
+            // burnDir, so the result is invariant under transform rotation.
+            Vector3 osHitDir;
+            if (meshTransform != null)
+                osHitDir = Quaternion.Inverse(meshTransform.rotation) * worldHitDir;
+            else
+                osHitDir = worldHitDir;
+            if (osHitDir.sqrMagnitude < 0.0001f) osHitDir = Vector3.right;
+            else osHitDir.Normalize();
+
+            // Smooth-blend toward the latest hit direction (in OS) so consecutive
+            // hits at similar spots reinforce, while opposite-side hits gradually
+            // rotate the burn around the body.
+            burnDir = Vector3.Slerp(burnDir.sqrMagnitude > 0.0001f ? burnDir : osHitDir,
+                                    osHitDir,
                                     dirRecencyBlend);
             if (burnDir.sqrMagnitude < 0.0001f) burnDir = Vector3.right;
             else burnDir.Normalize();

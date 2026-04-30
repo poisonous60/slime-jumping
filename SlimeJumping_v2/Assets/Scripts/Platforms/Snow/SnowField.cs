@@ -167,13 +167,11 @@ namespace SlimeJumping.Platforms.Snow
         /// <summary>Convert a world-space contact + raw impact speed into a per-strip
         /// gaussian carve. depth/radius mapping comes from SnowSettings so designers
         /// can retune one asset and every platform that points at it picks up the
-        /// change. Each strip AABB-prefilters; only changed strips join the active
-        /// tick set.</summary>
+        /// change. Soft impacts (below minImpactSpeed) are rejected. Mapping result
+        /// is fanned out to the generic <see cref="Carve"/>.</summary>
         public void HandleLanded(Vector2 contactWorld, float impactSpeed)
         {
-            if (sourceMeshFilter == null) return;
-
-            float minImpact      = settings != null ? settings.minImpactSpeed   : DefaultMinImpactSpeed;
+            float minImpact = settings != null ? settings.minImpactSpeed : DefaultMinImpactSpeed;
             if (impactSpeed < minImpact) return;
 
             float depthPerImpact  = settings != null ? settings.depthPerImpact  : DefaultDepthPerImpact;
@@ -183,6 +181,17 @@ namespace SlimeJumping.Platforms.Snow
 
             float depth  = Mathf.Min(depthMax,  impactSpeed * depthPerImpact);
             float radius = Mathf.Min(radiusMax, impactSpeed * radiusPerImpact);
+            Carve(contactWorld, depth, radius);
+        }
+
+        /// <summary>Generic carve at a world-space point. Use this for non-landing
+        /// sources (blast radius, projectiles, debug tools) where the caller already
+        /// knows the desired dip depth and radius — bypasses the impact-speed mapping
+        /// in <see cref="HandleLanded"/>. Each child strip AABB-prefilters; only
+        /// strips that actually changed enter the active recovery tick set.</summary>
+        public void Carve(Vector2 contactWorld, float depth, float radius)
+        {
+            if (sourceMeshFilter == null) return;
             if (depth <= 0f || radius <= 0f) return;
 
             Vector3 localImpact = sourceMeshFilter.transform.InverseTransformPoint(
@@ -197,6 +206,30 @@ namespace SlimeJumping.Platforms.Snow
                 if (strip.CarveLocal(localImpact, depth, radius))
                     activeStrips.Add(strip);
             }
+        }
+
+        /// <summary>Sample remaining snow coverage at a world-space xy point. 0 = bare
+        /// or outside any patch, 1 = full untouched thickness. Read-only — gameplay's
+        /// single entry point for "is this point on snow, and how much". Walks each
+        /// child strip's AABB pre-filter then nearest-vertex; returns the maximum
+        /// when patches overlap.</summary>
+        public float SampleDepthRatio01(Vector2 worldXY)
+        {
+            if (sourceMeshFilter == null) return 0f;
+            Vector3 local = sourceMeshFilter.transform.InverseTransformPoint(
+                new Vector3(worldXY.x, worldXY.y, 0f));
+
+            float best = 0f;
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                var child = transform.GetChild(i);
+                if (child == null) continue;
+                var strip = child.GetComponent<SnowStrip>();
+                if (strip == null) continue;
+                float r = strip.SampleDepthRatio01(local);
+                if (r > best) best = r;
+            }
+            return best;
         }
 
 #if UNITY_EDITOR
@@ -331,6 +364,25 @@ namespace SlimeJumping.Platforms.Snow
                 else
                 {
                     for (int i = 0; i < V; i++) heights[i] = restThick;
+                }
+
+                // Per-vertex verticality damping. Face-level slope filter keeps tris whose
+                // normal.y >= cos(maxSnowSlopeDeg), but a vertex shared by several borderline
+                // tris ends up with an averaged normal that points well off-axis. Displacing
+                // that vertex by full restThickness along the off-axis normal produced the
+                // tall pink spikes seen on jagged TerrainShape2D interiors. Smooth-fade the
+                // rest height between outer (face cutoff) and inner (mostly-upright) so
+                // those vertices pinch back toward the host without affecting clean ones.
+                {
+                    float maxDeg = MaxSnowSlopeDeg;
+                    float cosOuter = Mathf.Cos(Mathf.Clamp(maxDeg, 0f, 89.99f) * Mathf.Deg2Rad);
+                    float cosInner = Mathf.Cos(Mathf.Clamp(maxDeg * 0.4f, 0f, 89.99f) * Mathf.Deg2Rad);
+                    for (int i = 0; i < V; i++)
+                    {
+                        float ny = patch.vertNormals[i].y;
+                        float verticality = Mathf.SmoothStep(cosOuter, cosInner, ny);
+                        heights[i] *= verticality;
+                    }
                 }
 
                 var go = new GameObject($"SnowStrip_{emitted}");

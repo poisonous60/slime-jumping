@@ -10,23 +10,22 @@ using SlimeJumping.Platforms;
 namespace SlimeJumping.Mechanisms
 {
     /// One-shot falling train. Sequential connector failure → broken-hinge sag →
-    /// silence beat → physical-feel drop → hit-stop → rebound → landed shortcut.
+    /// silence beat → physics-driven fall (Rigidbody2D Dynamic) → first-ground-contact
+    /// hit-stop → settle → permanent Static shortcut platform.
     ///
-    /// Inherits <see cref="PlatformMotor"/> so the slime rides every phase
-    /// automatically through the existing PlatformCarrier system, including the
-    /// sag rotation (PlatformCarrier propagates AngularVelocity tangentially).
+    /// Inherits <see cref="PlatformMotor"/>. The slime rides the train via
+    /// PlatformCarrier through every phase, including the physics-driven fall —
+    /// see the Velocity/AngularVelocity property overrides which forward to
+    /// rb.linearVelocity/rb.angularVelocity once the body is Dynamic.
     ///
-    /// Design notes (why no continuous rumble):
-    ///   Continuous sin/cos shake reads as "controller buzzing." Real games
-    ///   (Uncharted 2 train, HL2 scaffolds, INSIDE) sell collapse with discrete
-    ///   jolt beats separated by stillness, sequential connector failure that
-    ///   physically tilts the geometry, and an audio-leading silence beat
-    ///   right before the drop. This component implements that pattern.
+    /// Designer iteration workflow: adjust Train Transform.position to set the
+    /// fall START. Physics determines the END. Console logs the settled pose.
+    /// Use [ContextMenu] "DEBUG: Trigger Fall Now" to skip telegraph during testing.
     [DisallowMultipleComponent]
     [AddComponentMenu("SlimeJumping/Mechanisms/Falling Train Platform")]
     public class FallingTrainPlatform : PlatformMotor
     {
-        private enum TrainState { Idle, Telegraphing, Falling, HitStop, Rebound, Landed }
+        private enum TrainState { Idle, Telegraphing, Falling, HitStop, Settling, Landed }
 
         [Serializable]
         public class Connector
@@ -65,18 +64,50 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Shared Cinemachine impulse for connector snaps. Per-connector joltForce is the magnitude.")]
         [SerializeField] private ImpulseEmitter snapImpulse;
 
-        [Header("Fall Trajectory")]
-        [Tooltip("Designer-set destination. The train always arrives here regardless of curve tuning.")]
-        [SerializeField] private Transform landTarget;
-        [SerializeField] private float fallDuration = 1.4f;
-        [Tooltip("Vertical interpolation 0→1 across fallDuration. Default eases in (gravity feel).")]
-        [SerializeField] private AnimationCurve fallCurveY = new AnimationCurve(
-            new Keyframe(0f, 0f, 0f, 0f), new Keyframe(1f, 1f, 2f, 0f));
-        [Tooltip("Horizontal interpolation 0→1. Default linear (constant horizontal velocity).")]
-        [SerializeField] private AnimationCurve fallCurveX = AnimationCurve.Linear(0f, 0f, 1f, 1f);
-        [Tooltip("Rotation accumulated by impact (deg). Negative = nose dips forward.")]
-        [SerializeField] private float fallTilt = -10f;
-        [SerializeField] private AnimationCurve fallTiltCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+        [Header("Fall Physics")]
+        [Tooltip("Rigidbody mass when Dynamic. Heavy = slime can't shove it on contact.")]
+        [SerializeField] private float fallMass = 200f;
+        [Tooltip("Gravity multiplier during fall. >1 = snappier fall in a small camera frame.")]
+        [SerializeField] private float fallGravityScale = 2.0f;
+        [SerializeField] private float fallLinearDamping = 0.05f;
+        [Tooltip("Higher = stops spinning faster after impact. The main 'doesn't spin forever' knob.")]
+        [SerializeField] private float fallAngularDamping = 0.6f;
+        [Tooltip("Use Continuous collision detection during fall — heavy bodies on thin terrain otherwise tunnel.")]
+        [SerializeField] private bool useContinuousCollision = true;
+        [Tooltip("Optional. friction 0.7 / bounciness 0 recommended for 'lands and stops'. Null = Unity defaults (slippery).")]
+        [SerializeField] private PhysicsMaterial2D fallPhysicsMaterial;
+
+        [Header("Release Impulse (optional tumble seed)")]
+        [Tooltip("Linear impulse applied at the LAST snapped connector position (off-center → free angular momentum). Default 0 = pure gravity acceleration from rest. Set a small downward value if you want the train to look 'pushed off the rails' rather than just released.")]
+        [SerializeField] private Vector2 releaseImpulse = Vector2.zero;
+        [Tooltip("Additional angular velocity added at release (deg/s). Positive = CCW. Default 0 — telegraph sag already provides the asymmetric pose that lets gravity tumble it naturally.")]
+        [SerializeField] private float releaseAngularVelocity = 0f;
+
+        [Header("Impact Detection")]
+        [Tooltip("Layers that count as 'ground' for first-contact hit-stop trigger. Should EXCLUDE the slime layer for safety, but the speed/time guards below also catch the case.")]
+        [SerializeField] private LayerMask groundLayers = ~0;
+        [Tooltip("Minimum downward speed (units/s) required to trigger hit-stop. Filters out the slime-resting-on-top contact that re-evaluates the moment the train becomes Dynamic.")]
+        [SerializeField] private float impactMinSpeed = 2f;
+        [Tooltip("Minimum time after EnterFalling before any collision can trigger hit-stop. Belt-and-suspenders against slime contact firing on the first physics step.")]
+        [SerializeField] private float impactMinFallTime = 0.08f;
+
+        [Header("Settlement")]
+        [Tooltip("Linear velocity below this magnitude (units/s) counts as 'at rest'. The rest-snap below makes this almost trivial to satisfy.")]
+        [SerializeField] private float settledLinearThreshold = 0.1f;
+        [Tooltip("Angular velocity below this magnitude (deg/s) counts as 'at rest'.")]
+        [SerializeField] private float settledAngularThreshold = 8f;
+        [Tooltip("Must stay below thresholds for this long before transitioning to Landed.")]
+        [SerializeField] private float settledHoldTime = 0.2f;
+        [Tooltip("Force Landed if Falling+Settling takes longer than this (safety against infinite spin / fell-into-pit).")]
+        [SerializeField] private float settleSafetyTimeout = 10f;
+
+        [Header("Rest-Snap (kill micro-tremble while preserving bounces)")]
+        [Tooltip("Linear speed (units/s) below this counts as 'low'. Snap only fires when both linear AND angular are low while in stable ground contact (see restSnapStableTime).")]
+        [SerializeField] private float restSnapLinearSpeed = 0.6f;
+        [Tooltip("Angular speed (deg/s) below this counts as 'low'.")]
+        [SerializeField] private float restSnapAngularSpeed = 30f;
+        [Tooltip("Both speeds must stay below thresholds AND ground contact must persist for this long before snap fires. Prevents transient bounce-contact from killing in-air angular velocity during a tumble.")]
+        [SerializeField] private float restSnapStableTime = 0.15f;
 
         [Header("Debris (simulated trail)")]
         [Tooltip("Small Rigidbody2D prefab spawned at fall start. Convinces the eye the main object is also physical. Skip if null.")]
@@ -93,17 +124,9 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float hitStopDuration = 0.08f;
         [Tooltip("Time.timeScale during hit-stop. ~0.05 = near-freeze.")]
         [Range(0.01f, 1f)][SerializeField] private float hitStopTimeScale = 0.05f;
-
-        [Header("Rebound (settle bounce)")]
-        [Tooltip("Vertical bounce amplitude on landing (world units).")]
-        [SerializeField] private float reboundHeight = 0.35f;
-        [Tooltip("Rotation overshoot on landing (deg).")]
-        [SerializeField] private float reboundRotation = 3f;
-        [SerializeField] private float reboundDuration = 0.5f;
-        [Tooltip("Damped oscillation frequency (cycles per reboundDuration).")]
-        [SerializeField] private float reboundFrequency = 1.5f;
-        [Tooltip("Damping factor — higher = bounce dies faster.")]
-        [SerializeField] private float reboundDamping = 5f;
+        [Tooltip("Velocity remaining after hit-stop release (0–1). Higher = visible bounce/slide after impact. Tremble from this is killed by the rest-snap below.")]
+        [Range(0f, 1f)][SerializeField] private float postHitStopVelocityRetention = 0.4f;
+        [Range(0f, 1f)][SerializeField] private float postHitStopAngularRetention = 0.6f;
 
         [Header("Impact (3-layer SFX)")]
         [Tooltip("Sharp initial crack — first 100ms of impact.")]
@@ -116,15 +139,17 @@ namespace SlimeJumping.Mechanisms
         [Range(0f, 1f)][SerializeField] private float impactVolume = 1f;
         [SerializeField] private ImpulseEmitter impactImpulse;
         [SerializeField] private float impactImpulseForce = 1.0f;
-        [Tooltip("Spawned at landTarget on impact (dust/debris cloud). Auto-destroyed after impactVFXLifetime.")]
+        [Tooltip("Spawned at the contact point on impact (dust/debris cloud). Auto-destroyed after impactVFXLifetime.")]
         [SerializeField] private GameObject impactVFXPrefab;
         [SerializeField] private float impactVFXLifetime = 4f;
 
         [Header("Events")]
-        [Tooltip("Fired once at the moment Falling begins (after the silence beat). Wire neighbor-train wobbles, decals, gameplay flags here.")]
+        [Tooltip("Fired once at the moment Falling begins (after the silence beat).")]
         public UnityEvent onFallStart;
-        [Tooltip("Fired once at the moment of ground impact (before hit-stop release).")]
+        [Tooltip("Fired once at the moment of first ground impact (before hit-stop release).")]
         public UnityEvent onImpact;
+        [Tooltip("Fired once when the train comes to rest and switches to Static.")]
+        public UnityEvent onLanded;
 
         // --- runtime state ---
         private TrainState state = TrainState.Idle;
@@ -149,19 +174,42 @@ namespace SlimeJumping.Mechanisms
         // cached at Awake from anchor.localPosition for stable pivot math
         private List<Vector2> connectorLocalPositions = new List<Vector2>();
 
-        // fall
-        private Vector2 fallStart;
-        private Vector2 fallEnd;
-        private float fallStartRot;
-        private float fallEndRot;
-        private float fallTimer;
+        // physics fall
+        private bool hasFiredImpact;
+        private float fallElapsed;
+        private float settledTimer;
+        private float restSnapStableTimer;
+        private Vector2 hitStopSavedVelocity;
+        private float hitStopSavedAngular;
+        private Vector2 lastSnappedConnectorWorldPos;
 
-        // rebound
-        private float reboundTimer;
+        // diagnostic — last settled pose, exposed to ContextMenu marker helper
+        private Vector2 lastSettledPos;
+        private float lastSettledRot;
+        private bool hasLastSettled;
+
+        // --- PlatformCarrier coupling: forward physics velocity once Dynamic ---
+        // base.Velocity / base.AngularVelocity are computed from MovePosition deltas,
+        // which are no-ops on Dynamic bodies. PlatformCarrier reads these properties
+        // each FixedUpdate to inject velocity into the slime — so during physics
+        // phases we forward the actual rb velocity, otherwise the slime would freeze
+        // mid-air while the train physics-falls without it.
+        public override Vector2 Velocity =>
+            (state == TrainState.Falling || state == TrainState.Settling)
+                ? rb.linearVelocity
+                : base.Velocity;
+
+        public override float AngularVelocity =>
+            (state == TrainState.Falling || state == TrainState.Settling)
+                ? rb.angularVelocity
+                : base.AngularVelocity;
 
         protected override void Awake()
         {
             base.Awake();
+            // base sets Interpolate, but assert in case a subclass/serialized value undid it.
+            rb.interpolation = RigidbodyInterpolation2D.Interpolate;
+
             spawnPos = rb.position;
             spawnRot = rb.rotation;
             currentSagPos = spawnPos;
@@ -191,16 +239,25 @@ namespace SlimeJumping.Mechanisms
                     return TickTelegraphing(dt);
 
                 case TrainState.Falling:
-                    return TickFalling(dt);
+                    fallElapsed += dt;
+                    CheckSettleSafetyTimeout();
+                    // Passive — physics drives the body. Returning rb.position keeps
+                    // PlatformMotor's prevPosition tracking in sync (no spurious deltas).
+                    return (rb.position, rb.rotation);
 
                 case TrainState.HitStop:
-                    return (fallEnd, fallEndRot);
+                    // Held by Kinematic with zero velocity. Return current pose so base
+                    // FixedUpdate's MovePosition is a no-op (target == current).
+                    return (rb.position, rb.rotation);
 
-                case TrainState.Rebound:
-                    return TickRebound(dt);
+                case TrainState.Settling:
+                    fallElapsed += dt;
+                    TickSettling(dt);
+                    CheckSettleSafetyTimeout();
+                    return (rb.position, rb.rotation);
 
                 case TrainState.Landed:
-                    return (fallEnd, fallEndRot);
+                    return (rb.position, rb.rotation);
             }
             return (rb.position, rb.rotation);
         }
@@ -215,7 +272,7 @@ namespace SlimeJumping.Mechanisms
             if (fallOnRiderExit && riderSensor != null && riderSensor.RiderCount == 0)
             {
                 EnterFalling();
-                return TickFalling(dt);
+                return (rb.position, rb.rotation);
             }
 
             // Fire the next snap if it's time.
@@ -225,7 +282,6 @@ namespace SlimeJumping.Mechanisms
                 nextSnapIdx++;
                 if (nextSnapIdx < connectors.Count)
                 {
-                    // Next snap waits for THIS snap's sag to settle, then its own preDelay.
                     var prev = connectors[nextSnapIdx - 1];
                     nextSnapTime = telegraphElapsed + prev.sagDuration + connectors[nextSnapIdx].preDelay;
                 }
@@ -265,7 +321,7 @@ namespace SlimeJumping.Mechanisms
                 && telegraphElapsed >= lastSnapFinishTime + silenceBeforeFall)
             {
                 EnterFalling();
-                return TickFalling(dt);
+                return (rb.position, rb.rotation);
             }
 
             return (currentSagPos, currentSagRot);
@@ -277,16 +333,18 @@ namespace SlimeJumping.Mechanisms
             if (c == null) return;
 
             // Pivot = centroid of REMAINING (still-attached) connectors, in current train pose.
-            // If none remain, skip the sag (the last snap leads straight into the fall).
             Vector2 pivotWorld;
             bool hasPivot = TryGetRemainingPivotWorld(i, out pivotWorld);
 
+            // Capture the snapped anchor's CURRENT world position — used by EnterFalling
+            // as the off-center impulse application point for natural tumble seed.
+            lastSnappedConnectorWorldPos = TrainLocalToWorld(connectorLocalPositions[i]);
+
             if (hasPivot)
             {
-                // Auto-sign: snapped side should drop. Snapped anchor world-x relative to pivot.
-                Vector2 snappedAnchorWorld = TrainLocalToWorld(connectorLocalPositions[i]);
-                float side = snappedAnchorWorld.x - pivotWorld.x;
-                float signedSag = c.sagDegrees * (side < 0f ? 1f : -1f); // CCW drops left side, CW drops right.
+                // Auto-sign: snapped side should drop.
+                float side = lastSnappedConnectorWorldPos.x - pivotWorld.x;
+                float signedSag = c.sagDegrees * (side < 0f ? 1f : -1f);
 
                 sagAnimStartPos = currentSagPos;
                 sagAnimStartRot = currentSagRot;
@@ -328,7 +386,6 @@ namespace SlimeJumping.Mechanisms
 
         private Vector2 TrainLocalToWorld(Vector2 local)
         {
-            // Apply current sag pose (rotation around currentSagPos, then translate).
             return currentSagPos + Rotate2D(local, currentSagRot);
         }
 
@@ -344,42 +401,52 @@ namespace SlimeJumping.Mechanisms
             return new Vector2(v.x * c - v.y * s, v.x * s + v.y * c);
         }
 
-        // --- Falling ---
+        // --- Settling tick ---
 
-        private (Vector2, float) TickFalling(float dt)
+        private void TickSettling(float dt)
         {
-            fallTimer += dt;
-            float t = fallDuration > 0f ? Mathf.Clamp01(fallTimer / fallDuration) : 1f;
-            float ty   = fallCurveY    != null ? fallCurveY.Evaluate(t)    : t;
-            float tx   = fallCurveX    != null ? fallCurveX.Evaluate(t)    : t;
-            float trot = fallTiltCurve != null ? fallTiltCurve.Evaluate(t) : t;
+            // Rest-snap: kill micro-tremble at *final rest*, NOT during a tumble's
+            // glancing contacts. Snap requires:
+            //   (a) train is touching ground
+            //   (b) BOTH linear AND angular below thresholds
+            //   (c) (a)+(b) held continuously for restSnapStableTime
+            // A tumbling train that briefly grazes ground while spinning fast won't
+            // satisfy (b), so angular velocity is preserved through the air phase.
+            bool touching = rb.IsTouchingLayers(groundLayers);
+            bool linearLow = rb.linearVelocity.sqrMagnitude < restSnapLinearSpeed * restSnapLinearSpeed;
+            bool angularLow = Mathf.Abs(rb.angularVelocity) < restSnapAngularSpeed;
 
-            Vector2 pos = new Vector2(
-                Mathf.Lerp(fallStart.x, fallEnd.x, tx),
-                Mathf.Lerp(fallStart.y, fallEnd.y, ty));
-            float rot = Mathf.Lerp(fallStartRot, fallEndRot, trot);
+            if (touching && linearLow && angularLow)
+                restSnapStableTimer += dt;
+            else
+                restSnapStableTimer = 0f;
 
-            if (t >= 1f) EnterHitStop();
-            return (pos, rot);
+            if (restSnapStableTimer >= restSnapStableTime)
+            {
+                rb.linearVelocity = Vector2.zero;
+                rb.angularVelocity = 0f;
+            }
+
+            bool atRest =
+                rb.linearVelocity.sqrMagnitude < settledLinearThreshold * settledLinearThreshold
+                && Mathf.Abs(rb.angularVelocity) < settledAngularThreshold;
+
+            if (atRest) settledTimer += dt;
+            else        settledTimer = 0f;
+
+            // Box2D may also flag the body as sleeping — short-circuit to Landed.
+            if (settledTimer >= settledHoldTime || rb.IsSleeping())
+                EnterLanded();
         }
 
-        // --- Rebound ---
-
-        private (Vector2, float) TickRebound(float dt)
+        private void CheckSettleSafetyTimeout()
         {
-            reboundTimer += dt;
-            float t = reboundDuration > 0f ? Mathf.Clamp01(reboundTimer / reboundDuration) : 1f;
-            // Damped sine: sin(2π·f·t) · exp(-d·t). Settles to 0 at t=1.
-            float decay = Mathf.Exp(-reboundDamping * t);
-            float osc = Mathf.Sin(2f * Mathf.PI * reboundFrequency * t) * decay;
-            // Cosine-leading rotation so it kicks at impact rather than ramping in.
-            float oscRot = Mathf.Cos(2f * Mathf.PI * reboundFrequency * t) * decay - decay; // start at 0
-
-            Vector2 pos = fallEnd + new Vector2(0f, reboundHeight * osc);
-            float rot = fallEndRot + reboundRotation * oscRot;
-
-            if (t >= 1f) EnterLanded();
-            return (pos, rot);
+            if (fallElapsed > settleSafetyTimeout && state != TrainState.Landed)
+            {
+                Debug.LogWarning($"[FallingTrainPlatform] Settle safety timeout ({settleSafetyTimeout}s) — forcing Landed at current pose. " +
+                                 "Check that ground colliders exist below the fall path, or extend settleSafetyTimeout.", this);
+                EnterLanded();
+            }
         }
 
         // --- Transitions ---
@@ -405,35 +472,74 @@ namespace SlimeJumping.Mechanisms
 
         private void EnterFalling()
         {
-            if (landTarget == null)
-            {
-                Debug.LogError("[FallingTrainPlatform] landTarget is not assigned — fall aborted.", this);
-                state = TrainState.Idle;
-                hasFiredOnce = true;
-                if (creakSource != null && creakSource.isPlaying) creakSource.Stop();
-                return;
-            }
-
             state = TrainState.Falling;
-            fallTimer = 0f;
-            fallStart = currentSagPos;
-            fallEnd = landTarget.position;
-            fallStartRot = currentSagRot;
-            fallEndRot = currentSagRot + fallTilt;
+            hasFiredOnce = true;
+            fallElapsed = 0f;
+            settledTimer = 0f;
+            hasFiredImpact = false;
 
             if (creakSource != null && creakSource.isPlaying) creakSource.Stop();
             if (riderSensor != null) riderSensor.gameObject.SetActive(false);
+
+            // Swap to Dynamic. Per Unity docs, contacts re-evaluate next FixedUpdate.
+            rb.bodyType = RigidbodyType2D.Dynamic;
+            rb.mass = fallMass;
+            rb.gravityScale = fallGravityScale;
+            rb.linearDamping = fallLinearDamping;
+            rb.angularDamping = fallAngularDamping;
+            rb.collisionDetectionMode = useContinuousCollision
+                ? CollisionDetectionMode2D.Continuous
+                : CollisionDetectionMode2D.Discrete;
+            rb.constraints = RigidbodyConstraints2D.None;
+            if (fallPhysicsMaterial != null) rb.sharedMaterial = fallPhysicsMaterial;
+
+            // Off-center release impulse at the last-snapped connector — free angular
+            // momentum from the lever arm. AddForceAtPosition with ForceMode2D.Impulse
+            // takes Δp directly (mass-independent), so multiply by mass to make the
+            // inspector value read as "Δv applied to the body at this point."
+            if (releaseImpulse.sqrMagnitude > 0.0001f)
+            {
+                Vector2 applyAt = lastSnappedConnectorWorldPos.sqrMagnitude > 0.0001f
+                    ? lastSnappedConnectorWorldPos
+                    : (Vector2)transform.position;
+                rb.AddForceAtPosition(releaseImpulse * fallMass, applyAt, ForceMode2D.Impulse);
+            }
+            if (Mathf.Abs(releaseAngularVelocity) > 0.001f)
+                rb.angularVelocity += releaseAngularVelocity;
 
             SpawnDebris();
             onFallStart?.Invoke();
         }
 
-        private void EnterHitStop()
+        private void OnCollisionEnter2D(Collision2D c)
+        {
+            if (state != TrainState.Falling || hasFiredImpact) return;
+            int otherLayerMask = 1 << c.gameObject.layer;
+            if ((groundLayers.value & otherLayerMask) == 0) return;
+
+            // Speed + time guards: when the train transitions Kinematic→Dynamic, contacts
+            // that already exist (e.g. slime resting on top) re-evaluate next FixedUpdate
+            // and would fire OnCollisionEnter2D with near-zero velocity. Filter those out.
+            if (fallElapsed < impactMinFallTime) return;
+            if (rb.linearVelocity.sqrMagnitude < impactMinSpeed * impactMinSpeed) return;
+
+            hasFiredImpact = true;
+            Vector3 contactPoint = c.contactCount > 0 ? (Vector3)c.GetContact(0).point : transform.position;
+            EnterHitStop(contactPoint);
+        }
+
+        private void EnterHitStop(Vector3 impactPos)
         {
             state = TrainState.HitStop;
 
-            Vector3 impactPos = landTarget != null ? landTarget.position : (Vector3)fallEnd;
-            Quaternion impactRot = landTarget != null ? landTarget.rotation : Quaternion.identity;
+            // Stash physics state and freeze visually by switching to Kinematic with zero
+            // velocity for the duration. timeScale dip alone would still allow forward
+            // momentum through the freeze; Kinematic gives a clean stop.
+            hitStopSavedVelocity = rb.linearVelocity;
+            hitStopSavedAngular = rb.angularVelocity;
+            rb.linearVelocity = Vector2.zero;
+            rb.angularVelocity = 0f;
+            rb.bodyType = RigidbodyType2D.Kinematic;
 
             // 3-layer SFX
             if (crackSound != null)
@@ -446,14 +552,14 @@ namespace SlimeJumping.Mechanisms
             if (impactImpulse != null) impactImpulse.Emit(impactImpulseForce);
             if (impactVFXPrefab != null)
             {
-                var go = Instantiate(impactVFXPrefab, impactPos, impactRot);
+                var go = Instantiate(impactVFXPrefab, impactPos, Quaternion.identity);
                 if (impactVFXLifetime > 0f) Destroy(go, impactVFXLifetime);
             }
 
             onImpact?.Invoke();
 
             if (hitStopDuration > 0f) StartCoroutine(HitStopRoutine());
-            else EnterRebound();
+            else EnterSettling();
         }
 
         private IEnumerator HitStopRoutine()
@@ -462,7 +568,7 @@ namespace SlimeJumping.Mechanisms
             Time.timeScale = hitStopTimeScale;
             yield return new WaitForSecondsRealtime(hitStopDuration);
             Time.timeScale = prev;
-            if (state == TrainState.HitStop) EnterRebound();
+            if (state == TrainState.HitStop) EnterSettling();
         }
 
         private IEnumerator PlayDelayedRealtime(AudioClip clip, Vector3 pos, float delay)
@@ -471,15 +577,35 @@ namespace SlimeJumping.Mechanisms
             SoundService.PlayAt(clip, pos, SoundCategory.SFX_Object, impactVolume);
         }
 
-        private void EnterRebound()
+        private void EnterSettling()
         {
-            state = TrainState.Rebound;
-            reboundTimer = 0f;
+            state = TrainState.Settling;
+            settledTimer = 0f;
+            restSnapStableTimer = 0f;
+
+            // Resume physics with bled-down velocity — train is "compressed" against
+            // the ground after the freeze, not still falling at full speed.
+            rb.bodyType = RigidbodyType2D.Dynamic;
+            rb.linearVelocity = hitStopSavedVelocity * postHitStopVelocityRetention;
+            rb.angularVelocity = hitStopSavedAngular * postHitStopAngularRetention;
         }
 
         private void EnterLanded()
         {
             state = TrainState.Landed;
+            rb.linearVelocity = Vector2.zero;
+            rb.angularVelocity = 0f;
+            rb.bodyType = RigidbodyType2D.Static;
+
+            lastSettledPos = rb.position;
+            lastSettledRot = rb.rotation;
+            hasLastSettled = true;
+
+            Debug.Log($"[FallingTrainPlatform] Settled at ({lastSettledPos.x:F2}, {lastSettledPos.y:F2}) " +
+                      $"rot={lastSettledRot:F1}° after {fallElapsed:F2}s. Adjust train Transform.position " +
+                      $"to nudge the landing.", this);
+
+            onLanded?.Invoke();
         }
 
         // --- Debris ---
@@ -503,7 +629,6 @@ namespace SlimeJumping.Mechanisms
                 var rb2d = go.GetComponent<Rigidbody2D>();
                 if (rb2d != null)
                 {
-                    // Outward+down bias: random angle in lower 240° fan.
                     float angle = UnityEngine.Random.Range(-150f, -30f) * Mathf.Deg2Rad;
                     float speed = UnityEngine.Random.Range(debrisSpeedRange.x, debrisSpeedRange.y);
                     rb2d.linearVelocity = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
@@ -514,17 +639,45 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
+        // --- Designer iteration helpers ---
+
+        [ContextMenu("DEBUG: Trigger Fall Now (skip telegraph)")]
+        private void DebugTriggerFallNow()
+        {
+            if (!Application.isPlaying)
+            {
+                Debug.LogWarning("[FallingTrainPlatform] Trigger Fall Now requires Play mode.", this);
+                return;
+            }
+            if (state != TrainState.Idle && state != TrainState.Telegraphing)
+            {
+                Debug.LogWarning($"[FallingTrainPlatform] Already past Telegraphing (state={state}).", this);
+                return;
+            }
+            if (creakSource != null && creakSource.isPlaying) creakSource.Stop();
+            EnterFalling();
+        }
+
+        [ContextMenu("DEBUG: Mark Last Settle Position In Scene")]
+        private void DebugMarkLastSettle()
+        {
+            if (!hasLastSettled)
+            {
+                Debug.LogWarning("[FallingTrainPlatform] No settle recorded yet — fall + land first.", this);
+                return;
+            }
+            var marker = new GameObject($"SettleMark_{lastSettledPos.x:F1}_{lastSettledPos.y:F1}");
+            marker.transform.position = new Vector3(lastSettledPos.x, lastSettledPos.y, transform.position.z);
+            marker.transform.rotation = Quaternion.Euler(0f, 0f, lastSettledRot);
+            Debug.Log($"[FallingTrainPlatform] Dropped marker '{marker.name}' at last settle pose.", marker);
+        }
+
         // --- Gizmos ---
 
 #if UNITY_EDITOR
         private void OnDrawGizmosSelected()
         {
-            if (landTarget != null)
-            {
-                Gizmos.color = new Color(1f, 0.6f, 0.2f, 0.85f);
-                Gizmos.DrawLine(transform.position, landTarget.position);
-                Gizmos.DrawWireSphere(landTarget.position, 0.5f);
-            }
+            // Connector markers + indices.
             for (int i = 0; i < connectors.Count; i++)
             {
                 var c = connectors[i];
@@ -532,6 +685,15 @@ namespace SlimeJumping.Mechanisms
                 Gizmos.color = new Color(0.9f, 0.3f, 0.3f, 0.9f);
                 Gizmos.DrawWireCube(c.anchor.position, Vector3.one * 0.25f);
                 UnityEditor.Handles.Label(c.anchor.position + Vector3.up * 0.3f, $"#{i}");
+            }
+
+            // Last settled pose (only meaningful at runtime after Landed).
+            if (hasLastSettled)
+            {
+                Gizmos.color = new Color(0.4f, 1f, 0.5f, 0.9f);
+                Gizmos.DrawWireSphere(lastSettledPos, 0.3f);
+                UnityEditor.Handles.Label(lastSettledPos + Vector2.up * 0.4f,
+                    $"Last settle: ({lastSettledPos.x:F2}, {lastSettledPos.y:F2})  rot={lastSettledRot:F1}°");
             }
         }
 #endif

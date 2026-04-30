@@ -43,6 +43,7 @@ power = curvedRatio * baseLaunchPower         // minLaunchPower 미적용
 direction = -aimOffset.normalized              // 압축 반대 방향
 ```
 - activeChargeRadius가 크면 ratio > 1.0 → 초과 파워.
+- **Snow 적층 nerf** (Phase 7): 슬라임이 SnowField 가 부착된 host 위에서 발사하면, contact 점의 carve depth ratio (0 bare ~ 1 풀 두께) 가 `SnowSettings.depthToLaunchScale` AnimationCurve 에 들어가 결과 multiplier 가 `power` 에 곱해진다. 기본 flat 1.0 = 효과 0. 깊이 묻힌 곳에서 점프 약하게 하려면 우측 끝 (1.0) 의 Y 를 내림 (예: 0.6).
 
 ## 조준 관성
 별도 파라미터 없이 기하학적으로 발생. 조준점이 가장자리 근처일 때 같은 WASD 입력으로 각도를 바꾸려면 원호를 크게 돌아야 함.

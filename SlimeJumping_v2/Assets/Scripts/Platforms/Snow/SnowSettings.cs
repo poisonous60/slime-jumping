@@ -1,4 +1,5 @@
 using UnityEngine;
+using SlimeJumping.Physics;
 
 namespace SlimeJumping.Platforms.Snow
 {
@@ -52,6 +53,22 @@ namespace SlimeJumping.Platforms.Snow
         [Tooltip("Enable glitter sparkle overlay. Drives the _SNOW_GLITTER shader keyword on the runtime material instance.")]
         public bool glitterEnabled = false;
 
+        [Header("Shadow Ramp Generation (editor only)")]
+        [Tooltip("Color at NdotL = -1 (fully self-shadowed back-face). Deepest cool tone of the toon ramp.")]
+        [ColorUsage(showAlpha: false, hdr: false)] public Color rampShadowDeep = new Color(96f/255f, 134f/255f, 178f/255f);
+        [Tooltip("Color just before the toon step (still in shadow but lighter).")]
+        [ColorUsage(showAlpha: false, hdr: false)] public Color rampShadowEdge = new Color(160f/255f, 192f/255f, 222f/255f);
+        [Tooltip("Color just after the toon step (still in light but slightly off-white).")]
+        [ColorUsage(showAlpha: false, hdr: false)] public Color rampLitEdge = new Color(245f/255f, 248f/255f, 252f/255f);
+        [Tooltip("Color at NdotL = 1 (fully lit). Brightest snow color.")]
+        [ColorUsage(showAlpha: false, hdr: false)] public Color rampLitPeak = Color.white;
+        [Tooltip("Where on the gradient (0..1) the toon step sits. 0.5 = NdotL ≈ 0 (perpendicular). Lower = more area in shadow tone, higher = more area lit.")]
+        [Range(0f, 1f)] public float rampStepCenter = 0.5f;
+        [Tooltip("Width of the smoothstep transition at the toon step. Smaller = harder edge (more toon), larger = softer transition.")]
+        [Range(0.001f, 0.5f)] public float rampStepWidth = 0.06f;
+        [Tooltip("Output PNG width in pixels. 256 is plenty for a 1D gradient.")]
+        [Range(64, 1024)] public int rampWidth = 256;
+
         [Header("Carve (impact → dip)")]
         [Tooltip("Below this normal impact speed (m/s) no carve is emitted — soft landings leave the snow untouched.")]
         [Min(0f)] public float minImpactSpeed = 1.5f;
@@ -65,5 +82,31 @@ namespace SlimeJumping.Platforms.Snow
         [Header("Recovery")]
         [Tooltip("Snow re-fill rate while a carve recovers, in metres per second. Per-vertex heightCurrent lerps toward heightRest at this rate.")]
         [Min(0f)] public float accumulationRate = 0.05f;
+
+        [Header("Gameplay coupling")]
+        [Tooltip("SurfaceMaterial blended over the host's tag while standing on snow-covered ground. Typical wiring: Assets/Settings/SurfaceMaterials/Snow.asset (Mud-derived, slow slide). Leave null to disable blending — host SurfaceTag stays in effect everywhere.")]
+        public SurfaceMaterial snowSurfaceMaterial;
+
+        [Tooltip("X = remaining snow coverage (0 = bare / fully carved, 1 = full untouched thickness). Y = blend weight toward snowSurfaceMaterial (0 = pure host, 1 = pure snow). Default linear (0,0)→(1,1) gives smooth ramp; flatten the left half for a step (binary covered/bare); shape it freely for graded feel.")]
+        public AnimationCurve depthToSnowBlend = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+
+        [Tooltip("X = remaining snow coverage (0..1) at the slime's contact when launching. Y = multiplier on launch power. Default flat 1.0 (no effect). Pull the right side down (e.g. (1, 0.6)) so deeply-buried slime jumps weaker.")]
+        public AnimationCurve depthToLaunchScale = AnimationCurve.Constant(0f, 1f, 1f);
+
+        [Header("Plow drag (slime pushes through snow)")]
+        [Tooltip("Exponential drag rate (1/s) applied to slime velocity at full snow burial (depthRatio = 1). Higher = stops faster. Set 0 to disable plow drag entirely. With 4: ~63% energy loss per second at full burial, ~95% in 0.75s.")]
+        [Min(0f)] public float plowDragK = 4f;
+
+        [Tooltip("Per-second carve depth automatically applied at the slime's position while it moves through snow. The slime visibly digs a tunnel as it pushes through. 0 = no continuous carve (only landing impacts carve).")]
+        [Min(0f)] public float plowCarveDepthPerSecond = 0.3f;
+
+        [Tooltip("Minimum slime speed (m/s) for the continuous plow carve to fire. Below this the slime can sit / wiggle in snow without digging deeper. Drag itself still applies. 0 = always carve while moving (legacy behaviour).")]
+        [Min(0f)] public float plowCarveMinSpeed = 1.5f;
+
+        [Tooltip("Below this remaining snow coverage, plow drag is skipped — keeps the slime free to slide on naturally bare regions (carved-out tracks, patch edges).")]
+        [Range(0f, 1f)] public float plowMinDepthRatio = 0.1f;
+
+        [Tooltip("Below this speed (m/s) the plow snaps the slime to a full stop instead of continuing exponential decay — prevents the slime from twitching forever as drag asymptotes toward zero.")]
+        [Min(0f)] public float plowStopSpeed = 0.5f;
     }
 }

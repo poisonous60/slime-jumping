@@ -24,6 +24,11 @@ namespace SlimeJumping.Platforms.Snow.EditorScripts
                 }
             }
 
+            if (GUILayout.Button("Rebuild All SnowFields In Scene"))
+            {
+                RebuildAllInScene();
+            }
+
             // Auto-rebuild watcher: when the host mesh changes (different asset assigned, or
             // an in-place edit), poll a hash on inspector repaint and surface a reminder.
             if (mesh != null)

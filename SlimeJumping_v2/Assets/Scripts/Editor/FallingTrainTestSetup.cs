@@ -11,6 +11,11 @@ namespace SlimeJumping.Editor
         [MenuItem("SlimeJumping/Mechanism/Setup Falling Train Test")]
         public static void Setup()
         {
+            // Clear selection BEFORE destroying — otherwise component inspectors that were
+            // pointing at children of the old root (AudioSource/Transform/Rigidbody2D/...)
+            // throw SerializedObjectNotCreatableException for one frame after destroy.
+            Selection.activeObject = null;
+
             var existing = GameObject.Find("FallingTrainTest");
             if (existing != null) Undo.DestroyObjectImmediate(existing);
 
@@ -23,7 +28,7 @@ namespace SlimeJumping.Editor
             train.transform.position = new Vector3(0f, 4f, 0f);
 
             var rb = train.AddComponent<Rigidbody2D>();
-            rb.bodyType = RigidbodyType2D.Kinematic;
+            rb.bodyType = RigidbodyType2D.Kinematic; // Becomes Dynamic at fall start.
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
 
             var solid = train.AddComponent<BoxCollider2D>();
@@ -44,11 +49,6 @@ namespace SlimeJumping.Editor
             sensorCol.isTrigger = true;
             sensorCol.size = new Vector2(6f, 2f);
             var sensor = sensorGo.AddComponent<PlatformRiderSensor>();
-
-            // Land target (designer adjusts in scene).
-            var landGo = new GameObject("LandTarget");
-            landGo.transform.SetParent(root.transform, false);
-            landGo.transform.position = new Vector3(2f, -3f, 0f);
 
             // Connector anchors — left and right couplings.
             var leftConn = new GameObject("Connector_Left");
@@ -87,15 +87,32 @@ namespace SlimeJumping.Editor
             debrisTemplate.SetActive(false);
             debrisTemplate.transform.SetParent(root.transform, false);
 
+            // Heavy train physics material — high friction so it doesn't slide forever,
+            // small bounciness for visible impact bounce. Micro-tremble afterward is
+            // killed by FallingTrainPlatform's rest-snap (not by zero bounciness).
+            var heavyMat = new PhysicsMaterial2D("Train_Heavy")
+            {
+                friction = 0.7f,
+                bounciness = 0.1f
+            };
+
+            // Placeholder ground so the test scene actually has something to land on.
+            // User can delete or move once they have real terrain.
+            var ground = new GameObject("PlaceholderGround");
+            ground.transform.SetParent(root.transform, false);
+            ground.transform.position = new Vector3(0f, -3.5f, 0f);
+            var groundCol = ground.AddComponent<BoxCollider2D>();
+            groundCol.size = new Vector2(20f, 1f);
+
             // Configure the train script.
             var falling = train.AddComponent<FallingTrainPlatform>();
             var so = new SerializedObject(falling);
             so.FindProperty("riderSensor").objectReferenceValue = sensor;
-            so.FindProperty("landTarget").objectReferenceValue = landGo.transform;
             so.FindProperty("creakSource").objectReferenceValue = creakSrc;
             so.FindProperty("snapImpulse").objectReferenceValue = snapImpulse;
             so.FindProperty("impactImpulse").objectReferenceValue = impactImpulse;
             so.FindProperty("debrisPrefab").objectReferenceValue = debrisTemplate;
+            so.FindProperty("fallPhysicsMaterial").objectReferenceValue = heavyMat;
 
             var connectorsProp = so.FindProperty("connectors");
             connectorsProp.arraySize = 2;
@@ -106,10 +123,14 @@ namespace SlimeJumping.Editor
             EditorUtility.SetDirty(falling);
 
             Selection.activeGameObject = train;
-            Debug.Log("[FallingTrainTestSetup] Created. Schedule: Connector_Left snaps at 0.6s (sag 5°), " +
-                      "Connector_Right at 1.05s (sag 7°), 0.2s silence, then drop. " +
+            Debug.Log("[FallingTrainTestSetup] Created at (0,4) above placeholder ground at (0,-3.5). " +
+                      "Schedule: Connector_Left snaps at 0.6s (sag 5°), Connector_Right at 1.05s (sag 7°), " +
+                      "0.2s silence, then physics-driven fall. " +
+                      "Iteration: adjust Train_Carriage.transform.position to set the START — physics determines the END. " +
+                      "Use ContextMenu 'DEBUG: Trigger Fall Now' on the FallingTrainPlatform component to skip telegraph. " +
+                      "Set 'groundLayers' inspector field to exclude the slime layer if you have one. " +
                       "Assign creakSource.clip, per-connector snapSound, crackSound/groanSound/dustSettleSound, " +
-                      "snap/impact VFX prefabs in the inspector. landTarget at (2,-3) — drag to your shortcut spot.");
+                      "and snap/impact VFX prefabs.");
         }
 
         private static void ConfigConnector(SerializedProperty elem, Transform anchor, float preDelay, float sagDeg, float sagDur, float jolt)

@@ -84,5 +84,62 @@ namespace SlimeJumping.Physics
             ceilingThresholdOverride = 0f,
             ceilingReattachThresholdOverride = 0f
         };
+
+        /// <summary>
+        /// Component-wise lerp for blending two surface profiles by a 0..1 weight.
+        /// AngleScaledValue / float fields use linear lerp; bool fields and curves
+        /// snap at t=0.5 (no graceful interpolation possible — discrete by nature).
+        /// AnimationCurve references prefer the snapped side rather than null.
+        /// Used by snow coverage to smoothly blend the host SurfaceMaterial with the
+        /// snow SurfaceMaterial as carve depth varies along the patch.
+        /// </summary>
+        public static SurfaceModifiers Lerp(SurfaceModifiers a, SurfaceModifiers b, float t)
+        {
+            t = Mathf.Clamp01(t);
+            bool snapToB = t >= 0.5f;
+            return new SurfaceModifiers
+            {
+                crawlSpeed                = AngleScaledValue.Lerp(a.crawlSpeed,                b.crawlSpeed,                t),
+                crawlAccel                = AngleScaledValue.Lerp(a.crawlAccel,                b.crawlAccel,                t),
+                crawlDecel                = AngleScaledValue.Lerp(a.crawlDecel,                b.crawlDecel,                t),
+                crawlOverspeedDecel       = AngleScaledValue.Lerp(a.crawlOverspeedDecel,       b.crawlOverspeedDecel,       t),
+                slideResistance           = AngleScaledValue.Lerp(a.slideResistance,           b.slideResistance,           t),
+                slideGravity              = AngleScaledValue.Lerp(a.slideGravity,              b.slideGravity,              t),
+                slideRampUp               = AngleScaledValue.Lerp(a.slideRampUp,               b.slideRampUp,               t),
+                slideLinearDrag           = AngleScaledValue.Lerp(a.slideLinearDrag,           b.slideLinearDrag,           t),
+                slideDownhillGain         = AngleScaledValue.Lerp(a.slideDownhillGain,         b.slideDownhillGain,         t),
+                slideUphillBrake          = AngleScaledValue.Lerp(a.slideUphillBrake,          b.slideUphillBrake,          t),
+                carrierFriction           = AngleScaledValue.Lerp(a.carrierFriction,           b.carrierFriction,           t),
+                landingVelocityRetention  = AngleScaledValue.Lerp(a.landingVelocityRetention,  b.landingVelocityRetention,  t),
+                stickDuration             = AngleScaledValue.Lerp(a.stickDuration,             b.stickDuration,             t),
+                impactRedirect            = AngleScaledValue.Lerp(a.impactRedirect,            b.impactRedirect,            t),
+                wallAttachDampen          = AngleScaledValue.Lerp(a.wallAttachDampen,          b.wallAttachDampen,          t),
+                groundDashScale           = AngleScaledValue.Lerp(a.groundDashScale,           b.groundDashScale,           t),
+                hopVelocityRetention      = AngleScaledValue.Lerp(a.hopVelocityRetention,      b.hopVelocityRetention,      t),
+                hopNormalToTangentRatio   = AngleScaledValue.Lerp(a.hopNormalToTangentRatio,   b.hopNormalToTangentRatio,   t),
+
+                hopInstantFlip          = snapToB ? b.hopInstantFlip          : a.hopInstantFlip,
+                overrideHopMomentum     = snapToB ? b.overrideHopMomentum     : a.overrideHopMomentum,
+                hopMomentumBonus        = Mathf.Lerp(a.hopMomentumBonus,        b.hopMomentumBonus,        t),
+                hopMomentumMaxSpeed     = Mathf.Lerp(a.hopMomentumMaxSpeed,     b.hopMomentumMaxSpeed,     t),
+                overrideGroundDash      = snapToB ? b.overrideGroundDash      : a.overrideGroundDash,
+                groundDashImpulse       = Mathf.Lerp(a.groundDashImpulse,       b.groundDashImpulse,       t),
+                groundDashAngleMin      = Mathf.Lerp(a.groundDashAngleMin,      b.groundDashAngleMin,      t),
+                groundDashAngleMax      = Mathf.Lerp(a.groundDashAngleMax,      b.groundDashAngleMax,      t),
+                groundDashAngleFalloffCurve = snapToB && b.groundDashAngleFalloffCurve != null
+                    ? b.groundDashAngleFalloffCurve
+                    : a.groundDashAngleFalloffCurve ?? b.groundDashAngleFalloffCurve,
+                dashFalloffStart        = Mathf.Lerp(a.dashFalloffStart,        b.dashFalloffStart,        t),
+                dashFalloffEnd          = Mathf.Lerp(a.dashFalloffEnd,          b.dashFalloffEnd,          t),
+                dashSpeedFalloffCurve = snapToB && b.dashSpeedFalloffCurve != null
+                    ? b.dashSpeedFalloffCurve
+                    : a.dashSpeedFalloffCurve ?? b.dashSpeedFalloffCurve,
+                disableDashFalloff      = snapToB ? b.disableDashFalloff      : a.disableDashFalloff,
+                useInertialSlide        = snapToB ? b.useInertialSlide        : a.useInertialSlide,
+                overrideCeilingAngle    = snapToB ? b.overrideCeilingAngle    : a.overrideCeilingAngle,
+                ceilingThresholdOverride         = Mathf.Lerp(a.ceilingThresholdOverride,         b.ceilingThresholdOverride,         t),
+                ceilingReattachThresholdOverride = Mathf.Lerp(a.ceilingReattachThresholdOverride, b.ceilingReattachThresholdOverride, t),
+            };
+        }
     }
 }

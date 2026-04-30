@@ -36,6 +36,7 @@ MonoBehaviour:
   hopLandingRetention: 1
   hopMomentumBonus: 0.6
   hopMomentumMaxSpeed: 10
+  hyperDashInertiaSource: 1
   tangentInheritanceFactor: 1
   hyperDashDeduction: 1
   hyperDashConversionDampingMin: 1.2
