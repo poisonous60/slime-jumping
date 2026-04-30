@@ -388,7 +388,6 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetVector(VelocityDirWSID, velocityDirWS);
             mpb.SetFloat(VelocityStretchAmountID, velocityStretchAmount);
             bodyMeshRenderer.SetPropertyBlock(mpb);
-            MirrorMpbToRegistered();
         }
 
         UpdateFaceOffset();
@@ -508,36 +507,6 @@ public class SlimeVisual : MonoBehaviour
     public Transform Body => body;
     public Transform Body3d => body3d;
 
-    // Renderers registered here receive the SAME MaterialPropertyBlock push as
-    // bodyMeshRenderer at the end of every LateUpdate / SetExternalDeform /
-    // ResetDeformationState. Used by SlimeBurnVisual's shell so its shader runs
-    // SlimeDeform_float with identical inputs and stays glued to the body
-    // silhouette through velocity stretch / charge dip / asymmetric squash.
-    private readonly System.Collections.Generic.List<MeshRenderer> mirroredRenderers
-        = new System.Collections.Generic.List<MeshRenderer>(2);
-
-    public void RegisterMirroredRenderer(MeshRenderer mr)
-    {
-        if (mr == null) return;
-        if (!mirroredRenderers.Contains(mr)) mirroredRenderers.Add(mr);
-    }
-
-    public void UnregisterMirroredRenderer(MeshRenderer mr)
-    {
-        if (mr == null) return;
-        mirroredRenderers.Remove(mr);
-    }
-
-    private void MirrorMpbToRegistered()
-    {
-        if (mpb == null) return;
-        for (int i = 0; i < mirroredRenderers.Count; i++)
-        {
-            var mr = mirroredRenderers[i];
-            if (mr != null) mr.SetPropertyBlock(mpb);
-        }
-    }
-
     private void ApplyExternalFaceOffset()
     {
         if (!_externalFaceOffset.HasValue || face == null) return;
@@ -599,7 +568,6 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetVector(VelocityDirWSID, Vector4.zero);
             mpb.SetFloat(VelocityStretchAmountID, 0f);
             bodyMeshRenderer.SetPropertyBlock(mpb);
-            MirrorMpbToRegistered();
         }
     }
 
@@ -658,7 +626,6 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetVector(VelocityDirWSID, Vector4.zero);
             mpb.SetFloat(VelocityStretchAmountID, 0f);
             bodyMeshRenderer.SetPropertyBlock(mpb);
-            MirrorMpbToRegistered();
         }
     }
 

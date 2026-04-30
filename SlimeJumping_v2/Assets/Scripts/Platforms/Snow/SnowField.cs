@@ -366,22 +366,29 @@ namespace SlimeJumping.Platforms.Snow
                     for (int i = 0; i < V; i++) heights[i] = restThick;
                 }
 
-                // Per-vertex verticality damping. Face-level slope filter keeps tris whose
-                // normal.y >= cos(maxSnowSlopeDeg), but a vertex shared by several borderline
-                // tris ends up with an averaged normal that points well off-axis. Displacing
-                // that vertex by full restThickness along the off-axis normal produced the
-                // tall pink spikes seen on jagged TerrainShape2D interiors. Smooth-fade the
-                // rest height between outer (face cutoff) and inner (mostly-upright) so
-                // those vertices pinch back toward the host without affecting clean ones.
+                // Per-vertex slope-based height modulation. Replaces the previous
+                // hard-coded smoothstep — designer now controls the angle→height
+                // mapping via SnowSettings.slopeToHeightScale. Default curve fades
+                // from full at 18° to 0 at 45°, mimicking the old behaviour.
+                //
+                // The face-level slope filter at SnowTopSurfaceExtractor cuts tris
+                // whose face normal exceeds maxSnowSlopeDeg, but a vertex shared by
+                // several borderline tris ends up with an averaged normal that can
+                // read a non-trivial angle even when the surface is visually flat.
+                // The user is aware of this and accepts it; mitigate by flattening
+                // the low-angle portion of the curve if it bleeds onto level ground.
                 {
-                    float maxDeg = MaxSnowSlopeDeg;
-                    float cosOuter = Mathf.Cos(Mathf.Clamp(maxDeg, 0f, 89.99f) * Mathf.Deg2Rad);
-                    float cosInner = Mathf.Cos(Mathf.Clamp(maxDeg * 0.4f, 0f, 89.99f) * Mathf.Deg2Rad);
-                    for (int i = 0; i < V; i++)
+                    var slopeCurve = settings != null ? settings.slopeToHeightScale : null;
+                    if (slopeCurve != null && slopeCurve.length > 0)
                     {
-                        float ny = patch.vertNormals[i].y;
-                        float verticality = Mathf.SmoothStep(cosOuter, cosInner, ny);
-                        heights[i] *= verticality;
+                        for (int i = 0; i < V; i++)
+                        {
+                            float ny = Mathf.Clamp(patch.vertNormals[i].y, -1f, 1f);
+                            float angleDeg = Mathf.Acos(ny) * Mathf.Rad2Deg;
+                            float scale = slopeCurve.Evaluate(angleDeg);
+                            if (scale < 0f) scale = 0f;
+                            heights[i] *= scale;
+                        }
                     }
                 }
 

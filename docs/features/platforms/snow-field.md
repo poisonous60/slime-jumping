@@ -212,10 +212,15 @@ State 별 hook:
 - 시작 시 (또는 N프레임마다) 각 vertex에서 위로 `Physics2D.Raycast` → `ceilingMask` 충돌 거리에 따라 `heightRest[v]` 결정
 - 기존 `SnowCameraEmitter.emitterArea` (PolygonCollider2D) 와 occlusion 영역 공유 가능
 
-### Phase 5: 슬로프 diffusion
+### Phase 5 — 슬로프-기반 heightRest modulation (rebuild-time)
 
-- 휴식각 (~38°) 기반 셀룰러 오토마타 — 매 프레임 인접 vertex 두께 차이가 휴식각 넘으면 일부 흘림
-- 슬로프 위 눈이 자연스럽게 평형으로 settling
+디자이너 의도 — *경사 가파른 부분은 눈이 얇게* — 를 **rebuild 시점의 곡선 기반 modulation** 으로 처리. 런타임 diffusion (cellular automata) 은 cliff 부풀림 / 변화 속도 트레이드오프가 어렵고 디자이너 의도와 동떨어진 결과를 내서 코드 자체에서 제거.
+
+- `SnowSettings.slopeToHeightScale` AnimationCurve. X = 호스트 표면 각도 (deg, 0=평지, 90=수직 벽), Y = `heightRest` multiplier.
+- `SnowField.RebuildNow` 가 edge taper 직후 각 vertex 의 averaged normal 로 `angleDeg = acos(normal.y)` 계산해 curve 평가, `heights[i] *= curve.Evaluate(angleDeg)`.
+- Default keyframes: `(0,1) (18,1) (45,0) (90,0)` — 18° 까지는 풀, 18~45° 부드럽게 감소, 45° 이상 0. 기존 hard-coded smoothstep 과 거의 동일한 동작 (호환).
+- 디자이너가 곡선 변경 시 OnValidate → ScheduleRebuild → 자동 재빌드.
+- **알려진 한계**: 평지 메쉬여도 vertex normal 평균값이 약간 비스듬하게 나올 수 있음 (jagged TerrainShape2D). 그런 곳에서 그래프 좌측 (낮은 각도) 을 평탄화하면 (예: `(0,1) (40,1) (45,0)`) 평지 손실 최소화 가능.
 
 ### Phase 6 (open): Differential deformation
 

@@ -78,6 +78,24 @@ namespace SlimeJumping.Physics
         [Tooltip("ON = inertial slide (gravity-along-tangent integrated as acceleration; slideResistance is friction in m/s²; landed tangent velocity flows into the inertial channel). OFF (default, untagged surfaces) = legacy steady-state slide where slideSpeed is recomputed each frame from current tangent gravity. Use ON for ice / halfpipes where kinetic energy must convert back to height.")]
         public bool useInertialSlide = false;
 
+        [Header("Audio")]
+        [Tooltip("Hard landing clip override. Null → SlimeLocomotionAudio's default landHardClip plays.")]
+        public AudioClip landHardClip;
+        [Tooltip("Soft landing clip override. Null → SlimeLocomotionAudio's default landSoftClip plays.")]
+        public AudioClip landSoftClip;
+        [Tooltip("Charged Launch clip override. Null → SlimeLocomotionAudio's default launchClip plays.")]
+        public AudioClip launchClip;
+        [Tooltip("Hop clip override. Null → SlimeLocomotionAudio's default hopClip plays.")]
+        public AudioClip hopClip;
+        [Tooltip("Volume for this surface's landHardClip override. 0 = inherit SlimeLocomotionAudio.landHardVolume. Only used when landHardClip is also set.")]
+        [Range(0f, 1f)] public float landHardVolume = 0f;
+        [Tooltip("Volume for this surface's landSoftClip override. 0 = inherit SlimeLocomotionAudio.landSoftVolume. Only used when landSoftClip is also set.")]
+        [Range(0f, 1f)] public float landSoftVolume = 0f;
+        [Tooltip("Volume for this surface's launchClip override. 0 = inherit SlimeLocomotionAudio.launchVolume. Only used when launchClip is also set.")]
+        [Range(0f, 1f)] public float launchVolume = 0f;
+        [Tooltip("Volume for this surface's hopClip override. 0 = inherit SlimeLocomotionAudio.hopVolume. Only used when hopClip is also set.")]
+        [Range(0f, 1f)] public float hopVolume = 0f;
+
         [Header("Ceiling")]
         [Tooltip("Override the global ceiling thresholds with the values below. ON lets sticky surfaces extend the attachable arc past 107° (e.g. 180° = slime climbs full overhangs) or slippery surfaces tighten it.")]
         public bool overrideCeilingAngle = false;

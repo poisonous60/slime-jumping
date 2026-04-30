@@ -30,6 +30,14 @@ namespace SlimeJumping.Platforms.Snow
         [Tooltip("Barycentric subdivision applied per patch triangle before BFS taper / mesh emit. 0 = host triangulation as-is, 1 = 4× verts (default), 2 = 16×, 3 = 64×.")]
         [Range(0, 3)] public int subdivLevels = 1;
 
+        [Tooltip("Per-vertex heightRest multiplier as a function of host-surface angle. X = angle from horizontal (0° = flat ground, 90° = vertical wall) measured at the vertex via averaged normal. Y = multiplier on the taper-shaped restThickness (1 = full, 0 = bare). Default fades from full at 18° to zero at 45° so steep parts thin out gracefully instead of vanishing at the maxSnowSlopeDeg cutoff. WARNING: averaged vertex normals on jagged meshes can read non-zero angles even on \"flat\" geometry — flatten the low-angle portion of the curve if you see thinning on visually level surfaces.")]
+        public AnimationCurve slopeToHeightScale = new AnimationCurve(
+            new Keyframe(0f, 1f),
+            new Keyframe(18f, 1f),
+            new Keyframe(45f, 0f),
+            new Keyframe(90f, 0f)
+        );
+
         [Header("Render")]
         [Tooltip("Material assigned to every spawned SnowStrip renderer. Must use Ground_Quibli_Snow.shader (or compatible). Per-strip heightTex pushed via MPB so this asset is read-only — Phase 3 textures/keywords below are forwarded onto a runtime material instance, never mutating the asset.")]
         public Material snowMaterial;

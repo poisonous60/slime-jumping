@@ -38,8 +38,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   slideResistanceMultiplier:
-    baseValue: 1.0
-    fullValue: 1.0
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   slideGravityMultiplier:
@@ -50,6 +50,21 @@ MonoBehaviour:
   slideRampUpTime:
     baseValue: 0
     fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  slideLinearDrag:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  slideDownhillGain:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  slideUphillBrake:
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   landingVelocityRetention:
@@ -72,6 +87,61 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
+  overrideGroundDash: 0
+  groundDashImpulse: 8
+  groundDashAngleMin: 30
+  groundDashAngleMax: 60
+  groundDashAngleFalloffCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: -1
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: -1
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  dashFalloffStart: 5
+  dashFalloffEnd: 13
+  dashSpeedFalloffCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: -1
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: -1
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  disableDashFalloff: 0
   wallAttachSpeedDampen:
     baseValue: 0
     fullValue: 0
@@ -82,4 +152,24 @@ MonoBehaviour:
     fullValue: 0
     angleMin: 0
     angleMax: 90
+  hopNormalToTangentRatio:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
   hopInstantFlip: 1
+  overrideHopMomentum: 0
+  hopMomentumBonus: 1.5
+  hopMomentumMaxSpeed: 20
+  useInertialSlide: 0
+  landHardClip: {fileID: 8300000, guid: aaba36eb6cc3c544c9ff2ed2c748b1e6, type: 3}
+  landSoftClip: {fileID: 0}
+  launchClip: {fileID: 8300000, guid: fd83f646a5f86f94b88775f5fa3ae769, type: 3}
+  hopClip: {fileID: 8300000, guid: e9f33d146351ea946b125ce147a62810, type: 3}
+  landHardVolume: 0
+  landSoftVolume: 0
+  launchVolume: 0
+  hopVolume: 0
+  overrideCeilingAngle: 0
+  ceilingAngle: 107
+  ceilingReattachAngle: 101

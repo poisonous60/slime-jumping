@@ -97,6 +97,18 @@ SoundService.StopLoop(handle);
 
 **UI 사운드**: 기존 `UIClickSoundInstaller`가 Canvas 하위 모든 버튼 자동 처리. 다른 UI 사운드 필요 시 `SoundService.Play2D(clip, SoundCategory.UI)`.
 
+## 표면별 슬라임 사운드 (2026-04-30)
+
+슬라임 착지 / 점프 사운드를 닿는 표면별로 다르게 재생. `SlimeLocomotionAudio` 의 4 클립(landHard / landSoft / launch / hop)은 **fallback** 으로만 남고, 실제 재생 클립은 표면에서 가져옴.
+
+- **데이터**: `SurfaceMaterial` 에 `[Header("Audio")]` 4 필드 (landHardClip / landSoftClip / launchClip / hopClip). 비워두면 fallback. Ice / Mud / Sand 등 모든 SurfaceMaterial 에셋이 자동으로 동일 슬롯 보유.
+- **눈 브리지**: `SnowField` 는 `SurfaceTag` 가 없지만 `SnowSettings.snowSurfaceMaterial` 에 이미 `SurfaceMaterial` 참조가 있음 (Snow.asset 사용 중). 따라서 눈 사운드는 Snow.asset 의 audio 필드만 채우면 됨 — `SnowSettings` 자체에는 audio 필드 추가하지 않음.
+- **해석**: [SurfaceAudioResolver.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/SurfaceAudioResolver.cs) — 정적 헬퍼. `(slimeController.SurfaceCollider, contactPoint)` 받아서 (1) **SnowField 우선**: `SnowFieldRegistry.TryGet` 성공 + `SampleDepthRatio01(contactPoint) ≥ 0.1` 이면 `snowSurfaceMaterial` 사용, (2) 그 외에는 host 의 `GetComponentInParent<SurfaceTag>()` 폴백, (3) 둘 다 없으면 false.
+- **왜 snow 우선?** SnowField 는 `[SnowField.cs:12]` 자기 설명대로 `SurfaceTag` 가 없는 visual layer. 슬라임은 항상 host 콜라이더 위에 서있고, host 가 자기 SurfaceTag 를 들고있음. 만약 SurfaceTag 를 먼저 검사하면 항상 host 의 tag 가 매칭되어 snow 분기까지 도달조차 못 함 → snow 클립 영원히 미재생. 게임플레이 측 `RefreshSnowBlend` 도 host tag + snowSurfaceMaterial 을 depth 비율로 블렌드하는데, audio 는 단발 SFX 라 임계값 분기로 단순화: depth ≥ 0.1 → snow 클립, 미만 (완전히 파인 트랙 / SnowField 미등록) → host 클립.
+- **소비**: `SlimeLocomotionAudio.HandleLanded / HandleLaunch` 가 이벤트마다 `position` 인자를 contactPoint 로 전달해 resolver 호출 → 매칭 클립 있으면 사용, 없으면(개별 슬롯이 null) fallback 클립으로. 재생 호출은 여전히 이벤트당 1회 (이중 재생 없음).
+- **이벤트 시점 안전성**: `surfaceCollider` 는 `Airborne` 전이 시 명시적 null 처리되지 않음 — `OnLaunch` 가 `FinalizeAirborneExit()` 이후 발화해도 직전 표면 참조가 살아있어 resolver 가 정상 동작.
+- **carve 타이밍**: `OnLanded` 구독 순서에 따라 audio 가 SnowStamper 보다 먼저 / 나중일 수 있는데, 단발 착지의 carve 가 depth 를 0.1 미만으로 떨어뜨릴 만큼 깊지 않아 (단일 carve 깊이 ≪ heightRest) 임계값 0.1 은 양쪽 순서 모두에서 안정적. 깊은 트랙 launch 시에는 슬라임이 host 가까이 있어 depth 가 자연스럽게 낮음 → host 사운드로 폴백되는 게 의도된 동작.
+
 ## 기존 코드 리팩터 현황
 
 **CONVERT 완료 (2026-04-24 Phase 2)** — 직접 `AudioSource.Play*` → `SoundService` 경유로 이관, 프리팹/씬 orphan AudioSource 제거:

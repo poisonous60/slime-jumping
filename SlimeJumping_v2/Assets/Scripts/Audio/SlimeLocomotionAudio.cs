@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 using SlimeJumping.Controller;
 
 namespace SlimeJumping.Audio
@@ -18,9 +19,10 @@ namespace SlimeJumping.Audio
         [SerializeField] AudioClip landSoftClip;
         [Tooltip("ImpactNormalSpeed at or above which the hard land clip is used.")]
         [Min(0f)] [SerializeField] float landHardThreshold = 8f;
-        [Tooltip("Impact speed that maps to full volume; below scales linearly toward zero.")]
-        [Min(0.1f)] [SerializeField] float landRefSpeed = 12f;
-        [Min(0f)] [SerializeField] float landVolume = 0.9f;
+        [Tooltip("Constant volume for hard landings (>= Land Hard Threshold). Not impact-speed scaled.")]
+        [Range(0f, 1f)] [FormerlySerializedAs("landVolume")] [SerializeField] float landHardVolume = 0.9f;
+        [Tooltip("Constant volume for soft landings. Not impact-speed scaled.")]
+        [Range(0f, 1f)] [SerializeField] float landSoftVolume = 0.9f;
 
         [Header("Launch / Hop")]
         [Tooltip("Played on charged Launch().")]
@@ -29,8 +31,8 @@ namespace SlimeJumping.Audio
         [SerializeField] AudioClip hopClip;
         [Tooltip("Launch speed that maps to full volume.")]
         [Min(0.1f)] [SerializeField] float launchRefSpeed = 20f;
-        [Min(0f)] [SerializeField] float launchVolume = 0.9f;
-        [Min(0f)] [SerializeField] float hopVolume = 0.7f;
+        [Range(0f, 1f)] [SerializeField] float launchVolume = 0.9f;
+        [Range(0f, 1f)] [SerializeField] float hopVolume = 0.7f;
 
         [Header("Common")]
         [Tooltip("±random pitch jitter applied to each playback.")]
@@ -59,24 +61,46 @@ namespace SlimeJumping.Audio
         void HandleLanded(Vector2 position, Vector2 surfaceNormal)
         {
             float speed = slimeController.ImpactNormalSpeed;
-            AudioClip clip = speed >= landHardThreshold ? landHardClip : landSoftClip;
-            Play(clip, position, speed, landRefSpeed, landVolume);
+            bool hard = speed >= landHardThreshold;
+            AudioClip clip = hard ? landHardClip : landSoftClip;
+            float vol = hard ? landHardVolume : landSoftVolume;
+            if (SurfaceAudioResolver.TryResolve(slimeController.SurfaceCollider, position, out var mat))
+            {
+                AudioClip overrideClip = hard ? mat.landHardClip : mat.landSoftClip;
+                if (overrideClip != null)
+                {
+                    clip = overrideClip;
+                    float surfaceVol = hard ? mat.landHardVolume : mat.landSoftVolume;
+                    if (surfaceVol > 0f) vol = surfaceVol;
+                }
+            }
+            Play(clip, position, vol);
         }
 
         void HandleLaunch(Vector2 position, Vector2 velocity, bool wasHop)
         {
             AudioClip clip = wasHop ? hopClip : launchClip;
             float baseVol = wasHop ? hopVolume : launchVolume;
-            Play(clip, position, velocity.magnitude, launchRefSpeed, baseVol);
+            if (SurfaceAudioResolver.TryResolve(slimeController.SurfaceCollider, position, out var mat))
+            {
+                AudioClip overrideClip = wasHop ? mat.hopClip : mat.launchClip;
+                if (overrideClip != null)
+                {
+                    clip = overrideClip;
+                    float surfaceVol = wasHop ? mat.hopVolume : mat.launchVolume;
+                    if (surfaceVol > 0f) baseVol = surfaceVol;
+                }
+            }
+            float vol = baseVol * Mathf.Clamp01(velocity.magnitude / launchRefSpeed);
+            Play(clip, position, vol);
         }
 
-        void Play(AudioClip clip, Vector2 position, float speed, float refSpeed, float baseVolume)
+        void Play(AudioClip clip, Vector2 position, float volume)
         {
             if (clip == null) return;
-            float vol = baseVolume * Mathf.Clamp01(speed / refSpeed);
-            if (vol <= 0.001f) return;
+            if (volume <= 0.001f) return;
             float pitch = 1f + Random.Range(-pitchJitter, pitchJitter);
-            SoundService.PlayAt(clip, position, SoundCategory.SFX_Slime, vol, pitch);
+            SoundService.PlayAt(clip, position, SoundCategory.SFX_Slime, volume, pitch);
         }
     }
 }

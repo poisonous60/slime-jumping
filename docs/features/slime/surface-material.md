@@ -117,7 +117,11 @@ slideVelocity  = MoveTowards(slideVelocity, 0, frictionDecel * dt)
 - `SurfaceMaterial.OnValidate()`: 음수 방지, friction/retention은 0~1로 클램핑.
 - `SlimeSettings`: `chargeRadius`, `baseLaunchPower`에 `[Min(0.01f)]`, `initialConversionRate`에 `[Min(0f)]`.
 
+## 표면별 슬라임 사운드 (Audio 필드)
+`SurfaceMaterial` 에는 `[Header("Audio")]` 슬롯이 있어 표면별 착지 / 점프 사운드를 별도로 재생할 수 있음 — `landHardClip` / `landSoftClip` / `launchClip` / `hopClip`. 비워두면 `SlimeLocomotionAudio` 기본 클립이 fallback. `SnowField` 는 `SurfaceTag` 가 없지만 `SnowSettings.snowSurfaceMaterial` 의 `SurfaceMaterial` 참조를 통해 동일 슬롯 사용. 자세한 흐름은 [audio-system.md 표면별 슬라임 사운드](../infra/audio-system.md#표면별-슬라임-사운드-2026-04-30) 참조.
+
 ## 관련 파일
 - [SurfaceMaterial.cs](../../../SlimeJumping_v2/Assets/Scripts/Physics/SurfaceMaterial.cs)
 - [SurfaceTag.cs](../../../SlimeJumping_v2/Assets/Scripts/Physics/SurfaceTag.cs)
 - [SurfaceModifiers.cs](../../../SlimeJumping_v2/Assets/Scripts/Physics/SurfaceModifiers.cs)
+- [SurfaceAudioResolver.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/SurfaceAudioResolver.cs)

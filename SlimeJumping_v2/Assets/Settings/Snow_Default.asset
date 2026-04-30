@@ -12,11 +12,53 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 52480b05e6b033d4aa9c520d708aa9e7, type: 3}
   m_Name: Snow_Default
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.Snow.SnowSettings
-  maxSnowSlopeDeg: 45
+  maxSnowSlopeDeg: 70
   minPatchTris: 3
-  restThickness: 0.25
+  restThickness: 0.6
   edgeTaperHops: 0
   subdivLevels: 3
+  slopeToHeightScale:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 18
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 69.96774
+      value: 0.000061035156
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 90
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   snowMaterial: {fileID: 2100000, guid: 40b7f5c92be68bf42a39e9cc55455a66, type: 2}
   shadowRamp: {fileID: 2800000, guid: 18e09faf472bb014d8b4e9497bb8c0be, type: 3}
   footprintAlbedo: {fileID: 0}
@@ -34,10 +76,10 @@ MonoBehaviour:
   minImpactSpeed: 1.5
   depthPerImpact: 0.012
   depthMax: 0.2
-  radiusPerImpact: 0.05
-  radiusMax: 0.8
+  radiusPerImpact: 0.1
+  radiusMax: 0.3
   accumulationRate: 0.01
-  snowSurfaceMaterial: {fileID: 0}
+  snowSurfaceMaterial: {fileID: 11400000, guid: 9f75441f3c92f884b9382e64c193db8d, type: 2}
   depthToSnowBlend:
     serializedVersion: 2
     m_Curve:
@@ -66,8 +108,8 @@ MonoBehaviour:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 0
-      value: 1
+      time: 0.007335268
+      value: 1.0000707
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -75,14 +117,19 @@ MonoBehaviour:
       inWeight: 0
       outWeight: 0
     - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
+      time: 1.022738
+      value: 0.6655491
+      inSlope: -0.07503492
+      outSlope: -0.07503492
       tangentMode: 0
       weightedMode: 0
-      inWeight: 0
+      inWeight: 0.07555285
       outWeight: 0
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  plowDragK: 4
+  plowCarveDepthPerSecond: 0.3
+  plowCarveMinSpeed: 1.5
+  plowMinDepthRatio: 0.1
+  plowStopSpeed: 0.5
