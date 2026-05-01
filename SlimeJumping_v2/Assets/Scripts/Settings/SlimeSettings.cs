@@ -223,6 +223,7 @@ namespace SlimeJumping.Settings
         public AngleScaledValue impactRedirectRatio = AngleScaledValue.Constant(0f);
         public AngleScaledValue groundDashScale = AngleScaledValue.Constant(1f);
         public AngleScaledValue wallAttachSpeedDampen = AngleScaledValue.Constant(1f);
+        public AngleScaledValue hopPowerMultiplier = AngleScaledValue.Constant(1f);
         public AngleScaledValue hopVelocityRetention = AngleScaledValue.Constant(1f);
         public AngleScaledValue hopNormalToTangentRatio = AngleScaledValue.Constant(0f);
         public bool hopInstantFlip = true;
@@ -261,6 +262,7 @@ namespace SlimeJumping.Settings
             dashFalloffEnd = 0f,
             dashSpeedFalloffCurve = null,
             disableDashFalloff = false,
+            hopPowerMultiplier = hopPowerMultiplier,
             hopVelocityRetention = hopVelocityRetention,
             hopNormalToTangentRatio = hopNormalToTangentRatio,
             hopInstantFlip = hopInstantFlip,

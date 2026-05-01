@@ -6,6 +6,7 @@ Attached 상태에서 W를 누르면 작은 점프. 접선 운동량을 보존�
 - `velocity += Vector2.up * hopPower`. 표면 법선과 무관하게 항상 위쪽. 스틱 중에는 `velocity = Vector2.up * hopPower` (충돌 잔여 속도 무시).
 - `crawlVelocity = 0` (접선 운동량은 velocity 필드로 이관).
 - **각도별 파워**: `hopMinAngle`(70°) 이하 = `hopPower`(2.25), `hopMaxAngle`(90°) = `hopPowerMin`(1.125), 사이 lerp.
+- **표면별 배율**: 결과 power는 `SurfaceMaterial.hopPowerMultiplier`(기본 1, AngleScaledValue) 로 곱해짐. 0=홉 불가, >1=강화. 빙판 강한 점프, 진흙 약한 점프 등 표현용.
 - **쿨타임**: `hopCooldown`(0.1초). Wall-clock.
 
 ## 표면별 접선 보존 (hopVelocityRetention + hopNormalToTangentRatio)

@@ -147,6 +147,11 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 15
     angleMax: 80
+  hopPowerMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
   hopVelocityRetention:
     baseValue: 1
     fullValue: 1
@@ -158,8 +163,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   hopInstantFlip: 1
-  overrideHopMomentum: 1
-  hopMomentumBonus: 2
+  overrideHopMomentum: 0
+  hopMomentumBonus: 1
   hopMomentumMaxSpeed: 30
   useInertialSlide: 1
   landHardClip: {fileID: 0}

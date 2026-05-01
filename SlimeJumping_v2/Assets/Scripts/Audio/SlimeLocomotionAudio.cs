@@ -6,7 +6,12 @@ namespace SlimeJumping.Audio
 {
     /// Observes SlimeController events (OnLanded, OnLaunch) and plays SFX.
     /// Pure consumer — does not push into the controller. Mirrors the LandingDustSpawner
-    /// pattern so audio stays off the controller.
+    /// pattern so audio stays off the controller. Reads ActiveSurfaceMaterial directly:
+    /// the controller already gates snow on slope angle + heightRest > 0 in
+    /// RefreshSnowBlend(), and OnLanded fires AFTER UpdateSurfaceModifiers so the
+    /// resolved material is correct at this point. Avoids re-deriving snow audio via a
+    /// raw SnowFieldRegistry lookup, which would treat wall contacts on a snow host as
+    /// snow because it skips both gates.
     [AddComponentMenu("SlimeJumping/Audio/Slime Locomotion Audio")]
     public class SlimeLocomotionAudio : MonoBehaviour
     {
@@ -29,14 +34,17 @@ namespace SlimeJumping.Audio
         [SerializeField] AudioClip launchClip;
         [Tooltip("Played on Hop() (quick jump without full charge).")]
         [SerializeField] AudioClip hopClip;
-        [Tooltip("Launch speed that maps to full volume.")]
-        [Min(0.1f)] [SerializeField] float launchRefSpeed = 20f;
         [Range(0f, 1f)] [SerializeField] float launchVolume = 0.9f;
         [Range(0f, 1f)] [SerializeField] float hopVolume = 0.7f;
+
+        [Tooltip("Suppress soft landing SFX if a hop fired within this many seconds. Prevents hop+land overlap on quick re-hops.")]
+        [Min(0f)] [SerializeField] float softLandHopSuppressWindow = 0.4f;
 
         [Header("Common")]
         [Tooltip("±random pitch jitter applied to each playback.")]
         [Range(0f, 0.3f)] [SerializeField] float pitchJitter = 0.06f;
+
+        float _lastHopTime = float.NegativeInfinity;
 
         void Reset()
         {
@@ -62,9 +70,11 @@ namespace SlimeJumping.Audio
         {
             float speed = slimeController.ImpactNormalSpeed;
             bool hard = speed >= landHardThreshold;
+            if (!hard && Time.time - _lastHopTime < softLandHopSuppressWindow) return;
             AudioClip clip = hard ? landHardClip : landSoftClip;
             float vol = hard ? landHardVolume : landSoftVolume;
-            if (SurfaceAudioResolver.TryResolve(slimeController.SurfaceCollider, position, out var mat))
+            var mat = slimeController.ActiveSurfaceMaterial;
+            if (mat != null)
             {
                 AudioClip overrideClip = hard ? mat.landHardClip : mat.landSoftClip;
                 if (overrideClip != null)
@@ -79,19 +89,20 @@ namespace SlimeJumping.Audio
 
         void HandleLaunch(Vector2 position, Vector2 velocity, bool wasHop)
         {
+            if (wasHop) _lastHopTime = Time.time;
             AudioClip clip = wasHop ? hopClip : launchClip;
-            float baseVol = wasHop ? hopVolume : launchVolume;
-            if (SurfaceAudioResolver.TryResolve(slimeController.SurfaceCollider, position, out var mat))
+            float vol = wasHop ? hopVolume : launchVolume;
+            var mat = slimeController.ActiveSurfaceMaterial;
+            if (mat != null)
             {
                 AudioClip overrideClip = wasHop ? mat.hopClip : mat.launchClip;
                 if (overrideClip != null)
                 {
                     clip = overrideClip;
                     float surfaceVol = wasHop ? mat.hopVolume : mat.launchVolume;
-                    if (surfaceVol > 0f) baseVol = surfaceVol;
+                    if (surfaceVol > 0f) vol = surfaceVol;
                 }
             }
-            float vol = baseVol * Mathf.Clamp01(velocity.magnitude / launchRefSpeed);
             Play(clip, position, vol);
         }
 

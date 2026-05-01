@@ -280,20 +280,40 @@ namespace SlimeJumping.Controller
         // Snow gameplay coupling (read-only pull from SnowFieldRegistry).
         // hostSurfaceMod: the unblended host SurfaceTag → modifiers, captured at attach.
         // cachedSnowField + cachedSnowMods: pre-resolved snow side, refreshed at attach.
-        // Each FixedUpdate while attached, RefreshSnowBlend re-samples carve depth and
-        // re-blends → surfaceMod, so wall regions (bare = depth 0) keep host slide and
-        // snow-covered regions (depth > 0) progressively pick up snow material's slow-slide.
-        // Bool fields (useInertialSlide, override flags, curves) are NOT blended — they
-        // stay at host values to avoid mid-attach state-machine flips.
+        // Each FixedUpdate while attached, RefreshSnowBlend samples whether the slime's
+        // contact xy is over a snow patch; if yes, surfaceMod = snow tag, otherwise host.
+        // Pure binary — no depth-graduated blend, no plow drag.
         private SurfaceModifiers hostSurfaceMod = SurfaceModifiers.Default;
+        private SurfaceMaterial hostSurfaceMaterial;
+        private bool snowBlendActive;
         private SnowField cachedSnowField;
         private SurfaceModifiers cachedSnowMods;
         private bool hasCachedSnowMods;
-        private float snowDepthRatio01;
-        /// <summary>Remaining snow coverage at the slime's current contact in [0, 1].
-        /// 0 = bare ground (or no SnowField on host). 1 = full untouched thickness.
-        /// Refreshed each FixedUpdate while attached/charging.</summary>
-        public float SnowDepthRatio01 => snowDepthRatio01;
+        // cos(MaxSnowSlopeDeg) cached per attach so the per-FU primary gate is a
+        // single dot-product compare. Snow can only deposit on faces with
+        // normal.y ≥ cosMax (matches SnowTopSurfaceExtractor's filter), so a
+        // contact below cosMax is guaranteed bare regardless of footprint.
+        private float cachedSnowSlopeCos;
+        // Footprint hit captured by RefreshSnowBlend each FU and read by
+        // ApplySnowDrag in the same FU — lets the drag path skip its own
+        // nearest-vertex sweep and just index into the strip arrays. Null when
+        // the slime isn't on snow this FU. Lifetime: one FU only.
+        private SnowStrip cachedFootprintStrip;
+        private int cachedFootprintVertIdx;
+
+        // Resolved gameplay-active SurfaceMaterial: snow when the contact-point depth
+        // gate has flipped surfaceMod to snow, otherwise the host SurfaceTag's material.
+        // Null while airborne / no surface.
+        public SurfaceMaterial ActiveSurfaceMaterial => !isTouchingSurface
+            ? null
+            : (snowBlendActive && cachedSnowField != null && cachedSnowField.settings != null
+                ? cachedSnowField.settings.snowSurfaceMaterial
+                : hostSurfaceMaterial);
+
+        // Plow-drag depth-ratio floor. Below this, snow is too thin to be worth
+        // applying drag — avoids the exponential-decay asymptote twitching forever
+        // on a slime sitting just inside a barely-tapered patch edge.
+        private const float SnowSurfaceTagThreshold = 0.05f;
 
         // --- Stunned state ---
         private float stunTimer;
@@ -593,11 +613,12 @@ namespace SlimeJumping.Controller
                     break;
             }
 
-            // Snow plow drag. Runs after the state handler so it operates on the
-            // velocity / slideVelocity / crawlVelocity values the state just set,
-            // and before finalVel is composed below. Self-limits via continuous
-            // carve at the slime's position.
-            ApplySnowPlow(dt);
+            // Snow drag — exponential velocity decay while sliding on snow so the
+            // slime actually stops in deep coverage. Drag-only (no continuous carve,
+            // no airborne probe). Runs after the state handler so it operates on
+            // the velocity / slideVelocity / crawlVelocity values the state just
+            // set, before finalVel is composed below.
+            ApplySnowDrag(dt);
 
             // Rope rider contact — fires while attached OR charging so the rope keeps
             // sagging under slime weight during charge. The stored displacement is
@@ -708,17 +729,20 @@ namespace SlimeJumping.Controller
                 }
             }
             bool wasInertial = surfaceMod.useInertialSlide;
-            hostSurfaceMod = (tag != null && tag.material != null)
-                ? tag.material.ToModifiers()
+            hostSurfaceMaterial = (tag != null) ? tag.material : null;
+            hostSurfaceMod = (hostSurfaceMaterial != null)
+                ? hostSurfaceMaterial.ToModifiers()
                 : settings.BuildDefaultModifiers();
 
             // Snow side: cache the field + pre-resolved snow modifiers so the per-FU
             // blend doesn't re-walk the registry / re-allocate ToModifiers each tick.
             cachedSnowField = null;
             hasCachedSnowMods = false;
+            cachedSnowSlopeCos = 0f;
             if (col != null && SnowFieldRegistry.TryGet(col, out var sf) && sf != null)
             {
                 cachedSnowField = sf;
+                cachedSnowSlopeCos = Mathf.Cos(sf.MaxSnowSlopeDeg * Mathf.Deg2Rad);
                 var snowSettings = sf.settings;
                 if (snowSettings != null && snowSettings.snowSurfaceMaterial != null)
                 {
@@ -745,154 +769,107 @@ namespace SlimeJumping.Controller
         }
 
         /// <summary>
-        /// Re-sample snow coverage at the slime's current contact and rebuild
-        /// surfaceMod = Lerp(host, snow, curve(depth)). Cheap when no snow is on
-        /// the host (early-outs to host modifiers). Called every FixedUpdate while
-        /// attached/charging so carve / recovery progress flows into slide gravity
-        /// without waiting for a surface-collider change. Bool / override fields
-        /// are pinned to host so useInertialSlide can't flip mid-attach.
+        /// Per-FU surface-tag refresh while attached/charging on a snow host.
+        /// Samples whether the slime's contact xy is over a snow patch — if yes,
+        /// surfaceMod = snow tag (Snow.asset modifiers), otherwise = host. Pure
+        /// binary; no depth-graduated blend, no plow drag.
+        /// Discrete fields (useInertialSlide, override flags, curves) stay pinned
+        /// to host so the slide-model can't flip mid-attach and strand velocity
+        /// in the wrong channel.
         /// </summary>
         private void RefreshSnowBlend()
         {
+            cachedFootprintStrip = null;
+            cachedFootprintVertIdx = -1;
+
             if (!hasCachedSnowMods || cachedSnowField == null)
             {
                 surfaceMod = hostSurfaceMod;
-                snowDepthRatio01 = 0f;
+                snowBlendActive = false;
                 return;
             }
 
-            var snowSettings = cachedSnowField.settings;
-            // Use the contact point (slime center pulled in along the surface normal)
-            // rather than the slime center — keeps the sample at the actual ground
-            // intersection so corner contacts don't spuriously read off-patch zero.
-            Vector2 sample = isTouchingSurface
-                ? rb.position - surfaceNormal * settings.slimeRadius
-                : rb.position;
-            snowDepthRatio01 = cachedSnowField.SampleDepthRatio01(sample);
-
-            float t = snowSettings != null && snowSettings.depthToSnowBlend != null
-                ? snowSettings.depthToSnowBlend.Evaluate(snowDepthRatio01)
-                : snowDepthRatio01;
-            t = Mathf.Clamp01(t);
-
-            if (t <= 0f)
+            // Two-stage probe. (1) Slope-normal primary gate: snow only deposits on
+            // upward-facing tris (SnowTopSurfaceExtractor filters by maxSnowSlopeDeg),
+            // so a contact whose normal is steeper than that cutoff cannot be on snow
+            // regardless of xy position — free reject for slime hugging cliff faces.
+            // (2) Mesh-local nearest-vertex hit-test against heightRest > 0 — the
+            // build pipeline's unified output for slope filter, overlap mask, taper,
+            // slope-curve, and any future region masking. Caches the (strip, vertIdx)
+            // so ApplySnowDrag can read heightCurrent[idx]/heightRest[idx] without
+            // re-running the sweep.
+            bool onSnow = false;
+            if (isTouchingSurface && surfaceNormal.y >= cachedSnowSlopeCos)
             {
-                surfaceMod = hostSurfaceMod;
-                return;
+                Vector2 sample = rb.position - surfaceNormal * settings.slimeRadius;
+                onSnow = cachedSnowField.TryFindFootprintHit(
+                    sample, out cachedFootprintStrip, out cachedFootprintVertIdx);
             }
 
-            var blended = SurfaceModifiers.Lerp(hostSurfaceMod, cachedSnowMods, t);
-            // Pin the discrete fields to host. Letting these flip mid-attach would
-            // toggle slide model / dash override / ceiling rules without running the
-            // transition handler, leaving stale slideVelocity vs crawlVelocity state.
-            blended.useInertialSlide        = hostSurfaceMod.useInertialSlide;
-            blended.overrideHopMomentum     = hostSurfaceMod.overrideHopMomentum;
-            blended.hopInstantFlip          = hostSurfaceMod.hopInstantFlip;
-            blended.overrideGroundDash      = hostSurfaceMod.overrideGroundDash;
-            blended.disableDashFalloff      = hostSurfaceMod.disableDashFalloff;
-            blended.overrideCeilingAngle    = hostSurfaceMod.overrideCeilingAngle;
-            blended.groundDashAngleFalloffCurve = hostSurfaceMod.groundDashAngleFalloffCurve;
-            blended.dashSpeedFalloffCurve   = hostSurfaceMod.dashSpeedFalloffCurve;
-            surfaceMod = blended;
-        }
-
-        // Scratch buffer for the airborne plow probe — finds whatever host the slime
-        // happens to overlap mid-flight (no surfaceCollider while airborne).
-        readonly Collider2D[] airbornePlowProbeBuffer = new Collider2D[4];
-
-        /// <summary>
-        /// Snow plow drag — applied every FixedUpdate while the slime overlaps a
-        /// snow patch with depth above the configured floor. Behaviour:
-        ///  • Sample remaining snow coverage at the slime's contact (Attached /
-        ///    Charging) or center (Airborne).
-        ///  • Decay the relevant velocity channel exponentially (rate scales with
-        ///    depth × plowDragK) so the slime "plows" to a stop in deep snow.
-        ///  • Continuously carve at the slime's position so the trail visibly
-        ///    deepens as the slime pushes through, and self-limits — once the slime
-        ///    has carved a hole the depth there drops and drag eases off.
-        ///  • Snap to a full stop below plowStopSpeed to avoid asymptote twitch.
-        /// Stunned is skipped (the slime is already locked out).
-        /// </summary>
-        private void ApplySnowPlow(float dt)
-        {
-            if (settings == null) return;
-            if (currentState == SlimeState.Stunned) return;
-
-            SnowField field = null;
-            Vector2 sample;
-            bool airborne = currentState == SlimeState.Airborne;
-
-            if (!airborne && cachedSnowField != null)
+            if (onSnow)
             {
-                // Attached / Charging path uses the cached registry hit so we don't
-                // re-walk Physics2D every FU.
-                field = cachedSnowField;
-                sample = isTouchingSurface
-                    ? rb.position - surfaceNormal * settings.slimeRadius
-                    : rb.position;
-            }
-            else if (airborne)
-            {
-                // Airborne: no surfaceCollider. Probe the slime center for any
-                // collider on the ground layer and consult the registry. Skipped
-                // entirely if nothing's there — vast majority of airborne frames.
-                int n = Physics2D.OverlapCircleNonAlloc(rb.position, settings.slimeRadius, airbornePlowProbeBuffer, settings.groundLayer);
-                for (int i = 0; i < n; i++)
-                {
-                    var c = airbornePlowProbeBuffer[i];
-                    if (c == null) continue;
-                    if (SnowFieldRegistry.TryGet(c, out var f) && f != null) { field = f; break; }
-                }
-                if (field == null) return;
-                sample = rb.position;
+                var snow = cachedSnowMods;
+                snow.useInertialSlide        = hostSurfaceMod.useInertialSlide;
+                snow.overrideHopMomentum     = hostSurfaceMod.overrideHopMomentum;
+                snow.hopInstantFlip          = hostSurfaceMod.hopInstantFlip;
+                snow.overrideGroundDash      = hostSurfaceMod.overrideGroundDash;
+                snow.disableDashFalloff      = hostSurfaceMod.disableDashFalloff;
+                snow.overrideCeilingAngle    = hostSurfaceMod.overrideCeilingAngle;
+                snow.groundDashAngleFalloffCurve = hostSurfaceMod.groundDashAngleFalloffCurve;
+                snow.dashSpeedFalloffCurve   = hostSurfaceMod.dashSpeedFalloffCurve;
+                surfaceMod = snow;
+                snowBlendActive = true;
             }
             else
             {
-                return;
+                surfaceMod = hostSurfaceMod;
+                snowBlendActive = false;
             }
+        }
 
-            var snowSettings = field.settings;
-            if (snowSettings == null) return;
-            if (snowSettings.plowDragK <= 0f) return;
+        // Drag-only plow. Depth gate matches SnowSurfaceTagThreshold so this
+        // engages exactly when the surface-tag swap engages. Stop speed snaps
+        // to 0 below this floor to prevent the exponential decay from
+        // asymptote-twitching forever.
+        private const float SnowDragStopSpeed = 0.3f;
 
-            float depth = field.SampleDepthRatio01(sample);
-            if (depth < snowSettings.plowMinDepthRatio) return;
+        /// <summary>
+        /// Apply exponential velocity decay while the slime is attached/charging
+        /// on a snow patch. No continuous carve, no airborne probe — drag is the
+        /// only physical effect snow has on the slime now. Runs after the state
+        /// handler so the decay applies to whatever crawl/slide velocity the
+        /// state just produced.
+        /// </summary>
+        private void ApplySnowDrag(float dt)
+        {
+            if (currentState != SlimeState.Attached && currentState != SlimeState.Charging) return;
+            if (!hasCachedSnowMods || cachedSnowField == null) return;
+            var snowSettings = cachedSnowField.settings;
+            if (snowSettings == null || snowSettings.plowDragK <= 0f) return;
+
+            // Reuse RefreshSnowBlend's nearest-vertex result from earlier this FU
+            // instead of running a second SampleDepthRatio01 sweep. Null cache means
+            // RefreshSnowBlend already determined the contact isn't on snow — drag
+            // can't engage either.
+            var s = cachedFootprintStrip;
+            int idx = cachedFootprintVertIdx;
+            if (s == null || idx < 0) return;
+            if (s.heightRest == null || s.heightCurrent == null) return;
+            if (idx >= s.heightRest.Length || idx >= s.heightCurrent.Length) return;
+            float rest = s.heightRest[idx];
+            if (rest <= 1e-5f) return;
+            float depth = Mathf.Clamp01(s.heightCurrent[idx] / rest);
+            if (depth <= SnowSurfaceTagThreshold) return;
 
             float decay = Mathf.Exp(-snowSettings.plowDragK * depth * dt);
             if (decay < 0f) decay = 0f;
 
-            float stop = snowSettings.plowStopSpeed;
-
-            if (airborne)
-            {
-                velocity *= decay;
-                if (velocity.sqrMagnitude < stop * stop) velocity = Vector2.zero;
-            }
-            else
-            {
-                // Decay both persistent channels so legacy (non-inertial, energy in
-                // crawlVelocity) and inertial (energy in slideVelocity) modes both
-                // bleed energy. Decay the current frame's `velocity` too so this
-                // tick's finalVel already feels the drag, not just next frame.
-                slideVelocity *= decay;
-                crawlVelocity *= decay;
-                velocity *= decay;
-                if (Mathf.Abs(slideVelocity) < stop) slideVelocity = 0f;
-                if (Mathf.Abs(crawlVelocity) < stop) crawlVelocity = 0f;
-                if (velocity.sqrMagnitude < stop * stop) velocity = Vector2.zero;
-            }
-
-            // Continuous carve at the slime position so the snow visibly deforms
-            // along the slime's path. Gated by plowCarveMinSpeed — sitting still in
-            // snow shouldn't keep digging the slime deeper, only meaningful motion
-            // does. Per-second depth × dt = per-frame increment.
-            float speedNow = velocity.magnitude;
-            if (speedNow >= snowSettings.plowCarveMinSpeed)
-            {
-                float carveDepth = snowSettings.plowCarveDepthPerSecond * dt;
-                if (carveDepth > 0f)
-                    field.Carve(sample, carveDepth, settings.slimeRadius);
-            }
+            slideVelocity *= decay;
+            crawlVelocity *= decay;
+            velocity *= decay;
+            if (Mathf.Abs(slideVelocity) < SnowDragStopSpeed) slideVelocity = 0f;
+            if (Mathf.Abs(crawlVelocity) < SnowDragStopSpeed) crawlVelocity = 0f;
+            if (velocity.sqrMagnitude < SnowDragStopSpeed * SnowDragStopSpeed) velocity = Vector2.zero;
         }
 
         // Scratch for the per-frame probe-mode broadphase scan.

@@ -12,10 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 52480b05e6b033d4aa9c520d708aa9e7, type: 3}
   m_Name: Snow_Default
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.Snow.SnowSettings
-  maxSnowSlopeDeg: 60.8
+  maxSnowSlopeDeg: 25
   minPatchTris: 3
-  restThickness: 0.6
+  restThickness: 0.25
   edgeTaperHops: 0
+  slopeCutTaperHops: 0
   subdivLevels: 3
   slopeToHeightScale:
     serializedVersion: 2
@@ -30,8 +31,8 @@ MonoBehaviour:
       inWeight: 0
       outWeight: 0
     - serializedVersion: 3
-      time: 18
-      value: 1
+      time: 29.961283
+      value: 0.995198
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -39,8 +40,8 @@ MonoBehaviour:
       inWeight: 0
       outWeight: 0
     - serializedVersion: 3
-      time: 69.96774
-      value: 0.000061035156
+      time: 56.96129
+      value: -0.003112793
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -61,9 +62,10 @@ MonoBehaviour:
     m_RotationOrder: 4
   snowMaterial: {fileID: 2100000, guid: 40b7f5c92be68bf42a39e9cc55455a66, type: 2}
   shadowRamp: {fileID: 2800000, guid: 18e09faf472bb014d8b4e9497bb8c0be, type: 3}
-  footprintAlbedo: {fileID: 0}
+  footprintAlbedo: {fileID: 2800000, guid: 29ee4b56890101248b218a2eec7f0225, type: 3}
+  footprintTint: {r: 0.65, g: 0.78, b: 0.95, a: 1}
   glitterNoise: {fileID: 2800000, guid: d96e50eec907e1c428a285fb1124a713, type: 3}
-  footprintEnabled: 0
+  footprintEnabled: 1
   fresnelEnabled: 1
   glitterEnabled: 1
   rampShadowDeep: {r: 0.3764706, g: 0.5254902, b: 0.69803923, a: 1}
@@ -81,56 +83,4 @@ MonoBehaviour:
   carveProfile: 1
   accumulationRate: 0.01
   snowSurfaceMaterial: {fileID: 11400000, guid: 9f75441f3c92f884b9382e64c193db8d, type: 2}
-  depthToSnowBlend:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 1
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 1
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  depthToLaunchScale:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0.007335268
-      value: 1.0000707
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1.022738
-      value: 0.6655491
-      inSlope: -0.07503492
-      outSlope: -0.07503492
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.07555285
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
   plowDragK: 4
-  plowCarveDepthPerSecond: 0.3
-  plowCarveMinSpeed: 1.5
-  plowMinDepthRatio: 0.1
-  plowStopSpeed: 0.5

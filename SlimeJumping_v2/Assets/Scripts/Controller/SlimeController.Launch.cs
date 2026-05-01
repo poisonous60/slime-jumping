@@ -93,21 +93,6 @@ namespace SlimeJumping.Controller
             float power = isEnergyConversion
                 ? curvedRatio * settings.baseLaunchPower
                 : settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
-            // Snow burial nerf: depthToLaunchScale curve on the platform's SnowSettings
-            // maps current snow coverage (0..1) → power scalar. Default flat 1.0 means
-            // no effect; designers pull the right side down to weaken jumps from
-            // deeply-covered snow. snowDepthRatio01 was refreshed by the most recent
-            // FixedUpdate's RefreshSnowBlend.
-            if (cachedSnowField != null)
-            {
-                var snowSettings = cachedSnowField.settings;
-                if (snowSettings != null && snowSettings.depthToLaunchScale != null)
-                {
-                    float scale = snowSettings.depthToLaunchScale.Evaluate(snowDepthRatio01);
-                    if (scale < 0f) scale = 0f;
-                    power *= scale;
-                }
-            }
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
             velocity = dir * power;
 
@@ -147,10 +132,13 @@ namespace SlimeJumping.Controller
                 velocity *= CurrentDragZone.launchMultiplier;
 
             isVolumeCharging = false;
+            // Fire OnLaunch BEFORE FinalizeAirborneExit so listeners can read
+            // ActiveSurfaceMaterial (still resolved while attached) — audio reads it
+            // to play the surface-correct launch clip without re-deriving snow vs host.
+            OnLaunch?.Invoke(rb.position, velocity, false);
             FinalizeAirborneExit();
             postLaunchAirControlLockTimer = settings.postLaunchAirControlLockTime;
             if (chargeVisual != null) chargeVisual.Hide();
-            OnLaunch?.Invoke(rb.position, velocity, false);
         }
 
         private void Hop()
@@ -163,7 +151,8 @@ namespace SlimeJumping.Controller
             chargeEntryCrawl = crawlVelocity + slideVelocity;
             float angle = GetSurfaceAngle();
             float hopT = Mathf.InverseLerp(settings.hopMinAngle, settings.hopMaxAngle, angle);
-            float power = Mathf.Lerp(settings.hopPower, settings.hopPowerMin, hopT);
+            float power = Mathf.Lerp(settings.hopPower, settings.hopPowerMin, hopT)
+                          * surfaceMod.hopPowerMultiplier.Evaluate(angle);
             Vector2 hopDir = settings.hopAlongSurfaceNormal ? surfaceNormal : gravityUp;
 
             // Tangent and normal components of incoming velocity are scaled independently:
@@ -241,9 +230,15 @@ namespace SlimeJumping.Controller
             }
             hopCooldownTimer = settings.hopCooldown;
             preserveLandingVelocity = true;
+            // Fire OnLaunch BEFORE FinalizeAirborneExit so listeners can read
+            // ActiveSurfaceMaterial (still resolved while attached) — audio reads it
+            // to play the surface-correct hop clip without re-deriving snow vs host.
+            // wasHop=true is passed directly via the event payload; the launchedByHop
+            // field is assigned AFTER FinalizeAirborneExit (which resets it to false)
+            // so post-launch code reading the field still sees hop semantics.
+            OnLaunch?.Invoke(rb.position, velocity, true);
             FinalizeAirborneExit();
             launchedByHop = true;
-            OnLaunch?.Invoke(rb.position, velocity, true);
         }
 
         private void ApplyGroundDash(float inputSign)

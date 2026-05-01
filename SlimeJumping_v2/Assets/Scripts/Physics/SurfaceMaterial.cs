@@ -61,6 +61,8 @@ namespace SlimeJumping.Physics
         public AngleScaledValue wallAttachSpeedDampen = AngleScaledValue.Constant(1f);
 
         [Header("Hop")]
+        [Tooltip("Hop impulse multiplier. 1 (default) = global SlimeSettings power, 0 = no hop, >1 = stronger. Multiplies the angle-lerped power from hopPower / hopPowerMin / hopMinAngle / hopMaxAngle.")]
+        public AngleScaledValue hopPowerMultiplier = AngleScaledValue.Constant(1f);
         [Tooltip("Tangent velocity retained on Hop. 1 = full preserve (default), 0 = wipe tangent (W acts as pure kill-brake). Ice → keep 1. Sticky mud → 0. Operates on Dot(velocity, surfaceTangent).")]
         public AngleScaledValue hopVelocityRetention = AngleScaledValue.Constant(1f);
         [Tooltip("Normal-component redirection on Hop. 0 (default) = discard normal velocity (legacy). 1 = the absolute value of |Dot(velocity, surfaceNormal)| is added to the tangent direction at full magnitude. Direction sign comes from existing tangent component, falling back to input direction. Use on ice/halfpipes where incoming flight perpendicular to the surface should slingshot along it.")]
@@ -124,6 +126,7 @@ namespace SlimeJumping.Physics
             impactRedirect = impactRedirectRatio,
             wallAttachDampen = wallAttachSpeedDampen,
             groundDashScale = groundDashScale,
+            hopPowerMultiplier = hopPowerMultiplier,
             hopVelocityRetention = hopVelocityRetention,
             hopNormalToTangentRatio = hopNormalToTangentRatio,
             hopInstantFlip = hopInstantFlip,

@@ -96,6 +96,11 @@ namespace SlimeJumping.Debugging
                 GUI.Label(new Rect(screenOffset.x, labelY, 280f, 20f), $"Surface (eff): {angle:F1}°", labelStyle);
                 labelY += 18f;
 
+                var activeMat = slimeController.ActiveSurfaceMaterial;
+                string tagName = activeMat != null ? activeMat.name : "-";
+                GUI.Label(new Rect(screenOffset.x, labelY, 280f, 20f), $"Surface tag: {tagName}", labelStyle);
+                labelY += 18f;
+
                 var probe = slimeController.Probe;
                 if (probe != null && probe.ContactCount > 0)
                 {

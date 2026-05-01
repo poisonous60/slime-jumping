@@ -76,6 +76,8 @@ namespace SlimeJumping.Platforms.Snow
         public float AccumulationRate=> settings != null ? settings.accumulationRate: DefaultAccumRate;
         public Material SnowMaterial => settings != null ? settings.snowMaterial    : null;
 
+        public int SlopeCutTaperHops => settings != null ? settings.slopeCutTaperHops : 0;
+
         // Cached host mesh hash so the editor watcher can prompt a rebuild when the host
         // mesh changes (Unity doesn't fire a callback on MeshFilter.sharedMesh swaps).
         [HideInInspector] public int lastHostMeshHash;
@@ -102,6 +104,7 @@ namespace SlimeJumping.Platforms.Snow
         // Property IDs for runtime-material texture pushes.
         static readonly int IdGradientRamp    = Shader.PropertyToID("_GradientRamp");
         static readonly int IdFootprintAlbedo = Shader.PropertyToID("_FootprintAlbedo");
+        static readonly int IdFootprintTint   = Shader.PropertyToID("_FootprintTint");
         static readonly int IdGlitterNoise    = Shader.PropertyToID("_GlitterNoise");
         const string KwSnowFootprint = "_SNOW_FOOTPRINT";
         const string KwSnowFresnel   = "_SNOW_FRESNEL";
@@ -231,6 +234,36 @@ namespace SlimeJumping.Platforms.Snow
             }
         }
 
+        /// <summary>Mesh-local nearest-vertex hit-test against heightRest > 0. Returns
+        /// the winning strip + vertIdx so callers (RefreshSnowBlend → ApplySnowDrag)
+        /// can read heightCurrent / heightRest in O(1) without re-running the sweep.
+        /// The slope-normal primary gate (surfaceNormal.y ≥ cos(maxSnowSlopeDeg))
+        /// is the caller's responsibility — keeping it out of this method lets the
+        /// caller skip the InverseTransformPoint and the per-strip walk entirely
+        /// when the contact is on a steep face that can't carry snow anyway.</summary>
+        public bool TryFindFootprintHit(Vector2 worldXY, out SnowStrip strip, out int vertIdx)
+        {
+            strip = null;
+            vertIdx = -1;
+            if (sourceMeshFilter == null) return false;
+            Vector3 local = sourceMeshFilter.transform.InverseTransformPoint(
+                new Vector3(worldXY.x, worldXY.y, 0f));
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                var child = transform.GetChild(i);
+                if (child == null) continue;
+                var s = child.GetComponent<SnowStrip>();
+                if (s == null) continue;
+                if (s.TryFindNearestSnowVert(local, out int idx))
+                {
+                    strip = s;
+                    vertIdx = idx;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         /// <summary>Sample remaining snow coverage at a world-space xy point. 0 = bare
         /// or outside any patch, 1 = full untouched thickness. Read-only — gameplay's
         /// single entry point for "is this point on snow, and how much". Walks each
@@ -339,7 +372,7 @@ namespace SlimeJumping.Platforms.Snow
             }
 
             var mesh = sourceMeshFilter.sharedMesh;
-            var patches = SnowTopSurfaceExtractor.Extract(mesh, MaxSnowSlopeDeg);
+            var patches = SnowTopSurfaceExtractor.Extract(mesh, MaxSnowSlopeDeg, detectSlopeCut: SlopeCutTaperHops > 0);
 
             // Mask requires hostCollider to recognise its OWN collider as host —
             // otherwise the host's polygon hits OverlapPoint at every interior vert
@@ -391,20 +424,16 @@ namespace SlimeJumping.Platforms.Snow
                 int V = patch.verts.Length;
                 var heights = new float[V];
                 int taperHops = EdgeTaperHops;
+                int scTaperHops = SlopeCutTaperHops;
                 float restThick = RestThickness;
+                bool hasSlopeCut = patch.isSlopeCutAdjacent != null && patch.isSlopeCutAdjacent.Length == V;
+                bool runSlopeCutBFS = hasSlopeCut && scTaperHops > 0;
 
-                if (taperHops > 0 && patch.boundaryEdges != null && patch.boundaryEdges.Length >= 2)
+                // Adjacency built once: shared by both BFS passes.
+                HashSet<int>[] adj = null;
+                if ((taperHops > 0 || runSlopeCutBFS) && patch.boundaryEdges != null && patch.boundaryEdges.Length >= 2)
                 {
-                    // Graph BFS: hopDist[v] = min number of edge traversals to reach a
-                    // boundary vertex. Boundary verts get 0; their neighbors 1; etc.
-                    // Independent of patch shape so thin/long strips keep their interior.
-                    var hop = new int[V];
-                    for (int i = 0; i < V; i++) hop[i] = -1;
-
-                    // Adjacency from triangulation (undirected via tri edges). HashSet
-                    // dedupes shared edges in O(1) — large patches with high-degree verts
-                    // become quadratic with List.Contains.
-                    var adj = new HashSet<int>[V];
+                    adj = new HashSet<int>[V];
                     for (int i = 0; i < V; i++) adj[i] = new HashSet<int>();
                     for (int t = 0; t < patch.tris.Length; t += 3)
                     {
@@ -413,17 +442,31 @@ namespace SlimeJumping.Platforms.Snow
                         adj[b].Add(a); adj[b].Add(c);
                         adj[c].Add(a); adj[c].Add(b);
                     }
+                }
 
+                // Compute the per-vertex height ramp as the MIN of two BFS passes:
+                //   1. edgeTaperHops BFS seeded by ALL boundary verts
+                //   2. slopeCutTaperHops BFS seeded ONLY by slope-cut boundary verts
+                // Each pass yields a 0..1 ramp via SmoothStep(hop / hopBudget). Verts
+                // unreached by a pass score 1.0 (no taper from that source). Final height
+                // = restThick * min(rampMesh, rampSlopeCut) so whichever taper is more
+                // restrictive wins, allowing slope-cut endings to fade further inland
+                // than mesh-edge boundaries (or in isolation, when edgeTaperHops=0).
+
+                static int[] BFSHops(HashSet<int>[] adjGraph, int vertCount, IEnumerable<int> seeds)
+                {
+                    var hop = new int[vertCount];
+                    for (int i = 0; i < vertCount; i++) hop[i] = -1;
                     var queue = new Queue<int>();
-                    for (int e = 0; e < patch.boundaryEdges.Length; e++)
+                    foreach (int v in seeds)
                     {
-                        int v = patch.boundaryEdges[e];
-                        if (hop[v] != 0) { hop[v] = 0; queue.Enqueue(v); }
+                        if (v < 0 || v >= vertCount) continue;
+                        if (hop[v] == -1) { hop[v] = 0; queue.Enqueue(v); }
                     }
                     while (queue.Count > 0)
                     {
                         int u = queue.Dequeue();
-                        foreach (int n in adj[u])
+                        foreach (int n in adjGraph[u])
                         {
                             if (hop[n] == -1)
                             {
@@ -432,17 +475,46 @@ namespace SlimeJumping.Platforms.Snow
                             }
                         }
                     }
-
-                    for (int v = 0; v < V; v++)
-                    {
-                        int h = hop[v] < 0 ? taperHops : hop[v];
-                        float ramp = Mathf.Clamp01((float)h / taperHops);
-                        heights[v] = restThick * Mathf.SmoothStep(0f, 1f, ramp);
-                    }
+                    return hop;
                 }
-                else
+
+                int[] hopAll = null;
+                int[] hopSC = null;
+                if (taperHops > 0 && adj != null)
                 {
-                    for (int i = 0; i < V; i++) heights[i] = restThick;
+                    var seeds = new List<int>(patch.boundaryEdges.Length);
+                    for (int e = 0; e < patch.boundaryEdges.Length; e++) seeds.Add(patch.boundaryEdges[e]);
+                    hopAll = BFSHops(adj, V, seeds);
+                }
+                if (runSlopeCutBFS && adj != null)
+                {
+                    // Seed from boundary verts that are slope-cut adjacent. Filter
+                    // by current boundary so verts whose slope-cut edges were dropped
+                    // by Mask don't seed phantom taper holes inside the patch.
+                    var boundarySet = new HashSet<int>();
+                    for (int e = 0; e < patch.boundaryEdges.Length; e++) boundarySet.Add(patch.boundaryEdges[e]);
+                    var seeds = new List<int>();
+                    foreach (int v in boundarySet)
+                        if (patch.isSlopeCutAdjacent[v]) seeds.Add(v);
+                    if (seeds.Count > 0) hopSC = BFSHops(adj, V, seeds);
+                }
+
+                for (int v = 0; v < V; v++)
+                {
+                    float ramp = 1f;
+                    if (hopAll != null)
+                    {
+                        int h = hopAll[v] < 0 ? taperHops : hopAll[v];
+                        float r = Mathf.Clamp01((float)h / taperHops);
+                        if (r < ramp) ramp = r;
+                    }
+                    if (hopSC != null)
+                    {
+                        int h = hopSC[v] < 0 ? scTaperHops : hopSC[v];
+                        float r = Mathf.Clamp01((float)h / scTaperHops);
+                        if (r < ramp) ramp = r;
+                    }
+                    heights[v] = restThick * Mathf.SmoothStep(0f, 1f, ramp);
                 }
 
                 // Per-vertex slope-based height modulation. Replaces the previous
@@ -511,26 +583,13 @@ namespace SlimeJumping.Platforms.Snow
             lastHostMeshHash = ComputeHostMeshHash(mesh);
         }
 
-        // True if `worldXY` lies inside any non-host Collider2D on the filter, with
-        // SnowField↔SnowField arbitration via overlapPriority (higher wins; tiebreak
-        // on hostCollider InstanceID). Used by MaskOutOverlap to test multiple sample
-        // points per triangle.
-        bool SamplePointHitsOther(Vector2 worldXY, ContactFilter2D filter, Collider2D[] hits, int myId)
+        static bool HitsAnyForeign(Vector2 worldXY, List<Collider2D> foreign)
         {
-            int n = Physics2D.OverlapPoint(worldXY, filter, hits);
-            for (int i = 0; i < n; i++)
+            for (int i = 0; i < foreign.Count; i++)
             {
-                var h = hits[i];
-                if (h == null) continue;
-                if (h == hostCollider) continue;
-                if (SnowFieldRegistry.TryGet(h, out var otherField) && otherField != null && otherField != this)
-                {
-                    if (otherField.overlapPriority > overlapPriority) return true;
-                    if (otherField.overlapPriority < overlapPriority) continue;
-                    if (h.GetInstanceID() > myId) return true;
-                    continue;
-                }
-                return true;
+                var c = foreign[i];
+                if (c == null) continue;
+                if (c.OverlapPoint(worldXY)) return true;
             }
             return false;
         }
@@ -539,26 +598,78 @@ namespace SlimeJumping.Platforms.Snow
         // inside another Collider2D on the mask. Rebuild the patch's verts/normals/
         // tris/boundaryEdges from the kept tris so the BFS taper downstream sees the
         // new directed boundary and curls the snow rim down at the cut edge.
+        //
+        // Perf: instead of calling scene-wide Physics2D.OverlapPoint per sample (which
+        // at subdivLevels=5 fired hundreds of thousands of scene queries and froze
+        // the editor), we collect candidate foreign colliders ONCE via a patch-AABB
+        // OverlapAreaAll, then test each tri sample against that small candidate list
+        // with the per-collider Collider2D.OverlapPoint. SnowField↔SnowField arbitration
+        // (overlapPriority + InstanceID tiebreak) is applied during candidate filtering.
+        //
+        // SyncTransforms is needed because RebuildNow is called from Awake during scene
+        // load; at that point the Physics2D scene hasn't yet synced freshly-deserialized
+        // transforms and OverlapAreaAll would return nothing — leaving the snow visually
+        // unmasked in play mode while edit mode (where time has elapsed) worked fine.
         SnowTopSurfaceExtractor.TopPatch MaskOutOverlap(
             SnowTopSurfaceExtractor.TopPatch patch, Transform meshT)
         {
             if (patch.tris == null || patch.tris.Length < 3) return patch;
 
+            Physics2D.SyncTransforms();
+
+            // Patch AABB in world XY (use verts only — meshT may rotate/scale them).
+            float wxmin = float.PositiveInfinity, wxmax = float.NegativeInfinity;
+            float wymin = float.PositiveInfinity, wymax = float.NegativeInfinity;
+            for (int i = 0; i < patch.verts.Length; i++)
+            {
+                Vector3 w = meshT.TransformPoint(patch.verts[i]);
+                if (w.x < wxmin) wxmin = w.x;
+                if (w.x > wxmax) wxmax = w.x;
+                if (w.y < wymin) wymin = w.y;
+                if (w.y > wymax) wymax = w.y;
+            }
+
             var filter = ContactFilter2D.noFilter;
             filter.SetLayerMask(overlapLayerMask);
             filter.useTriggers = false;
 
-            var hits = new Collider2D[8];
+            var hitList = new List<Collider2D>(16);
+            Physics2D.OverlapArea(new Vector2(wxmin, wymin), new Vector2(wxmax, wymax), filter, hitList);
+
+            // Reduce candidates to the foreign-and-loses-arbitration set. Anything else
+            // (host's own collider, sister SnowField that wins arbitration) is ignored.
+            int myId = hostCollider != null ? hostCollider.GetInstanceID() : GetInstanceID();
+            var foreign = new List<Collider2D>(hitList.Count);
+            for (int i = 0; i < hitList.Count; i++)
+            {
+                var h = hitList[i];
+                if (h == null) continue;
+                if (h == hostCollider) continue;
+                if (SnowFieldRegistry.TryGet(h, out var otherField) && otherField != null && otherField != this)
+                {
+                    if (otherField.overlapPriority > overlapPriority) { foreign.Add(h); continue; }
+                    if (otherField.overlapPriority < overlapPriority) continue;
+                    if (h.GetInstanceID() > myId) foreign.Add(h);
+                    continue;
+                }
+                foreign.Add(h);
+            }
+
             int triCount = patch.tris.Length / 3;
             var keep = new bool[triCount];
             int kept = 0;
+
+            if (foreign.Count == 0)
+            {
+                // Nothing to mask against — keep everything.
+                return patch;
+            }
 
             // Sample 4 points per tri (3 verts + centroid) instead of centroid only.
             // Centroid-only kept tris that straddle the overlap boundary — one vertex
             // pokes into the other platform — producing a thin tearing band along the
             // seam. Dropping the tri if any of the 4 samples is inside another platform
             // lets the BFS taper close the gap cleanly.
-            int myId = hostCollider != null ? hostCollider.GetInstanceID() : GetInstanceID();
             for (int t = 0; t < triCount; t++)
             {
                 int ia = patch.tris[t * 3];
@@ -574,10 +685,10 @@ namespace SlimeJumping.Platforms.Snow
                     (wa.x + wb.x + wc.x) / 3f,
                     (wa.y + wb.y + wc.y) / 3f);
 
-                bool dropTri = SamplePointHitsOther(p0, filter, hits, myId)
-                            || SamplePointHitsOther(p1, filter, hits, myId)
-                            || SamplePointHitsOther(p2, filter, hits, myId)
-                            || SamplePointHitsOther(pc, filter, hits, myId);
+                bool dropTri = HitsAnyForeign(p0, foreign)
+                            || HitsAnyForeign(p1, foreign)
+                            || HitsAnyForeign(p2, foreign)
+                            || HitsAnyForeign(pc, foreign);
                 keep[t] = !dropTri;
                 if (keep[t]) kept++;
             }
@@ -591,6 +702,7 @@ namespace SlimeJumping.Platforms.Snow
                     vertNormals = new Vector3[0],
                     tris = new int[0],
                     boundaryEdges = new int[0],
+                    isSlopeCutAdjacent = patch.isSlopeCutAdjacent != null ? new bool[0] : null,
                 };
             }
 
@@ -610,12 +722,14 @@ namespace SlimeJumping.Platforms.Snow
 
             var newVerts = new Vector3[newV];
             var newNorms = new Vector3[newV];
+            bool[] newIsSlopeCut = patch.isSlopeCutAdjacent != null && patch.isSlopeCutAdjacent.Length == origV ? new bool[newV] : null;
             for (int i = 0; i < origV; i++)
             {
                 int n = oldToNew[i];
                 if (n < 0) continue;
                 newVerts[n] = patch.verts[i];
                 newNorms[n] = patch.vertNormals[i];
+                if (newIsSlopeCut != null) newIsSlopeCut[n] = patch.isSlopeCutAdjacent[i];
             }
 
             var newTris = new int[kept * 3];
@@ -655,6 +769,7 @@ namespace SlimeJumping.Platforms.Snow
                 vertNormals = newNorms,
                 tris = newTris,
                 boundaryEdges = bedges.ToArray(),
+                isSlopeCutAdjacent = newIsSlopeCut,
             };
         }
 
@@ -717,6 +832,7 @@ namespace SlimeJumping.Platforms.Snow
                 if (settings.shadowRamp      != null) runtimeMaterial.SetTexture(IdGradientRamp,    settings.shadowRamp);
                 if (settings.footprintAlbedo != null) runtimeMaterial.SetTexture(IdFootprintAlbedo, settings.footprintAlbedo);
                 if (settings.glitterNoise    != null) runtimeMaterial.SetTexture(IdGlitterNoise,    settings.glitterNoise);
+                runtimeMaterial.SetColor(IdFootprintTint, settings.footprintTint);
 
                 ToggleKeyword(runtimeMaterial, KwSnowFootprint, settings.footprintEnabled);
                 ToggleKeyword(runtimeMaterial, KwSnowFresnel,   settings.fresnelEnabled);
@@ -789,7 +905,7 @@ namespace SlimeJumping.Platforms.Snow
             var t = sourceMeshFilter.transform;
 
             // Recompute on draw (cheap for typical patch sizes; only runs when selected).
-            var patches = SnowTopSurfaceExtractor.Extract(sourceMeshFilter.sharedMesh, MaxSnowSlopeDeg);
+            var patches = SnowTopSurfaceExtractor.Extract(sourceMeshFilter.sharedMesh, MaxSnowSlopeDeg, detectSlopeCut: SlopeCutTaperHops > 0);
 
             if (drawPatchOutlines)
             {

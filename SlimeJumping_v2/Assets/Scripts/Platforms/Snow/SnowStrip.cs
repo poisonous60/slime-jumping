@@ -56,6 +56,15 @@ namespace SlimeJumping.Platforms.Snow
         [System.NonSerialized] public Vector2 aabbMin;
         [System.NonSerialized] public Vector2 aabbMax;
 
+        // Largest heightRest in the strip. Used as the SampleDepthRatio01 AABB
+        // margin: the visible snow shell is the patch verts displaced along
+        // their normals by heightRest, so on tilted / 3D hosts the shell can
+        // bulge past the un-displaced xy footprint by up to this distance. The
+        // sampler accepts points within `maxHeightRest` of the AABB and tapers
+        // the returned ratio with distance, so a slime visually on the bulged
+        // shell edge still reads as in-snow with the right magnitude.
+        [System.NonSerialized] public float maxHeightRest;
+
         static readonly int IdSnowHeightBuf = Shader.PropertyToID("_SnowHeightBuf");
 
         // -- Init / lifecycle -----------------------------------------------------
@@ -72,8 +81,12 @@ namespace SlimeJumping.Platforms.Snow
             if (V == 0) return;
 
             // AABB on xy projection — carve impact is compared in mesh-local xy.
+            // Same loop tracks the strip's largest heightRest so SampleDepthRatio01
+            // can size its margin (see maxHeightRest comment).
             aabbMin = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
             aabbMax = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+            maxHeightRest = 0f;
+            int restLen = heightRest != null ? heightRest.Length : 0;
             for (int i = 0; i < V; i++)
             {
                 var v = verts[i];
@@ -81,6 +94,7 @@ namespace SlimeJumping.Platforms.Snow
                 if (v.y < aabbMin.y) aabbMin.y = v.y;
                 if (v.x > aabbMax.x) aabbMax.x = v.x;
                 if (v.y > aabbMax.y) aabbMax.y = v.y;
+                if (i < restLen && heightRest[i] > maxHeightRest) maxHeightRest = heightRest[i];
             }
 
             // Reuse existing buffer if size matches (RebuildNow re-emit case).
@@ -193,11 +207,20 @@ namespace SlimeJumping.Platforms.Snow
             if (heightCurrent == null || heightRest == null || verts == null) return 0f;
             if (heightCurrent.Length == 0) return 0f;
 
-            // AABB pre-filter — the slide blend asks every strip on every FU; skip the
-            // V loop entirely for unrelated patches on the same SnowField.
-            if (localXY.x < aabbMin.x || localXY.x > aabbMax.x ||
-                localXY.y < aabbMin.y || localXY.y > aabbMax.y)
-                return 0f;
+            // AABB pre-filter expanded by maxHeightRest — the visible shell is the
+            // patch verts displaced along their normals by heightRest, so on tilted
+            // / 3D hosts the shell can bulge past the un-displaced xy footprint by
+            // up to that distance. Without the margin a slime visually on the
+            // bulged shell edge would read off-patch (depth=0) and Plow drag never
+            // engages even though the player is clearly in the snow.
+            float margin = maxHeightRest;
+            float dxOut = 0f, dyOut = 0f;
+            if (localXY.x < aabbMin.x) dxOut = aabbMin.x - localXY.x;
+            else if (localXY.x > aabbMax.x) dxOut = localXY.x - aabbMax.x;
+            if (localXY.y < aabbMin.y) dyOut = aabbMin.y - localXY.y;
+            else if (localXY.y > aabbMax.y) dyOut = localXY.y - aabbMax.y;
+            float outDist2 = dxOut * dxOut + dyOut * dyOut;
+            if (outDist2 > margin * margin) return 0f;
 
             float bestD2 = float.PositiveInfinity;
             int bestIdx = -1;
@@ -211,7 +234,18 @@ namespace SlimeJumping.Platforms.Snow
             if (bestIdx < 0) return 0f;
             float rest = heightRest[bestIdx];
             if (rest <= 1e-5f) return 0f;
-            return Mathf.Clamp01(heightCurrent[bestIdx] / rest);
+            float ratio = Mathf.Clamp01(heightCurrent[bestIdx] / rest);
+
+            // Smooth taper across the margin zone so points outside the strict
+            // AABB ramp toward 0 with distance instead of clamping to a constant
+            // boundary value. Inside the AABB outDist2 is 0 → no attenuation.
+            if (outDist2 > 0f && margin > 1e-5f)
+            {
+                float taper = 1f - Mathf.Sqrt(outDist2) / margin;
+                if (taper <= 0f) return 0f;
+                ratio *= taper;
+            }
+            return ratio;
         }
 
         /// <summary>Lerp heightCurrent toward heightRest. Returns true while any vertex
@@ -238,6 +272,40 @@ namespace SlimeJumping.Platforms.Snow
             }
             if (anyChange) dirty = true;
             return anyBelow;
+        }
+
+        /// <summary>Binary "is this point in the snow footprint" probe paired with the
+        /// nearest-vertex index for callers that also want to read heightCurrent /
+        /// heightRest at the same vert (plow drag) — so they don't repeat the sweep.
+        /// Returns true iff the nearest patch vert in mesh-local xy has heightRest > 0,
+        /// which is the build pipeline's unified output for every gate (slope filter,
+        /// overlap mask, taper, slope-curve, future region masks). Same AABB-margin
+        /// pre-filter pattern as <see cref="SampleDepthRatio01"/>.</summary>
+        public bool TryFindNearestSnowVert(Vector3 localXY, out int vertIdx)
+        {
+            vertIdx = -1;
+            if (verts == null || heightRest == null || verts.Length == 0) return false;
+
+            float margin = maxHeightRest;
+            float dxOut = 0f, dyOut = 0f;
+            if (localXY.x < aabbMin.x) dxOut = aabbMin.x - localXY.x;
+            else if (localXY.x > aabbMax.x) dxOut = localXY.x - aabbMax.x;
+            if (localXY.y < aabbMin.y) dyOut = aabbMin.y - localXY.y;
+            else if (localXY.y > aabbMax.y) dyOut = localXY.y - aabbMax.y;
+            if (dxOut * dxOut + dyOut * dyOut > margin * margin) return false;
+
+            float bestD2 = float.PositiveInfinity;
+            int bestIdx = -1;
+            for (int i = 0; i < verts.Length; i++)
+            {
+                float dx = verts[i].x - localXY.x;
+                float dy = verts[i].y - localXY.y;
+                float d2 = dx * dx + dy * dy;
+                if (d2 < bestD2) { bestD2 = d2; bestIdx = i; }
+            }
+            if (bestIdx < 0) return false;
+            vertIdx = bestIdx;
+            return heightRest[bestIdx] > 1e-5f;
         }
 
         /// <summary>Push heightCurrent[] to the GPU via the per-renderer MPB. No-op if

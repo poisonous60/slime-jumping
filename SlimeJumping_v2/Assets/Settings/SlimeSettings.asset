@@ -197,6 +197,11 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
+  hopPowerMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
   hopVelocityRetention:
     baseValue: 1
     fullValue: 1

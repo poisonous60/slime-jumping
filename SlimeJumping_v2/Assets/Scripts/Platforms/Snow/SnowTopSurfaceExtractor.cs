@@ -13,6 +13,13 @@ namespace SlimeJumping.Platforms.Snow
     /// component split via union-find groups disjoint top regions into separate patches.
     /// Boundary edges are recorded as directed (a → b) pairs so the side-strip quad can
     /// face outward without orientation guessing.
+    ///
+    /// Optional slope-cut detection: when detectSlopeCut=true, each boundary edge is
+    /// classified as either mesh-edge (the host actually ends) or slope-cut (the host
+    /// continues past the edge but the next triangle exceeds maxSnowSlopeDeg). The
+    /// per-vertex flag isSlopeCutAdjacent[v] is true when v is an endpoint of any
+    /// slope-cut boundary edge. SnowField uses it to apply a separate taper depth at
+    /// slope-cut endings without affecting mesh-edge boundaries.
     /// </summary>
     public static class SnowTopSurfaceExtractor
     {
@@ -22,9 +29,17 @@ namespace SlimeJumping.Platforms.Snow
             public Vector3[] vertNormals;    // per-vertex normal (averaged across kept tris)
             public int[]     tris;           // CCW triangles, indices into verts
             public int[]     boundaryEdges;  // directed boundary, flat array: [a0, b0, a1, b1, ...]
+            // Optional slope-cut classification — populated when Extract was called with
+            // detectSlopeCut=true. true at v iff v is an endpoint of at least one slope-cut
+            // boundary edge (one whose reverse direction has a rejected steep tri in the
+            // host mesh). null when detection was disabled.
+            public bool[]    isSlopeCutAdjacent;
         }
 
         public static List<TopPatch> Extract(Mesh mesh, float maxSnowSlopeDeg)
+            => Extract(mesh, maxSnowSlopeDeg, detectSlopeCut: false);
+
+        public static List<TopPatch> Extract(Mesh mesh, float maxSnowSlopeDeg, bool detectSlopeCut)
         {
             var result = new List<TopPatch>();
             if (mesh == null) return result;
@@ -56,8 +71,11 @@ namespace SlimeJumping.Platforms.Snow
             }
 
             // Filter triangles: keep those whose face normal points up enough.
+            // detectSlopeCut also retains rejected-tri canonical edges so later we can
+            // classify each patch boundary edge as mesh-edge vs slope-cut.
             var keptCanonTris = new List<int>(); // packed [a, b, c, a, b, c, ...]
             var keptFaceNormals = new List<Vector3>();
+            HashSet<long> rejectedDirEdgeSet = detectSlopeCut ? new HashSet<long>() : null;
             for (int t = 0; t < meshTris.Length; t += 3)
             {
                 Vector3 a = meshVerts[meshTris[t]];
@@ -66,9 +84,18 @@ namespace SlimeJumping.Platforms.Snow
                 Vector3 n = Vector3.Cross(b - a, c - a);
                 if (n.sqrMagnitude < 1e-12f) continue;
                 n.Normalize();
-                if (n.y < cosMax) continue;
                 int ca = Canon(a), cb = Canon(b), cc = Canon(c);
                 if (ca == cb || cb == cc || ca == cc) continue; // degenerate after weld
+                if (n.y < cosMax)
+                {
+                    if (rejectedDirEdgeSet != null)
+                    {
+                        rejectedDirEdgeSet.Add(DirKey(ca, cb));
+                        rejectedDirEdgeSet.Add(DirKey(cb, cc));
+                        rejectedDirEdgeSet.Add(DirKey(cc, ca));
+                    }
+                    continue;
+                }
                 keptCanonTris.Add(ca);
                 keptCanonTris.Add(cb);
                 keptCanonTris.Add(cc);
@@ -156,6 +183,15 @@ namespace SlimeJumping.Platforms.Snow
                     dirSet.Add(DirKey(c, a));
                 }
                 var bedges = new List<int>();
+                bool[] isSlopeCutAdj = null;
+                int[] localToCanon = null;
+                if (detectSlopeCut)
+                {
+                    localToCanon = new int[compVerts.Count];
+                    foreach (var pair in localOf) localToCanon[pair.Value] = pair.Key;
+                    isSlopeCutAdj = new bool[compVerts.Count];
+                }
+                bool anySlopeCut = false;
                 foreach (long e in dirSet)
                 {
                     int a = (int)(e >> 32);
@@ -165,6 +201,19 @@ namespace SlimeJumping.Platforms.Snow
                     {
                         bedges.Add(a);
                         bedges.Add(b);
+                        if (detectSlopeCut)
+                        {
+                            // Slope-cut iff the host mesh has a rejected tri across this
+                            // edge — i.e., the reverse direction in canonical indices is
+                            // covered by some rejected triangle's directed edge set.
+                            int canA = localToCanon[a], canB = localToCanon[b];
+                            if (rejectedDirEdgeSet.Contains(DirKey(canB, canA)))
+                            {
+                                isSlopeCutAdj[a] = true;
+                                isSlopeCutAdj[b] = true;
+                                anySlopeCut = true;
+                            }
+                        }
                     }
                 }
 
@@ -174,6 +223,7 @@ namespace SlimeJumping.Platforms.Snow
                     vertNormals = compNorms.ToArray(),
                     tris = compTrisLocal.ToArray(),
                     boundaryEdges = bedges.ToArray(),
+                    isSlopeCutAdjacent = anySlopeCut ? isSlopeCutAdj : null,
                 });
             }
 

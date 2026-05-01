@@ -34,6 +34,8 @@ namespace SlimeJumping.Platforms.Snow
 
             var newVerts = new List<Vector3>(src.verts);
             var newNormals = new List<Vector3>(src.vertNormals);
+            bool hasSlopeCut = src.isSlopeCutAdjacent != null && src.isSlopeCutAdjacent.Length == src.verts.Length;
+            var newIsSlopeCut = hasSlopeCut ? new List<bool>(src.isSlopeCutAdjacent) : null;
             var edgeMidpoints = new Dictionary<long, int>();
 
             int GetMidpoint(int a, int b)
@@ -49,6 +51,10 @@ namespace SlimeJumping.Platforms.Snow
                 else mn = src.vertNormals[a]; // degenerate fallback
                 newVerts.Add(mp);
                 newNormals.Add(mn);
+                // Midpoint sits ON the parent edge — if both parents are slope-cut adjacent,
+                // the midpoint also lies on that slope-cut edge; otherwise it doesn't.
+                if (newIsSlopeCut != null)
+                    newIsSlopeCut.Add(src.isSlopeCutAdjacent[a] && src.isSlopeCutAdjacent[b]);
                 edgeMidpoints[key] = idx;
                 return idx;
             }
@@ -86,6 +92,7 @@ namespace SlimeJumping.Platforms.Snow
                 vertNormals = newNormals.ToArray(),
                 tris = newTris.ToArray(),
                 boundaryEdges = newBoundary.ToArray(),
+                isSlopeCutAdjacent = newIsSlopeCut != null ? newIsSlopeCut.ToArray() : null,
             };
         }
     }

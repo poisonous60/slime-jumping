@@ -92,7 +92,7 @@ Phase 3 는 약속대로 fragment stage 만 갈아끼웠다 — vertex / mesh / 
 - **wrap 전략**: stock `StylizedPassFragment` 를 직접 갈아엎지 않고 wrapper `SnowFragment` 가 먼저 호출 → 결과에 snow 폴리시 (footprint / fresnel / glitter) 를 post-blend. 푸른 그늘 ramp 는 Quibli 가 이미 가지고 있는 `_GradientRamp` 슬롯 (NdotL toon ramp) 에 디자이너가 blue→white 그라데이션 텍스처를 할당하면 끝 — 셰이더 작업 없음.
 - **`Ground_SnowFragmentInject.hlsl`** (신규) — `SnowVaryings` wrapper struct 정의 (`Varyings v` + `float2 snowExtras : TEXCOORD9`). Quibli `Varyings` 는 TEXCOORD0~8 까지 조건부로 사용, TEXCOORD9 은 비어 있어 안전. 그리고 `SnowFragment(SnowVaryings i)`:
   1. `half4 base = StylizedPassFragment(i.v);` — Quibli stock 라이팅 + 그늘 ramp 그대로
-  2. `_SNOW_FOOTPRINT` (gated by `mask > 1e-3`): `_FootprintAlbedo` 를 host-local `i.v.uv * _FootprintTiling` 으로 샘플 → carve 영역 만 `lerp(base, base*albedo, mask * _FootprintBlend)`
+  2. `_SNOW_FOOTPRINT` (gated by `mask > 1e-3`): `_FootprintAlbedo.r` 을 host-local `i.v.uv * _FootprintTiling` 으로 샘플해서 *형태 마스크* 로 사용. 내부 눈 색은 별도 `_FootprintTint` 컬러. carve 영역 만 `lerp(base, base*tint, mask * _FootprintBlend * pattern)` — texture 는 grayscale shape, color 는 디자이너 컬러 슬롯에서.
   3. `_SNOW_FRESNEL`: `pow(1 - saturate(dot(N, V)), _SnowFresnelPower)` 의 그레이징 highlight 가산
   4. `_SNOW_GLITTER`: `_GlitterNoise` 노이즈 step + view-direction `pow(NdotV, _GlitterViewSharpness)` modulate → sparkle 가산
 - **키워드 토글**: `_SNOW_FOOTPRINT` / `_SNOW_FRESNEL` / `_SNOW_GLITTER` 모두 `shader_feature_local_fragment`. `SnowSettings` 의 토글 bool 3개 + 텍스처 슬롯 3개 (shadowRamp / footprintAlbedo / glitterNoise) 가 **runtime material clone** 에 push 되어 디자이너는 SnowSettings 한 곳만 만지면 됨. SnowField 가 rebuild 마다 `new Material(snowMaterial)` 클론을 만들고 (HideFlags.DontSave) Phase 3 텍스처/키워드 적용 후 자식 SnowStrip 들에 sharedMaterial 로 할당, OnDestroy 에서 dispose. 원본 `Ground_Quibli_Snow.mat` 자산은 read-only 유지 — heightTex MPB 와 동일한 invariant. 기본값은 모두 off → Phase 2 와 시각적으로 동일 (안전한 기본값).
@@ -169,7 +169,7 @@ snow 결합의 부산물로 두 helper static 추가. `SurfaceModifiers.Lerp` �
 매 FixedUpdate, 슬라임 위치의 `SnowDepthRatio01` 이 `plowMinDepthRatio` 이상이면:
 
 1. **지수 감쇠**: `decay = exp(-plowDragK * depth * dt)` 곱이 `slideVelocity`, `crawlVelocity`, `velocity` (Attached / Charging) 또는 `velocity` (Airborne) 에 적용. 깊이 × 계수가 클수록 빨리 정지.
-2. **연속 carve**: `field.Carve(slimePos, plowCarveDepthPerSecond * dt, slimeRadius)` — 슬라임이 지나는 자리에 실시간 자국. 시각적으로 "눈을 밀고 가는" 효과 + **자기-제한**: 자기가 판 자리는 depth 떨어져 drag 도 약해지므로 영원히 멈춰 있지 않음 (recovery 가 다시 묻고 → drag 다시 작동).
+2. **연속 carve**: `field.Carve(slimePos, plowCarveDepthPerSecond * dt, plowCarveRadius)` — 슬라임이 지나는 자리에 실시간 자국. 반경은 SnowSettings 의 별도 필드 (슬라임 콜라이더 반지름과 무관, 디자이너가 트렌치 폭을 자유롭게 조정). 시각적으로 "눈을 밀고 가는" 효과 + **자기-제한**: 자기가 판 자리는 depth 떨어져 drag 도 약해지므로 영원히 멈춰 있지 않음 (recovery 가 다시 묻고 → drag 다시 작동).
 3. **Stop snap**: `|v| < plowStopSpeed` 면 0 으로 클램프 → 박힘. asymptote twitch 방지.
 
 State 별 hook:
@@ -183,6 +183,7 @@ State 별 hook:
 |------|--------|------|
 | Plow Drag K | 4 | 풀-burial 에서 1/s 단위 지수 drag rate. 0 = plow 비활성. 4 ≈ 0.75s 안에 95% 감속. |
 | Plow Carve Depth Per Second | 0.3 | 이동 중 자동 carve 깊이 (m/s). 0 = drag 만, 시각 자국 없음. |
+| Plow Carve Radius | 0.25 | 연속 carve 반경 (m). 슬라임 콜라이더와 독립 — 트렌치 폭을 디자이너가 직접 조정. |
 | Plow Min Depth Ratio | 0.1 | 이 미만 depth 는 drag 0 — 자연 bare 영역 (carve 자국 / patch edge) 에서 자유. |
 | Plow Stop Speed | 0.5 | 이하 속도는 0 으로 snap. m/s. |
 
@@ -245,7 +246,8 @@ State 별 hook:
 | | Subdiv Levels | 1 | barycentric 세분화 단계 (0 = host 그대로, 3 = 64× verts) |
 | Render | Snow Material | None | 자식 SnowStrip MeshRenderer 에 할당될 머티리얼 템플릿 (`Ground_Quibli_Snow.mat`). 실제 할당은 SnowField 가 rebuild 시 만든 **runtime clone** — 아래 텍스처/키워드 SnowSettings 필드들은 그 clone 에만 push 되어 원본 .mat 자산은 read-only 유지. |
 | | Shadow Ramp | None | Quibli 의 NdotL toon ramp (`_GradientRamp`) 슬롯에 push. blue→white 그라데이션 텍스처를 할당하면 그늘 부분에 푸른 톤. null 이면 머티리얼 자산의 기본값 유지. |
-| | Footprint Albedo | None | Carve 영역 detail 블렌드용 (`_FootprintAlbedo`). `_SNOW_FOOTPRINT` 키워드 켜야 효과 있음. |
+| | Footprint Albedo | None | Carve 영역 detail 블렌드용 (`_FootprintAlbedo`). **Grayscale shape** — `.r` 채널만 사용 (흰=내부 눈 노출, 검=원래 표면). 색은 아래 Footprint Tint 에서. `_SNOW_FOOTPRINT` 키워드 켜야 효과 있음. |
+| | Footprint Tint | (0.65, 0.78, 0.95) | 내부 눈 색 (`_FootprintTint`). base lighting 과 곱해져 toon ramp 음영 보존. 청백색 권장. |
 | | Glitter Noise | None | Glitter sparkle 노이즈 (`_GlitterNoise`). Perlin 등 고대비 노이즈 텍스처 할당. `_SNOW_GLITTER` 키워드 켜야 효과 있음. |
 | Phase 3 effects | Footprint Enabled | false | `_SNOW_FOOTPRINT` 키워드 토글 (runtime material clone 에 EnableKeyword/DisableKeyword) |
 | | Fresnel Enabled | false | `_SNOW_FRESNEL` 키워드 토글 |

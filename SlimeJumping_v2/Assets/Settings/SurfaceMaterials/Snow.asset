@@ -43,8 +43,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   slideGravityMultiplier:
-    baseValue: 0.2
-    fullValue: 0.2
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   slideRampUpTime:
@@ -147,6 +147,11 @@ MonoBehaviour:
     fullValue: 0
     angleMin: 0
     angleMax: 90
+  hopPowerMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
   hopVelocityRetention:
     baseValue: 0
     fullValue: 0
@@ -159,17 +164,17 @@ MonoBehaviour:
     angleMax: 90
   hopInstantFlip: 1
   overrideHopMomentum: 0
-  hopMomentumBonus: 1.5
-  hopMomentumMaxSpeed: 20
+  hopMomentumBonus: 0
+  hopMomentumMaxSpeed: 10
   useInertialSlide: 0
   landHardClip: {fileID: 8300000, guid: aaba36eb6cc3c544c9ff2ed2c748b1e6, type: 3}
-  landSoftClip: {fileID: 0}
-  launchClip: {fileID: 8300000, guid: fd83f646a5f86f94b88775f5fa3ae769, type: 3}
+  landSoftClip: {fileID: 8300000, guid: 066d1902983a0064db39438157934e57, type: 3}
+  launchClip: {fileID: 0}
   hopClip: {fileID: 8300000, guid: e9f33d146351ea946b125ce147a62810, type: 3}
-  landHardVolume: 0
-  landSoftVolume: 0
-  launchVolume: 0
-  hopVolume: 0
+  landHardVolume: 1
+  landSoftVolume: 0.264
+  launchVolume: 1
+  hopVolume: 1
   overrideCeilingAngle: 0
   ceilingAngle: 107
   ceilingReattachAngle: 101

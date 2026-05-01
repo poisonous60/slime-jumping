@@ -21,6 +21,7 @@ namespace SlimeJumping.Physics
         public AngleScaledValue impactRedirect;
         public AngleScaledValue wallAttachDampen;
         public AngleScaledValue groundDashScale;
+        public AngleScaledValue hopPowerMultiplier;
         public AngleScaledValue hopVelocityRetention;
         public AngleScaledValue hopNormalToTangentRatio;
         public bool hopInstantFlip;
@@ -64,6 +65,7 @@ namespace SlimeJumping.Physics
             impactRedirect = AngleScaledValue.Constant(0f),
             wallAttachDampen = AngleScaledValue.Constant(1f),
             groundDashScale = AngleScaledValue.Constant(1f),
+            hopPowerMultiplier = AngleScaledValue.Constant(1f),
             hopVelocityRetention = AngleScaledValue.Constant(1f),
             hopNormalToTangentRatio = AngleScaledValue.Constant(0f),
             hopInstantFlip = true,
@@ -115,6 +117,7 @@ namespace SlimeJumping.Physics
                 impactRedirect            = AngleScaledValue.Lerp(a.impactRedirect,            b.impactRedirect,            t),
                 wallAttachDampen          = AngleScaledValue.Lerp(a.wallAttachDampen,          b.wallAttachDampen,          t),
                 groundDashScale           = AngleScaledValue.Lerp(a.groundDashScale,           b.groundDashScale,           t),
+                hopPowerMultiplier        = AngleScaledValue.Lerp(a.hopPowerMultiplier,        b.hopPowerMultiplier,        t),
                 hopVelocityRetention      = AngleScaledValue.Lerp(a.hopVelocityRetention,      b.hopVelocityRetention,      t),
                 hopNormalToTangentRatio   = AngleScaledValue.Lerp(a.hopNormalToTangentRatio,   b.hopNormalToTangentRatio,   t),
 

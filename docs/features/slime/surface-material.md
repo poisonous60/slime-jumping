@@ -52,6 +52,7 @@ SurfaceTag 가 없거나 material이 비어있는 표면은 `SlimeSettings`의 "
 | impactRedirectRatio | 0 | 법선 충돌 → 접선 전환 (벽에서만 자동 활성) |
 | wallAttachSpeedDampen | 1 | 착지 접선 속도 감쇠 |
 | groundDashScale | 1 | 대시 impulse 배율 (0=대시 불가) |
+| hopPowerMultiplier | 1 | 홉 impulse 배율. 글로벌 `hopPower`/`hopPowerMin`을 각도 lerp 한 결과에 곱. 0=홉 불가, >1=강화 |
 | hopVelocityRetention | 1 | 홉 시 접선 성분 보존 비율. `Dot(velocity, surfaceTangent) × retention`. 1=ice, 0=mud |
 | hopNormalToTangentRatio | 0 | 홉 시 법선 성분 → 접선 변환 비율. `\|Dot(velocity, surfaceNormal)\| × ratio`만큼 접선에 가산. 부호는 기존 접선 성분, 0이면 입력 방향 폴백. 0(기본)=법선 성분 폐기(레거시), 1=법선 속도 전체를 접선으로 슬링샷. 빙판/하프파이프에서 비행 후 표면 미끄러짐 변환에 사용 |
 | hopInstantFlip | true | 홉 반대 방향 즉시 반전 (true=mud/grass, false=ice 관성) |

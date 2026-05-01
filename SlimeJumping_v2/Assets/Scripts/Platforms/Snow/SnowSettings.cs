@@ -34,10 +34,13 @@ namespace SlimeJumping.Platforms.Snow
         [Header("Mesh")]
         [Tooltip("Perpendicular thickness applied along each patch vertex's averaged normal. Drives heightRest after edge taper.")]
         [Min(0.01f)] public float restThickness = 0.25f;
-        [Tooltip("How many graph hops inland the snow ramps from 0 (boundary) to full restThickness. 0 = sharp edge. 1 = boundary verts at 0, neighbors at full. Larger = wider rounded bevel.")]
+        [Tooltip("How many graph hops inland the snow ramps from 0 (boundary) to full restThickness. 0 = sharp edge. 1 = boundary verts at 0, neighbors at full. Larger = wider rounded bevel. Applies to ALL boundary edges. Use slopeCutTaperHops below to taper ONLY slope-cut boundaries (where the host surface continues but exceeds maxSnowSlopeDeg) — they combine: each vert takes the most restrictive ramp.")]
         [Range(0, 8)] public int edgeTaperHops = 1;
-        [Tooltip("Barycentric subdivision applied per patch triangle before BFS taper / mesh emit. 0 = host triangulation as-is, 1 = 4× verts (default), 2 = 16×, 3 = 64×.")]
-        [Range(0, 3)] public int subdivLevels = 1;
+
+        [Tooltip("Additional taper depth applied ONLY to slope-cut boundary verts — boundary edges that border a too-steep host triangle (where the host surface continues past the slope filter cutoff). 0 = no extra taper. >0 = the snow fades over this many hops at slope-cut endings, separately from edgeTaperHops. Use this to soften the abrupt cliff where snow meets a too-steep face without softening true mesh edges.")]
+        [Range(0, 8)] public int slopeCutTaperHops = 0;
+        [Tooltip("Barycentric subdivision applied per patch triangle before BFS taper / mesh emit. 0 = host triangulation as-is, 1 = 4× verts, 2 = 16×, 3 = 64×, N = 4^N×. CPU cost of CarveLocal / TickRecovery / SampleDepthRatio01 scales linearly with vertex count — past ~5 the per-FixedUpdate sample loop can become noticeable on large hosts.")]
+        [Range(1, 5)] public int subdivLevels = 1;
 
         [Tooltip("Per-vertex heightRest multiplier as a function of host-surface angle. X = angle from horizontal (0° = flat ground, 90° = vertical wall) measured at the vertex via averaged normal. Y = multiplier on the taper-shaped restThickness (1 = full, 0 = bare). Default fades from full at 18° to zero at 45° so steep parts thin out gracefully instead of vanishing at the maxSnowSlopeDeg cutoff. WARNING: averaged vertex normals on jagged meshes can read non-zero angles even on \"flat\" geometry — flatten the low-angle portion of the curve if you see thinning on visually level surfaces.")]
         public AnimationCurve slopeToHeightScale = new AnimationCurve(
@@ -47,6 +50,7 @@ namespace SlimeJumping.Platforms.Snow
             new Keyframe(90f, 0f)
         );
 
+
         [Header("Render")]
         [Tooltip("Material assigned to every spawned SnowStrip renderer. Must use Ground_Quibli_Snow.shader (or compatible). Per-strip heightBuf (StructuredBuffer<float>) pushed via MPB so this asset is read-only — Phase 3 textures/keywords below are forwarded onto a runtime material instance, never mutating the asset.")]
         public Material snowMaterial;
@@ -54,8 +58,11 @@ namespace SlimeJumping.Platforms.Snow
         [Tooltip("Quibli toon ramp (NdotL → color). Assign a horizontal blue→white gradient to drive the cool snow shadow tone. Pushed onto the runtime material's _GradientRamp slot at rebuild. Leave null to fall back to whatever the snowMaterial asset has.")]
         public Texture2D shadowRamp;
 
-        [Tooltip("Tile texture multiplied into the base color where snow is carved (mask = 1 - heightCurrent/heightRest). Requires footprintEnabled below. Pushed onto the runtime material's _FootprintAlbedo slot.")]
+        [Tooltip("Grayscale pattern (.r channel) sampled in carved areas. White = inner snow fully exposed, black = original surface. Color comes from footprintTint below — texture provides shape only. Requires footprintEnabled. Pushed onto the runtime material's _FootprintAlbedo slot.")]
         public Texture2D footprintAlbedo;
+
+        [Tooltip("Color of the 'inner snow' revealed inside carves. Multiplied with base lighting so toon-ramp shading is preserved. Typical: cool blue-white (e.g. RGB 0.65, 0.78, 0.95) for snow-on-snow look. Pushed onto the runtime material's _FootprintTint slot.")]
+        [ColorUsage(showAlpha: false, hdr: false)] public Color footprintTint = new Color(0.65f, 0.78f, 0.95f);
 
         [Tooltip("Noise texture sampled in fragment to drive glitter sparkle locations (host-local UV). A Perlin noise tile works well. Requires glitterEnabled below. Pushed onto the runtime material's _GlitterNoise slot.")]
         public Texture2D glitterNoise;
@@ -108,29 +115,10 @@ namespace SlimeJumping.Platforms.Snow
         [Min(0f)] public float accumulationRate = 0.05f;
 
         [Header("Gameplay coupling")]
-        [Tooltip("SurfaceMaterial blended over the host's tag while standing on snow-covered ground. Typical wiring: Assets/Settings/SurfaceMaterials/Snow.asset (Mud-derived, slow slide). Leave null to disable blending — host SurfaceTag stays in effect everywhere.")]
+        [Tooltip("SurfaceMaterial used as the slime's surface tag while standing on a snow-covered region of the host. Binary: any meaningful snow at the contact → this material; otherwise the host's own tag. Typical wiring: Assets/Settings/SurfaceMaterials/Snow.asset.")]
         public SurfaceMaterial snowSurfaceMaterial;
 
-        [Tooltip("X = remaining snow coverage (0 = bare / fully carved, 1 = full untouched thickness). Y = blend weight toward snowSurfaceMaterial (0 = pure host, 1 = pure snow). Default linear (0,0)→(1,1) gives smooth ramp; flatten the left half for a step (binary covered/bare); shape it freely for graded feel.")]
-        public AnimationCurve depthToSnowBlend = AnimationCurve.Linear(0f, 0f, 1f, 1f);
-
-        [Tooltip("X = remaining snow coverage (0..1) at the slime's contact when launching. Y = multiplier on launch power. Default flat 1.0 (no effect). Pull the right side down (e.g. (1, 0.6)) so deeply-buried slime jumps weaker.")]
-        public AnimationCurve depthToLaunchScale = AnimationCurve.Constant(0f, 1f, 1f);
-
-        [Header("Plow drag (slime pushes through snow)")]
-        [Tooltip("Exponential drag rate (1/s) applied to slime velocity at full snow burial (depthRatio = 1). Higher = stops faster. Set 0 to disable plow drag entirely. With 4: ~63% energy loss per second at full burial, ~95% in 0.75s.")]
+        [Tooltip("Exponential drag rate (1/s) applied to slime velocity at full snow coverage (depthRatio = 1). Higher = stops faster. Set 0 to disable. With 4: ~63% energy loss per second at full coverage. Drag-only: no continuous carve, no airborne probe — applies while attached/charging on a snow patch.")]
         [Min(0f)] public float plowDragK = 4f;
-
-        [Tooltip("Per-second carve depth automatically applied at the slime's position while it moves through snow. The slime visibly digs a tunnel as it pushes through. 0 = no continuous carve (only landing impacts carve).")]
-        [Min(0f)] public float plowCarveDepthPerSecond = 0.3f;
-
-        [Tooltip("Minimum slime speed (m/s) for the continuous plow carve to fire. Below this the slime can sit / wiggle in snow without digging deeper. Drag itself still applies. 0 = always carve while moving (legacy behaviour).")]
-        [Min(0f)] public float plowCarveMinSpeed = 1.5f;
-
-        [Tooltip("Below this remaining snow coverage, plow drag is skipped — keeps the slime free to slide on naturally bare regions (carved-out tracks, patch edges).")]
-        [Range(0f, 1f)] public float plowMinDepthRatio = 0.1f;
-
-        [Tooltip("Below this speed (m/s) the plow snaps the slime to a full stop instead of continuing exponential decay — prevents the slime from twitching forever as drag asymptotes toward zero.")]
-        [Min(0f)] public float plowStopSpeed = 0.5f;
     }
 }
