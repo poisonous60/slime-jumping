@@ -1,5 +1,7 @@
 using UnityEngine;
 using SlimeJumping.Audio;
+using SlimeJumping.Controller;
+using SlimeJumping.Platforms.Snow;
 
 namespace SlimeJumping.Mechanisms
 {
@@ -24,6 +26,52 @@ namespace SlimeJumping.Mechanisms
             if (groundImpactPitchJitter > 0f)
                 pitch = 1f + Random.Range(-groundImpactPitchJitter, groundImpactPitchJitter);
             SoundService.PlayAt(groundImpactSound, worldPos, SoundCategory.SFX_Object, groundImpactVolume, pitch);
+        }
+
+        // Carve a dent into a SnowField when the ground hit lands on a registered
+        // host collider. Mirrors SnowStamper's routing — the same channel the slime
+        // landing uses, so the bite looks identical. Off-snow ground hits no-op.
+        public void CarveSnowAtImpact(Collider2D hostCollider, Vector2 contactWorld)
+        {
+            if (!snowCarveOnImpact) return;
+            if (snowCarveDepth <= 0f || snowCarveRadius <= 0f) return;
+            if (hostCollider == null) return;
+            if (!SnowFieldRegistry.TryGet(hostCollider, out var field)) return;
+            if (field == null) return;
+            field.Carve(contactWorld, snowCarveDepth, snowCarveRadius);
+        }
+
+        // Carve snow around a slime hit point. Used by Beam/Burst/Branching when a
+        // projectile lands on the slime — without this, the bolt halts on the slime
+        // body and never reaches the snow underneath. Resolves the SnowField via
+        // (1) slime.SurfaceCollider (cheapest, works when slime is grounded on snow),
+        // then (2) an OverlapCircle scan near the contact point so airborne / mid-jump
+        // hits over snow still register. No-op when no SnowField is found nearby.
+        public void CarveSnowNearSlime(SlimeController slime, Vector2 contactWorld)
+        {
+            if (!snowCarveOnImpact) return;
+            if (snowCarveDepth <= 0f || snowCarveRadius <= 0f) return;
+            if (slime == null) return;
+
+            Collider2D host = slime.SurfaceCollider;
+            if (host != null && SnowFieldRegistry.TryGet(host, out var field) && field != null)
+            {
+                field.Carve(contactWorld, snowCarveDepth, snowCarveRadius);
+                return;
+            }
+
+            // Fallback scan — radius covers the carve footprint so nearby snow under
+            // an airborne slime still resolves. Picks the first registered SnowField.
+            float scanR = Mathf.Max(snowCarveRadius, 1f);
+            var hits = Physics2D.OverlapCircleAll(contactWorld, scanR);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                if (SnowFieldRegistry.TryGet(hits[i], out var f) && f != null)
+                {
+                    f.Carve(contactWorld, snowCarveDepth, snowCarveRadius);
+                    return;
+                }
+            }
         }
 
         // Spawn the big chunky explosion VFX at a ground hit point. Slime hits do NOT

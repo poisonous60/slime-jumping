@@ -3,6 +3,15 @@ using SlimeJumping.Physics;
 
 namespace SlimeJumping.Platforms.Snow
 {
+    /// <summary>Carve depth falloff profile. See SnowSettings.carveProfile tooltip for shape details.</summary>
+    public enum CarveProfileType
+    {
+        Gaussian = 0,
+        RaisedCosine = 1,
+        SphericalCap = 2,
+        Parabola = 3,
+    }
+
     /// <summary>
     /// Single source of truth for snow tuning. SnowField references one of these assets;
     /// every per-platform tweak (deposit slope, mesh density, carve depth/radius, recovery
@@ -39,7 +48,7 @@ namespace SlimeJumping.Platforms.Snow
         );
 
         [Header("Render")]
-        [Tooltip("Material assigned to every spawned SnowStrip renderer. Must use Ground_Quibli_Snow.shader (or compatible). Per-strip heightTex pushed via MPB so this asset is read-only — Phase 3 textures/keywords below are forwarded onto a runtime material instance, never mutating the asset.")]
+        [Tooltip("Material assigned to every spawned SnowStrip renderer. Must use Ground_Quibli_Snow.shader (or compatible). Per-strip heightBuf (StructuredBuffer<float>) pushed via MPB so this asset is read-only — Phase 3 textures/keywords below are forwarded onto a runtime material instance, never mutating the asset.")]
         public Material snowMaterial;
 
         [Tooltip("Quibli toon ramp (NdotL → color). Assign a horizontal blue→white gradient to drive the cool snow shadow tone. Pushed onto the runtime material's _GradientRamp slot at rebuild. Leave null to fall back to whatever the snowMaterial asset has.")]
@@ -86,6 +95,13 @@ namespace SlimeJumping.Platforms.Snow
         [Tooltip("Carve radius per unit of normal impact speed. Final radius = clamp(impactSpeed * radiusPerImpact, 0, radiusMax).")]
         [Min(0f)] public float radiusPerImpact = 0.05f;
         [Min(0.001f)] public float radiusMax = 0.8f;
+
+        [Tooltip("Falloff profile for carve depth as a function of distance d from impact (0..r).\n" +
+                 "Gaussian: exp(-4·(d/r)²) — narrow bell, looks pointy/V-shaped at low mesh density.\n" +
+                 "RaisedCosine: 0.5·(1+cos(π·d/r)) — smooth bowl, zero slope at center AND at edge.\n" +
+                 "SphericalCap: √(1-(d/r)²) — literal ball-press indent, widest/roundest bottom (sharper transition at d=r).\n" +
+                 "Parabola: 1-(d/r)² — round bottom, linear taper.")]
+        public CarveProfileType carveProfile = CarveProfileType.RaisedCosine;
 
         [Header("Recovery")]
         [Tooltip("Snow re-fill rate while a carve recovers, in metres per second. Per-vertex heightCurrent lerps toward heightRest at this rate.")]

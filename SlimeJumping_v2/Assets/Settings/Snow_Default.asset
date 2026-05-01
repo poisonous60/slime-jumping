@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 52480b05e6b033d4aa9c520d708aa9e7, type: 3}
   m_Name: Snow_Default
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.Snow.SnowSettings
-  maxSnowSlopeDeg: 70
+  maxSnowSlopeDeg: 60.8
   minPatchTris: 3
   restThickness: 0.6
   edgeTaperHops: 0
@@ -78,6 +78,7 @@ MonoBehaviour:
   depthMax: 0.2
   radiusPerImpact: 0.1
   radiusMax: 0.3
+  carveProfile: 1
   accumulationRate: 0.01
   snowSurfaceMaterial: {fileID: 11400000, guid: 9f75441f3c92f884b9382e64c193db8d, type: 2}
   depthToSnowBlend:

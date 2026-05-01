@@ -52,6 +52,14 @@ namespace SlimeJumping.Mechanisms
         [FormerlySerializedAs("endPadding")]
         [Min(0f)] [SerializeField] private float tipLead = 0.8f;
 
+        [Header("V2 Horn Shape — Widths (world units)")]
+        [Tooltip("BulbShatter / Horn mode. Bottom (anchor flat back) half-width in WORLD units at ZERO stretch — sets how thin the back is right after launch.")]
+        [Min(0.0f)] [SerializeField] private float anchorHalfWidthMin = 0.13f;
+        [Tooltip("BulbShatter / Horn mode. Bottom (anchor flat back) half-width in WORLD units at FULL stretch — the widest the back ever gets. Driver lerps Min→Max across stretch progress and writes _NeckWidth as a v-fraction every frame, overriding the material value. Set Min == Max to disable the bottom widening.")]
+        [Min(0.0f)] [SerializeField] private float anchorHalfWidthMax = 0.45f;
+        [Tooltip("BulbShatter / Horn mode. TOP (bulb cap) radius in WORLD units. Stays constant — the slime is the same size throughout the launch, so its enclosing bulb shouldn't grow with stretch. Driver writes _BulbRadius as a v-fraction every frame, overriding the material value.")]
+        [Min(0.0f)] [SerializeField] private float bulbRadiusWorld = 0.65f;
+
         [Header("Pop")]
         [Tooltip("Seconds for the membrane burst (alpha fade + ripple sweep).")]
         [Min(0.05f)] [SerializeField] private float popDuration = 0.22f;
@@ -64,6 +72,19 @@ namespace SlimeJumping.Mechanisms
         static readonly int IdPulseStrength = Shader.PropertyToID("_PulseStrength");
         static readonly int IdPopPhase      = Shader.PropertyToID("_PopPhase");
         static readonly int IdTaper         = Shader.PropertyToID("_Taper");
+        // V2 (BulbShatter) shader uses _BulbCenter as the slime UV along the
+        // long axis. Driver writes this every stretch frame so the bulb stays
+        // centered on the slime regardless of stretch length. Harmless on the
+        // legacy SpaceWarp_Distortion shader (property is just ignored).
+        static readonly int IdBulbCenter    = Shader.PropertyToID("_BulbCenter");
+        // V2 Horn shape — _NeckWidth and _BulbRadius are rewritten live each
+        // frame (v-fractions converted from world-unit inspector fields). The
+        // material values are completely overridden during stretching/popping.
+        // _QuadAspect = quadLen / (quadHeight*0.5) lets the bulb cap stay a
+        // true world circle instead of a squished ellipse.
+        static readonly int IdNeckWidth     = Shader.PropertyToID("_NeckWidth");
+        static readonly int IdBulbRadius    = Shader.PropertyToID("_BulbRadius");
+        static readonly int IdQuadAspect    = Shader.PropertyToID("_QuadAspect");
 
         MaterialPropertyBlock mpb;
         WarpState state = WarpState.Idle;
@@ -71,6 +92,10 @@ namespace SlimeJumping.Mechanisms
         Transform stretchTarget;
         Vector3 anchorWorld;
         float currentTaper;
+        float currentBulbCenter = 0.85f;
+        float currentNeckWidth   = 0.45f;
+        float currentBulbRadius  = 0.65f;
+        float currentQuadAspect  = 1f;
         Vector3 idleLocalPos;
         Quaternion idleLocalRot;
         Vector3 idleLocalScale;
@@ -140,6 +165,11 @@ namespace SlimeJumping.Mechanisms
                 {
                     stateT += Time.deltaTime;
                     UpdateStretchTransform();
+                    // Push the live shape values (BulbCenter / NeckWidth /
+                    // QuadAspect / Taper) to the GPU every frame. Without this,
+                    // the v2 Horn shape would keep stale values from the
+                    // TriggerStretch entry and the bulb wouldn't track the slime.
+                    ApplyMpb(0f, 0f, 0f);
                     Vector3 axis = (stretchTarget != null ? stretchTarget.position : anchorWorld) - anchorWorld;
                     float len = axis.magnitude;
                     if (stretchTarget == null || stateT >= maxStretchDuration || len >= maxStretchLength)
@@ -198,7 +228,16 @@ namespace SlimeJumping.Mechanisms
             // tipWidth via auto-computed _Taper below.
             float stretchT = Mathf.Clamp01(len / maxStretchLength);
             float flareT   = Mathf.Clamp01(flareCurve.Evaluate(stretchT));
-            float padWidth = Mathf.Lerp(baseWidth, baseWidth * flareScale, flareT);
+            float padWidthLegacy = Mathf.Lerp(baseWidth, baseWidth * flareScale, flareT);
+
+            // V2 Horn shape — quad must be tall enough to contain the inspector-
+            // specified anchor and bulb world widths. Without this floor the
+            // _NeckWidth v-fraction silently clamps to 1.0 once the anchor world
+            // half-width exceeds the legacy padWidth/2, so cranking "Anchor Half
+            // Width Max" past that threshold produced no further widening.
+            float anchorHwW   = Mathf.Lerp(anchorHalfWidthMin, anchorHalfWidthMax, stretchT);
+            float padWidthHorn = 2f * Mathf.Max(anchorHwW, bulbRadiusWorld);
+            float padWidth     = Mathf.Max(padWidthLegacy, padWidthHorn);
             transform.localScale = new Vector3(totalLen, padWidth, idleLocalScale.z);
 
             // _Taper such that tip-end world width = tipWidth.
@@ -207,6 +246,22 @@ namespace SlimeJumping.Mechanisms
             currentTaper = padWidth > 1e-4f
                 ? Mathf.Clamp01(1f - tipWidth / padWidth)
                 : 0f;
+
+            // _BulbCenter (v2 BulbShatter shader) — slime UV along the long axis.
+            // Quad spans [anchor → slime + tipLead]; slime sits at (len / totalLen).
+            currentBulbCenter = totalLen > 1e-4f ? Mathf.Clamp(len / totalLen, 0.5f, 0.98f) : 0.85f;
+            // _NeckWidth — anchor flat-back half-width as a v-fraction. Quad has
+            // already been auto-grown above to contain anchorHwW, so the divide
+            // here yields ≤ 1.0 even at extreme inspector values.
+            float halfQuad    = padWidth * 0.5f;
+            currentNeckWidth  = halfQuad > 1e-4f ? Mathf.Clamp01(anchorHwW / halfQuad) : 0.0f;
+            // _BulbRadius — top (cap) world radius converted to v-fraction. Stays
+            // constant across stretch (bulb sized to slime, not to stretch length).
+            currentBulbRadius = halfQuad > 1e-4f ? Mathf.Clamp01(bulbRadiusWorld / halfQuad) : 0.0f;
+            // _QuadAspect — long-axis world span / short-axis world span. Used by
+            // the bulb cap math to keep the hemisphere a true world circle when
+            // the quad is much longer than tall.
+            currentQuadAspect = halfQuad > 1e-4f ? totalLen / halfQuad : 1f;
         }
 
         void CacheIdleTransform()
@@ -237,6 +292,10 @@ namespace SlimeJumping.Mechanisms
             mpb.SetFloat(IdPulsePhase,    pulsePhase);
             mpb.SetFloat(IdPulseStrength, pulseAmp);
             mpb.SetFloat(IdTaper,         currentTaper);
+            mpb.SetFloat(IdBulbCenter,    currentBulbCenter);
+            mpb.SetFloat(IdNeckWidth,     currentNeckWidth);
+            mpb.SetFloat(IdBulbRadius,    currentBulbRadius);
+            mpb.SetFloat(IdQuadAspect,    currentQuadAspect);
             targetRenderer.SetPropertyBlock(mpb);
         }
     }

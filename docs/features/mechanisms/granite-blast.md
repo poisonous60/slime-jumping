@@ -40,8 +40,16 @@ Idle
 |------|---------------|-----------|
 | Branching | 텐드릴이 슬라임에 halt 시 `slime.ApplyHazardPush(awayDir * knockbackImpulse)` 1회. | 텐드릴 1개당 최대 1회. |
 | Beam (단발) | 첫 hit 시 1회 `awayDir * knockbackImpulse`, 그 다음 빔은 halt 상태로 끝까지 유지. | 빔 인스턴스 1개당 최대 1회. |
-| Beam (`sustainedHit=true`) | 매 프레임 muzzle→maxRange 재-sweep. 슬라임이 path 안에 있으면 매 프레임 `awayDir * knockbackAcceleration * dt` 누적. 슬라임이 빔에서 빠져나가면 빔이 다음 차폐물까지 통과. | 매 프레임 — 가속도 채널이라 오래 머물수록 deltaV 가 커짐. |
+| Beam (`sustainedHit=true` 또는 `beamTrackAngularSpeed>0`) | 매 프레임 muzzle→maxRange 재-sweep. 슬라임이 path 안에 있으면: **첫 접촉 frame** 1회 `awayDir * knockbackImpulse` (튕김 임펄스), **그 후** 매 프레임 `awayDir * knockbackAcceleration * dt` (지속 슬라이드). 슬라임이 빔에서 빠져나가면 빔이 다음 차폐물까지 통과. `hitResolved` 가 첫 임펄스를 1회로 잠금. | 매 프레임 — 첫 접촉 임펄스 + 가속도 누적 하이브리드. |
 | Burst | 각 flash 가 단발 Beam 과 동일 — flash 1개당 최대 1회 impulse. | flash 수만큼. |
+
+Beam 전용 grounded slide 스케일링: `beamGroundedSlideScale ∈ [0,1]` 로 빔 push 의 `surfaceTangent` 성분을 사전 스케일 (Beam 단발/sustained/추적 모두). `SlimeController` 의 `externalDeltaV → surfaceTangent` projection 동작은 그대로 두고, 빔 쪽에서 `deltaV - tangent * (along * (1-scale))` 형태로 차감해 통과 후 `tangent * scale` 만 남김. Airborne/Stunned 슬라임에는 적용 안 됨 (full deltaV 통과). 텐드릴/Burst 는 미적용.
+
+Beam pass-through (슬라임 → 지면): Beam 모드는 슬라임 명중 시 그 자리에서 멈추지 않고 슬라임 뒤편 지면까지 visual reach 가 이어짐. 구현: 1차 `CircleCastExcludingSelf` 가 슬라임을 잡으면 (slime push 처리 후) `passStart = origin + dir * (hit.distance + 0.05)` 부터 `CircleCastIgnoringSlime` 으로 추가 sweep — 첫 non-slime ground 가 발견되면 그 지점이 visual reach 끝점 + ground impact (VFX/사운드/SnowField carve). 단발/sustained/추적 모드 모두 적용. **Ground impact 간격**: `groundImpactPlayed` 플래그로 빔 인스턴스 lifetime (`fireStart+firing+postFire ≈ 0.78s`) 동안 1회 → 다음 발사는 `cooldownDuration` (기본 1.2s) 후. 즉 carve 는 빔당 1회. Branching tendril 도 동일하게 tendril 당 1회.
+
+Slime hit snow carve (Beam/Burst/Branching 공통): pass-through 가 snow 못 찾는 케이스 (빔 방향이 옆/위, 슬라임 아래 snow) 또는 Branching 처럼 pass-through 자체가 없는 모드 — 슬라임 명중 시 `GraniteBlastEmitter.CarveSnowNearSlime(slime, hitPoint)` 추가 호출로 슬라임 근처 SnowField 에 carve 발화. 해결 순서: (1) `slime.SurfaceCollider` 로 grounded host 직접 lookup, (2) 실패 시 `Physics2D.OverlapCircleAll(hitPoint, max(snowCarveRadius, 1))` 스캔 후 첫 등록된 SnowField 사용. 빔당/텐드릴당 1회 (첫 슬라임 접촉 frame 만). Branching 텐드릴은 슬라임을 뚫지 않고 그 자리에 halt — carve 는 슬라임 주변에 떨어지는 모양으로 발화.
+
+Beam 전용 slide overwrite (`beamOverwriteSlide=true`, 기본): grounded 슬라임이 빔 안에 머물면 매 프레임 두 호출을 동시에 발화 — (1) `SlimeController.ApplyHazardPushOverwriteSlide(pushDir * pinnedSpeed * scale, hit.point)` 가 `crawlVelocity` / `slideVelocity` 를 wipe 한 뒤 `crawlVelocity = Dot(deltaV, surfaceTangent)` 로 set, (2) `ApplyHazardPush(pushDir * KnockbackImpulse)` 가 externalDeltaV 채널에 임펄스 가산. **매 프레임이 "첫 접촉 frame" 처럼 처리됨** — hop / charging-jump 시도해도 매 프레임 임펄스가 다시 들어와 빔에서 쉽게 못 빠져나옴. grounded 에서는 FixedUpdateAttached 가 매 프레임 velocity 를 crawl 로 재구성 + externalDeltaV 가 매 프레임 소비/zero 되므로 임펄스가 누적되지 않고 "pinned + impulse" 일정 속도로 유지. Airborne/Stunned 는 두 호출 모두 가산 fallback → 의도된 누적 (공중에서 빔 맞으면 가속) . 추적 모드/단발 모드 모두 적용. `false` 로 두면 레거시 가산 (첫 frame 임펄스 + 매 프레임 accel) 하이브리드. 채널 정의는 [external-velocity-two-channel.md](../infra/external-velocity-two-channel.md) 참조.
 
 | Mode | 검출 방식 | 다중 명중 |
 |------|----------|-----------|
@@ -123,7 +131,7 @@ points[i]      = baseSamples[i] + perp * Random(-jaggedness, jaggedness) * sin(t
 | Knockback | `knockbackImpulse` (one-shot deltaV m/s), `knockbackAcceleration` (sustained deltaV/s² m/s²), `sustainedHit` (Beam 한정) — 2026-04-29 stage2 개편 후 stunDuration 제거됨 |
 | Firing Mode Control | `autoFire` (false 면 외부 `FireOnce()` 호출에서만 발사) |
 | Branching | `tendrilCount`, `targetRadius`, `launchSpreadDegrees`, `tendrilLaunchDistance`, `bendHeight`, `tendrilSegmentLength` (path-length 기반 동적 세그먼트), `tendrilJaggedness`, `tendrilDrawTime / Hold / Fade`, `tendrilCoreWidth`, `branchingFireStartFraction`, `trailDuration` (체이스 스프레드 sec), `trailLagOffset` (최신 텐드릴의 기본 랙 sec), `trailSampleInterval` |
-| Beam | `beamFadeTime`, `beamCoreWidth` (lifetime은 fireStart+firing+postFire) |
+| Beam | `beamFadeTime`, `beamCoreWidth`, `beamTravelSpeed`, `beamTrackAngularSpeed` (deg/sec, 0=고정 / >0=각속도 추적 + sustained 강제 + 첫접촉 임펄스 하이브리드), `beamTrackLag` (sec, 슬라임 trail 의 N초 전 위치를 조준 — 회피 여지), `beamTrackMode` (`InitialLagThenLive`=초기 방향만 lag 위치로 스냅샷 → 이후 LIVE 위치를 deg/sec 추적 / `ContinuousLag`=매 프레임 lag 위치를 deg/sec 추적), `beamGroundedSlideScale` (0..1, 빔 push deltaV 의 surfaceTangent 성분 사전 스케일 — grounded 슬라임이 빔에 맞고 있는 동안만 슬라이드 비율 조정. 1=레거시 풀 슬라이드, 0=빔 닿는 동안 슬라이드 정지), `beamOverwriteSlide` (bool, true=overwrite 채널 사용 — 기존 슬라이드 wipe 후 push 속도로 핀, false=레거시 가산 임펄스+가속 하이브리드), `beamOverwritePinnedSpeed` (m/s, overwrite 모드에서 매 프레임 핀할 tangent 속도 — `pushDir * pinned * groundedSlideScale` 로 `crawlVelocity` 직접 set) (lifetime은 fireStart+firing+postFire) |
 | Burst | `burstFlashCount`, `burstSpreadDegrees`, `burstFlashDuration`, `burstFlashFadeTime`, `burstFlashCoreWidth`, `burstFireStartFraction` (batch 모드), `burstFlashInterval` (>0 → 한 발씩 N초 간격으로 순차 발사. fraction 무시) |
 | Visual Colors | `coreColor`, `lineZOffset` |
 | Telegraph | `showPreFireTelegraph`, `telegraphWidth`, `telegraphColor` |
@@ -212,6 +220,12 @@ NavGraph 가 켜져있어도 무조건 그래프를 통과하지 않음 — 3-wa
 - `[Header("VFX")] groundExplosionPrefab` (ParticleSystem) — 지면 hit 일 때만 인스턴스화 (슬라임 hit 은 `impactPrefab` 작은 spark 만). 폭발 반경/AoE 는 없음 — 순수 VFX.
 - Tendril/Beam 둘 다 슬라임 vs 환경 분기에서 `owner.SpawnGroundExplosion` 호출. 슬라임 hit 시에는 호출 안 함.
 
+### 7-1. Snow carve on impact
+- `[Header("Snow Impact")]` `snowCarveOnImpact` (default true), `snowCarveDepth` (0.18), `snowCarveRadius` (0.6).
+- `GraniteBlastEmitter.CarveSnowAtImpact(hit.collider, hit.point)` — `SnowFieldRegistry.TryGet(hostCollider)` 로 `SnowField` 조회 후 `field.Carve(contactWorld, depth, radius)` 호출. SnowStamper 가 슬라임 착지 시 사용하는 동일 채널이라 시각이 일치함 (Generic carve 경로, `HandleLanded` 의 impact-speed 매핑은 우회 — emitter 가 직접 depth/radius 결정).
+- 호출 위치는 ground impact 분기 3곳: `GraniteBlastTendril` 의 ground hit, `GraniteBlastBeam` 단발 첫 ground 차폐, sustained 모드의 첫 ground 차폐 (`groundImpactPlayed` 가드 안 — 빔 한 발당 1회만 carve). Burst 는 `GraniteBlastBeam` 을 그대로 사용하므로 자동 적용.
+- 비-눈 표면(host collider 가 SnowFieldRegistry 에 등록 안 됨) hit 은 no-op. 슬라임 hit 시도 호출 안 함 (`!isSlime` 가드).
+
 ### 8. SlimeBurnVisual (피격 표현)
 - 슬라임 GO 에 부착. `SlimeController.OnHazardPushed (Vector2 deltaV, Vector2 hitPoint)` 구독.
 - **화상 자국 (OS-rest decal array)** [2026-04-30 redesign — 셸 + world-space half-space 방식 폐기]: 별도 셸 GO/셰이더 없이, 본체 [SlimeBody_Quibli.shader](../../../SlimeJumping_v2/Assets/Art/Shader/SlimeBody_Quibli.shader) (실제 렌더 경로) 와 fallback [SlimeBody3D.shader](../../../SlimeJumping_v2/Assets/Art/Shader/SlimeBody3D.shader) 가 직접 burn 을 그림. 공통 로직은 [SlimeBurn.hlsl](../../../SlimeJumping_v2/Assets/Art/Shader/SlimeBurn.hlsl) include 1개. 각 hit 은 OS-rest 좌표의 `Vector4` (`xyz` = 메시 rest-pose 오브젝트 공간 hit 위치, `w` = `radius * fade`) 로 저장 — 최대 24개 슬롯, 가장 오래된 것 evict. Quibli 본체 셰이더는 SnowField Phase 3 와 동일한 wrapper 패턴: `SlimeBurnVaryings { Quibli::Varyings v; float3 osPosRest : TEXCOORD9 }`, 신규 `SlimeBurnPassVertex` 가 `SLIME_APPLY_DEFORM` *이전에* `input.positionOS.xyz` 를 `osPosRest` 로 캡쳐 후 stock `LitPassVertex` 호출, 신규 `SlimeBurnPassFragment` 가 stock `StylizedPassFragment(i.v)` 결과에 `SampleBurn(osPosRest)` 마스크 post-blend (`col.rgb = lerp(col.rgb, 0, burnMask)`). OccludedSilhouette 패스는 wrapper 없이 `OccVaryings.osPosRest : TEXCOORD2` 직접 추가 + fillRGB 에 동일 lerp.
@@ -229,10 +243,53 @@ NavGraph 가 켜져있어도 무조건 그래프를 통과하지 않음 — 3-wa
 |--------|----------|
 | Firing Mode Control | `autoFire` |
 | Knockback | `knockbackImpulse`, `knockbackAcceleration`, `sustainedHit` |
+| Hit Feedback | `hitStopDuration`, `hitStopFrozenScale`, `hitShakeEmitter`, `hitShakeForce` |
+| Stun (optional) | `stunOnHitDuration`, `stunDamageType` |
 | Branching Mode | `navGraph`, `navWallMask` (Environment 기본), `bowDepthZ`, `controlPointZJitter` |
 | VFX | `groundExplosionPrefab` |
+| Snow Impact | `snowCarveOnImpact`, `snowCarveDepth`, `snowCarveRadius` |
 
 NavGraph 인스펙터에도 `edgeValidationMask` (default Environment), `blockedEdgeColor` (빨간색) 추가됨.
 
 ### 10. 제거된 필드
-- `knockbackForce`, `stunDuration` — `IHazardSource.GetHazardEffect()` 까지 함께 삭제.
+- `knockbackForce`, `stunDuration` — `IHazardSource.GetHazardEffect()` 까지 함께 삭제. (2026-05-01: `stunOnHitDuration` 으로 옵셔널 토글로 부활 — 11번 참고.)
+
+## 11. Hit Feedback (2026-05-01)
+
+피격감 강화를 위해 stage 2 의 stun-less push 채널 위에 3개 Tier-1 효과를 wiring + 옵셔널 stun 부활.
+
+### 11-1. 추가된 효과
+| 효과 | 트리거 | gating |
+|------|--------|--------|
+| Hit-stop (Time.timeScale dip) | 슬라임 첫 명중 | **버스트당 1회** (`feedbackBurstId` / `lastFeedbackFiredBurstId`) |
+| Camera impulse (Cinemachine) | 슬라임 첫 명중 | 위와 동일 — `HitStopService.Freeze` 가 atomically 발화 |
+| Body hit flash | 슬라임 명중 매번 | gating 없음 (`OnHazardPushed` 이벤트 위에서 자연 누적/페이드) |
+| Stun (옵션) | `stunOnHitDuration > 0` 일 때 | `ApplyHazardEffect` 의 `currentState == Stunned` 가드로 자체 dedupe |
+
+Branching 모드는 1회 발사로 최대 `tendrilCount`(기본 7) 텐드릴이 동시 발사되므로 burst 게이트가 없으면 스크린이 7배 흔들림 + 7배 freeze stack — `feedbackBurstId` 가 `EnterFireStart` 에서 ++, `TryFireHitStopFeedback()` 가 첫 호출만 통과시켜 그 발사에 대해 단 1회만 발화.
+
+### 11-2. 라우팅 (push vs stun)
+- `stunOnHitDuration <= 0` (default): 기존 `slime.ApplyHazardPush(deltaV)` 호출 — 가산 deltaV 채널, no-stun.
+- `stunOnHitDuration > 0`: `slime.ApplyHazardEffect(new HazardEffect { knockbackForce, knockbackDirection, stunDuration, damageType })` 로 라우팅 — 레거시 combined-channel 경로. velocity 가 직접 overwrite + Charging→Stunned 전이 + cleanup 모두 `SlimeController.ApplyHazardEffect` (line 1192) 가 처리. emitter / tendril / beam 코드는 단순 분기만.
+
+호출 helper: `GraniteBlastEmitter.TryApplyStunOnHit(slime, pushDir, impulseMag, hitPoint)` — stun 활성 시 ApplyHazardEffect 호출 후 `true` 반환, 비활성 시 false 반환 → caller 가 자체 push 로 fallback. Beam sustained 모드는 `firstSlimeContact` 게이트 안에서만 시도하고 stun 성공 시 overwrite-slide / accel 채널을 모두 스킵 (스턴된 슬라임이 sliding/pinning 의미 없음).
+
+### 11-3. Body hit flash
+SlimeBurn.hlsl 에 `_HitFlashStrength` (float) + `_HitFlashColor` (float4) 우니폼과 `SampleHitFlash()` 함수 추가 — `_Burns` 채널과 **완전 독립**. 4개 burn-blend 사이트(`SlimeBody3D.shader` ForwardLit/OccludedSilhouette, `SlimeBody_Quibli.shader` ForwardLit/OccludedSilhouette) 에서 burn lerp 직후에 `lerp(<output>, _HitFlashColor.rgb, SampleHitFlash())` 추가 — 순수 additive, burn 계산 결과를 읽지 않음.
+
+`SlimeBurnVisual.cs` 에서 `OnHazardPushed` 콜백 시 `flashEndTime = Time.time + hitFlashDuration` 갱신, `LateUpdate` 의 `PushBurnState` 가 매 프레임 `_HitFlashStrength` 를 선형 디케이로 푸시. 안전 장치 3중:
+1. **Pure addition** in HLSL — `SampleBurn` / `_Burns` / `_BurnCount` / `_BurnStrength` 본문 그대로.
+2. **Zero-default uniforms** — 미세팅 시 0 → flash lerp 가 no-op.
+3. **`enableHitFlash = false`** 시 매 프레임 strength 0 강제 푸시 — 이전 세션의 GPU stale state 방지.
+
+신규 인스펙터: `enableHitFlash` (bool, default true), `hitFlashColor` (HDR Color), `hitFlashPeak` (0..1), `hitFlashDuration` (sec, default 0.08).
+
+`.mat` material asset 은 미수정 — 신규 우니폼은 HLSL 에만 선언, `Properties { }` 블록에 노출 안 함.
+
+### 11-4. 관련 파일
+- [GraniteBlastEmitter.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.cs) — `[Header("Hit Feedback")]` / `[Header("Stun (optional)")]` SerializeFields, `feedbackBurstId`, `TryApplyStunOnHit`, `TryFireHitStopFeedback`
+- [GraniteBlastTendril.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastTendril.cs) — `CheckCollisionStep` 슬라임 분기에서 helper 호출
+- [GraniteBlastBeam.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastBeam.cs) — single-shot + sustained 양쪽에서 helper 호출
+- [SlimeBurn.hlsl](../../../SlimeJumping_v2/Assets/Art/Shader/SlimeBurn.hlsl) — `_HitFlashStrength` / `_HitFlashColor` / `SampleHitFlash`
+- [SlimeBurnVisual.cs](../../../SlimeJumping_v2/Assets/Scripts/Visual/SlimeBurnVisual.cs) — flash decay timer + MPB push
+- [HitStopService.cs](../../../SlimeJumping_v2/Assets/Scripts/Effects/HitStopService.cs) (재사용) — Freeze + ImpulseEmitter 동기 발화, charge 가드 자동 적용

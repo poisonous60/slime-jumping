@@ -18,7 +18,9 @@ namespace SlimeJumping.Mechanisms
                 duration: beamLife,
                 fadeTime: beamFadeTime,
                 coreWidth: beamCoreWidth,
-                travelSpeed: beamTravelSpeed);
+                travelSpeed: beamTravelSpeed,
+                trackAngularSpeed: beamTrackAngularSpeed,
+                trackLag: beamTrackLag);
         }
     }
 }

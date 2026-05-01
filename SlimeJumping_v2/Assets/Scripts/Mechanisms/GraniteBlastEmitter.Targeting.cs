@@ -109,6 +109,47 @@ namespace SlimeJumping.Mechanisms
             return best;
         }
 
+        // CircleCast variant that skips slime colliders entirely — used by Beam
+        // pass-through to find the ground BEHIND the slime so the beam reaches it
+        // visually and carves SnowField even when a slime sits in the path. Same
+        // self/trigger exclusion rules as CircleCastExcludingSelf, but slime hits
+        // (anything with a SlimeController in its parent chain) are filtered out.
+        public RaycastHit2D CircleCastIgnoringSlime(Vector2 origin, float radius, Vector2 dir, float maxDist, LayerMask mask)
+        {
+            var hits = Physics2D.CircleCastAll(origin, radius, dir, maxDist, mask);
+            RaycastHit2D best = default;
+            float bestDist = float.PositiveInfinity;
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var h = hits[i];
+                if (h.collider == null) continue;
+                if (h.collider.transform.IsChildOf(transform)) continue;
+                if (h.collider.isTrigger) continue;
+                if (h.collider.GetComponentInParent<SlimeController>() != null) continue;
+                if (h.distance < bestDist)
+                {
+                    bestDist = h.distance;
+                    best = h;
+                }
+            }
+            return best;
+        }
+
+        // Trail-lagged slime position lookup. Returns the slime's recorded XY from
+        // ~lagSeconds ago (interpolated to the nearest sample bucket). Used by Beam
+        // mode tracking so the beam aims at where the slime was, not where it is.
+        // Falls back to live target position when the trail is empty or lag<=0.
+        public Vector2 GetLaggedTargetPosition(float lagSeconds)
+        {
+            if (target == null) return AimOrigin();
+            if (lagSeconds <= 0f || slimeWorldTrail.Count == 0)
+                return new Vector2(target.position.x, target.position.y);
+            float interval = Mathf.Max(0.001f, trailSampleInterval);
+            int lagSamples = Mathf.RoundToInt(lagSeconds / interval);
+            int idx = Mathf.Clamp((slimeWorldTrail.Count - 1) - lagSamples, 0, slimeWorldTrail.Count - 1);
+            return slimeWorldTrail[idx];
+        }
+
         private void SampleTrail()
         {
             if (target == null) return;

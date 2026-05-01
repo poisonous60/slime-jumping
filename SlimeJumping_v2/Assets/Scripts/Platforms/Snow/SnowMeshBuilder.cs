@@ -5,12 +5,13 @@ namespace SlimeJumping.Platforms.Snow
 {
     /// <summary>
     /// Builds the static snow mesh whose vertices the snow shader will displace at
-    /// runtime via _SnowHeightTex. The mesh itself is un-displaced — vertex positions
-    /// equal patch.verts[i]; the per-vertex displacement direction lives in tangent.xyz
-    /// (typically patch.vertNormals[i] for surface verts, zero for "base" boundary
-    /// verts that should stay glued to the host); uv2.x indexes the 1D height texture
-    /// (= heightCurrent), uv2.y carries heightRest for that vertex. Phase 3 fragment
-    /// shader reads both to compute the carve mask 1 - heightCurrent/heightRest.
+    /// runtime via _SnowHeightBuf (StructuredBuffer&lt;float&gt;). The mesh itself is
+    /// un-displaced — vertex positions equal patch.verts[i]; the per-vertex displacement
+    /// direction lives in tangent.xyz (typically patch.vertNormals[i] for surface verts,
+    /// zero for "base" boundary verts that should stay glued to the host); uv2.x carries
+    /// the raw vertex index (cast to uint in the shader to index _SnowHeightBuf),
+    /// uv2.y carries heightRest for that vertex. Phase 3 fragment shader reads both
+    /// to compute the carve mask 1 - heightCurrent/heightRest.
     ///
     /// Per-tri flat shading is preserved by re-emitting each triangle's three corners
     /// per face with that face's normal, computed at REST positions (verts +
@@ -59,7 +60,6 @@ namespace SlimeJumping.Platforms.Snow
             var uvs2  = new List<Vector2>();
             var tris  = new List<int>();
 
-            float invV = 1f / V;
             Vector4 zeroTangent = new Vector4(0f, 0f, 0f, 1f);
 
             void AddVert(int origIdx, Vector3 normal, Vector4 tangent)
@@ -69,7 +69,10 @@ namespace SlimeJumping.Platforms.Snow
                 norms.Add(normal);
                 tans.Add(tangent);
                 uvs.Add(new Vector2(pos.x, pos.y));
-                uvs2.Add(new Vector2((origIdx + 0.5f) * invV, heightRest[origIdx]));
+                // uv2.x carries the raw vertex index (the shader casts to uint and
+                // indexes _SnowHeightBuf). uv2.y carries heightRest used by the
+                // fragment carve mask.
+                uvs2.Add(new Vector2(origIdx, heightRest[origIdx]));
             }
 
             // Top face: per patch triangle, emit both winding orders so a single material

@@ -7,7 +7,7 @@ namespace SlimeJumping.Platforms.Snow
     /// Drape a slope-filtered snow visual on a mesh-based platform. Spawns one child
     /// "SnowStrip_N" GameObject per upward-facing connected component of the host's
     /// triangulation; each child gets a snow mesh whose vertex displacement is driven
-    /// by an MPB-bound 1D heightTex (Phase 2 GPU shader path).
+    /// by an MPB-bound 1D heightBuf (Phase 2 GPU shader path).
     ///
     /// Pure visual: no collider, no SurfaceTag — the slime always walks on the host's
     /// own collider. The snow follows the host's full 3D top surface (slopes, hills,
@@ -22,6 +22,11 @@ namespace SlimeJumping.Platforms.Snow
     ///    every child SnowStrip (each does its own AABB pre-filter).
     ///  - FixedUpdate ticks recovery only on strips currently dirty/recovering and
     ///    prunes them from the active set once fully recovered → idle cost 0.
+    ///
+    /// Phase 2.1 (current): per-vertex height now ships to the GPU as a
+    /// StructuredBuffer&lt;float&gt; (_SnowHeightBuf) bound per-renderer via MPB; replaces
+    /// the previous V×1 RFloat Texture2D so dense subdivided patches that exceed GPU
+    /// max texture width upload cleanly.
     /// </summary>
     [ExecuteAlways]
     [DisallowMultipleComponent]
@@ -39,6 +44,16 @@ namespace SlimeJumping.Platforms.Snow
         [Header("Wiring")]
         [Tooltip("Host platform's Collider2D. Registered as the routing key in SnowFieldRegistry — SlimeController.SurfaceCollider must equal this for carve events to land here.")]
         public Collider2D hostCollider;
+
+        [Header("Overlap masking")]
+        [Tooltip("Drop snow triangles whose XY centroid lies inside another Collider2D (anything other than hostCollider on the layer mask below). Use to keep snow off regions hidden behind other platforms — only the externally exposed rim of the host top keeps snow, so overlapping meshes don't z-fight.")]
+        public bool excludeOverlapWithOtherPlatforms = true;
+
+        [Tooltip("Layers tested for overlap. Colliders on these layers (excluding hostCollider) mask out snow triangles. Defaults to all layers.")]
+        public LayerMask overlapLayerMask = ~0;
+
+        [Tooltip("Tiebreak when two SnowFields overlap each other. Higher priority keeps snow in the overlap; lower priority drops it. Equal priority falls back to hostCollider InstanceID (higher wins). Without this rule both fields would mask each other and the overlap stays bare.")]
+        public int overlapPriority = 0;
 
         [Header("Debug")]
         public bool drawPatchOutlines = true;
@@ -81,7 +96,7 @@ namespace SlimeJumping.Platforms.Snow
         // applied. Created in RebuildNow, assigned to every child SnowStrip renderer,
         // disposed in ClearChildren / OnDisable / OnDestroy. The shared snowMaterial
         // asset itself is never mutated (matches the read-only invariant the rest of
-        // the system already follows for per-strip heightTex via MPB).
+        // the system already follows for per-strip heightBuf via MPB).
         [System.NonSerialized] Material runtimeMaterial;
 
         // Property IDs for runtime-material texture pushes.
@@ -97,12 +112,16 @@ namespace SlimeJumping.Platforms.Snow
         void Reset()
         {
             ResolveSourceMeshFilter();
+            ResolveSettings();
+            ResolveHostCollider();
             ScheduleRebuild();
         }
 
         void Awake()
         {
             ResolveSourceMeshFilter();
+            ResolveSettings();
+            ResolveHostCollider();
             if (Application.isPlaying) RebuildNow();
         }
 
@@ -184,6 +203,9 @@ namespace SlimeJumping.Platforms.Snow
             Carve(contactWorld, depth, radius);
         }
 
+        const CarveProfileType DefaultCarveProfile = CarveProfileType.RaisedCosine;
+        public CarveProfileType CarveProfile => settings != null ? settings.carveProfile : DefaultCarveProfile;
+
         /// <summary>Generic carve at a world-space point. Use this for non-landing
         /// sources (blast radius, projectiles, debug tools) where the caller already
         /// knows the desired dip depth and radius — bypasses the impact-speed mapping
@@ -197,13 +219,14 @@ namespace SlimeJumping.Platforms.Snow
             Vector3 localImpact = sourceMeshFilter.transform.InverseTransformPoint(
                 new Vector3(contactWorld.x, contactWorld.y, 0f));
 
+            var profile = CarveProfile;
             for (int i = 0; i < transform.childCount; i++)
             {
                 var child = transform.GetChild(i);
                 if (child == null) continue;
                 var strip = child.GetComponent<SnowStrip>();
                 if (strip == null) continue;
-                if (strip.CarveLocal(localImpact, depth, radius))
+                if (strip.CarveLocal(localImpact, depth, radius, profile))
                     activeStrips.Add(strip);
             }
         }
@@ -236,6 +259,8 @@ namespace SlimeJumping.Platforms.Snow
         void OnValidate()
         {
             ResolveSourceMeshFilter();
+            ResolveSettings();
+            ResolveHostCollider();
             ScheduleRebuild();
         }
 
@@ -274,6 +299,34 @@ namespace SlimeJumping.Platforms.Snow
             }
         }
 
+        const string DefaultSettingsAssetPath = "Assets/Settings/Snow_Default.asset";
+
+        void ResolveSettings()
+        {
+            if (settings != null) return;
+#if UNITY_EDITOR
+            var found = UnityEditor.AssetDatabase.LoadAssetAtPath<SnowSettings>(DefaultSettingsAssetPath);
+            if (found != null) settings = found;
+#endif
+        }
+
+        // Walk this GO and parent chain looking for a Collider2D. Mirrors the d2-style
+        // setup where the platform's PolygonCollider2D lives on the parent and the mesh
+        // (with this SnowField) lives on a child.
+        void ResolveHostCollider()
+        {
+            if (hostCollider != null) return;
+            var c = GetComponent<Collider2D>();
+            if (c != null) { hostCollider = c; return; }
+            var t = transform.parent;
+            while (t != null)
+            {
+                c = t.GetComponent<Collider2D>();
+                if (c != null) { hostCollider = c; return; }
+                t = t.parent;
+            }
+        }
+
         // -- Build ---------------------------------------------------------------
 
         public void RebuildNow()
@@ -287,6 +340,21 @@ namespace SlimeJumping.Platforms.Snow
 
             var mesh = sourceMeshFilter.sharedMesh;
             var patches = SnowTopSurfaceExtractor.Extract(mesh, MaxSnowSlopeDeg);
+
+            // Mask requires hostCollider to recognise its OWN collider as host —
+            // otherwise the host's polygon hits OverlapPoint at every interior vert
+            // and the entire patch gets dropped. Warn + skip masking instead of
+            // silently producing nearly-empty snow.
+            bool maskActive = excludeOverlapWithOtherPlatforms;
+            if (maskActive && hostCollider == null)
+            {
+                Debug.LogWarning(
+                    $"[SnowField] '{name}': excludeOverlapWithOtherPlatforms is ON but hostCollider " +
+                    $"is unassigned — overlap mask is skipped (otherwise the host's own collider would " +
+                    $"mask the entire patch). Assign Host Collider in the inspector to use the mask.",
+                    this);
+                maskActive = false;
+            }
 
             ClearChildren();
             activeStrips.Clear();
@@ -308,6 +376,17 @@ namespace SlimeJumping.Platforms.Snow
                 int subdiv = SubdivLevels;
                 if (subdiv > 0)
                     patch = SnowPatchSubdivider.Subdivide(patch, subdiv);
+
+                // Drop tris hidden behind other platforms so overlapping meshes don't
+                // z-fight. Runs after Subdivide so the mask works at the same vertex
+                // resolution the snow mesh will be emitted at; runs before BFS taper
+                // so the new boundary verts get the same edge ramp as the original rim.
+                if (maskActive)
+                {
+                    patch = MaskOutOverlap(patch, sourceMeshFilter.transform);
+                    if (patch.verts == null || patch.verts.Length < 3) continue;
+                    if (patch.tris == null || patch.tris.Length < 3) continue;
+                }
 
                 int V = patch.verts.Length;
                 var heights = new float[V];
@@ -432,6 +511,153 @@ namespace SlimeJumping.Platforms.Snow
             lastHostMeshHash = ComputeHostMeshHash(mesh);
         }
 
+        // True if `worldXY` lies inside any non-host Collider2D on the filter, with
+        // SnowField↔SnowField arbitration via overlapPriority (higher wins; tiebreak
+        // on hostCollider InstanceID). Used by MaskOutOverlap to test multiple sample
+        // points per triangle.
+        bool SamplePointHitsOther(Vector2 worldXY, ContactFilter2D filter, Collider2D[] hits, int myId)
+        {
+            int n = Physics2D.OverlapPoint(worldXY, filter, hits);
+            for (int i = 0; i < n; i++)
+            {
+                var h = hits[i];
+                if (h == null) continue;
+                if (h == hostCollider) continue;
+                if (SnowFieldRegistry.TryGet(h, out var otherField) && otherField != null && otherField != this)
+                {
+                    if (otherField.overlapPriority > overlapPriority) return true;
+                    if (otherField.overlapPriority < overlapPriority) continue;
+                    if (h.GetInstanceID() > myId) return true;
+                    continue;
+                }
+                return true;
+            }
+            return false;
+        }
+
+        // Filter out triangles where any of (3 verts, centroid) — in world XY — falls
+        // inside another Collider2D on the mask. Rebuild the patch's verts/normals/
+        // tris/boundaryEdges from the kept tris so the BFS taper downstream sees the
+        // new directed boundary and curls the snow rim down at the cut edge.
+        SnowTopSurfaceExtractor.TopPatch MaskOutOverlap(
+            SnowTopSurfaceExtractor.TopPatch patch, Transform meshT)
+        {
+            if (patch.tris == null || patch.tris.Length < 3) return patch;
+
+            var filter = ContactFilter2D.noFilter;
+            filter.SetLayerMask(overlapLayerMask);
+            filter.useTriggers = false;
+
+            var hits = new Collider2D[8];
+            int triCount = patch.tris.Length / 3;
+            var keep = new bool[triCount];
+            int kept = 0;
+
+            // Sample 4 points per tri (3 verts + centroid) instead of centroid only.
+            // Centroid-only kept tris that straddle the overlap boundary — one vertex
+            // pokes into the other platform — producing a thin tearing band along the
+            // seam. Dropping the tri if any of the 4 samples is inside another platform
+            // lets the BFS taper close the gap cleanly.
+            int myId = hostCollider != null ? hostCollider.GetInstanceID() : GetInstanceID();
+            for (int t = 0; t < triCount; t++)
+            {
+                int ia = patch.tris[t * 3];
+                int ib = patch.tris[t * 3 + 1];
+                int ic = patch.tris[t * 3 + 2];
+                Vector3 wa = meshT.TransformPoint(patch.verts[ia]);
+                Vector3 wb = meshT.TransformPoint(patch.verts[ib]);
+                Vector3 wc = meshT.TransformPoint(patch.verts[ic]);
+                Vector2 p0 = new Vector2(wa.x, wa.y);
+                Vector2 p1 = new Vector2(wb.x, wb.y);
+                Vector2 p2 = new Vector2(wc.x, wc.y);
+                Vector2 pc = new Vector2(
+                    (wa.x + wb.x + wc.x) / 3f,
+                    (wa.y + wb.y + wc.y) / 3f);
+
+                bool dropTri = SamplePointHitsOther(p0, filter, hits, myId)
+                            || SamplePointHitsOther(p1, filter, hits, myId)
+                            || SamplePointHitsOther(p2, filter, hits, myId)
+                            || SamplePointHitsOther(pc, filter, hits, myId);
+                keep[t] = !dropTri;
+                if (keep[t]) kept++;
+            }
+
+            if (kept == triCount) return patch;
+            if (kept == 0)
+            {
+                return new SnowTopSurfaceExtractor.TopPatch
+                {
+                    verts = new Vector3[0],
+                    vertNormals = new Vector3[0],
+                    tris = new int[0],
+                    boundaryEdges = new int[0],
+                };
+            }
+
+            int origV = patch.verts.Length;
+            var oldToNew = new int[origV];
+            for (int i = 0; i < origV; i++) oldToNew[i] = -1;
+            int newV = 0;
+            for (int t = 0; t < triCount; t++)
+            {
+                if (!keep[t]) continue;
+                for (int e = 0; e < 3; e++)
+                {
+                    int oi = patch.tris[t * 3 + e];
+                    if (oldToNew[oi] < 0) oldToNew[oi] = newV++;
+                }
+            }
+
+            var newVerts = new Vector3[newV];
+            var newNorms = new Vector3[newV];
+            for (int i = 0; i < origV; i++)
+            {
+                int n = oldToNew[i];
+                if (n < 0) continue;
+                newVerts[n] = patch.verts[i];
+                newNorms[n] = patch.vertNormals[i];
+            }
+
+            var newTris = new int[kept * 3];
+            int wt = 0;
+            for (int t = 0; t < triCount; t++)
+            {
+                if (!keep[t]) continue;
+                newTris[wt++] = oldToNew[patch.tris[t * 3]];
+                newTris[wt++] = oldToNew[patch.tris[t * 3 + 1]];
+                newTris[wt++] = oldToNew[patch.tris[t * 3 + 2]];
+            }
+
+            // Re-derive directed boundary edges (a→b appears, b→a doesn't) from the
+            // filtered triangulation. Same scheme SnowTopSurfaceExtractor uses, so the
+            // taper / side-strip downstream treats this output identically to a fresh
+            // patch.
+            var dirSet = new HashSet<long>();
+            for (int t = 0; t < newTris.Length; t += 3)
+            {
+                int a = newTris[t], b = newTris[t + 1], c = newTris[t + 2];
+                dirSet.Add(((long)a << 32) | (uint)b);
+                dirSet.Add(((long)b << 32) | (uint)c);
+                dirSet.Add(((long)c << 32) | (uint)a);
+            }
+            var bedges = new List<int>();
+            foreach (long e in dirSet)
+            {
+                int a = (int)(e >> 32);
+                int b = (int)(e & 0xFFFFFFFFL);
+                long rev = ((long)b << 32) | (uint)a;
+                if (!dirSet.Contains(rev)) { bedges.Add(a); bedges.Add(b); }
+            }
+
+            return new SnowTopSurfaceExtractor.TopPatch
+            {
+                verts = newVerts,
+                vertNormals = newNorms,
+                tris = newTris,
+                boundaryEdges = bedges.ToArray(),
+            };
+        }
+
         void ClearChildren()
         {
             var toKill = new List<GameObject>();
@@ -468,7 +694,7 @@ namespace SlimeJumping.Platforms.Snow
 
             // Clone the asset so keyword/texture writes here never dirty the source.
             // HideFlags.DontSave keeps the clone out of the scene file — same posture
-            // as the per-strip heightTex.
+            // as the per-strip heightBuf.
             runtimeMaterial = new Material(baseMat)
             {
                 name = baseMat.name + " (Snow Runtime)",

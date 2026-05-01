@@ -311,13 +311,27 @@ namespace SlimeJumping.Mechanisms
                 Vector3 emitterOrigin = owner.AimOrigin();
                 Vector2 away = (Vector2)slime.transform.position - new Vector2(emitterOrigin.x, emitterOrigin.y);
                 Vector2 pushDir = away.sqrMagnitude > 0.0001f ? away.normalized : dir;
-                slime.ApplyHazardPush(pushDir * owner.KnockbackImpulse, hit.point);
+                if (!owner.TryApplyStunOnHit(slime, pushDir, owner.KnockbackImpulse, hit.point))
+                {
+                    slime.ApplyHazardPush(pushDir * owner.KnockbackImpulse, hit.point);
+                }
+                owner.TryFireHitStopFeedback();
             }
 
             SpawnImpact(hit.point, hit.normal);
-            // Big explosion VFX is for ground impacts only — slime hits keep just the
-            // small spark from SpawnImpact.
-            if (!isSlime) owner.SpawnGroundExplosion(hit.point, hit.normal);
+            if (isSlime)
+            {
+                // Tendril doesn't pass through the slime — carve snow around the slime
+                // body so the visible bite still appears even though the bolt halts here.
+                owner.CarveSnowNearSlime(slime, hit.point);
+            }
+            else
+            {
+                // Big explosion VFX is for ground impacts only — slime hits keep just
+                // the small spark from SpawnImpact.
+                owner.SpawnGroundExplosion(hit.point, hit.normal);
+                owner.CarveSnowAtImpact(hit.collider, hit.point);
+            }
             owner.PlayGroundImpactSound(hit.point);
         }
 

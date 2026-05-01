@@ -20,6 +20,12 @@ namespace SlimeJumping.Mechanisms
     {
         public enum FireMode { Branching, Beam, Burst }
         public enum State { Idle, Detecting, PreFire, FireStart, Firing, PostFire, Cooldown }
+        // Beam tracking strategies after spawn:
+        //   InitialLagThenLive — initial dir snapshots the lagged trail position, then
+        //                        deg/sec rotation tracks the LIVE slime (no lag).
+        //   ContinuousLag      — every frame the rotation target is the lagged trail
+        //                        position (slime's pos N seconds ago).
+        public enum BeamTrackMode { InitialLagThenLive, ContinuousLag }
 
         [Header("Firing Mode Control")]
         [Tooltip("When true (default), the emitter auto-detects targets and fires on its own. When false, the emitter stays Idle until external code calls FireOnce() — used for scripted/triggered shots (e.g., GraniteBlastTrigger volumes).")]
@@ -71,6 +77,22 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Beam mode only. When true, the beam keeps re-sweeping each frame and pushes whatever slime sits in the path; the slime is not stunned and can keep playing — but cannot easily walk into the beam. False = legacy single-hit halt behavior (each beam halts on the first slime, applies impulse once).")]
         [SerializeField] private bool sustainedHit = false;
 
+        [Header("Hit Feedback")]
+        [Tooltip("Time.timeScale freeze duration (realtime sec) on first slime hit per burst. 0 = disabled. HitStopService is auto-vetoed during charge.")]
+        [SerializeField] private float hitStopDuration = 0.06f;
+        [Tooltip("Time.timeScale during the freeze. 0 = full freeze, 0.05 = 95% slow-mo.")]
+        [Range(0f, 1f)] [SerializeField] private float hitStopFrozenScale = 0.0f;
+        [Tooltip("Cinemachine impulse source emitted on slime hit. Leave null to skip.")]
+        [SerializeField] private SlimeJumping.Effects.ImpulseEmitter hitShakeEmitter;
+        [Tooltip("Impulse force multiplier for camera shake on slime hit.")]
+        [SerializeField] private float hitShakeForce = 1.0f;
+
+        [Header("Stun (optional)")]
+        [Tooltip("Stun duration (sec) applied on slime hit. 0 = disabled (default — stun-less push channel). When > 0, the hit calls ApplyHazardEffect (legacy combined-channel path) instead of ApplyHazardPush.")]
+        [SerializeField] private float stunOnHitDuration = 0f;
+        [Tooltip("DamageType tag attached to the stun (visual / audio differentiation only — no gameplay effect).")]
+        [SerializeField] private SlimeJumping.Interfaces.DamageType stunDamageType = SlimeJumping.Interfaces.DamageType.Lightning;
+
         [Header("Branching Mode")]
         [Tooltip("Optional A* navigation graph. When set, Branching tendrils route through navGraph.FindPath(muzzle, slime) ONLY IF a direct line from muzzle to slime is blocked by walls (navWallMask). Direct LOS clear → bezier direct fire. Behind a wall → A* through navGraph. No clean entry/exit nodes → bezier fallback. Leave null to disable graph routing entirely.")]
         [SerializeField] private GraniteBlastNavGraph navGraph;
@@ -115,6 +137,18 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float beamCoreWidth = 0.55f;
         [Tooltip("Beam tip travel speed in world units per second. The beam visibly grows from muzzle along the locked direction, doing per-frame collision sweeps; halts on the first slime/terrain it actually encounters at that moment. 0 = instant full-length beam (hitscan-style fallback).")]
         [SerializeField] private float beamTravelSpeed = 80f;
+        [Tooltip("Angular tracking speed (deg/sec). After spawn, the beam's aim direction rotates toward the lagged slime position at this rate. 0 = legacy frozen direction. When >0, the beam re-sweeps every frame (sustained behavior is forced) and applies KnockbackImpulse on first slime contact + KnockbackAcceleration*dt every frame thereafter.")]
+        [SerializeField] private float beamTrackAngularSpeed = 90f;
+        [Tooltip("Aim lag (sec). The beam targets the slime's position from this many seconds ago using the recorded slime trail. 0 = aim at live position. Larger = more 'predictable' — gives the player time to dodge as the beam swings toward the past trail.")]
+        [SerializeField] private float beamTrackLag = 0.25f;
+        [Tooltip("How beamTrackLag is applied during the beam's lifetime.\n• InitialLagThenLive: initial aim is snapshot at the lagged position, then the beam rotates toward the LIVE slime position (deg/sec capped). Lag becomes a head-start gift, no continuous prediction.\n• ContinuousLag: every frame the rotation target is the lagged trail position. Lag persists for the whole beam.")]
+        [SerializeField] private BeamTrackMode beamTrackMode = BeamTrackMode.InitialLagThenLive;
+        [Tooltip("Surface-slide multiplier applied to beam pushes while the slime is grounded (Attached/Charging). 1 = full slide (legacy), 0 = no slide while in beam, 0.3 = 30% slide. Pre-scales the tangent component of deltaV before ApplyHazardPush so the slime's slope projection in SlimeController stays untouched. Only the beam path uses this; tendrils/burst still apply at full magnitude.")]
+        [Range(0f, 1f)] [SerializeField] private float beamGroundedSlideScale = 0.3f;
+        [Tooltip("When true (default), beam hits OVERWRITE the slime's surface slide instead of adding to it — a slime already sliding gets pinned to the new push velocity each frame. Routes through SlimeController.ApplyHazardPushOverwriteSlide which wipes crawlVelocity/slideVelocity. When false, falls back to legacy additive impulse + accumulating accel hybrid.")]
+        [SerializeField] private bool beamOverwriteSlide = true;
+        [Tooltip("Pinned tangent speed (m/s) used by the overwrite channel. Each frame the beam hits a grounded slime, the slime's tangent velocity is set to pushDir * (this) * beamGroundedSlideScale. Independent from knockbackImpulse — that field still drives the overwrite=false legacy path. Higher = slime is pushed away faster while pinned.")]
+        [SerializeField] private float beamOverwritePinnedSpeed = 14f;
 
         [Header("Burst Mode (multi-beam fan)")]
         [Tooltip("Number of beam-flashes in the fan.")]
@@ -177,6 +211,14 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Enabled while a target is detected.")]
         [SerializeField] private GameObject detectionIndicator;
 
+        [Header("Snow Impact")]
+        [Tooltip("When true, ground hits on a SnowField host collider carve a dent (same channel the slime uses on landing). Off-snow hits are unaffected.")]
+        [SerializeField] private bool snowCarveOnImpact = true;
+        [Tooltip("Snow dent depth (world units) per ground hit. Mirrors the slime-landing carve scale; the slime's hard landing is ~0.20.")]
+        [SerializeField] private float snowCarveDepth = 0.18f;
+        [Tooltip("Snow dent radius (world units) per ground hit.")]
+        [SerializeField] private float snowCarveRadius = 0.6f;
+
         // --- runtime FSM ---
         private State state = State.Idle;
         private float stateTimer;
@@ -192,6 +234,12 @@ namespace SlimeJumping.Mechanisms
         private Vector3 chargeGlowBaseScale = Vector3.one;
         private bool chargeGlowCaptured;
 
+        // Per-burst feedback gate. Branching mode fires up to tendrilCount
+        // tendrils per burst; without gating each one would fire its own
+        // freeze + camera impulse. Increment at FireStart, consume once.
+        private int feedbackBurstId;
+        private int lastFeedbackFiredBurstId = -1;
+
         // --- public access for spawned projectiles ---
         public LayerMask BulletHitMask => bulletHitMask;
         public float MaxRange => maxRange;
@@ -206,6 +254,44 @@ namespace SlimeJumping.Mechanisms
         public LayerMask NavWallMask => navWallMask;
         public State CurrentState => state;
         public bool IsBusy => state != State.Idle && state != State.Cooldown;
+        public Transform Target => target;
+        public float BeamTrackAngularSpeed => beamTrackAngularSpeed;
+        public float BeamTrackLag => beamTrackLag;
+        public BeamTrackMode BeamTrackingMode => beamTrackMode;
+        public float BeamGroundedSlideScale => beamGroundedSlideScale;
+        public bool BeamOverwriteSlide => beamOverwriteSlide;
+        public float BeamOverwritePinnedSpeed => beamOverwritePinnedSpeed;
+        public float StunOnHitDuration => stunOnHitDuration;
+        public SlimeJumping.Interfaces.DamageType StunDamageType => stunDamageType;
+
+        // Routes a slime hit through ApplyHazardEffect (combined-channel, legacy
+        // stun path) when stun is configured, else returns false so the caller
+        // falls back to its own ApplyHazardPush logic.
+        public bool TryApplyStunOnHit(SlimeController slime, Vector2 pushDir, float impulseMagnitude, Vector2 hitPoint)
+        {
+            if (stunOnHitDuration <= 0f || slime == null) return false;
+            slime.ApplyHazardEffect(new SlimeJumping.Interfaces.HazardEffect
+            {
+                knockbackForce = impulseMagnitude,
+                knockbackDirection = pushDir,
+                stunDuration = stunOnHitDuration,
+                damageType = stunDamageType,
+            });
+            return true;
+        }
+
+        // One-time hit feedback (HitStop + camera shake) per burst. Branching
+        // mode fires up to tendrilCount tendrils per burst — gating here
+        // prevents Cinemachine impulse stacking and Time.timeScale dip
+        // re-extension on every same-burst hit.
+        public void TryFireHitStopFeedback()
+        {
+            if (lastFeedbackFiredBurstId == feedbackBurstId) return;
+            lastFeedbackFiredBurstId = feedbackBurstId;
+            if (hitStopDuration <= 0f && hitShakeEmitter == null) return;
+            SlimeJumping.Effects.HitStopService.Freeze(
+                hitStopDuration, hitShakeEmitter, hitShakeForce, hitStopFrozenScale);
+        }
 
         void Start()
         {
@@ -346,6 +432,7 @@ namespace SlimeJumping.Mechanisms
         {
             state = State.FireStart;
             stateTimer = fireStartDuration;
+            feedbackBurstId++;
             HideTelegraph();
 
             if (muzzleFlash != null) muzzleFlash.Play(true);

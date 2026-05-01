@@ -1,6 +1,6 @@
-# 외부 속도 Two-Channel Model
+# 외부 속도 채널 모델
 
-환경 기믹이 슬라임 속도에 기여하는 두 채널.
+환경 기믹이 슬라임 속도에 기여하는 채널들.
 
 ## 가산 채널 — `AddExternalVelocity(Vector2 deltaV)`
 - `externalDeltaV` (Vector2): 매 FixedUpdate 소비/초기화. 호출측이 `acceleration * dt`를 넘김.
@@ -8,6 +8,18 @@
 - **Airborne/Stunned** → velocity에 직접 가산.
 - **Attached/Charging** → `surfaceTangent`에 투영 후 가산 (법선 성분 제거, 스냅 지터 방지).
 - 사용처: WindZone2D, ConveyorBelt, WaterZone(부력).
+
+## Hazard 가산 채널 — `ApplyHazardPush(Vector2 deltaV, Vector2 hitPoint)`
+- `externalDeltaV` 동일 경로 — 가산 + `OnHazardPushed` 이벤트 발화 (SlimeBurnVisual 등 반응).
+- 사용처: GraniteBlast Branching/Beam(legacy)/Burst.
+
+## Hazard Overwrite 채널 — `ApplyHazardPushOverwriteSlide(Vector2 deltaV, Vector2 hitPoint)`
+- Attached/Charging 상태에서: `crawlVelocity` / `slideVelocity` 영구 채널을 wipe 후 `Vector2.Dot(deltaV, surfaceTangent)` 로 `crawlVelocity` 를 set. 다음 FixedUpdate 의 `velocity = surfaceTangent * (slideSpeed + crawlVelocity)` 가 새 값으로 재구성됨.
+- Airborne/Stunned: `externalDeltaV += deltaV` 로 fallback (slide 채널 비활성).
+- 가산 채널과 달리 기존 슬라이드 momentum 을 **덮어씀** — 이미 슬라이딩 중인 슬라임도 새 push 속도로 즉시 핀(pin) 됨.
+- 중력 슬로프 슬라이드(`slideSpeed`)는 매 프레임 재계산되므로 hazard 가 호출을 멈추면 자연스럽게 복귀.
+- `OnHazardPushed` 동시 발화.
+- 사용처: GraniteBlast Beam (`beamOverwriteSlide=true`).
 
 ## 곱셈 채널 — `MultiplyVelocity(float factor)` / `ApplyDragFactor(float factor)`
 - `velocity *= factor` 직접 적용. 프레임당 호출.

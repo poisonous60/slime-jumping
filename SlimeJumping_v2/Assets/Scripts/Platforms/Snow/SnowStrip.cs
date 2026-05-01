@@ -5,10 +5,16 @@ namespace SlimeJumping.Platforms.Snow
     /// <summary>
     /// Per-patch data + GPU upload bridge for the snow visual.
     ///
-    /// Phase 1 baked Geometry from heightCurrent at build time. Phase 2 keeps the mesh
-    /// static (un-displaced verts; uv2 → heightTex coord; tangent.xyz → vertex-normal
-    /// displacement direction) and instead uploads the per-vertex height array to a small
-    /// 1D RFloat texture each FixedUpdate when carve / recovery actually changed values.
+    /// Phase 1 baked geometry from heightCurrent at build time. Phase 2 onward keeps
+    /// the mesh static (un-displaced verts; uv2.x → vertex index, uv2.y → heightRest;
+    /// tangent.xyz → vertex-normal displacement direction) and uploads the per-vertex
+    /// current-height array to a ComputeBuffer (StructuredBuffer&lt;float&gt; on the GPU
+    /// side) each FixedUpdate when carve / recovery actually changed values.
+    ///
+    /// ComputeBuffer (vs the previous V×1 RFloat Texture2D) lifts the ~16384 vertex
+    /// cap from GPU max texture width — patches at high subdivLevels can exceed that
+    /// after subdivision and the texture path threw "invalid parameters" on alloc.
+    /// Requires shader target 4.5 (already set on the ForwardLit pass).
     ///
     /// All shader-side per-instance state lives in a MaterialPropertyBlock — the shared
     /// material asset is never modified.
@@ -29,7 +35,7 @@ namespace SlimeJumping.Platforms.Snow
         // Directed boundary edges as pairs [a0, b0, a1, b1, ...].
         [HideInInspector] public int[] boundaryEdges;
         // Per-vertex current snow thickness (m). Carve subtracts, TickRecovery lerps
-        // toward heightRest. Source of truth on the CPU; mirrored to heightTex on flush.
+        // toward heightRest. Source of truth on the CPU; mirrored to heightBuf on flush.
         [HideInInspector] public float[] heightCurrent;
         // Per-vertex max thickness (m). Phase 2: equals build-time taper-shaped restThickness.
         // Phase 4 will override per-vertex via ceiling raycast.
@@ -41,7 +47,7 @@ namespace SlimeJumping.Platforms.Snow
 
         // -- GPU upload state (runtime only) -------------------------------------
 
-        [System.NonSerialized] public Texture2D heightTex;
+        [System.NonSerialized] public ComputeBuffer heightBuf;
         [System.NonSerialized] MaterialPropertyBlock mpb;
         [System.NonSerialized] MeshRenderer cachedRenderer;
         [System.NonSerialized] public bool dirty;
@@ -50,13 +56,13 @@ namespace SlimeJumping.Platforms.Snow
         [System.NonSerialized] public Vector2 aabbMin;
         [System.NonSerialized] public Vector2 aabbMax;
 
-        static readonly int IdSnowHeightTex = Shader.PropertyToID("_SnowHeightTex");
+        static readonly int IdSnowHeightBuf = Shader.PropertyToID("_SnowHeightBuf");
 
         // -- Init / lifecycle -----------------------------------------------------
 
         /// <summary>Called by SnowField after data arrays + mesh are set. Allocates the
-        /// 1D heightTex (V × 1 RFloat), computes the xy-AABB, pushes the initial
-        /// heightCurrent values to the GPU.</summary>
+        /// heightBuf (V × float StructuredBuffer), computes the xy-AABB, pushes the
+        /// initial heightCurrent values to the GPU.</summary>
         public void Init(MeshRenderer renderer)
         {
             cachedRenderer = renderer;
@@ -77,22 +83,12 @@ namespace SlimeJumping.Platforms.Snow
                 if (v.y > aabbMax.y) aabbMax.y = v.y;
             }
 
-            // Reuse existing texture if dimensions match (RebuildNow re-emit case).
-            if (heightTex != null && heightTex.width == V && heightTex.height == 1) { /* keep */ }
+            // Reuse existing buffer if size matches (RebuildNow re-emit case).
+            if (heightBuf != null && heightBuf.IsValid() && heightBuf.count == V) { /* keep */ }
             else
             {
-                if (heightTex != null)
-                {
-                    if (Application.isPlaying) Destroy(heightTex);
-                    else DestroyImmediate(heightTex);
-                }
-                heightTex = new Texture2D(V, 1, TextureFormat.RFloat, mipChain: false, linear: true)
-                {
-                    name = $"SnowHeightTex_{name}",
-                    filterMode = FilterMode.Point,   // bilinear would bleed neighbouring patch verts
-                    wrapMode = TextureWrapMode.Clamp,
-                    hideFlags = HideFlags.DontSave,
-                };
+                if (heightBuf != null) { heightBuf.Release(); heightBuf = null; }
+                heightBuf = new ComputeBuffer(V, sizeof(float), ComputeBufferType.Default);
             }
 
             dirty = true;
@@ -101,26 +97,37 @@ namespace SlimeJumping.Platforms.Snow
 
         void OnDestroy()
         {
-            if (heightTex != null)
+            if (heightBuf != null)
             {
-                if (Application.isPlaying) Destroy(heightTex);
-                else DestroyImmediate(heightTex);
-                heightTex = null;
+                heightBuf.Release();
+                heightBuf = null;
+            }
+        }
+
+        void OnDisable()
+        {
+            // Domain reload doesn't fire OnDestroy on script-recompiled instances —
+            // release here too so the buffer doesn't leak across reloads. Init/Flush
+            // re-allocate as needed.
+            if (heightBuf != null)
+            {
+                heightBuf.Release();
+                heightBuf = null;
             }
         }
 
         // -- Carve / recovery -----------------------------------------------------
 
-        /// <summary>Apply a gaussian dip at the given mesh-local position. Returns true
-        /// if any vertex was actually deepened (caller can then add this strip to the
-        /// active-tick set).</summary>
-        public bool CarveLocal(Vector3 localImpactPos, float depth, float radius)
+        /// <summary>Apply a dip at the given mesh-local position using the chosen
+        /// falloff profile. Returns true if any vertex was actually deepened (caller
+        /// can then add this strip to the active-tick set).</summary>
+        public bool CarveLocal(Vector3 localImpactPos, float depth, float radius, CarveProfileType profile = CarveProfileType.RaisedCosine)
         {
             if (heightCurrent == null || verts == null) return false;
             if (depth <= 0f || radius <= 0f) return false;
 
             // AABB pre-filter — if impact is outside the strip's xy bounds (padded by
-            // radius) every vertex is past the gaussian's effective range anyway. Skip
+            // radius) every vertex is past the falloff's effective range anyway. Skip
             // the V loop entirely for unrelated strips on the same SnowField.
             if (localImpactPos.x < aabbMin.x - radius || localImpactPos.x > aabbMax.x + radius ||
                 localImpactPos.y < aabbMin.y - radius || localImpactPos.y > aabbMax.y + radius)
@@ -135,8 +142,29 @@ namespace SlimeJumping.Platforms.Snow
                 float dx = (verts[v].x - ix) * invR;
                 float dy = (verts[v].y - iy) * invR;
                 float d2 = dx * dx + dy * dy;
-                // exp(-4 * (d/r)^2): falloff ~e^-4 ≈ 0.018 at d=r — effectively 0 by 1.5r.
-                float falloff = Mathf.Exp(-4f * d2);
+                float falloff;
+                switch (profile)
+                {
+                    case CarveProfileType.Gaussian:
+                        // exp(-4·(d/r)²): falloff ~e^-4 ≈ 0.018 at d=r.
+                        falloff = Mathf.Exp(-4f * d2);
+                        break;
+                    case CarveProfileType.SphericalCap:
+                        falloff = d2 >= 1f ? 0f : Mathf.Sqrt(1f - d2);
+                        break;
+                    case CarveProfileType.Parabola:
+                        falloff = d2 >= 1f ? 0f : (1f - d2);
+                        break;
+                    case CarveProfileType.RaisedCosine:
+                    default:
+                        if (d2 >= 1f) { falloff = 0f; }
+                        else
+                        {
+                            float d = Mathf.Sqrt(d2);
+                            falloff = 0.5f * (1f + Mathf.Cos(Mathf.PI * d));
+                        }
+                        break;
+                }
                 float cut = depth * falloff;
                 if (cut < 1e-5f) continue;
                 float nh = heightCurrent[v] - cut;
@@ -217,7 +245,12 @@ namespace SlimeJumping.Platforms.Snow
         public void FlushIfDirty()
         {
             if (!dirty) return;
-            if (heightTex == null || heightCurrent == null) { dirty = false; return; }
+            if (heightCurrent == null) { dirty = false; return; }
+            if (heightBuf == null || !heightBuf.IsValid() || heightBuf.count != heightCurrent.Length)
+            {
+                if (heightBuf != null) heightBuf.Release();
+                heightBuf = new ComputeBuffer(heightCurrent.Length, sizeof(float), ComputeBufferType.Default);
+            }
             if (cachedRenderer == null)
             {
                 cachedRenderer = GetComponent<MeshRenderer>();
@@ -225,11 +258,10 @@ namespace SlimeJumping.Platforms.Snow
             }
             if (mpb == null) mpb = new MaterialPropertyBlock();
 
-            heightTex.SetPixelData(heightCurrent, 0);
-            heightTex.Apply(updateMipmaps: false, makeNoLongerReadable: false);
+            heightBuf.SetData(heightCurrent);
 
             cachedRenderer.GetPropertyBlock(mpb);
-            mpb.SetTexture(IdSnowHeightTex, heightTex);
+            mpb.SetBuffer(IdSnowHeightBuf, heightBuf);
             cachedRenderer.SetPropertyBlock(mpb);
 
             dirty = false;

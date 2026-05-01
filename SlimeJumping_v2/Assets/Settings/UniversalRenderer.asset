@@ -30,7 +30,7 @@ MonoBehaviour:
   m_Name: SpaceWarpSourceFeature
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Rendering.SpaceWarpSourceFeature
   m_Active: 1
-  injectionPoint: 450
+  injectionPoint: 500
 --- !u!114 &-1519943674095479027
 MonoBehaviour:
   m_ObjectHideFlags: 1

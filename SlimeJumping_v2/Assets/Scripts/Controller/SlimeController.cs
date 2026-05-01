@@ -55,7 +55,32 @@ namespace SlimeJumping.Controller
             OnHazardPushed?.Invoke(deltaV, hitPoint);
         }
 
-        /// Fired whenever ApplyHazardPush is called. Payload: (deltaV, worldHitPoint).
+        /// Hazard-driven OVERWRITE channel. While Attached/Charging, replaces the
+        /// persistent surface-slide momentum (crawlVelocity / slideVelocity) with the
+        /// deltaV's tangent component instead of accumulating onto it — so a slime
+        /// already sliding at full speed gets pinned to the new push value, not
+        /// pushed-on-top-of-existing-motion. Airborne/Stunned: behaves identically to
+        /// ApplyHazardPush (the slide channels aren't active there). Gravity-driven
+        /// slope slideSpeed is still recomputed each frame by FixedUpdateAttached, so
+        /// downhill momentum returns naturally once the hazard stops calling.
+        /// Used by GraniteBlast Beam mode while a slime stays inside a tracking beam.
+        public void ApplyHazardPushOverwriteSlide(Vector2 deltaV, Vector2 hitPoint)
+        {
+            if (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
+            {
+                Vector2 t = surfaceTangent;
+                float setSpeed = t.sqrMagnitude > 0.0001f ? Vector2.Dot(deltaV, t) : 0f;
+                crawlVelocity = setSpeed;
+                slideVelocity = 0f;
+            }
+            else
+            {
+                externalDeltaV += deltaV;
+            }
+            OnHazardPushed?.Invoke(deltaV, hitPoint);
+        }
+
+        /// Fired whenever ApplyHazardPush / ApplyHazardPushOverwriteSlide is called. Payload: (deltaV, worldHitPoint).
         /// Subscribers: SlimeBurnVisual (places burn-mark decals at hit point + drives
         /// stuck-compression visual).
         public event System.Action<Vector2, Vector2> OnHazardPushed;

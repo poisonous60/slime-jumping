@@ -65,6 +65,16 @@ namespace SlimeJumping.Visual
         [SerializeField] private float compressionRiseTime = 0.18f;
         [SerializeField] private float compressionDecayTime = 0.22f;
 
+        [Header("Hit Flash")]
+        [Tooltip("Master toggle. When false, _HitFlashStrength is forced to 0 every frame — burn rendering is byte-identical to pre-flash behavior.")]
+        [SerializeField] private bool enableHitFlash = true;
+        [ColorUsage(true, true)]
+        [SerializeField] private Color hitFlashColor = new Color(0.85f, 0.96f, 1f, 1f);
+        [Tooltip("Peak intensity at hit moment.")]
+        [Range(0f, 1f)] [SerializeField] private float hitFlashPeak = 1f;
+        [Tooltip("Decay duration (sec) from peak to 0.")]
+        [SerializeField] private float hitFlashDuration = 0.08f;
+
         // --- runtime ---
         private struct Burn
         {
@@ -85,8 +95,11 @@ namespace SlimeJumping.Visual
         private static readonly int BurnsID = Shader.PropertyToID("_Burns");
         private static readonly int BurnCountID = Shader.PropertyToID("_BurnCount");
         private static readonly int BurnStrengthID = Shader.PropertyToID("_BurnStrength");
+        private static readonly int HitFlashStrengthID = Shader.PropertyToID("_HitFlashStrength");
+        private static readonly int HitFlashColorID = Shader.PropertyToID("_HitFlashColor");
 
         private float lastHitTime = -999f;
+        private float flashEndTime = -999f;
 
         // Sliding-window position samples for stuck detection.
         private const int RingCapacity = 32;
@@ -143,6 +156,7 @@ namespace SlimeJumping.Visual
         private void HandleHazardPushed(Vector2 deltaV, Vector2 hitPoint)
         {
             lastHitTime = Time.time;
+            if (enableHitFlash) flashEndTime = Time.time + hitFlashDuration;
 
             if (meshTransform == null) ResolveBodyMeshRenderer();
             if (meshTransform == null) return;
@@ -254,6 +268,20 @@ namespace SlimeJumping.Visual
             bodyMpb.SetVectorArray(BurnsID, burnPacked);
             bodyMpb.SetInt(BurnCountID, writeIdx);
             bodyMpb.SetFloat(BurnStrengthID, burnStrength);
+            // Always push flash strength — even when disabled — so a stale GPU
+            // value from a prior session can't bleed through. Disabled = 0 →
+            // shader flash lerp is a no-op → burn rendering is byte-identical.
+            float flashStrength = 0f;
+            if (enableHitFlash)
+            {
+                float flashRemain = flashEndTime - Time.time;
+                if (flashRemain > 0f && hitFlashDuration > 0f)
+                {
+                    flashStrength = hitFlashPeak * Mathf.Clamp01(flashRemain / hitFlashDuration);
+                }
+            }
+            bodyMpb.SetFloat(HitFlashStrengthID, flashStrength);
+            bodyMpb.SetColor(HitFlashColorID, hitFlashColor);
             bodyMR.SetPropertyBlock(bodyMpb);
         }
 
@@ -266,6 +294,8 @@ namespace SlimeJumping.Visual
             bodyMpb.SetVectorArray(BurnsID, burnPacked);
             bodyMpb.SetInt(BurnCountID, 0);
             bodyMpb.SetFloat(BurnStrengthID, burnStrength);
+            bodyMpb.SetFloat(HitFlashStrengthID, 0f);
+            bodyMpb.SetColor(HitFlashColorID, hitFlashColor);
             bodyMR.SetPropertyBlock(bodyMpb);
         }
 

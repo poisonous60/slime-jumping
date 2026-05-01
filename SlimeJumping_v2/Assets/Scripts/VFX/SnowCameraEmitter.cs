@@ -17,11 +17,11 @@ namespace SlimeJumping.VFX
         [Tooltip("Emission box height = viewport height × this multiplier.")]
         [Min(1f)][SerializeField] private float heightMultiplier = 1.8f;
 
-        [Tooltip("Polygon defining where snow is allowed to be visible. Particles outside this polygon are killed every frame. Use multi-path PolygonCollider2D to carve out roof holes.")]
+        [Tooltip("Polygon defining where snow is allowed to be visible. Particles outside this polygon are killed every frame via manual OverlapPoint test (the ParticleSystem Trigger module's polygon test was unreliable, hence the manual cull). Use multi-path PolygonCollider2D to carve out roof holes.")]
         [SerializeField] private PolygonCollider2D emitterArea;
 
         private ParticleSystem _ps;
-        private int _lastEmitterHash;
+        private ParticleSystem.Particle[] _particleBuffer;
 
         private void OnEnable()
         {
@@ -29,7 +29,6 @@ namespace SlimeJumping.VFX
             ResolveCamera();
             ApplyMain();
             ApplyShape();
-            ApplyTrigger();
         }
 
         private void OnValidate()
@@ -38,7 +37,6 @@ namespace SlimeJumping.VFX
             if (_ps == null) return;
             ApplyMain();
             ApplyShape();
-            ApplyTrigger();
         }
 
         private void LateUpdate()
@@ -47,12 +45,7 @@ namespace SlimeJumping.VFX
             ResolveCamera();
             UpdateTransform();
             UpdateShapeSize();
-
-            if (!Application.isPlaying)
-            {
-                int h = HashPoly(emitterArea);
-                if (h != _lastEmitterHash) ApplyTrigger();
-            }
+            CullOutsidePolygon();
         }
 
         private void ResolveCamera()
@@ -63,6 +56,9 @@ namespace SlimeJumping.VFX
         private void ApplyMain()
         {
             var main = _ps.main;
+            // World simulation: existing particles stay in their world position when
+            // the camera moves. Only the spawn region follows the camera (via the GO
+            // transform); the snow itself does not drag along with the slime.
             main.simulationSpace = ParticleSystemSimulationSpace.World;
         }
 
@@ -100,40 +96,33 @@ namespace SlimeJumping.VFX
             return Mathf.Tan(targetCamera.fieldOfView * 0.5f * Mathf.Deg2Rad) * Mathf.Max(dist, 0.01f);
         }
 
-        private void ApplyTrigger()
+        // Manual polygon cull. Replaces the previous Trigger-module approach, which
+        // didn't reliably kill particles spawned outside the polygon — visible snow
+        // ended up filling the whole camera viewport regardless of the assigned area.
+        // OverlapPoint on the PolygonCollider2D handles arbitrary multi-path polygons
+        // exactly and runs every LateUpdate over the ~hundreds of live particles.
+        private void CullOutsidePolygon()
         {
-            var trig = _ps.trigger;
-            if (emitterArea != null)
-            {
-                trig.enabled = true;
-                for (int i = trig.colliderCount - 1; i >= 0; i--) trig.RemoveCollider(i);
-                trig.AddCollider(emitterArea);
-                trig.outside = ParticleSystemOverlapAction.Kill;
-                trig.exit = ParticleSystemOverlapAction.Kill;
-                trig.inside = ParticleSystemOverlapAction.Ignore;
-                trig.enter = ParticleSystemOverlapAction.Ignore;
-            }
-            else
-            {
-                trig.enabled = false;
-            }
-            _lastEmitterHash = HashPoly(emitterArea);
-        }
+            if (emitterArea == null) return;
+            if (_ps == null) return;
+            int alive = _ps.particleCount;
+            if (alive <= 0) return;
 
-        private static int HashPoly(PolygonCollider2D pc)
-        {
-            if (pc == null) return 0;
-            unchecked
+            if (_particleBuffer == null || _particleBuffer.Length < alive)
+                _particleBuffer = new ParticleSystem.Particle[Mathf.Max(alive, 64)];
+
+            int n = _ps.GetParticles(_particleBuffer);
+            bool changed = false;
+            for (int i = 0; i < n; i++)
             {
-                int h = 17;
-                var pts = pc.points;
-                for (int i = 0; i < pts.Length; i++) h = h * 31 + pts[i].GetHashCode();
-                var t = pc.transform;
-                h = h * 31 + t.localPosition.GetHashCode();
-                h = h * 31 + t.localRotation.GetHashCode();
-                h = h * 31 + t.localScale.GetHashCode();
-                return h;
+                Vector3 pos = _particleBuffer[i].position;
+                if (!emitterArea.OverlapPoint(new Vector2(pos.x, pos.y)))
+                {
+                    _particleBuffer[i].remainingLifetime = -1f;
+                    changed = true;
+                }
             }
+            if (changed) _ps.SetParticles(_particleBuffer, n);
         }
 
         private void OnDrawGizmosSelected()

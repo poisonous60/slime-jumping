@@ -52,11 +52,11 @@ graph BFS로 boundary로부터 hop count 계산. `edgeTaperHops` 설정 (기본 
 
 | 채널 | 내용 | 셰이더 사용처 |
 |------|------|------|
-| `position` | un-displaced patch.verts (호스트 표면 위) | `SnowVertex` 가 `_SnowHeightTex` 로 displace |
+| `position` | un-displaced patch.verts (호스트 표면 위) | `SnowVertex` 가 `_SnowHeightBuf` 로 displace |
 | `normal` | per-tri face normal at REST 변위 위치 (flat shading) | Quibli 스톡 라이팅 |
 | `tangent.xyz` | top 정점 = patch.vertNormals (변위 방향), base 정점 = 0 (anchored) | 셰이더 displacement axis |
 | `uv (TEXCOORD0)` | (patch.verts.x, patch.verts.y) | Phase 3 footprint/glitter 샘플링 + Phase 2 procedural noise sampling |
-| `uv2 (TEXCOORD1)` | `((origIdx + 0.5) / V, heightRest[origIdx])` — x = 1D heightTex sample 좌표, y = 휴식 두께 (Phase 3 신규) | x: `SAMPLE_TEXTURE2D_LOD(_SnowHeightTex, ...)` / y: vertex stage 에서 carve mask `1 - h/heightRest` 계산 |
+| `uv2 (TEXCOORD1)` | `(origIdx, heightRest[origIdx])` — x = StructuredBuffer index (raw float, shader 가 uint cast), y = 휴식 두께 (Phase 3 신규) | x: `_SnowHeightBuf[(uint)staticLightmapUV.x]` / y: vertex stage 에서 carve mask `1 - h/heightRest` 계산 |
 
 **양면 emit** (top + side strip 모두 reversed-winding 페어 포함) → material 무관하게 어떤 카메라 각도에서도 보임. AABB 는 un-displaced 정점 기준이라 `bounds.Expand(2 * maxRest)` 로 padding 해서 frustum culling 클립 방지.
 
@@ -67,7 +67,7 @@ graph BFS로 boundary로부터 hop count 계산. `edgeTaperHops` 설정 (기본 
 - `verts[]`, `vertNormals[]`, `tris[]`, `boundaryEdges[]` — 패치 토폴로지 (Phase 1)
 - `heightRest[]` — taper-shaped 휴식 두께 (Phase 1 origin, 변경 없음)
 - `heightCurrent[]` — per-vertex 현재 두께. **Phase 2 부터 carve/recovery 로 mutate** (Phase 1 에선 항상 = heightRest)
-- `heightTex` (Texture2D V × 1 RFloat) + `MaterialPropertyBlock cachedRenderer` + `bool dirty` — heightCurrent 의 GPU 미러 (**Phase 2 신규**)
+- `heightBuf` (`ComputeBuffer`, V × float, `StructuredBuffer<float>` GPU-side) + `MaterialPropertyBlock cachedRenderer` + `bool dirty` — heightCurrent 의 GPU 미러 (**Phase 2 신규** / Phase 2.1 에서 `Texture2D V×1 RFloat` 에서 `ComputeBuffer` 로 마이그레이션 — GPU max texture width(16384) 초과 패치도 수용)
 - `aabbMin/aabbMax` (Vector2) — xy AABB pre-filter 용 (Phase 2 신규)
 - `host` — 호스트 transform 참조. **Phase 2 에선 미사용**, Phase 4 ceiling raycast / Phase 5 slope diffusion 대비 보존
 
@@ -75,14 +75,15 @@ graph BFS로 boundary로부터 hop count 계산. `edgeTaperHops` 설정 (기본 
 
 - **Carve 이벤트**: `SnowStamper` 가 slime 에 1개 부착, `SlimeController.OnLanded` 단일 구독. `slimeController.SurfaceCollider` 를 `SnowFieldRegistry` 로 O(1) 조회 → 매치되는 SnowField 의 `HandleLanded(world, impactSpeed)` 호출 (raw impact 만 전달; depth/radius 매핑은 stamper 가 안 함).
 - **세기 매핑**: `SnowField.HandleLanded` 가 자기 `SnowSettings` 에서 `minImpactSpeed`/`depthPerImpact`/`depthMax`/`radiusPerImpact`/`radiusMax` 읽어 `depth = min(depthMax, impact * depthPerImpact)`, `radius = min(radiusMax, impact * radiusPerImpact)` 산출. `impact < minImpactSpeed` 면 reject. settings null 이면 baked-in 기본값.
-- **Per-vertex carve**: SnowField 가 contact 를 mesh-local 로 변환, 자식 SnowStrip 마다 `CarveLocal(localImpact, depth, radius)` 호출. 각 strip 은 자기 xy AABB 로 pre-filter (radius padding) → 무관 strip 의 V 순회 0. 영향권 vertex 마다 `falloff = exp(-4 * (dist/radius)^2)`, `heightCurrent[v] = max(0, heightCurrent[v] - depth * falloff)`.
+- **Per-vertex carve**: SnowField 가 contact 를 mesh-local 로 변환, 자식 SnowStrip 마다 `CarveLocal(localImpact, depth, radius, profile)` 호출. 각 strip 은 자기 xy AABB 로 pre-filter (radius padding) → 무관 strip 의 V 순회 0. 영향권 vertex 마다 `falloff(d/r)` 평가 후 `heightCurrent[v] = max(0, heightCurrent[v] - depth * falloff)`.
+- **Carve falloff profile** (`SnowSettings.carveProfile`): `Gaussian` `exp(-4·(d/r)²)` (좁은 종모양·뾰족), `RaisedCosine` `0.5·(1+cos(π·d/r))` (매끈한 사발, 중심·가장자리 모두 zero-slope · **default**), `SphericalCap` `√(1-(d/r)²)` (구체 압흔 — 가장 둥근 바닥, d=r 에서 각짐), `Parabola` `1-(d/r)²` (둥근 바닥·선형 테이퍼).
 - **회복 lerp**: `SnowField.FixedUpdate` 가 dirty/회복 중인 strip 만 `activeStrips` HashSet 에서 추적. 각 active strip `TickRecovery(dt, settings.accumulationRate)` 로 `heightCurrent[v] += accumulationRate * dt` (cap heightRest). 모든 vertex 가 heightRest 도달하면 active set 에서 제거 → idle FixedUpdate cost 0.
 
 ### GPU 업로드 + vertex displacement 셰이더 (Phase 2 신규)
 
-- **per-strip 1D heightTex**: `Texture2D V × 1 RFloat`, `Point Clamp`. 변경 발생 (`dirty=true`) 시에만 `SetPixelData(heightCurrent) + Apply()` 그리고 `MaterialPropertyBlock.SetTexture(_SnowHeightTex, ...)` 푸시. material 자산은 read-only.
-- **`Ground_Quibli_Snow.shader`** — Quibli StylizedLit 클론. ForwardLit pass 만 vertex/fragment pragma 를 snow 래퍼로 교체. 다른 pass (Outline / ShadowCaster / DepthOnly / DepthNormals / GBuffer / Meta / Universal2D) 는 stock 그대로.
-- **`Ground_SnowVertexInject.hlsl`** — `SnowVertex` 가 `input.staticLightmapUV.x` (TEXCOORD1.x, mesh.uv2.x) 로 heightTex sample (`SAMPLE_TEXTURE2D_LOD` 강제 — vertex stage LOD 자동 안 됨), 옵션 `_SnowSurfaceNoise` multiply, `input.tangentOS.xyz * h * _SnowHeightScale` 변위. Phase 3 부터는 `staticLightmapUV.y` 의 heightRest 와 비교해서 `mask = saturate(1 - h/heightRest)` 계산 후 `SnowVaryings { v = LitPassVertex(input), snowExtras = (mask, 0) }` 반환.
+- **per-strip heightBuf**: `ComputeBuffer(V, sizeof(float), Default)` → 셰이더 측 `StructuredBuffer<float> _SnowHeightBuf`. 변경 발생 (`dirty=true`) 시에만 `heightBuf.SetData(heightCurrent)` 그리고 `MaterialPropertyBlock.SetBuffer(_SnowHeightBuf, ...)` 푸시. material 자산은 read-only. **Phase 2.1**: `Texture2D V×1 RFloat` 에서 마이그레이션 — `subdivLevels=3` 등으로 패치 정점이 GPU max texture width(보통 16384) 를 초과하면 `Texture2D` alloc 이 throw 했던 문제 제거. `#pragma target 4.5` 필요 (이미 ForwardLit pass 에 설정).
+- **`Ground_Quibli_Snow.shader`** — Quibli StylizedLit 클론. ForwardLit pass 만 vertex/fragment pragma 를 snow 래퍼로 교체. 다른 pass (Outline / ShadowCaster / DepthOnly / DepthNormals / GBuffer / Meta / Universal2D) 는 stock 그대로. `_SnowHeightBuf` 는 Properties 블록 대신 `.hlsl` 에서 `StructuredBuffer<float>` 로 직접 선언 (compute buffer 는 Properties 로 선언 불가).
+- **`Ground_SnowVertexInject.hlsl`** — `SnowVertex` 가 `input.staticLightmapUV.x` (TEXCOORD1.x, mesh.uv2.x) 를 raw 정점 인덱스로 받아 `uint vid = (uint)(staticLightmapUV.x + 0.5)` 로 캐스트, `_SnowHeightBuf[vid]` 직접 인덱싱 (이전 `SAMPLE_TEXTURE2D_LOD` 경로 폐기 — 정점 인덱스가 곧 버퍼 인덱스). 옵션 `_SnowSurfaceNoise` multiply, `input.tangentOS.xyz * h * _SnowHeightScale` 변위. Phase 3 부터는 `staticLightmapUV.y` 의 heightRest 와 비교해서 `mask = saturate(1 - h/heightRest)` 계산 후 `SnowVaryings { v = LitPassVertex(input), snowExtras = (mask, 0) }` 반환.
 
 ### Fragment 폴리시 (Phase 3 신규 — 셰이더 단)
 
@@ -265,6 +266,8 @@ per-instance reference 만 — tuning 은 settings asset 으로.
 | Settings | None | `SnowSettings` 자산 참조. null 이면 baked-in 기본값 |
 | Source Mesh Filter | auto | 호스트 메쉬. 같은 GO 또는 자식에서 자동 resolve |
 | Host Collider | None | 슬라임 SurfaceCollider 와 매칭될 호스트의 Collider2D — registry 키 |
+| Exclude Overlap With Other Platforms | true | rebuild 시점에 각 snow tri 의 XY centroid 가 (hostCollider 가 아닌) 다른 Collider2D 안이면 그 tri 를 drop. 다른 플랫폼 mesh 와 겹쳐서 z-fighting 나는 영역이 사라지고, 외곽 rim 만 남음. boundary 는 잘라낸 모양에 맞게 재생성되어 BFS taper 가 새 가장자리에서도 둥글게 내려감 |
+| Overlap Layer Mask | Everything | 위 toggle 이 켜져 있을 때 검사할 레이어. hostCollider 는 항상 제외 |
 | Draw Patch Outlines | true | scene 기즈모: 패치 외곽 초록 line |
 | Draw Vert Normals | false | per-vertex 노멀 파란 line |
 

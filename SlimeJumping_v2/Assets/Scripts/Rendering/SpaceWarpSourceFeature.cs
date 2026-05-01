@@ -178,6 +178,14 @@ namespace SlimeJumping.Rendering
                     context.ExecuteCommandBuffer(cmd);
                     cmd.Clear();
 
+                    // CopyPass left the active render target on _SpaceWarpSourceTex
+                    // (Blitter.BlitCameraTexture sets target to dest). Without rebinding
+                    // here, DrawRendererList writes the warp mesh into that scratch RT
+                    // instead of the camera color, and the warp is invisible on screen.
+                    // RenderGraph path doesn't need this — SetRenderAttachment handles it.
+                    var renderer = renderingData.cameraData.renderer;
+                    cmd.SetRenderTarget(renderer.cameraColorTargetHandle, renderer.cameraDepthTargetHandle);
+
                     var rlParams = new RendererListParams(renderingData.cullResults, drawSettings, m_Filter);
                     var rl = context.CreateRendererList(ref rlParams);
                     cmd.DrawRendererList(rl);
