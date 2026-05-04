@@ -89,6 +89,7 @@ namespace SlimeJumping.Mechanisms
         MaterialPropertyBlock mpb;
         WarpState state = WarpState.Idle;
         float stateT;
+        bool autoPopEnabled = true;     // false = caller owns pop timing via Pop()
         Transform stretchTarget;
         Vector3 anchorWorld;
         float currentTaper;
@@ -122,6 +123,8 @@ namespace SlimeJumping.Mechanisms
 
         // -------- public API --------
 
+        public float PopDuration => popDuration;
+
         public void Trigger()
         {
             if (targetRenderer == null) return;
@@ -133,12 +136,43 @@ namespace SlimeJumping.Mechanisms
 
         public void TriggerStretch(Transform target)
         {
+            TriggerStretchInternal(target, autoPop: true);
+        }
+
+        /// <summary>
+        /// Like <see cref="TriggerStretch"/> but the stretch never auto-pops on
+        /// length / duration limits — the caller owns the shatter timing via
+        /// <see cref="Pop"/>. Used when an external system (e.g. a slime
+        /// pass-through drive) should align the shatter with its own end-of-window
+        /// rather than the warp's internal max.
+        /// </summary>
+        public void TriggerStretchHeld(Transform target)
+        {
+            TriggerStretchInternal(target, autoPop: false);
+        }
+
+        /// <summary>
+        /// Force-transition into the shatter (Popping) phase. No-op outside of
+        /// PulseOnly / Stretching. Lets external drivers fire the burst on a
+        /// schedule decoupled from <see cref="maxStretchLength"/> /
+        /// <see cref="maxStretchDuration"/>.
+        /// </summary>
+        public void Pop()
+        {
+            if (state != WarpState.Stretching && state != WarpState.PulseOnly) return;
+            state = WarpState.Popping;
+            stateT = 0f;
+        }
+
+        private void TriggerStretchInternal(Transform target, bool autoPop)
+        {
             if (target == null) { Trigger(); return; }
             if (targetRenderer == null) return;
 
             CacheIdleTransform();
             stretchTarget = target;
             anchorWorld = anchor != null ? anchor.position : transform.position;
+            autoPopEnabled = autoPop;
             state = WarpState.Stretching;
             stateT = 0f;
 
@@ -172,7 +206,8 @@ namespace SlimeJumping.Mechanisms
                     ApplyMpb(0f, 0f, 0f);
                     Vector3 axis = (stretchTarget != null ? stretchTarget.position : anchorWorld) - anchorWorld;
                     float len = axis.magnitude;
-                    if (stretchTarget == null || stateT >= maxStretchDuration || len >= maxStretchLength)
+                    bool autoPopHit = autoPopEnabled && (stateT >= maxStretchDuration || len >= maxStretchLength);
+                    if (stretchTarget == null || autoPopHit)
                     {
                         state = WarpState.Popping;
                         stateT = 0f;

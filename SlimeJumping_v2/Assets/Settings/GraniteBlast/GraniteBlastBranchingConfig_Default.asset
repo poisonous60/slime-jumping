@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c7c0bba38cdcab149b90a7ad1fdeb236, type: 3}
+  m_Name: GraniteBlastBranchingConfig_Default
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Mechanisms.GraniteBlastBranchingConfig
+  navWallMask:
+    serializedVersion: 2
+    m_Bits: 128
+  navPathCostJitter: 0.35
+  navEntryJitter: 0.3
+  tendrilPathNoiseAmplitude: 0.5
+  tendrilPathNoiseFrequency: 0.8
+  tendrilCount: 27
+  targetRadius: 1
+  bowHeight: 3
+  bowDepthZ: 0
+  controlPointJitter: 1
+  controlPointZJitter: 1
+  tendrilSegmentLength: 0.2
+  tendrilJaggedness: 0.35
+  tendrilTravelSpeed: 60
+  tendrilDrawTime: 0.2
+  tendrilHoldTime: 0.18
+  tendrilFadeTime: 0.28
+  tendrilCoreWidth: 0.12
+  branchingFireStartFraction: 0.3
+  trailDuration: 0.6
+  trailLagOffset: 0
+  trailSampleInterval: 0.04

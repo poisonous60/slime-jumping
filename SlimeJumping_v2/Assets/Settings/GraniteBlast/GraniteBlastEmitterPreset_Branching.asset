@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 25dffb9e38bd7e44b905c000f3ec80d1, type: 3}
+  m_Name: GraniteBlastEmitterPreset_Branching
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Mechanisms.GraniteBlastEmitterPreset
+  detectionRange: 45
+  lineOfSightBlockers:
+    serializedVersion: 2
+    m_Bits: 0
+  detectionDelay: 0.6
+  preFireDuration: 2
+  fireStartDuration: 0.08
+  firingDuration: 0.6
+  postFireDuration: 0.25
+  cooldownDuration: 10
+  loseSightGrace: 0.5
+  maxRange: 50
+  bulletHitMask:
+    serializedVersion: 2
+    m_Bits: 193
+  hitRadius: 0.4
+  knockbackImpulse: 14
+  knockbackAcceleration: 60
+  sustainedHit: 0
+  hitStopDuration: 0.06
+  hitStopFrozenScale: 0
+  hitShakeForce: 1
+  stunOnHitDuration: 0.7
+  stunDamageType: 3
+  coreColor: {r: 0.85, g: 0.96, b: 1, a: 1}
+  lineZOffset: -0.5
+  showPreFireTelegraph: 1
+  telegraphWidth: 0.04
+  telegraphColor: {r: 0.7, g: 0.95, b: 1, a: 0.3}
+  detectSound: {fileID: 0}
+  preFireSound: {fileID: 8300000, guid: 78014e8f162eb2d4bacedee861ec2333, type: 3}
+  fireStartSound: {fileID: 8300000, guid: f47a5e54e0f5e3e48bcb4b28f455b92c, type: 3}
+  postFireSound: {fileID: 0}
+  groundImpactSound: {fileID: 8300000, guid: 02ab1a997909af440928681a5e21362c, type: 3}
+  detectVolume: 0.6
+  preFireVolume: 0.7
+  fireStartVolume: 1
+  postFireVolume: 0.55
+  groundImpactVolume: 0.7
+  groundImpactPitchJitter: 0.1
+  fireStartPitchJitter: 0.08
+  impactPrefab: {fileID: 1091756393576693912, guid: 7537d8af5adc8434ea90c85cb79c4b3b, type: 3}
+  groundExplosionPrefab: {fileID: 4940053736127461535, guid: a139783aaa3df33428e699287f631674, type: 3}
+  snowCarveOnImpact: 1
+  snowCarveDepth: 0.18
+  snowCarveRadius: 0.6

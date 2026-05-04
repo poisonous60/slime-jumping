@@ -109,22 +109,16 @@ namespace SlimeJumping.Controller
             }
             // Volume launch: pure aim direction, no hyper dash, no carrier
 
-            // Rope rebound: add stored-sag displacement as a launch-direction speed bonus.
-            // Freeze was removed from Charging, so the rope keeps sagging under slime weight
-            // through the charge; GetMaxSagDistance() reads that stored displacement.
-            // Capped by rope.MaxReboundSpeed so deep sag × high multiplier can't produce
-            // unbounded launches — mirrors SpringyBranchPlatform.maxTipSpeed.
+            // Rope rebound: rope owns its own bonus formula via IRopePlatform.GetLaunchBonus.
+            //   v1 (Rope)   → sag × reboundSpeedPerMeter (timing-blind, ignores chargeRatio)
+            //   v2 (RopeV2) → timingBonusCurve(proj) × chargeMultiplierCurve(chargeRatio)
+            // Both implementations clamp to [0, MaxReboundSpeed] internally.
             if (currentRope != null)
             {
-                float sag = currentRope.GetMaxSagDistance();
-                if (sag > 1e-4f)
-                {
-                    Vector2 launchDir = velocity.sqrMagnitude > 0.0001f ? velocity.normalized : dir;
-                    float bonusMag = sag * currentRope.ReboundSpeedPerMeter;
-                    float cap = currentRope.MaxReboundSpeed;
-                    if (cap > 0f && bonusMag > cap) bonusMag = cap;
+                Vector2 launchDir = velocity.sqrMagnitude > 0.0001f ? velocity.normalized : dir;
+                float bonusMag = currentRope.GetLaunchBonus(launchDir, rb.position, ratio);
+                if (bonusMag > 0f)
                     velocity += launchDir * bonusMag;
-                }
             }
 
             // Inside drag zone: reduce launch velocity. Exit multiplier restores on leaving.

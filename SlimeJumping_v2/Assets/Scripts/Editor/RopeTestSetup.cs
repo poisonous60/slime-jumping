@@ -152,6 +152,183 @@ namespace SlimeJumping.Editor
                 "Each Rope's parameters are on the Body GameObject's Rope component — tune in inspector.");
         }
 
+        // ===== RopeV2 (timing-bonus) tuning =====
+
+        struct RopeV2Tuning
+        {
+            public int segmentCount;
+            public float restLengthMul;
+            public int constraintIterations;
+            public float damping;
+            public float edgeRadius;
+            public float nodeGravity;
+            public float elasticFactor;
+            public float riderInfluenceSpacing;
+            public float riderForceMul;
+            public float impactGain;
+            public float maxTensionEnter;
+            public float maxTensionExit;
+            public int colliderSubsample;
+            public int visualSubdivisions;
+            public AnimationCurve timingBonusCurve;
+            public AnimationCurve chargeMultiplierCurve;
+            public float maxReboundSpeed;
+            public float previewRiderMass;
+            public int previewSteps;
+        }
+
+        // Hammock-like simulation base for v2 timing ropes — same physics shape
+        // as v1's RubberRebound preset so v1↔v2 visual comparison stays apples-to-apples.
+        // Caller supplies the two AnimationCurves to vary the rebound mechanic per rope.
+        static RopeV2Tuning RubberRebound_V2(AnimationCurve timing, AnimationCurve charge) => new RopeV2Tuning
+        {
+            segmentCount = 15,
+            restLengthMul = 1.08f,
+            constraintIterations = 3,
+            damping = 0.98f,
+            edgeRadius = 0f,
+            nodeGravity = 0.3f,
+            elasticFactor = 0.3f,
+            riderInfluenceSpacing = 4f,
+            // Weight-only sag stays shallow (steady-state slime weight); the deep
+            // dip is produced by impactGain on the airborne→attach impulse.
+            riderForceMul = 10f,
+            impactGain = 1f,
+            maxTensionEnter = 1.25f,
+            maxTensionExit = 1.10f,
+            colliderSubsample = 2,
+            visualSubdivisions = 3,
+            timingBonusCurve = timing,
+            chargeMultiplierCurve = charge,
+            maxReboundSpeed = 18f,
+            previewRiderMass = 1f,
+            previewSteps = 120,
+        };
+
+        [MenuItem("SlimeJumping/Mechanism/Setup Rope Test V2 (Timing)")]
+        public static void SetupV2Timing()
+        {
+            var root = new GameObject("RopeTest_V2_Timing");
+            Undo.RegisterCreatedObjectUndo(root, "Create Rope Test V2 Timing");
+
+            CreatePlatform("Floor", root.transform,
+                new Vector3(0f, -6f, 0f), new Vector3(60f, 1f, 1f));
+            CreatePlatform("SpawnPad_TimingOff", root.transform,
+                new Vector3(-16f, -2f, 0f), new Vector3(3f, 1f, 1f));
+            CreatePlatform("SpawnPad_LinearTiming", root.transform,
+                new Vector3(0f, -2f, 0f), new Vector3(3f, 1f, 1f));
+            CreatePlatform("SpawnPad_ChargeGated", root.transform,
+                new Vector3(16f, -2f, 0f), new Vector3(3f, 1f, 1f));
+
+            const float anchorY = 3f;
+            const float halfSpan = 3.5f;
+
+            // Profile 1: timing curve flat 0 → no bonus regardless of timing.
+            var timingOff = AnimationCurve.Constant(0f, 20f, 0f);
+            var chargeFlat = AnimationCurve.Constant(0f, 1f, 1f);
+            BuildRopeV2(root.transform, "Rope_V2_TimingOff",
+                new Vector3(-16f - halfSpan, anchorY, 0f),
+                new Vector3(-16f + halfSpan, anchorY, 0f),
+                RubberRebound_V2(timingOff, chargeFlat));
+
+            // Profile 2: linear timing × flat charge → pure timing rope (default profile).
+            var timingLinear = AnimationCurve.Linear(0f, 0f, 20f, 20f);
+            BuildRopeV2(root.transform, "Rope_V2_LinearTiming",
+                new Vector3(-halfSpan, anchorY, 0f),
+                new Vector3(halfSpan, anchorY, 0f),
+                RubberRebound_V2(timingLinear, AnimationCurve.Constant(0f, 1f, 1f)));
+
+            // Profile 3: linear timing × charge ramp (0,0)→(1,1.5) → must charge AND time.
+            var chargeRamp = AnimationCurve.Linear(0f, 0f, 1f, 1.5f);
+            BuildRopeV2(root.transform, "Rope_V2_ChargeGated",
+                new Vector3(16f - halfSpan, anchorY, 0f),
+                new Vector3(16f + halfSpan, anchorY, 0f),
+                RubberRebound_V2(AnimationCurve.Linear(0f, 0f, 20f, 20f), chargeRamp));
+
+            CreateHeightMarkers(root.transform, anchorY);
+
+            Finish(root,
+                "V2 Timing test:\n" +
+                "  Rope_V2_TimingOff      — timingBonusCurve flat 0 (baseline, no bonus regardless of timing)\n" +
+                "  Rope_V2_LinearTiming   — timing linear (0,0)→(20,20), charge flat 1.0 (timing-only rope)\n" +
+                "  Rope_V2_ChargeGated    — timing linear, charge ramp (0,0)→(1,1.5) (must charge AND time)\n" +
+                "\n" +
+                "How to evaluate:\n" +
+                "  1. Land on a rope. Charge + launch immediately (no pump) → proj~0, bonus near 0.\n" +
+                "  2. Pump rope: charge-launch-reland to start oscillation. Time launch with the upswing.\n" +
+                "     Compare peak heights against gray markers (y = +4,+6,+8,+10,+12 above rope).\n" +
+                "  3. Edit timingBonusCurve / chargeMultiplierCurve on each Body's RopeV2 component to taste.\n" +
+                "\n" +
+                "All three ropes share identical sim physics — only the two AnimationCurves differ.");
+        }
+
+        static GameObject BuildRopeV2(Transform parent, string name,
+            Vector3 anchorAPos, Vector3 anchorBPos, RopeV2Tuning tuning)
+        {
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, false);
+
+            var anchorA = new GameObject("AnchorA");
+            anchorA.transform.SetParent(root.transform, false);
+            anchorA.transform.position = anchorAPos;
+
+            var anchorB = new GameObject("AnchorB");
+            anchorB.transform.SetParent(root.transform, false);
+            anchorB.transform.position = anchorBPos;
+
+            CreateAnchorMarker(anchorA.transform);
+            CreateAnchorMarker(anchorB.transform);
+
+            var body = new GameObject("Body");
+            body.transform.SetParent(root.transform, false);
+            body.layer = GroundLayer;
+
+            var edge = body.AddComponent<EdgeCollider2D>();
+            edge.edgeRadius = 0f;
+
+            var lineGo = new GameObject("LineRenderer");
+            lineGo.transform.SetParent(body.transform, false);
+            var line = lineGo.AddComponent<LineRenderer>();
+            line.useWorldSpace = true;
+            line.startWidth = line.endWidth = 0.08f;
+            line.textureMode = LineTextureMode.Tile;
+            line.alignment = LineAlignment.View;
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(RopeMaterialPath);
+            if (mat != null) line.sharedMaterial = mat;
+
+            var rope = body.AddComponent<RopeV2>();
+            var so = new SerializedObject(rope);
+            so.FindProperty("anchorA").objectReferenceValue = anchorA.transform;
+            so.FindProperty("anchorB").objectReferenceValue = anchorB.transform;
+            so.FindProperty("edge").objectReferenceValue = edge;
+            so.FindProperty("line").objectReferenceValue = line;
+            so.FindProperty("segmentCount").intValue = tuning.segmentCount;
+            so.FindProperty("restLengthMul").floatValue = tuning.restLengthMul;
+            so.FindProperty("constraintIterations").intValue = tuning.constraintIterations;
+            so.FindProperty("damping").floatValue = tuning.damping;
+            so.FindProperty("edgeRadius").floatValue = tuning.edgeRadius;
+            so.FindProperty("nodeGravity").floatValue = tuning.nodeGravity;
+            so.FindProperty("elasticFactor").floatValue = tuning.elasticFactor;
+            so.FindProperty("riderInfluenceSpacing").floatValue = tuning.riderInfluenceSpacing;
+            so.FindProperty("riderForceMul").floatValue = tuning.riderForceMul;
+            so.FindProperty("impactGain").floatValue = tuning.impactGain;
+            so.FindProperty("maxTensionEnter").floatValue = tuning.maxTensionEnter;
+            so.FindProperty("maxTensionExit").floatValue = tuning.maxTensionExit;
+            so.FindProperty("colliderSubsample").intValue = tuning.colliderSubsample;
+            so.FindProperty("visualSubdivisions").intValue = tuning.visualSubdivisions;
+            so.FindProperty("timingBonusCurve").animationCurveValue = tuning.timingBonusCurve;
+            so.FindProperty("chargeMultiplierCurve").animationCurveValue = tuning.chargeMultiplierCurve;
+            so.FindProperty("maxReboundSpeed").floatValue = tuning.maxReboundSpeed;
+            so.FindProperty("previewRiderMass").floatValue = tuning.previewRiderMass;
+            so.FindProperty("previewSteps").intValue = tuning.previewSteps;
+            so.ApplyModifiedProperties();
+
+            rope.Rebuild();
+            return root;
+        }
+
         [MenuItem("SlimeJumping/Mechanism/Setup Rope Test V2 (Rebound)")]
         public static void SetupV2Rebound()
         {

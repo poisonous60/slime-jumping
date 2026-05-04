@@ -9,6 +9,25 @@
 | Beam | 한 발의 굵은 빔이 머즐에서 첫 차폐물까지 fireStart+firing+postFire 기간 지속. 라인 위 슬라임 1회 명중. |
 | Burst | `burstFlashCount` 개의 짧은 flash beam 이 콘(`burstSpreadDegrees`) 으로 부채꼴 발사. 각 flash 는 GraniteBlastBeam 인스턴스(`burstFlashDuration` 동안 표시). |
 
+### 거리별 모드 자동 전환 (`distanceBasedMode`)
+`distanceBasedMode = true` 로 켜면 `EnterPreFire` 진입 시 슬라임과 머즐 간 거리(`Vector3.Distance(target, AimOrigin())`)를 한 번 측정해 모드를 재선택. 텔레그래프 표시 + `lockedDir` 락인 직전이라 PreFire/FireStart/Firing 전체가 같은 모드로 진행됨 (차징 도중 슬라임이 가까워져도 모드는 안 바뀜 — "텔레그래프 = 한 발 약속" 유지).
+
+| 거리 구간 | 적용 모드 필드 | 기본값 |
+|----------|--------------|--------|
+| `dist ≤ closeRangeDistance` | `closeMode` | Burst |
+| `closeRangeDistance < dist ≤ midRangeDistance` | `midMode` | Beam |
+| `midRangeDistance < dist ≤ detectionRange` | `farMode` | Branching |
+
+- `target == null` (트리거 `FireOnce()` 등 자동 추적 없는 케이스) → 거리 측정 불가, 인스펙터의 정적 `mode` 그대로 사용 (fallback).
+- 토글 OFF (기본) → 기존처럼 `mode` 필드 한 종류만 사용. 기존 씬은 영향 없음.
+- 권장: `closeRangeDistance ≤ midRangeDistance ≤ detectionRange` 로 설정. 셋이 같거나 넘어가면 한 구간이 사라질 뿐, 런타임 에러는 안 남.
+
+#### 거리 진입 시 쿨타임 스킵 (`resetCooltimeOnEnterCloseRange` / `resetCooltimeOnEnterMidRange`)
+`distanceBasedMode = true` 일 때만 동작. 매 프레임 슬라임의 현재 zone (Close/Mid/Far) 을 추적해서, **새 zone 으로 전환되는 프레임에 emitter 가 `Cooldown` 상태**라면 해당 토글 ON 시 `stateTimer = 0` 으로 즉시 종료 → 다음 PreFire 가 곧바로 시작됨. 슬라임이 멀리서 접근해 들어오면 더 공격적으로 반응하라고 만든 옵션.
+- Idle / Detecting / PreFire / FireStart / Firing / PostFire 중에는 무시 (이미 발사 사이클 진행 중).
+- Far → Mid 진입은 `resetCooltimeOnEnterMidRange` 만 본다. Mid → Close 진입은 `resetCooltimeOnEnterCloseRange` 만 본다.
+- 같은 zone 안에서 머무르거나 멀어질 때(Close → Mid, Mid → Far)는 트리거 안 됨.
+
 ## FSM (4단계 발사)
 ```
 Idle
@@ -117,22 +136,49 @@ points[i]      = baseSamples[i] + perp * Random(-jaggedness, jaggedness) * sin(t
   - `groundImpactPitchJitter` (기본 0.1) 로 ±10% pitch 랜덤화 → 다중 발생 시 단조로움 방지.
 - 오디오 라우팅: `SoundService.PlayAt(clip, worldPos, SFX_Object, volume, pitch)`.
 
-## Inspector 표시
-`GraniteBlastEmitterEditor` (`Assets/Scripts/Editor/`) 가 [Header] attribute 를 reflection 으로 읽어 현재 `mode` 와 무관한 모드 섹션 (Branching/Beam/Burst) 을 자동으로 숨김. 새 필드 추가 시 동일 헤더 아래에 두면 자동 분류됨.
+## Inspector 표시 / SO 분리 구조
+**두 종류의 SO 가 분리돼 있다.**
+
+### 1. Per-mode tuning (Branching / Beam / Burst 각각)
+- `branchingConfig` / `beamConfig` / `burstConfig` 세 개의 SO 참조.
+- 모드별 튜닝(예: `tendrilCount`, `beamTrackAngularSpeed`, `burstFlashCount`)은 해당 SO 에셋에 들어 있다.
+- 런타임에 emitter 가 get-only proxy 프로퍼티로 SO 값을 읽음 — 미할당 시 코드에 박힌 fallback 값 사용.
+- 새 SO 생성: **Create → SlimeJumping → Granite Blast → Branching/Beam/Burst Config**.
+- 기본 에셋: `Assets/Settings/GraniteBlast/GraniteBlast{Branching|Beam|Burst}Config_Default.asset`.
+
+### 2. Emitter preset (모드별로 한 세트 덮어쓰기)
+- 슬롯 3개: `branchingPreset` / `beamPreset` / `burstPreset` — 모두 동일한 `GraniteBlastEmitterPreset` SO 타입. 각 슬롯이 emitter 의 Detection / Phase Timing / Hit Mask & Range / Knockback / Hit Feedback / Stun / Visual Colors / Telegraph / Audio / VFX Prefabs / Snow Impact 블록을 한 덩어리로 묶음.
+- **PreFire 진입 시 모드별 선택**: `EnterPreFire` 에서 `mode` 가 락인된 직후 (distance-based 가 켜져 있으면 거리 기반 선택 후) 해당 모드의 preset 이 `ApplyPreset()` 으로 emitter 필드에 일괄 복사됨. 즉 같은 emitter 라도 어떤 모드로 쏘느냐에 따라 차징 시간/사운드/노크백 값이 통째로 갈아치워짐.
+- **편집 시점 자동 덮어쓰기**: OnValidate 가 슬롯별 last-applied reference 를 따로 캐싱 (`_lastAppliedBranching` / `_lastAppliedBeam` / `_lastAppliedBurst`). 슬롯 하나의 reference 가 바뀌면 그 SO 만 인스펙터에 일괄 복사 — 다른 슬롯의 값은 건드리지 않고, 같은 preset 을 다시 끌어다 놓아도 로컬 편집은 보존.
+- **Start 시점 초기 적용**: 정적 `mode` 필드에 해당하는 슬롯의 preset 이 한 번 적용 → 첫 발사 전 Detecting 단계 (`detectionDelay` / `loseSightGrace`) 가 그 모드 기준으로 동작. PreFire 진입 시 다시 갈아치움.
+- 슬롯이 null 이면 그 모드는 인스펙터 인라인 값 그대로 사용. 세 슬롯 다 null 이면 preset 기능 미사용 (기존 워크플로 호환).
+- 새 SO 생성: **Create → SlimeJumping → Granite Blast → Emitter Preset**.
+- 기본 에셋: `Assets/Settings/GraniteBlast/GraniteBlastEmitterPreset_{Branching|Beam|Burst}.asset` (모두 코드 기본값으로 초기화 — 사용 시 디자이너가 모드별로 다르게 튜닝).
+
+### 3. Emitter 에 남는 것
+- `mode`, `autoFire`, `distanceBasedMode` 토글 + 분포 — per-instance 게임플레이 선택.
+- `target`, `muzzle`, `aimAtTarget` — 씬 레퍼런스 + per-instance 셋업.
+- `chargeGlow`, `muzzleFlash`, `detectionIndicator`, `hitShakeEmitter`, `navGraph` — 씬 레퍼런스 (SO 에 못 들어감).
 
 ## 인스펙터 파라미터 요약
+> 아래 *Detection / Phase Timing / Hit Mask / Knockback / Hit Feedback / Stun / Visual Colors / Telegraph / Audio / VFX (Prefabs) / Snow Impact* 블록의 값은 `preset` (`GraniteBlastEmitterPreset`) 이 할당돼 있을 때 한 세트로 덮어써짐. preset null 이면 인스펙터 인라인 값 사용.
+
 | Header | 키 |
 |--------|------|
+| Emitter Presets (per mode) | `branchingPreset` / `beamPreset` / `burstPreset` (SO `GraniteBlastEmitterPreset`) — 모드별로 Detection/Phase Timing/Hit Mask/Knockback/Hit Feedback/Stun/Visual/Telegraph/Audio/VFX/Snow 한 묶음 덮어쓰기. PreFire 진입 시 활성 모드의 슬롯 적용 |
 | Mode | `mode` |
+| Distance-Based Mode | `distanceBasedMode` (toggle), `closeRangeDistance`, `midRangeDistance`, `closeMode`, `midMode`, `farMode`, `resetCooltimeOnEnterCloseRange`, `resetCooltimeOnEnterMidRange` — 거리 구간별 모드 자동 전환 + zone 진입 시 Cooldown 스킵 토글 |
+| Mode Configs (ScriptableObject) | `branchingConfig`, `beamConfig`, `burstConfig` — 각 모드별 튜닝 값을 담는 SO 에셋 참조 |
+| Branching Scene Refs | `navGraph` (씬 레퍼런스라 SO 에 못 들어감) |
 | Target | `target`, `detectionRange`, `lineOfSightBlockers` |
 | Muzzle | `muzzle`, `aimAtTarget` (true=live target 추적, false=muzzle.right) |
 | Phase Timing | `detectionDelay`, `preFireDuration`, `fireStartDuration`, `firingDuration`, `postFireDuration`, `cooldownDuration`, `loseSightGrace` |
 | Hit Mask | `maxRange`, `bulletHitMask`, `groundSnapMask` (Branching 텐드릴 endpoint 지면 스냅), `hitRadius` (CircleCast 반경 — 모든 모드 공통) |
 | Knockback | `knockbackImpulse` (one-shot deltaV m/s), `knockbackAcceleration` (sustained deltaV/s² m/s²), `sustainedHit` (Beam 한정) — 2026-04-29 stage2 개편 후 stunDuration 제거됨 |
 | Firing Mode Control | `autoFire` (false 면 외부 `FireOnce()` 호출에서만 발사) |
-| Branching | `tendrilCount`, `targetRadius`, `launchSpreadDegrees`, `tendrilLaunchDistance`, `bendHeight`, `tendrilSegmentLength` (path-length 기반 동적 세그먼트), `tendrilJaggedness`, `tendrilDrawTime / Hold / Fade`, `tendrilCoreWidth`, `branchingFireStartFraction`, `trailDuration` (체이스 스프레드 sec), `trailLagOffset` (최신 텐드릴의 기본 랙 sec), `trailSampleInterval` |
-| Beam | `beamFadeTime`, `beamCoreWidth`, `beamTravelSpeed`, `beamTrackAngularSpeed` (deg/sec, 0=고정 / >0=각속도 추적 + sustained 강제 + 첫접촉 임펄스 하이브리드), `beamTrackLag` (sec, 슬라임 trail 의 N초 전 위치를 조준 — 회피 여지), `beamTrackMode` (`InitialLagThenLive`=초기 방향만 lag 위치로 스냅샷 → 이후 LIVE 위치를 deg/sec 추적 / `ContinuousLag`=매 프레임 lag 위치를 deg/sec 추적), `beamGroundedSlideScale` (0..1, 빔 push deltaV 의 surfaceTangent 성분 사전 스케일 — grounded 슬라임이 빔에 맞고 있는 동안만 슬라이드 비율 조정. 1=레거시 풀 슬라이드, 0=빔 닿는 동안 슬라이드 정지), `beamOverwriteSlide` (bool, true=overwrite 채널 사용 — 기존 슬라이드 wipe 후 push 속도로 핀, false=레거시 가산 임펄스+가속 하이브리드), `beamOverwritePinnedSpeed` (m/s, overwrite 모드에서 매 프레임 핀할 tangent 속도 — `pushDir * pinned * groundedSlideScale` 로 `crawlVelocity` 직접 set) (lifetime은 fireStart+firing+postFire) |
-| Burst | `burstFlashCount`, `burstSpreadDegrees`, `burstFlashDuration`, `burstFlashFadeTime`, `burstFlashCoreWidth`, `burstFireStartFraction` (batch 모드), `burstFlashInterval` (>0 → 한 발씩 N초 간격으로 순차 발사. fraction 무시) |
+| Branching (SO `GraniteBlastBranchingConfig`) | `tendrilCount`, `targetRadius`, `bowHeight`, `bowDepthZ`, `controlPointJitter`, `controlPointZJitter`, `tendrilSegmentLength`, `tendrilJaggedness`, `tendrilTravelSpeed`, `tendrilDrawTime / Hold / Fade`, `tendrilCoreWidth`, `branchingFireStartFraction`, `trailDuration`, `trailLagOffset`, `trailSampleInterval`, `navWallMask`, `navPathCostJitter`, `navEntryJitter`, `tendrilPathNoiseAmplitude`, `tendrilPathNoiseFrequency` |
+| Beam (SO `GraniteBlastBeamConfig`) | `beamFadeTime`, `beamCoreWidth`, `beamTravelSpeed`, `beamTrackAngularSpeed` (deg/sec, 0=고정 / >0=각속도 추적 + sustained 강제 + 첫접촉 임펄스 하이브리드), `beamTrackLag` (sec), `beamTrackMode` (`InitialLagThenLive` / `ContinuousLag`), `beamGroundedSlideScale` (0..1), `beamOverwriteSlide` (bool, true=overwrite 채널 사용), `beamOverwritePinnedSpeed` (m/s, overwrite 모드에서 매 프레임 핀할 tangent 속도) |
+| Burst (SO `GraniteBlastBurstConfig`) | `burstFlashCount`, `burstSpreadDegrees`, `burstFlashDuration`, `burstFlashFadeTime`, `burstFlashCoreWidth`, `burstFireStartFraction` (batch 모드), `burstFlashInterval` (>0 → 한 발씩 N초 간격), `burstFlashTravelSpeed` |
 | Visual Colors | `coreColor`, `lineZOffset` |
 | Telegraph | `showPreFireTelegraph`, `telegraphWidth`, `telegraphColor` |
 | Audio | `detectSound / preFireSound / fireStartSound / postFireSound / groundImpactSound` + 각 볼륨, `groundImpactPitchJitter` |
@@ -149,6 +195,10 @@ points[i]      = baseSamples[i] + perp * Random(-jaggedness, jaggedness) * sin(t
 - [GraniteBlastEmitter.Branching.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Branching.cs) — partial: PlanBranching/SpawnTendrilsUpTo + NavGraph A* 분기
 - [GraniteBlastEmitter.Beam.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Beam.cs) — partial: SpawnBeam
 - [GraniteBlastEmitter.Burst.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Burst.cs) — partial: PlanBurst/SpawnBulletsUpTo
+- [Configs/GraniteBlastBranchingConfig.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Configs/GraniteBlastBranchingConfig.cs) — Branching 모드 SO 튜닝 (CreateAssetMenu: SlimeJumping/Granite Blast/Branching Config)
+- [Configs/GraniteBlastBeamConfig.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Configs/GraniteBlastBeamConfig.cs) — Beam 모드 SO 튜닝
+- [Configs/GraniteBlastBurstConfig.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Configs/GraniteBlastBurstConfig.cs) — Burst 모드 SO 튜닝
+- [Configs/GraniteBlastEmitterPreset.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Configs/GraniteBlastEmitterPreset.cs) — emitter-level 한 세트 preset (Detection/Phase Timing/Hit Mask/Knockback/Hit Feedback/Stun/Visual/Telegraph/Audio/VFX/Snow). OnValidate + Start 에서 `ApplyPreset()` 으로 일괄 복사 (CreateAssetMenu: SlimeJumping/Granite Blast/Emitter Preset)
 - [GraniteBlastEmitter.Impact.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Impact.cs) — partial: PlayGroundImpactSound, SpawnGroundExplosion, GetCoreMaterial, OnDrawGizmosSelected
 - [GraniteBlastTendril.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastTendril.cs) — Bezier `Init` + 폴리라인 `InitPath` (NavGraph A* 결과)
 - [GraniteBlastBeam.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastBeam.cs) — Beam 모드 + Burst flash 양쪽에서 사용. `sustainedHit` 분기 포함.
@@ -213,12 +263,13 @@ NavGraph 가 켜져있어도 무조건 그래프를 통과하지 않음 — 3-wa
 - 캐시는 `OnValidate` 에서 dirty 표시 후 다음 gizmo draw 시 재계산. dirty 가 아니면 raycast 안 도림.
 - 런타임에는 안 읽힘 — 순수 authoring aid. (런타임은 위 LOS-aware FindPath 가 안전망)
 - 텐드릴은 `InitPath` (폴리라인) 경로로 생성 — 베지어 대신 waypoint 따라 `tendrilSegmentLength` 단위로 sub-sample, 동일한 perp jaggedness 적용. travelSpeed 는 폴리라인 전체 길이 기준이라 길수록 오래 걸림.
+- **Miss-extension (2026-05-02)**: nav 폴리라인 끝(슬라임 스냅 위치) 에서 last-segment 방향으로 폴리라인을 연장해 총 path length 가 `maxRange` 가 되도록 함. 베지어 분기와 동일한 계약 — 슬라임을 못 맞춰도 그 방향으로 계속 날아가서 지면/벽에 맞으면 Tendril 의 매-프레임 tip CircleCast 가 halt, 못 맞으면 maxRange 에서 fizzle. 이전엔 슬라임이 이동하면 그 빈 공간에 멈춰서 사라졌음.
 - Beam/Burst 는 NavGraph 미지원 (직선 빔이 그래프 따라 휘는 시각이 어색해서 의도적으로 제외).
 - 사용 패턴: 한 zone 의 슬라임 동선 위에 노드를 깔고 emitter 를 zone 입구에 두면 레이저가 zone 의 안전 라인을 따라 슬라임을 추격.
 
 ### 7. groundExplosion VFX
-- `[Header("VFX")] groundExplosionPrefab` (ParticleSystem) — 지면 hit 일 때만 인스턴스화 (슬라임 hit 은 `impactPrefab` 작은 spark 만). 폭발 반경/AoE 는 없음 — 순수 VFX.
-- Tendril/Beam 둘 다 슬라임 vs 환경 분기에서 `owner.SpawnGroundExplosion` 호출. 슬라임 hit 시에는 호출 안 함.
+- `[Header("VFX")] groundExplosionPrefab` (ParticleSystem) — 모든 contact 에서 인스턴스화 (슬라임 hit + 지면 hit 둘 다 동일한 큰 폭발 + `impactPrefab` 작은 spark). 폭발 반경/AoE 는 없음 — 순수 VFX.
+- Tendril 은 hit 분기와 무관하게 `owner.SpawnGroundExplosion` 1회 호출 (텐드릴 1개당 1발). Beam 은 슬라임 첫 접촉 시 1회 + 첫 ground 차폐 시 1회 (sustained 빔도 슬라임 폭발은 첫 프레임 1회만 — 매 프레임 재생성 안 함).
 
 ### 7-1. Snow carve on impact
 - `[Header("Snow Impact")]` `snowCarveOnImpact` (default true), `snowCarveDepth` (0.18), `snowCarveRadius` (0.6).
@@ -293,3 +344,69 @@ SlimeBurn.hlsl 에 `_HitFlashStrength` (float) + `_HitFlashColor` (float4) 우�
 - [SlimeBurn.hlsl](../../../SlimeJumping_v2/Assets/Art/Shader/SlimeBurn.hlsl) — `_HitFlashStrength` / `_HitFlashColor` / `SampleHitFlash`
 - [SlimeBurnVisual.cs](../../../SlimeJumping_v2/Assets/Scripts/Visual/SlimeBurnVisual.cs) — flash decay timer + MPB push
 - [HitStopService.cs](../../../SlimeJumping_v2/Assets/Scripts/Effects/HitStopService.cs) (재사용) — Freeze + ImpulseEmitter 동기 발화, charge 가드 자동 적용
+
+## 12. Attackable (슬라임이 닿으면 파괴되는 카운터)
+
+슬라임이 점프로 emitter 에 닿으면 한 번에 부서지는 카운터. 셀레스트의 하트 부수기와 비슷한 결.
+
+`GraniteBlastEmitterAttackable` 컴포넌트를 emitter GO 에 부착 (또는 별도 자식 GO). `RequireComponent(typeof(Collider2D))` — 자기 콜라이더가 trigger.
+
+### 시퀀스
+1. 슬라임이 trigger 콜라이더에 닿음 → `consumed=true`, 자기 콜라이더 즉시 disable.
+2. `warpEffect.TriggerStretch(slime.transform)` — 인스펙터 wired 된 SpaceWarpEffect 가 emitter↔슬라임 사이에 BulbShatter 막을 띄우고, 슬라임이 멀어지는 동안 늘어나다 자체 pop 시 Voronoi 균열 + 플래시.
+3. `emitter.Cancel()` — FSM 즉시 Idle, charge glow / telegraph / pending 큐 정리, 진행 중 Beam GameObject `Destroy`. 이미 발사된 tendril / burst flash 는 그대로 두고 자기 수명까지 비행.
+4. `WorldTimeFreezeService.Freeze(worldFreezeDuration)` — 다른 메커니즘 정지 (아래 13 절). 슬라임/warp 는 무시하고 계속.
+5. `destroyVfx.Play()`, `impactSfx` 재생.
+6. `visualToShrink` shrink 코루틴 (unscaled time) → 끝나면 `targetToDeactivate.SetActive(false)` (기본값 emitter.gameObject).
+
+### 인스펙터 필드
+| 필드 | 의미 |
+|------|------|
+| `emitter` | Cancel 호출할 GraniteBlastEmitter. |
+| `warpEffect` | TriggerStretch 호출할 SpaceWarpEffect. anchor 는 emitter 트랜스폼으로 미리 설정. |
+| `visualToShrink` | shrink 대상 Transform. null = shrink 스킵. |
+| `targetToDeactivate` | shrink 후 `SetActive(false)` 할 GO. null = emitter.gameObject. |
+| `worldFreezeDuration` | 다른 메커니즘 정지 realtime 초. 0 = freeze 안 함. |
+| `shrinkDuration` | shrink 코루틴 길이. 0 = 즉시 deactivate. |
+| `shrinkCurve` | scale-over-time, X=0..1 progress, Y=multiplier. |
+| `destroyVfx` / `impactSfx` / `impactVolume` | 옵션 피드백. |
+
+### 가드
+- `IsBusy` 게이트 없음 — emitter 가 Idle 이어도 닿으면 부서짐. (사용자 결정.)
+- `consumed` 플래그로 1회용 보장.
+
+### 에디터 헬퍼
+`SlimeJumping/Mechanism/Setup Granite Blast Attackable Test` — 슬라임 옆에 Beam 모드 emitter + BulbShatter warp + Attackable 와이어링까지 한번에 셋업. `Mat_SWPad_v2_BulbNeck_Voronoi.mat` 자동 로드/생성 (`SpaceWarpV2TestSetup` 와 동일 경로).
+
+## 13. WorldTimeFreezeService (협력형 freeze)
+
+`HitStopService` 와 별개의 freeze. **`Time.timeScale` 을 건드리지 않음** → 슬라임 / SpaceWarpEffect / 기타 "freeze 면역" 컴포넌트가 정상 동작 유지.
+
+### 사용
+```csharp
+WorldTimeFreezeService.Freeze(0.55f);   // 0.55 realtime sec 동안 freeze
+if (WorldTimeFreezeService.IsFrozen) return;   // 협력자 Update 첫 줄
+```
+
+### 협력자 패턴
+1차 범위에서 가입한 곳:
+- `GraniteBlastBeam.Update` — 진행 중 빔 일시정지.
+- `GraniteBlastTendril.Update` — in-flight 번개 일시정지.
+- `JumpBall.Update` — 보브/state 타이머 일시정지.
+
+ParticleSystem 은 스크립트가 없으므로 `FreezableParticleSystem` 컴포넌트 부착 — `OnFreezeStarted` 시 `ps.Pause(true)`, `OnFreezeEnded` 시 `ps.Play(true)`. 디자이너가 눈/연기/공기 입자 GO 에 추가.
+
+### 가입 안 한 것
+의도적으로 비-가입:
+- `SlimeController` — 슬라임은 freeze 동안에도 계속 움직임.
+- `SpaceWarpEffect` — warp 자체는 freeze 와 무관하게 진행 (그래야 닿는 순간의 연출이 나옴).
+- `GraniteBlastEmitterAttackable` shrink 코루틴 — `Time.unscaledDeltaTime` 사용해 freeze 와 무관하게 진행.
+
+### 안전 장치
+- 도메인 리로드 / `OnApplicationQuit` 시 플래그 + 이벤트 리셋 — 멈춘 채로 leak 방지.
+- 겹친 `Freeze` 호출은 종료 시각 max 로 연장 (HitStopService 와 동일 정책).
+
+### 관련 파일
+- [WorldTimeFreezeService.cs](../../../SlimeJumping_v2/Assets/Scripts/Effects/WorldTimeFreezeService.cs)
+- [FreezableParticleSystem.cs](../../../SlimeJumping_v2/Assets/Scripts/Effects/FreezableParticleSystem.cs)
+- [GraniteBlastEmitterAttackable.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitterAttackable.cs)

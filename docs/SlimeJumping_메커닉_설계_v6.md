@@ -44,7 +44,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Pendulum](features/platforms/pendulum.md) — 매달린 진자
 - [Springy Branch](features/platforms/springy-branch.md) — 탄력 나뭇가지
 - [Deformable Mud](features/platforms/deformable-mud.md) — 진흙/찰흙 소성 변형
-- [Rope](features/platforms/rope.md) — Verlet + 반동 Launch
+- [Rope](features/platforms/rope.md) — Verlet + 반동 Launch (v1 = sag-based, [v2 = timing-based](features/platforms/rope-v2.md))
 
 ## 메커니즘
 
@@ -64,6 +64,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Turret Hazard](features/mechanisms/turret-hazard.md) — CCTV 확장 사격
 - [Icicle Hazard](features/mechanisms/icicle-hazard.md) — 낙하 고드름 (진동 → 낙하 → 파괴)
 - [Falling Train](features/mechanisms/falling-train.md) — 1회 한정 낙하 기차 (텔레그래프 → 연결부 분리 → 곡선 낙하 → 숏컷)
+- [Granite Blast Attackable](features/mechanisms/granite-blast.md#12-attackable-슬라임이-닿으면-파괴되는-카운터) — 슬라임이 닿으면 BulbShatter warp + WorldTimeFreezeService 협력형 freeze 후 emitter 파괴되는 카운터
 - [Tier 1 Interactables](features/mechanisms/tier1-interactables.md) — E키 (Sit, TV, Shrine 등)
 - [Tier 1 Fullscreen Hazards](features/mechanisms/tier1-fullscreen-hazards.md) — Jumpscare, CameraFlash
 - [Memo](features/mechanisms/memo.md) — 월드 스페이스 내레이션

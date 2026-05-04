@@ -128,6 +128,11 @@ namespace SlimeJumping.Controller
                     impactTangentSpeed = tangentSpeed;
                     impactNormalSpeed = normalSpeed;
                     stickDeccelTimer = 0f;
+                    // Rope impact: currentRope was already set this frame by
+                    // UpdateRopeReference (line ~603), so we can hand it the
+                    // pre-attach velocity here BEFORE the attach zeroes it.
+                    if (currentRope != null)
+                        currentRope.ApplyRiderImpact(rb.position, relativeVel);
 
                     if (carrier != null) carrier.Attach(surfaceCollider);
                     UpdateSurfaceModifiers(surfaceCollider);
@@ -193,6 +198,9 @@ namespace SlimeJumping.Controller
                     impactTangentSpeed = tangentSpeed;
                     impactNormalSpeed = normalSpeed;
                     stickDeccelTimer = 0f;
+                    // Rope impact: see Space-held branch above for ordering rationale.
+                    if (currentRope != null)
+                        currentRope.ApplyRiderImpact(rb.position, relativeVel);
 
                     if (carrier != null) carrier.Attach(surfaceCollider);
                     UpdateSurfaceModifiers(surfaceCollider);

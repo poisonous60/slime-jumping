@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 using SlimeJumping.Audio;
 using SlimeJumping.Controller;
 
@@ -27,12 +28,46 @@ namespace SlimeJumping.Mechanisms
         //                        position (slime's pos N seconds ago).
         public enum BeamTrackMode { InitialLagThenLive, ContinuousLag }
 
+        [Header("Emitter Presets (per mode — each one overwrites the inspector blocks below as a set)")]
+        [Tooltip("Preset applied when the active FireMode resolves to Branching (either via the static `mode` field or via distance-based selection). Same SO type as the Beam/Burst slots — pick a different SO per mode to give each mode its own Phase Timing / Audio / Feedback feel. Leave null to fall back to the inspector's inline values.")]
+        [FormerlySerializedAs("preset")]
+        [SerializeField] private GraniteBlastEmitterPreset branchingPreset;
+        [Tooltip("Preset applied when the active FireMode resolves to Beam.")]
+        [SerializeField] private GraniteBlastEmitterPreset beamPreset;
+        [Tooltip("Preset applied when the active FireMode resolves to Burst.")]
+        [SerializeField] private GraniteBlastEmitterPreset burstPreset;
+        // Per-slot 'last applied' caches so OnValidate detects which slot's
+        // reference changed and re-applies just that one — local field edits
+        // (with the same preset still attached) survive untouched.
+        [FormerlySerializedAs("_lastAppliedPreset")]
+        [SerializeField, HideInInspector] private GraniteBlastEmitterPreset _lastAppliedBranching;
+        [SerializeField, HideInInspector] private GraniteBlastEmitterPreset _lastAppliedBeam;
+        [SerializeField, HideInInspector] private GraniteBlastEmitterPreset _lastAppliedBurst;
+
         [Header("Firing Mode Control")]
         [Tooltip("When true (default), the emitter auto-detects targets and fires on its own. When false, the emitter stays Idle until external code calls FireOnce() — used for scripted/triggered shots (e.g., GraniteBlastTrigger volumes).")]
         [SerializeField] private bool autoFire = true;
 
         [Header("Mode")]
         [SerializeField] private FireMode mode = FireMode.Branching;
+
+        [Header("Distance-Based Mode")]
+        [Tooltip("When true, the firing mode is re-selected at PreFire entry based on the slime's distance from the muzzle, using the three (close / mid / far) mode picks below. The static 'Mode' field above is used as the fallback when the target is missing.")]
+        [SerializeField] private bool distanceBasedMode = false;
+        [Tooltip("Distance threshold (m) — slime within this range fires Close mode.")]
+        [SerializeField] private float closeRangeDistance = 5f;
+        [Tooltip("Distance threshold (m) — slime within this range (and outside Close) fires Mid mode. Beyond this fires Far mode. Should be ≥ closeRangeDistance and ≤ detectionRange.")]
+        [SerializeField] private float midRangeDistance = 12f;
+        [Tooltip("Mode used when the slime is closer than closeRangeDistance.")]
+        [SerializeField] private FireMode closeMode = FireMode.Burst;
+        [Tooltip("Mode used when the slime sits between closeRangeDistance and midRangeDistance.")]
+        [SerializeField] private FireMode midMode = FireMode.Beam;
+        [Tooltip("Mode used when the slime is farther than midRangeDistance (still inside detectionRange).")]
+        [SerializeField] private FireMode farMode = FireMode.Branching;
+        [Tooltip("When true, crossing into Close range while in Cooldown immediately ends the cooldown so the next shot can fire without waiting.")]
+        [SerializeField] private bool resetCooltimeOnEnterCloseRange = false;
+        [Tooltip("When true, crossing into Mid range while in Cooldown immediately ends the cooldown so the next shot can fire without waiting.")]
+        [SerializeField] private bool resetCooltimeOnEnterMidRange = false;
 
         [Header("Target")]
         [Tooltip("Target to detect. If null, auto-finds SlimeController on Start.")]
@@ -93,79 +128,64 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("DamageType tag attached to the stun (visual / audio differentiation only — no gameplay effect).")]
         [SerializeField] private SlimeJumping.Interfaces.DamageType stunDamageType = SlimeJumping.Interfaces.DamageType.Lightning;
 
-        [Header("Branching Mode")]
-        [Tooltip("Optional A* navigation graph. When set, Branching tendrils route through navGraph.FindPath(muzzle, slime) ONLY IF a direct line from muzzle to slime is blocked by walls (navWallMask). Direct LOS clear → bezier direct fire. Behind a wall → A* through navGraph. No clean entry/exit nodes → bezier fallback. Leave null to disable graph routing entirely.")]
+        [Header("Mode Configs (ScriptableObject)")]
+        [Tooltip("Branching mode tuning. Required for Branching shots — leave assigned to a GraniteBlastBranchingConfig asset (Create → SlimeJumping → Granite Blast → Branching Config).")]
+        [SerializeField] private GraniteBlastBranchingConfig branchingConfig;
+        [Tooltip("Beam mode tuning. Required for Beam shots — leave assigned to a GraniteBlastBeamConfig asset.")]
+        [SerializeField] private GraniteBlastBeamConfig beamConfig;
+        [Tooltip("Burst mode tuning. Required for Burst shots — leave assigned to a GraniteBlastBurstConfig asset.")]
+        [SerializeField] private GraniteBlastBurstConfig burstConfig;
+
+        [Header("Branching Scene Refs")]
+        [Tooltip("Optional A* navigation graph. When set, Branching tendrils route through navGraph.FindPath(muzzle, slime) ONLY IF a direct line from muzzle to slime is blocked by walls (navWallMask). Scene reference — kept on the emitter (cannot live in a ScriptableObject asset).")]
         [SerializeField] private GraniteBlastNavGraph navGraph;
-        [Tooltip("Layers that count as walls for NavGraph LOS gating. Used by IsDirectPathClear (direct shortcut) and ClosestVisibleNode (entry/exit selection). Should NOT include the slime layer — slime in path is fine, walls aren't. Default = Environment (layer 7). 0 disables LOS gating (NavGraph reverts to legacy Euclidean nearest-node selection).")]
-        [SerializeField] private LayerMask navWallMask = (1 << 7);
-        [SerializeField] private int tendrilCount = 7;
-        [Tooltip("World-space horizontal jitter (±units) on the captured slime XY before computing the fire direction. Adds variety to the bolt fan.")]
-        [SerializeField] private float targetRadius = 0f;
-        [Tooltip("World-space upward bow added to the Bezier control points along the muzzle→target line. 0 = perfectly straight bolt directly at the target. Higher = bolt arches upward over the path.")]
-        [SerializeField] private float bowHeight = 0f;
-        [Tooltip("World-space Z bow added to the Bezier control points (depth). 0 = bolt stays in the muzzle's Z plane. >0 pushes the midpoint forward (toward camera with default URP setup), <0 pushes it back. Combined with bowHeight gives the bolt a 3D arc.")]
-        [SerializeField] private float bowDepthZ = 0f;
-        [Tooltip("World-space perpendicular jitter (±units) on each Bezier control point, so the bolts don't all overlap on the same straight line.")]
-        [SerializeField] private float controlPointJitter = 0.3f;
-        [Tooltip("World-space Z jitter (±units) on each Bezier control point. Independent from controlPointJitter — adds depth wobble per tendril so a fan of bolts doesn't all sit in the same plane. 0 = all bolts share the muzzle's Z plane (legacy 2D behavior).")]
-        [SerializeField] private float controlPointZJitter = 0f;
-        [Tooltip("World-space distance per Bezier segment. Total segments per tendril = path-length / this, clamped to [6, 48].")]
-        [SerializeField] private float tendrilSegmentLength = 0.6f;
-        [Tooltip("Max perpendicular noise (units) along the curve, scaled by segment length.")]
-        [SerializeField] private float tendrilJaggedness = 0.35f;
-        [Tooltip("Projectile travel speed in world units per second. The tendril's tip advances along the muzzle→maxRange line at this rate, doing per-frame collision sweeps; it halts on the first slime/terrain it actually encounters at that moment. Higher = snappier bolt, lower = slower visible travel.")]
-        [SerializeField] private float tendrilTravelSpeed = 60f;
-        [Tooltip("Fallback fixed travel time (sec) for the tip to traverse the full maxRange. Used only when tendrilTravelSpeed <= 0.")]
-        [SerializeField] private float tendrilDrawTime = 0.2f;
-        [SerializeField] private float tendrilHoldTime = 0.18f;
-        [SerializeField] private float tendrilFadeTime = 0.28f;
-        [Tooltip("Core line width for tendrils.")]
-        [SerializeField] private float tendrilCoreWidth = 0.12f;
-        [Tooltip("Fraction of tendrils spawned at FireStart. The rest are staggered through Firing.")]
-        [Range(0f, 1f)] [SerializeField] private float branchingFireStartFraction = 0.3f;
-        [Tooltip("Chase spread (sec). At FireStart, the N tendrils are spread across the slime's recorded XY history — tendril 0 (fires first) uses the OLDEST direction in the window; tendril N-1 (fires last) uses the NEWEST. 0 = all tendrils share the same direction reference (lagOffset only).")]
-        [SerializeField] private float trailDuration = 0.6f;
-        [Tooltip("Base lag (sec) — even the NEWEST tendril uses the slime's position THIS many seconds before FireStart as its direction reference. 0 = newest tendril uses the FireStart position. Combined with trailDuration, the OLDEST tendril references (trailLagOffset + trailDuration) seconds ago.")]
-        [SerializeField] private float trailLagOffset = 0f;
-        [Tooltip("Sample interval for trail recording (sec). Effective trail samples = (trailDuration + trailLagOffset) / interval.")]
-        [SerializeField] private float trailSampleInterval = 0.04f;
 
-        [Header("Beam Mode")]
-        [Tooltip("Time the beam takes to fade out at the end of its life.")]
-        [SerializeField] private float beamFadeTime = 0.18f;
-        [Tooltip("Core line width for the beam.")]
-        [SerializeField] private float beamCoreWidth = 0.55f;
-        [Tooltip("Beam tip travel speed in world units per second. The beam visibly grows from muzzle along the locked direction, doing per-frame collision sweeps; halts on the first slime/terrain it actually encounters at that moment. 0 = instant full-length beam (hitscan-style fallback).")]
-        [SerializeField] private float beamTravelSpeed = 80f;
-        [Tooltip("Angular tracking speed (deg/sec). After spawn, the beam's aim direction rotates toward the lagged slime position at this rate. 0 = legacy frozen direction. When >0, the beam re-sweeps every frame (sustained behavior is forced) and applies KnockbackImpulse on first slime contact + KnockbackAcceleration*dt every frame thereafter.")]
-        [SerializeField] private float beamTrackAngularSpeed = 90f;
-        [Tooltip("Aim lag (sec). The beam targets the slime's position from this many seconds ago using the recorded slime trail. 0 = aim at live position. Larger = more 'predictable' — gives the player time to dodge as the beam swings toward the past trail.")]
-        [SerializeField] private float beamTrackLag = 0.25f;
-        [Tooltip("How beamTrackLag is applied during the beam's lifetime.\n• InitialLagThenLive: initial aim is snapshot at the lagged position, then the beam rotates toward the LIVE slime position (deg/sec capped). Lag becomes a head-start gift, no continuous prediction.\n• ContinuousLag: every frame the rotation target is the lagged trail position. Lag persists for the whole beam.")]
-        [SerializeField] private BeamTrackMode beamTrackMode = BeamTrackMode.InitialLagThenLive;
-        [Tooltip("Surface-slide multiplier applied to beam pushes while the slime is grounded (Attached/Charging). 1 = full slide (legacy), 0 = no slide while in beam, 0.3 = 30% slide. Pre-scales the tangent component of deltaV before ApplyHazardPush so the slime's slope projection in SlimeController stays untouched. Only the beam path uses this; tendrils/burst still apply at full magnitude.")]
-        [Range(0f, 1f)] [SerializeField] private float beamGroundedSlideScale = 0.3f;
-        [Tooltip("When true (default), beam hits OVERWRITE the slime's surface slide instead of adding to it — a slime already sliding gets pinned to the new push velocity each frame. Routes through SlimeController.ApplyHazardPushOverwriteSlide which wipes crawlVelocity/slideVelocity. When false, falls back to legacy additive impulse + accumulating accel hybrid.")]
-        [SerializeField] private bool beamOverwriteSlide = true;
-        [Tooltip("Pinned tangent speed (m/s) used by the overwrite channel. Each frame the beam hits a grounded slime, the slime's tangent velocity is set to pushDir * (this) * beamGroundedSlideScale. Independent from knockbackImpulse — that field still drives the overwrite=false legacy path. Higher = slime is pushed away faster while pinned.")]
-        [SerializeField] private float beamOverwritePinnedSpeed = 14f;
+        // --- proxy accessors: keep original field names so partial files
+        // (Branching/Beam/Burst/Targeting/Impact) read them unchanged. Each one
+        // pulls from the assigned config asset; if no config is assigned the
+        // proxy returns the original code default so a missing reference does
+        // not produce a NullReferenceException at runtime.
+        private LayerMask navWallMask => branchingConfig != null ? branchingConfig.navWallMask : (LayerMask)(1 << 7);
+        private float navPathCostJitter => branchingConfig != null ? branchingConfig.navPathCostJitter : 0.35f;
+        private float navEntryJitter => branchingConfig != null ? branchingConfig.navEntryJitter : 0.3f;
+        private float tendrilPathNoiseAmplitude => branchingConfig != null ? branchingConfig.tendrilPathNoiseAmplitude : 0.5f;
+        private float tendrilPathNoiseFrequency => branchingConfig != null ? branchingConfig.tendrilPathNoiseFrequency : 0.8f;
+        private int tendrilCount => branchingConfig != null ? branchingConfig.tendrilCount : 7;
+        private float targetRadius => branchingConfig != null ? branchingConfig.targetRadius : 0f;
+        private float bowHeight => branchingConfig != null ? branchingConfig.bowHeight : 0f;
+        private float bowDepthZ => branchingConfig != null ? branchingConfig.bowDepthZ : 0f;
+        private float controlPointJitter => branchingConfig != null ? branchingConfig.controlPointJitter : 0.3f;
+        private float controlPointZJitter => branchingConfig != null ? branchingConfig.controlPointZJitter : 0f;
+        private float tendrilSegmentLength => branchingConfig != null ? branchingConfig.tendrilSegmentLength : 0.6f;
+        private float tendrilJaggedness => branchingConfig != null ? branchingConfig.tendrilJaggedness : 0.35f;
+        private float tendrilTravelSpeed => branchingConfig != null ? branchingConfig.tendrilTravelSpeed : 60f;
+        private float tendrilDrawTime => branchingConfig != null ? branchingConfig.tendrilDrawTime : 0.2f;
+        private float tendrilHoldTime => branchingConfig != null ? branchingConfig.tendrilHoldTime : 0.18f;
+        private float tendrilFadeTime => branchingConfig != null ? branchingConfig.tendrilFadeTime : 0.28f;
+        private float tendrilCoreWidth => branchingConfig != null ? branchingConfig.tendrilCoreWidth : 0.12f;
+        private float branchingFireStartFraction => branchingConfig != null ? branchingConfig.branchingFireStartFraction : 0.3f;
+        private float trailDuration => branchingConfig != null ? branchingConfig.trailDuration : 0.6f;
+        private float trailLagOffset => branchingConfig != null ? branchingConfig.trailLagOffset : 0f;
+        private float trailSampleInterval => branchingConfig != null ? branchingConfig.trailSampleInterval : 0.04f;
 
-        [Header("Burst Mode (multi-beam fan)")]
-        [Tooltip("Number of beam-flashes in the fan.")]
-        [SerializeField] private int burstFlashCount = 6;
-        [Tooltip("Total cone spread in degrees (split half above / half below the aim line).")]
-        [SerializeField] private float burstSpreadDegrees = 32f;
-        [Tooltip("Each flash's lifetime — long enough that the whole fan is visible at once.")]
-        [SerializeField] private float burstFlashDuration = 0.7f;
-        [SerializeField] private float burstFlashFadeTime = 0.25f;
-        [Tooltip("Core line width for each burst flash. Thinner than the main Beam mode.")]
-        [SerializeField] private float burstFlashCoreWidth = 0.22f;
-        [Tooltip("Fraction of flashes fired at FireStart. Only used when burstFlashInterval == 0.")]
-        [Range(0f, 1f)] [SerializeField] private float burstFireStartFraction = 1f;
-        [Tooltip("Seconds between consecutive flash spawns. > 0 enables sequential 'one at a time' firing (overrides burstFireStartFraction). 0 = batch mode using fraction.")]
-        [SerializeField] private float burstFlashInterval = 0f;
-        [Tooltip("Burst flash tip travel speed in world units per second. Same projectile-style growth + collision sweep as Beam mode. 0 = instant full-length flash.")]
-        [SerializeField] private float burstFlashTravelSpeed = 150f;
+        private float beamFadeTime => beamConfig != null ? beamConfig.beamFadeTime : 0.18f;
+        private float beamCoreWidth => beamConfig != null ? beamConfig.beamCoreWidth : 0.55f;
+        private float beamTravelSpeed => beamConfig != null ? beamConfig.beamTravelSpeed : 80f;
+        private float beamTrackAngularSpeed => beamConfig != null ? beamConfig.beamTrackAngularSpeed : 90f;
+        private float beamTrackLag => beamConfig != null ? beamConfig.beamTrackLag : 0.25f;
+        private BeamTrackMode beamTrackMode => beamConfig != null ? beamConfig.beamTrackMode : BeamTrackMode.InitialLagThenLive;
+        private float beamGroundedSlideScale => beamConfig != null ? beamConfig.beamGroundedSlideScale : 0.3f;
+        private bool beamOverwriteSlide => beamConfig != null ? beamConfig.beamOverwriteSlide : true;
+        private float beamOverwritePinnedSpeed => beamConfig != null ? beamConfig.beamOverwritePinnedSpeed : 14f;
+
+        private int burstFlashCount => burstConfig != null ? burstConfig.burstFlashCount : 6;
+        private float burstSpreadDegrees => burstConfig != null ? burstConfig.burstSpreadDegrees : 32f;
+        private float burstFlashDuration => burstConfig != null ? burstConfig.burstFlashDuration : 0.7f;
+        private float burstFlashFadeTime => burstConfig != null ? burstConfig.burstFlashFadeTime : 0.25f;
+        private float burstFlashCoreWidth => burstConfig != null ? burstConfig.burstFlashCoreWidth : 0.22f;
+        private float burstFireStartFraction => burstConfig != null ? burstConfig.burstFireStartFraction : 1f;
+        private float burstFlashInterval => burstConfig != null ? burstConfig.burstFlashInterval : 0f;
+        private float burstFlashTravelSpeed => burstConfig != null ? burstConfig.burstFlashTravelSpeed : 150f;
 
         [Header("Visual Colors")]
         [Tooltip("Color of the beam / tendril line. Use a near-white core for max visibility.")]
@@ -225,6 +245,11 @@ namespace SlimeJumping.Mechanisms
         private float graceTimer;
         private bool indicatorOn;
 
+        // Range zone tracking for the cooltime-skip toggles. -1 = unknown (first sample
+        // after enable), 0 = Close, 1 = Mid, 2 = Far. Updated each Update; on Close/Mid
+        // entry we optionally zero the Cooldown timer.
+        private int lastRangeZone = -1;
+
         // Locked at PreFire entry so all phases use the same aim.
         private Vector3 lockedOrigin;
         private Vector2 lockedDir;
@@ -240,6 +265,13 @@ namespace SlimeJumping.Mechanisms
         private int feedbackBurstId;
         private int lastFeedbackFiredBurstId = -1;
 
+        // Active Beam GameObject tracker — set by SpawnBeam, destroyed by Cancel.
+        // Lets external code (GraniteBlastEmitterAttackable) kill the in-flight laser
+        // mid-fire. Tendrils/burst flashes are NOT tracked here — they're allowed to
+        // finish their natural lifetime per design.
+        private GraniteBlastBeam activeBeam;
+        internal void RegisterActiveBeam(GraniteBlastBeam beam) { activeBeam = beam; }
+
         // --- public access for spawned projectiles ---
         public LayerMask BulletHitMask => bulletHitMask;
         public float MaxRange => maxRange;
@@ -252,6 +284,10 @@ namespace SlimeJumping.Mechanisms
         public float KnockbackAcceleration => knockbackAcceleration;
         public bool SustainedHit => sustainedHit;
         public LayerMask NavWallMask => navWallMask;
+        public float NavPathCostJitter => navPathCostJitter;
+        public float NavEntryJitter => navEntryJitter;
+        public float TendrilPathNoiseAmplitude => tendrilPathNoiseAmplitude;
+        public float TendrilPathNoiseFrequency => tendrilPathNoiseFrequency;
         public State CurrentState => state;
         public bool IsBusy => state != State.Idle && state != State.Cooldown;
         public Transform Target => target;
@@ -270,13 +306,16 @@ namespace SlimeJumping.Mechanisms
         public bool TryApplyStunOnHit(SlimeController slime, Vector2 pushDir, float impulseMagnitude, Vector2 hitPoint)
         {
             if (stunOnHitDuration <= 0f || slime == null) return false;
+            // Routed through the (effect, hitPoint) overload so OnHazardPushed fires
+            // with the contact point — burn-mark + hit-flash visuals trigger the same
+            // way they do on the stun-less push channel.
             slime.ApplyHazardEffect(new SlimeJumping.Interfaces.HazardEffect
             {
                 knockbackForce = impulseMagnitude,
                 knockbackDirection = pushDir,
                 stunDuration = stunOnHitDuration,
                 damageType = stunDamageType,
-            });
+            }, hitPoint);
             return true;
         }
 
@@ -295,6 +334,12 @@ namespace SlimeJumping.Mechanisms
 
         void Start()
         {
+            // Apply the preset matching the currently-configured static `mode`
+            // so detection-phase values (detectionDelay / loseSightGrace / etc.)
+            // are sane before the first shot. EnterPreFire re-applies once the
+            // actual fire mode is locked (relevant for distance-based selection).
+            ApplyPreset(GetPresetForMode(mode));
+
             if (target == null)
             {
                 var slime = FindFirstObjectByType<SlimeController>(FindObjectsInactive.Exclude);
@@ -305,6 +350,104 @@ namespace SlimeJumping.Mechanisms
             HideTelegraph();
         }
 
+#if UNITY_EDITOR
+        // Edit-time auto-apply per slot: only when *that slot's* reference
+        // changes, so local field edits (with the same preset still attached)
+        // survive. If multiple slots are reassigned in the same validate pass
+        // they're applied in order — the inspector ends up showing the
+        // last-applied slot's values, which is fine since each shot re-applies
+        // the right one at runtime anyway.
+        void OnValidate()
+        {
+            if (branchingPreset != _lastAppliedBranching)
+            {
+                _lastAppliedBranching = branchingPreset;
+                if (branchingPreset != null) ApplyPreset(branchingPreset);
+            }
+            if (beamPreset != _lastAppliedBeam)
+            {
+                _lastAppliedBeam = beamPreset;
+                if (beamPreset != null) ApplyPreset(beamPreset);
+            }
+            if (burstPreset != _lastAppliedBurst)
+            {
+                _lastAppliedBurst = burstPreset;
+                if (burstPreset != null) ApplyPreset(burstPreset);
+            }
+        }
+#endif
+
+        private GraniteBlastEmitterPreset GetPresetForMode(FireMode m)
+        {
+            switch (m)
+            {
+                case FireMode.Branching: return branchingPreset;
+                case FireMode.Beam: return beamPreset;
+                case FireMode.Burst: return burstPreset;
+            }
+            return null;
+        }
+
+        // Copies every preset field onto the emitter's serialized field of the
+        // same name. No-op when source is null. Field-by-field (not reflection)
+        // so it stays trivially debuggable and rename-safe.
+        private void ApplyPreset(GraniteBlastEmitterPreset p)
+        {
+            if (p == null) return;
+            detectionRange = p.detectionRange;
+            lineOfSightBlockers = p.lineOfSightBlockers;
+
+            detectionDelay = p.detectionDelay;
+            preFireDuration = p.preFireDuration;
+            fireStartDuration = p.fireStartDuration;
+            firingDuration = p.firingDuration;
+            postFireDuration = p.postFireDuration;
+            cooldownDuration = p.cooldownDuration;
+            loseSightGrace = p.loseSightGrace;
+
+            maxRange = p.maxRange;
+            bulletHitMask = p.bulletHitMask;
+            hitRadius = p.hitRadius;
+
+            knockbackImpulse = p.knockbackImpulse;
+            knockbackAcceleration = p.knockbackAcceleration;
+            sustainedHit = p.sustainedHit;
+
+            hitStopDuration = p.hitStopDuration;
+            hitStopFrozenScale = p.hitStopFrozenScale;
+            hitShakeForce = p.hitShakeForce;
+
+            stunOnHitDuration = p.stunOnHitDuration;
+            stunDamageType = p.stunDamageType;
+
+            coreColor = p.coreColor;
+            lineZOffset = p.lineZOffset;
+
+            showPreFireTelegraph = p.showPreFireTelegraph;
+            telegraphWidth = p.telegraphWidth;
+            telegraphColor = p.telegraphColor;
+
+            detectSound = p.detectSound;
+            preFireSound = p.preFireSound;
+            fireStartSound = p.fireStartSound;
+            postFireSound = p.postFireSound;
+            groundImpactSound = p.groundImpactSound;
+            detectVolume = p.detectVolume;
+            preFireVolume = p.preFireVolume;
+            fireStartVolume = p.fireStartVolume;
+            postFireVolume = p.postFireVolume;
+            groundImpactVolume = p.groundImpactVolume;
+            groundImpactPitchJitter = p.groundImpactPitchJitter;
+            fireStartPitchJitter = p.fireStartPitchJitter;
+
+            impactPrefab = p.impactPrefab;
+            groundExplosionPrefab = p.groundExplosionPrefab;
+
+            snowCarveOnImpact = p.snowCarveOnImpact;
+            snowCarveDepth = p.snowCarveDepth;
+            snowCarveRadius = p.snowCarveRadius;
+        }
+
         void OnDisable()
         {
             ApplyIndicator(false);
@@ -312,6 +455,7 @@ namespace SlimeJumping.Mechanisms
             HideTelegraph();
             state = State.Idle;
             graceTimer = 0f;
+            lastRangeZone = -1;
             pendingTendrils.Clear();
             pendingBullets.Clear();
             slimeWorldTrail.Clear();
@@ -328,6 +472,37 @@ namespace SlimeJumping.Mechanisms
             return true;
         }
 
+        // External shutdown entry point. Aborts the firing FSM and destroys the
+        // currently active Beam GameObject (if any). In-flight tendrils / burst
+        // flashes are NOT touched — they keep their natural lifetime.
+        // Used by GraniteBlastEmitterAttackable when the slime contacts the emitter.
+        public void Cancel()
+        {
+            HideTelegraph();
+            StopChargeGlow();
+            // StopChargeGlow uses StopEmitting so live particles play out their
+            // remaining lifetime — fine for normal PostFire, but on a hostile
+            // cancel the lingering charge glow looks like the blast is still
+            // winding up. Wipe the in-flight particles too.
+            if (chargeGlow != null) chargeGlow.Clear(true);
+            if (muzzleFlash != null)
+            {
+                muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+                muzzleFlash.Clear(true);
+            }
+            if (activeBeam != null)
+            {
+                Destroy(activeBeam.gameObject);
+                activeBeam = null;
+            }
+            EnterIdle();
+            // Halt the FSM Update so the emitter cannot re-enter Detecting → PreFire
+            // while the slime is still inside detectionRange. Without this, the
+            // charge glow we just cleared would re-spawn within detectionDelay.
+            // OnDisable also runs StopChargeGlow + state reset as a safety net.
+            enabled = false;
+        }
+
         // --- FSM ---
 
         void Update()
@@ -339,6 +514,8 @@ namespace SlimeJumping.Mechanisms
             bool seen = autoFire && IsTargetVisible();
             graceTimer = seen ? loseSightGrace : Mathf.Max(0f, graceTimer - dt);
             bool effectivelySeen = seen || graceTimer > 0f;
+
+            UpdateRangeZoneAndMaybeSkipCooldown();
 
             switch (state)
             {
@@ -417,6 +594,16 @@ namespace SlimeJumping.Mechanisms
             stateTimer = preFireDuration;
             ApplyIndicator(true);
 
+            // Re-select mode by current distance before locking origin/direction so
+            // the telegraph (and all downstream FSM phases) commit to the chosen mode.
+            if (distanceBasedMode) mode = SelectModeByDistance();
+
+            // Apply the per-mode emitter preset now that the firing mode is
+            // locked — Phase Timing / Hit / Knockback / Audio / Visual / etc.
+            // all swap to whatever the chosen mode's preset specifies. Detection
+            // values applied here also take effect for the NEXT detection cycle.
+            ApplyPreset(GetPresetForMode(mode));
+
             // Lock origin and direction at the start of PreFire so the telegraph line
             // matches the actual shot. (Even though spawning happens at FireStart.)
             lockedOrigin = AimOrigin();
@@ -494,6 +681,46 @@ namespace SlimeJumping.Mechanisms
             stateTimer = cooldownDuration;
             pendingTendrils.Clear();
             pendingBullets.Clear();
+        }
+
+        // Tracks which range zone (Close/Mid/Far) the target currently sits in and,
+        // when the zone transitions into Close or Mid, optionally zeroes the
+        // Cooldown timer so the next shot can fire immediately. Only the
+        // distance-based mode setup uses these toggles; static-mode emitters
+        // ignore the zone change.
+        private void UpdateRangeZoneAndMaybeSkipCooldown()
+        {
+            if (!distanceBasedMode || target == null)
+            {
+                lastRangeZone = -1;
+                return;
+            }
+
+            float dist = Vector3.Distance(target.position, AimOrigin());
+            int zone = dist <= closeRangeDistance ? 0
+                     : dist <= midRangeDistance ? 1
+                     : 2;
+
+            if (zone != lastRangeZone)
+            {
+                if (state == State.Cooldown)
+                {
+                    if (zone == 0 && resetCooltimeOnEnterCloseRange) stateTimer = 0f;
+                    else if (zone == 1 && resetCooltimeOnEnterMidRange) stateTimer = 0f;
+                }
+                lastRangeZone = zone;
+            }
+        }
+
+        // Distance-based mode pick. Falls back to the inspector-static `mode` when
+        // the target is missing — keeps FireOnce() trigger shots deterministic.
+        private FireMode SelectModeByDistance()
+        {
+            if (target == null) return mode;
+            float dist = Vector3.Distance(target.position, AimOrigin());
+            if (dist <= closeRangeDistance) return closeMode;
+            if (dist <= midRangeDistance) return midMode;
+            return farMode;
         }
 
         private void ApplyIndicator(bool on)

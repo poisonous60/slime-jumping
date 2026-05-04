@@ -91,6 +91,7 @@ namespace SlimeJumping.Mechanisms
 
         void Update()
         {
+            if (SlimeJumping.Effects.WorldTimeFreezeService.IsFrozen) return;
             if (!visualCached) return;
 
             switch (state)

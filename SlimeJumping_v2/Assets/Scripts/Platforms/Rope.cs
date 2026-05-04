@@ -7,7 +7,7 @@ namespace SlimeJumping.Platforms
 
     [ExecuteAlways]
     [DefaultExecutionOrder(-100)]
-    public class Rope : MonoBehaviour
+    public class Rope : MonoBehaviour, IRopePlatform
     {
         [Header("Anchors")]
         [SerializeField] Transform anchorA;
@@ -73,6 +73,11 @@ namespace SlimeJumping.Platforms
         [Tooltip("Slime mass × this = acceleration injected into nearby nodes. " +
                  "Raise for visible sag under weight.")]
         [SerializeField] float riderForceMul = 30f;
+
+        [Tooltip("One-shot impact impulse gain on first attach. 0 = off (steady-state " +
+                 "sag only). 1 = nodes inherit the slime's full pre-attach velocity. " +
+                 "Lets a hard landing dip the rope deep without inflating riderForceMul.")]
+        [SerializeField, Min(0f)] float impactGain = 0f;
 
         [Header("Events — MaxTension (hysteresis)")]
         [SerializeField] float maxTensionEnter = 1.25f;
@@ -428,6 +433,28 @@ namespace SlimeJumping.Platforms
 
         // === Public API ===
 
+        public void ApplyRiderImpact(Vector2 worldContact, Vector2 impactVelocity)
+        {
+            if (nodeCount == 0) return;
+            if (impactGain <= 0f) return;
+            float radius = segmentRestLen * riderInfluenceSpacing;
+            if (radius < 1e-4f) return;
+
+            // Verlet impulse: shifting pos[] (not prevPos[]) by v×dt gives the
+            // node an effective velocity of v on the next step. Jakobsen + elastic
+            // pull it back, producing a damped dip rather than a tunneling shoot-through.
+            float dt = Time.fixedDeltaTime;
+            Vector2 impulse = impactVelocity * (dt * impactGain);
+            for (int i = 0; i < nodeCount; i++)
+            {
+                if (pinned[i]) continue;
+                float d = Vector2.Distance(pos[i], worldContact);
+                if (d >= radius) continue;
+                float falloff = 1f - (d / radius);
+                pos[i] += impulse * falloff;
+            }
+        }
+
         public void ReportRiderContact(Collider2D _slimeCol, Vector2 worldContact, float mass, Vector2 _riderVel)
         {
             if (nodeCount == 0) return;
@@ -538,6 +565,17 @@ namespace SlimeJumping.Platforms
                 if (d > best) best = d;
             }
             return best;
+        }
+
+        // IRopePlatform — sag-based bonus. chargeRatio is part of the interface
+        // contract for RopeV2's two-curve formula; v1 ignores it.
+        public float GetLaunchBonus(Vector2 _launchDir, Vector2 _worldContact, float _chargeRatio)
+        {
+            float sag = GetMaxSagDistance();
+            if (sag <= 1e-4f) return 0f;
+            float bonus = sag * reboundSpeedPerMeter;
+            if (maxReboundSpeed > 0f && bonus > maxReboundSpeed) bonus = maxReboundSpeed;
+            return bonus;
         }
 
         // === Editor ===

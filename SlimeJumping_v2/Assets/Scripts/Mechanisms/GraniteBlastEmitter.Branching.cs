@@ -137,7 +137,8 @@ namespace SlimeJumping.Mechanisms
                     else
                     {
                         navPathScratch.Clear();
-                        if (navGraph.FindPath(navStart, navEnd, navPathScratch, wallMask))
+                        if (navGraph.FindPath(navStart, navEnd, navPathScratch, wallMask,
+                                              navPathCostJitter, navEntryJitter))
                         {
                         // Travel time honors total polyline length so tip world-speed
                         // matches `tendrilTravelSpeed` regardless of how curved the
@@ -145,6 +146,24 @@ namespace SlimeJumping.Mechanisms
                         float pathLen = 0f;
                         for (int k = 0; k < navPathScratch.Count - 1; k++)
                             pathLen += Vector3.Distance(navPathScratch[k], navPathScratch[k + 1]);
+
+                        // Extend the polyline past the slime's snapshot position in the
+                        // last-segment direction so the bolt keeps flying when it misses
+                        // — same contract as the bezier branch (path laid out to maxRange,
+                        // Tendril's per-frame tip CircleCast halts on first wall/ground).
+                        // Without this, a missed nav-routed bolt stops dead at the spot
+                        // the slime was when it spawned.
+                        if (navPathScratch.Count >= 2 && pathLen < maxRange)
+                        {
+                            int last = navPathScratch.Count - 1;
+                            Vector3 tail = navPathScratch[last] - navPathScratch[last - 1];
+                            if (tail.sqrMagnitude > 0.0001f)
+                            {
+                                navPathScratch.Add(navPathScratch[last] + tail.normalized * (maxRange - pathLen));
+                                pathLen = maxRange;
+                            }
+                        }
+
                         float navDrawTime = tendrilTravelSpeed > 0f
                             ? Mathf.Max(0.001f, pathLen / tendrilTravelSpeed)
                             : tendrilDrawTime;

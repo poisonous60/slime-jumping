@@ -331,7 +331,9 @@ namespace SlimeJumping.Controller
         private IPlatformEffect activePlatformEffect;
 
         // --- Rope coupling (#4) ---
-        private Rope currentRope;
+        // IRopePlatform so both v1 (sag-bonus Rope) and v2 (timing-bonus RopeV2)
+        // hand the controller their own GetLaunchBonus formula polymorphically.
+        private IRopePlatform currentRope;
 
         // --- Environmental zone flags ---
         // Set by zones (e.g. WaterZone) to block landing while inside.
@@ -900,8 +902,8 @@ namespace SlimeJumping.Controller
         // Rope reference cache. Called on surface change.
         private void UpdateRopeReference(Collider2D col)
         {
-            Rope newRope = col != null ? col.GetComponentInParent<Rope>() : null;
-            if (newRope == currentRope) return;
+            IRopePlatform newRope = col != null ? col.GetComponentInParent<IRopePlatform>() : null;
+            if (ReferenceEquals(newRope, currentRope)) return;
 
             currentRope = newRope;
 
@@ -1166,6 +1168,23 @@ namespace SlimeJumping.Controller
         /// Single entry point for all hazard contact. Transitions to Stunned state
         /// with configurable knockback and duration.
         /// </summary>
+        /// Overload that also fires OnHazardPushed at a known contact point so visual
+        /// systems (SlimeBurnVisual, etc.) can react to stun-channel hits the same way
+        /// they do to push-channel hits. The Stunned i-frame guard still applies — if
+        /// the slime is already stunned, neither the stun nor the burn fires.
+        public void ApplyHazardEffect(HazardEffect effect, Vector2 hitPoint)
+        {
+            if (currentState == SlimeState.Stunned) return;
+            ApplyHazardEffect(effect);
+            // Use the knockback as the deltaV payload so subscribers (e.g. burn flash
+            // intensity) can scale by impact strength. Sized to match push-channel
+            // semantics: deltaV in m/s.
+            Vector2 deltaV = effect.knockbackDirection.sqrMagnitude > 0.0001f
+                ? effect.knockbackDirection.normalized * effect.knockbackForce
+                : Vector2.up * effect.knockbackForce;
+            OnHazardPushed?.Invoke(deltaV, hitPoint);
+        }
+
         public void ApplyHazardEffect(HazardEffect effect)
         {
             if (_override != null) return;

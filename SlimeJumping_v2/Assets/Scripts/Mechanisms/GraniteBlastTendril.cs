@@ -164,12 +164,27 @@ namespace SlimeJumping.Mechanisms
             int vertCount = samples.Count;
             points = new Vector3[vertCount];
 
-            // Compute perp jitter scale from average sample length.
+            // Compute perp jitter scale from average sample length, plus the
+            // cumulative arc length of the polyline (used to drive smooth
+            // low-frequency Perlin wander along the path).
             float totalLen = 0f;
+            float[] arc = new float[vertCount];
+            arc[0] = 0f;
             for (int i = 0; i < vertCount - 1; i++)
-                totalLen += (samples[i + 1] - samples[i]).magnitude;
+            {
+                float seg = (samples[i + 1] - samples[i]).magnitude;
+                totalLen += seg;
+                arc[i + 1] = totalLen;
+            }
             float avgSeg = totalLen / Mathf.Max(1, vertCount - 1);
             float maxOff = jaggedness * avgSeg * 1.5f;
+
+            // Smooth path-noise params from owner. Per-tendril seed makes each
+            // bolt drift independently so a fan of tendrils all rendering the
+            // same nav-path don't sit on top of each other.
+            float noiseAmp = owner != null ? owner.TendrilPathNoiseAmplitude : 0f;
+            float noiseFreq = owner != null ? owner.TendrilPathNoiseFrequency : 0f;
+            float noiseSeed = Random.Range(0f, 1000f);
 
             points[0] = samples[0]; points[0].z += zOffset;
             points[vertCount - 1] = samples[vertCount - 1]; points[vertCount - 1].z += zOffset;
@@ -187,7 +202,20 @@ namespace SlimeJumping.Mechanisms
                 // corners, we still want the noise to dampen at the very ends.
                 float t = (float)i / (vertCount - 1);
                 float taper = Mathf.Sin(t * Mathf.PI);
+
+                // Per-vertex high-freq jaggedness (lightning crackle).
                 float off = Random.Range(-maxOff, maxOff) * taper;
+
+                // Smooth low-freq wander along arc length — Perlin sampled at
+                // arc[i] * freq remaps -1..1, scaled by noiseAmp and tapered the
+                // same way. Independent from jaggedness — the bolt drifts off
+                // the waypoints between corners instead of just spiking around.
+                if (noiseAmp > 0f)
+                {
+                    float u = arc[i] * noiseFreq + noiseSeed;
+                    float n = Mathf.PerlinNoise(u, noiseSeed * 0.37f) * 2f - 1f;
+                    off += n * noiseAmp * taper;
+                }
 
                 Vector3 p = samples[i] + perp * off;
                 p.z += zOffset;
@@ -230,6 +258,7 @@ namespace SlimeJumping.Mechanisms
 
         void Update()
         {
+            if (SlimeJumping.Effects.WorldTimeFreezeService.IsFrozen) return;
             age += Time.deltaTime;
             float drawT = Mathf.Clamp01(age / drawTime);
 
@@ -319,6 +348,7 @@ namespace SlimeJumping.Mechanisms
             }
 
             SpawnImpact(hit.point, hit.normal);
+            owner.SpawnGroundExplosion(hit.point, hit.normal);
             if (isSlime)
             {
                 // Tendril doesn't pass through the slime — carve snow around the slime
@@ -327,9 +357,6 @@ namespace SlimeJumping.Mechanisms
             }
             else
             {
-                // Big explosion VFX is for ground impacts only — slime hits keep just
-                // the small spark from SpawnImpact.
-                owner.SpawnGroundExplosion(hit.point, hit.normal);
                 owner.CarveSnowAtImpact(hit.collider, hit.point);
             }
             owner.PlayGroundImpactSound(hit.point);

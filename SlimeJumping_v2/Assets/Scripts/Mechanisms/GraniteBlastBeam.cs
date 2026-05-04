@@ -131,6 +131,7 @@ namespace SlimeJumping.Mechanisms
 
         void Update()
         {
+            if (SlimeJumping.Effects.WorldTimeFreezeService.IsFrozen) return;
             if (!initialized) return;
             age += Time.deltaTime;
 
@@ -226,6 +227,7 @@ namespace SlimeJumping.Mechanisms
                             // the beam direction continues to ground past the slime).
                             owner.CarveSnowNearSlime(slime, hit.point);
                             owner.TryFireHitStopFeedback();
+                            owner.SpawnGroundExplosion(hit.point, hit.normal);
                         }
 
                         SpawnImpactAt(hit.point, hit.normal);
@@ -388,17 +390,24 @@ namespace SlimeJumping.Mechanisms
                             owner.CarveSnowNearSlime(slime, hit.point);
                             owner.TryFireHitStopFeedback();
                         }
-                    }
-                    else if (!groundImpactPlayed)
-                    {
-                        // Ground impact effects fire once per beam, on the first ground
-                        // contact. Subsequent frames keep showing the beam halted at the
-                        // ground without re-spawning explosion VFX every frame.
-                        groundImpactPlayed = true;
-                        owner.PlayGroundImpactSound(hit.point);
+                        // Explosion VFX fires every frame the beam stays on the slime —
+                        // visually punctuates a sustained beam that's continuously biting
+                        // the slime. Sound + carve still gated to once per beam.
                         owner.SpawnGroundExplosion(hit.point, hit.normal);
-                        owner.CarveSnowAtImpact(hit.collider, hit.point);
-                        SpawnImpactAt(hit.point, hit.normal);
+                    }
+                    else
+                    {
+                        // Sound + snow carve fire once per beam on first ground contact
+                        // (gate via groundImpactPlayed). Explosion VFX is ungated so a
+                        // sustained beam pinning the ground keeps puffing each frame.
+                        owner.SpawnGroundExplosion(hit.point, hit.normal);
+                        if (!groundImpactPlayed)
+                        {
+                            groundImpactPlayed = true;
+                            owner.PlayGroundImpactSound(hit.point);
+                            owner.CarveSnowAtImpact(hit.collider, hit.point);
+                            SpawnImpactAt(hit.point, hit.normal);
+                        }
                     }
 
                     // Pass-through ground sweep when the primary hit was the slime —
@@ -416,11 +425,12 @@ namespace SlimeJumping.Mechanisms
                             if (groundHit.collider != null)
                             {
                                 reachThisFrame = hit.distance + passOffset + groundHit.distance;
+                                // Explosion every frame; sound + carve once per beam.
+                                owner.SpawnGroundExplosion(groundHit.point, groundHit.normal);
                                 if (!groundImpactPlayed)
                                 {
                                     groundImpactPlayed = true;
                                     owner.PlayGroundImpactSound(groundHit.point);
-                                    owner.SpawnGroundExplosion(groundHit.point, groundHit.normal);
                                     owner.CarveSnowAtImpact(groundHit.collider, groundHit.point);
                                     SpawnImpactAt(groundHit.point, groundHit.normal);
                                 }

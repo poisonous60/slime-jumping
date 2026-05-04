@@ -119,6 +119,61 @@ namespace SlimeJumping.Mechanisms
         }
 
         /// <summary>
+        /// Picks a random LOS-visible node within (1 + radiusTolerance) × nearestDist
+        /// of the query point. radiusTolerance=0 returns ClosestVisibleNode. Uses
+        /// reservoir sampling so each tendril sees a freshly sampled entry/exit node
+        /// when the graph has multiple equally-good options near the muzzle/slime.
+        /// </summary>
+        public int RandomVisibleNode(Vector3 world, LayerMask wallMask, float radiusTolerance)
+        {
+            int n = NodeCount;
+            if (n == 0) return -1;
+            if (radiusTolerance <= 0f) return ClosestVisibleNode(world, wallMask);
+
+            // First pass: nearest visible node + cache visibility/distance per node.
+            EnsureNodeScratch(n);
+            float bestSqr = float.PositiveInfinity;
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 wp = GetWorldNode(i);
+                float d = (wp - world).sqrMagnitude;
+                bool visible = wallMask == 0
+                    || Physics2D.Linecast(world, wp, wallMask).collider == null;
+                nodeVisible[i] = visible;
+                nodeDistSqr[i] = d;
+                if (visible && d < bestSqr) bestSqr = d;
+            }
+            if (float.IsPositiveInfinity(bestSqr)) return -1;
+
+            // Threshold: nodes with sqrDist <= ((1+tol) × nearestDist)^2 are eligible.
+            float scale = 1f + radiusTolerance;
+            float threshold = bestSqr * scale * scale;
+
+            // Reservoir sampling — pick uniformly among eligible candidates.
+            int picked = -1;
+            int count = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (!nodeVisible[i]) continue;
+                if (nodeDistSqr[i] > threshold) continue;
+                count++;
+                if (Random.Range(0, count) == 0) picked = i;
+            }
+            return picked;
+        }
+
+        private bool[] nodeVisible;
+        private float[] nodeDistSqr;
+        private void EnsureNodeScratch(int n)
+        {
+            if (nodeVisible == null || nodeVisible.Length < n)
+            {
+                nodeVisible = new bool[n];
+                nodeDistSqr = new float[n];
+            }
+        }
+
+        /// <summary>
         /// Direct-shortcut LOS check. Returns true if a straight Linecast from a→b
         /// on wallMask hits nothing — i.e. a direct fire is unobstructed and the
         /// caller should skip graph routing entirely. wallMask=0 always returns
@@ -144,17 +199,34 @@ namespace SlimeJumping.Mechanisms
         /// behavior). Typical: pass GraniteBlastEmitter.NavWallMask.
         /// </summary>
         public bool FindPath(Vector3 worldStart, Vector3 worldEnd, List<Vector3> outPath, LayerMask wallMask)
+            => FindPath(worldStart, worldEnd, outPath, wallMask, 0f, 0f);
+
+        /// <summary>
+        /// Stochastic FindPath overload. costJitter randomizes per-edge cost by
+        /// ±costJitter (0..1, multiplicative) so A* picks different "shortest" paths
+        /// across calls when alternatives are within jitter range. entryRadiusJitter
+        /// (0..1) lets the start/end node be picked uniformly among visible nodes
+        /// within (1+jitter) × nearestDist, so tendrils enter/exit the graph at
+        /// different anchors. Both 0 = deterministic shortest-path (legacy behavior).
+        /// </summary>
+        public bool FindPath(Vector3 worldStart, Vector3 worldEnd, List<Vector3> outPath,
+                             LayerMask wallMask, float costJitter, float entryRadiusJitter)
         {
             if (NodeCount == 0 || outPath == null) return false;
             if (adjacencyDirty || adjacency == null || adjacency.Length != NodeCount)
                 RebuildAdjacency();
 
-            int startIdx = wallMask == 0
-                ? ClosestNodeIndex(worldStart)
-                : ClosestVisibleNode(worldStart, wallMask);
-            int endIdx = wallMask == 0
-                ? ClosestNodeIndex(worldEnd)
-                : ClosestVisibleNode(worldEnd, wallMask);
+            int startIdx, endIdx;
+            if (entryRadiusJitter > 0f && wallMask != 0)
+            {
+                startIdx = RandomVisibleNode(worldStart, wallMask, entryRadiusJitter);
+                endIdx = RandomVisibleNode(worldEnd, wallMask, entryRadiusJitter);
+            }
+            else
+            {
+                startIdx = wallMask == 0 ? ClosestNodeIndex(worldStart) : ClosestVisibleNode(worldStart, wallMask);
+                endIdx = wallMask == 0 ? ClosestNodeIndex(worldEnd) : ClosestVisibleNode(worldEnd, wallMask);
+            }
             if (startIdx < 0 || endIdx < 0) return false;
 
             int n = NodeCount;
@@ -192,6 +264,8 @@ namespace SlimeJumping.Mechanisms
                     int nb = nbrs[k];
                     if (closed[nb]) continue;
                     float edgeCost = (GetWorldNode(nb) - cwp).magnitude;
+                    if (costJitter > 0f)
+                        edgeCost *= 1f + Random.Range(-costJitter, costJitter);
                     float tentative = gScore[current] + edgeCost;
                     if (tentative < gScore[nb])
                     {

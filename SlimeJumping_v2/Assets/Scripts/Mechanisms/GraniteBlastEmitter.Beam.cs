@@ -21,6 +21,7 @@ namespace SlimeJumping.Mechanisms
                 travelSpeed: beamTravelSpeed,
                 trackAngularSpeed: beamTrackAngularSpeed,
                 trackLag: beamTrackLag);
+            RegisterActiveBeam(beam);
         }
     }
 }

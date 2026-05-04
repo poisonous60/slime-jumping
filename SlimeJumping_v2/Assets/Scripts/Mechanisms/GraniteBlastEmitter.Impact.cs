@@ -8,7 +8,7 @@ namespace SlimeJumping.Mechanisms
     // Impact effects — shared LineRenderer material for projectiles, ground-impact
     // sound + big explosion VFX, and selection gizmos. Slime-hit small spark uses
     // impactPrefab directly from the Tendril/Beam classes; the big chunky explosion
-    // here is for ground hits only.
+    // fires on every contact (slime + ground) — Tendril/Beam call it once per hit.
     public partial class GraniteBlastEmitter
     {
         // --- shared material for line projectiles ---
@@ -74,9 +74,10 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // Spawn the big chunky explosion VFX at a ground hit point. Slime hits do NOT
-        // call this — they just play impactPrefab (small spark). Caller should already
-        // have classified the hit (slime vs ground).
+        // Spawn the big chunky explosion VFX at a contact point. Called by Tendril/Beam
+        // for both slime hits and ground hits — slime hits get the same flair as ground.
+        // Caller is responsible for gating to once-per-hit (slime contact) so sustained
+        // beams don't restage the explosion every frame.
         public void SpawnGroundExplosion(Vector3 point, Vector3 normal)
         {
             if (groundExplosionPrefab == null) return;
@@ -131,6 +132,25 @@ namespace SlimeJumping.Mechanisms
             {
                 Gizmos.color = new Color(1f, 0.7f, 0.3f, 0.5f);
                 Gizmos.DrawWireSphere(target.position, targetRadius);
+            }
+
+            // Distance-based mode bands: nested wire spheres around the muzzle
+            // showing where Close / Mid / Far modes activate. Only drawn when
+            // the toggle is on so the regular detection sphere isn't cluttered.
+            if (distanceBasedMode)
+            {
+                // Close band — innermost. Red-ish so designers spot the boundary
+                // a slime crosses just before the emitter switches to closeMode.
+                Gizmos.color = new Color(1f, 0.4f, 0.4f, 0.85f);
+                Gizmos.DrawWireSphere(origin, Mathf.Max(0f, closeRangeDistance));
+
+                // Mid band — drawn only if it's actually wider than the close
+                // band. Yellow so it reads as "warning zone".
+                if (midRangeDistance > closeRangeDistance)
+                {
+                    Gizmos.color = new Color(1f, 0.85f, 0.3f, 0.85f);
+                    Gizmos.DrawWireSphere(origin, midRangeDistance);
+                }
             }
         }
     }
