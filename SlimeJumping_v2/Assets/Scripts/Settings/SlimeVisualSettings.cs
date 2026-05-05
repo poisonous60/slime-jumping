@@ -149,6 +149,28 @@ namespace SlimeJumping.Settings
         [Tooltip("Soft-edge width for the ring annulus (UV units). Higher = softer, reads as energy imprint rather than a drawn line.")]
         [Range(0f, 0.05f)] public float chargeRingEdgeSoftness = 0.015f;
 
+        [Header("Corner Stress (Phase 1)")]
+        [Tooltip("이 ratio 미만이면 stretch 0.")]
+        [Range(0f, 1f)] public float cornerStressMinRatio = 0.5f;
+        [Tooltip("ratio∈[min,1] → curve 입력. shader 의 cornerStressAmount 로 전달.")]
+        public AnimationCurve cornerStressCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+        [Tooltip("Tangent asymmetric stretch 최대 강도 (vertex displacement, slimeRadius 단위).")]
+        [Min(0f)] public float cornerStressTangentMax = 0.35f;
+        [Tooltip("Outward bulge 최대 강도 (slimeRadius 단위).")]
+        [Min(0f)] public float cornerStressOutwardMax = 0.20f;
+
+        [Header("Pong (Phase 3)")]
+        [Tooltip("퐁 오버레이 지속시간 (s).")]
+        [Min(0f)] public float pongDuration = 0.18f;
+        [Tooltip("감쇠율 (1/s). 클수록 빠르게 사그라듬.")]
+        [Min(0f)] public float pongDecay = 4f;
+        [Tooltip("진동 cycle 수 / pongDuration. 1.2 ≈ 1.2 cycle.")]
+        [Min(0f)] public float pongOscFreq = 1.2f;
+        [Tooltip("최대 stretch (outward 방향).")]
+        [Min(0f)] public float pongStretchMax = 0.4f;
+        [Tooltip("이 overshoot 값에서 pongIntensity = 1. overshoot = ratio - 1.")]
+        [Min(0.001f)] public float pongFullOvershoot = 1.5f;
+
         private void OnValidate()
         {
             if (chargingSpeedMax <= chargingSpeedMin)

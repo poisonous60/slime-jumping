@@ -117,6 +117,19 @@ MonoBehaviour:
   maxIgnoreTime: 0.15
   defaultStunDuration: 0.5
   defaultKnockbackForce: 8
+  useFrictionBasedDetachment: 1
+  cornerAdhesionAccel: 60
+  cornerDetachSustainFrames: 2
+  cornerDetachMinSpeed: 1.5
+  cornerBigSpikeAngle: 0.4
+  cornerStressRatioSmoothRate: 25
+  cornerDetachHorizonTime: 0.08
+  cornerDetachHorizonMinDistance: 0.15
+  cornerDetachHorizonProbeSkin: 0.25
+  frictionDetachFormula: 1
+  cornerVelocityThreshold: 8
+  cornerMinAngleDeg: 5
+  cornerOmegaThreshold: 5
   carrierFriction:
     baseValue: 1
     fullValue: 1

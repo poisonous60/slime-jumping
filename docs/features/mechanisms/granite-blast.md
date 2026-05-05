@@ -1,6 +1,6 @@
 # GraniteBlast (그라니테 블라스트 — 에너지포 해저드)
 
-세 가지 발사 모드를 가진 에너지 캐논 해저드. *주술회전* Ryu Ishigori의 *Granite Blast* (저주에너지 발산) 기법에서 차용. 모든 모드가 빔/라인 형태로 발사됨.
+네 가지 발사 모드를 가진 에너지 캐논 해저드. *주술회전* Ryu Ishigori의 *Granite Blast* (저주에너지 발산) 기법에서 차용. 모드 1~3은 빔/라인 형태, 모드 4(Mortar)는 원형 투사체 형태.
 
 ## 모드
 | Mode | 거동 |
@@ -8,6 +8,7 @@
 | Branching | N개의 곡선 텐드릴(번개)이 머즐에서 직접 발사되어 각자의 경로로 슬라임 주변 지면(`groundSnapMask`)에 떨어짐. 트렁크 없음 — `launchSpreadDegrees` 가 머즐 P0 에서 텐드릴들을 부채꼴로 흩어버림. |
 | Beam | 한 발의 굵은 빔이 머즐에서 첫 차폐물까지 fireStart+firing+postFire 기간 지속. 라인 위 슬라임 1회 명중. |
 | Burst | `burstFlashCount` 개의 짧은 flash beam 이 콘(`burstSpreadDegrees`) 으로 부채꼴 발사. 각 flash 는 GraniteBlastBeam 인스턴스(`burstFlashDuration` 동안 표시). |
+| Mortar | 원형 투사체가 머즐 주변으로 (위쪽 bias 있는) 무작위 방향으로 사출 → 자기 궤도 anchor 까지 이동(속도 커브) → hover dwell → 슬라임 위치로 lock-in 후 가속(속도 커브)해서 강하. `spawnInterval` 간격으로 1발씩 staggered 발사. 중력 무시. 자세한 사양은 [§14](#14-mortar-모드-2026-05-05) 참고. |
 
 ### 거리별 모드 자동 전환 (`distanceBasedMode`)
 `distanceBasedMode = true` 로 켜면 `EnterPreFire` 진입 시 슬라임과 머즐 간 거리(`Vector3.Distance(target, AimOrigin())`)를 한 번 측정해 모드를 재선택. 텔레그래프 표시 + `lockedDir` 락인 직전이라 PreFire/FireStart/Firing 전체가 같은 모드로 진행됨 (차징 도중 슬라임이 가까워져도 모드는 안 바뀜 — "텔레그래프 = 한 발 약속" 유지).
@@ -410,3 +411,104 @@ ParticleSystem 은 스크립트가 없으므로 `FreezableParticleSystem` 컴포
 - [WorldTimeFreezeService.cs](../../../SlimeJumping_v2/Assets/Scripts/Effects/WorldTimeFreezeService.cs)
 - [FreezableParticleSystem.cs](../../../SlimeJumping_v2/Assets/Scripts/Effects/FreezableParticleSystem.cs)
 - [GraniteBlastEmitterAttackable.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitterAttackable.cs)
+
+## 14. Mortar 모드 (2026-05-05)
+
+원형 투사체가 머즐 주변으로 사출 → 일정 시간 후 슬라임 방향으로 가속 강하하는 4번째 모드. 기존 빔 3종과 달리 LineRenderer 가 아니라 SpriteRenderer + Kinematic Rigidbody2D 기반 분리 GO.
+
+### 시퀀스 (per projectile)
+```
+[FireStart 진입]
+  └ PlanMortar(): 카운터/타이머 reset
+  └ SpawnNextMortarIfDue(): 첫 발 방출
+
+[FireStart + Firing 동안 매 Update]
+  └ SpawnNextMortarIfDue(): elapsed 가 spawnInterval 의 배수가 될 때마다 1발씩 추가 방출
+
+[각 projectile 자체 lifecycle, FixedUpdate 기반]
+  Phase A. Travel  (travelToOrbitDuration 초)
+    - 머즐에서 ejection 방향(주변 360°, upwardBias 만큼 위쪽 bias)으로 발사
+    - 도착 거리 = orbitDistance, 평균 속도 = orbitDistance / travelToOrbitDuration
+    - 매 프레임 속도 = baseline * travelToOrbitSpeedCurve(progress)
+      → 커브 조작으로 도착 직전 감속 표현 가능
+  Phase B. Dwell   (dwellAtOrbitDuration 초)
+    - 궤도 anchor 에서 정지 호버
+  Phase C. Strike  (최대 strikeMaxDuration 초)
+    - 슬라임 위치로 향하는 strikeDir 락인
+    - homingStrength = 0 → 락인 그대로 고정
+    - homingStrength = 1 → 매 프레임 슬라임 라이브 위치로 회두
+    - 0 < h < 1 → 매 프레임 desired 방향으로 Slerp(blend rate = 1 - (1-h)^(dt*60))
+    - 매 프레임 속도 = strikeSpeed * strikeSpeedCurve(progress)
+    - 슬라임/지면 hit 또는 strikeMaxDuration 초과 시 종료
+```
+
+### 발사 카운트
+- `spawnInterval` 마다 1발씩, FireStart + Firing 윈도우 동안 누적 스폰. PostFire 진입 시 잔여 spawn 안 함 (의도적 — 트레일 projectile 들이 같은 발사 사이클 안에서 마무리되도록).
+- 총 발사 수 ≈ floor((fireStartDuration + firingDuration) / spawnInterval) + 1.
+- `maxProjectiles > 0` 으로 하드 캡 가능. 0 = 무제한 (윈도우 길이만 의존).
+
+### 호밍 강도
+| `homingStrength` | 거동 |
+|-----------------|------|
+| 0 | Strike 시작 시점에 슬라임 위치로 한 번 락인. 그 다음에는 슬라임이 어디로 가든 직진. |
+| 0~1 사이 | 매 프레임 strikeDir 을 라이브 슬라임 방향으로 부분 Slerp. 값이 클수록 빠르게 회두. FPS 보정 (`1 - (1-h)^(dt*60)`) 으로 dt 와 무관한 회두 속도. |
+| 1 | 매 프레임 슬라임 라이브 위치로 완전 스냅. 슬라임이 빠르게 움직여도 절대 빗나가지 않음. |
+
+### 속도 커브
+두 개의 `AnimationCurve` 로 페이즈별 속도 모양을 디자인:
+- `travelToOrbitSpeedCurve`: X = travel 진행 [0..1], Y = 속도 multiplier. **곡선의 평균값이 1.0 일 때** projectile 이 정확히 anchor 에 도착함 (baseline = orbitDistance / travelToOrbitDuration). 따라서 도착 직전 감속을 만들고 싶으면 초반 Y > 1, 후반 Y < 1 로 그리되 평균 1 을 유지하도록 권장. (평균이 1 안 되면 projectile 이 anchor 못 가거나 지나친 다음 snap 됨 — clamp 처리됨.)
+- `strikeSpeedCurve`: X = strike 진행 [0..1], Y = `strikeSpeed` 의 multiplier. 감속/가속 어떤 모양도 가능. 평균에 제약 없음 — 그저 매 프레임 적용되는 속도 mult.
+
+기본 curve 는 `EaseInOut` (Travel: 1.6 → 0.2, Strike: 0.2 → 1.5) 로 "휙 나갔다 부드럽게 도착, 천천히 시작했다 가속해서 강하" 인상.
+
+### 물리
+- `Rigidbody2D.bodyType = Kinematic`, `gravityScale = 0`. **중력 영향 없음** (요구사항).
+- 매 FixedUpdate 에서 `rb.position += dir * speed * dt` 로 적분.
+- 터널링 방지: `CircleCollider2D.Cast(dir, filter, buf, dist)` 로 매 프레임 prev → next 스윕. 첫 valid hit 에서 정확한 contact point 로 snap.
+- Cast filter: `useTriggers = true` + 슬라임이 아닌 trigger 는 매뉴얼 필터 (`CircleCastExcludingSelf` 와 동일 패턴).
+- **Travel + Dwell 페이즈는 충돌 면역**: `bodyCol.enabled = false` 로 두고 hit-resolve 도 안 돈다. 이유 — 머즐 위치에서 spawn 한 첫 FixedUpdate 의 sweep 이 머즐 인접 collider (emitter 옆 환경, 머즐 바로 위 천장, emitter 위에 올라가 있는 슬라임 등) 에 즉시 맞아 투사체가 보이기도 전에 자폭하는 문제 차단. EnterStrike 에서 collider 재활성화 + hit detect 시작.
+
+### 명중 처리
+| 대상 | 처리 |
+|------|------|
+| Slime | `ApplyHazardPush(pushDir * KnockbackImpulse)` (또는 `stunOnHitDuration > 0` 시 `TryApplyStunOnHit`), `CarveSnowNearSlime`, `TryFireHitStopFeedback`, `SpawnGroundExplosion`, `impactPrefab` spark, projectile 자체 destroy. |
+| Ground (Environment 등) | `SpawnGroundExplosion`, `CarveSnowAtImpact`, `PlayGroundImpactSound`, `impactPrefab` spark, projectile 자체 destroy. |
+| 시간 만료 (`strikeMaxDuration`) | 폭발/사운드 없이 조용히 fizzle (trail detach 후 destroy). |
+
+다른 모드와 동일한 stun-less push 채널 + Hit Feedback 게이트 (`feedbackBurstId`) 사용.
+
+### 시각
+- Visual GO 가 root 의 자식 — collider 회전 분리 (프로젝트 룰).
+- Head: `cfg.headSprite` (null 시 코드 생성 anti-alias 디스크 64x64 텍스처 캐싱).
+- Trail: 옵셔널 `TrailRenderer`, `coreColor` startColor → alpha 0 endColor 로 페이드.
+- Z 오프셋: `cfg.zOffset` (기본 -0.5) 로 2.5D 지형 앞에 그림.
+
+### 인스펙터 필드 (`GraniteBlastMortarConfig` SO)
+| Header | 키 | 의미 |
+|--------|------|------|
+| Spawn Cadence | `spawnInterval` | 연속 spawn 간격 (sec) |
+| Spawn Cadence | `maxProjectiles` | 0 = 무제한, > 0 시 하드 캡 |
+| Orbit Phase | `orbitDistance` | 머즐 → orbit anchor 거리 (world units) |
+| Orbit Phase | `upwardBias` | 0 = 360° 균등, 1 = 위쪽만 (그 사이는 Lerp) |
+| Orbit Phase | `travelToOrbitDuration` | spawn → anchor 도착 시간 (sec) |
+| Orbit Phase | `travelToOrbitSpeedCurve` | 속도 multiplier 커브 (평균 1.0 권장) |
+| Dwell | `dwellAtOrbitDuration` | anchor 호버 시간 (sec) |
+| Strike Phase | `homingStrength` | 0=락인, 1=완전 추적, 사이=blend rate |
+| Strike Phase | `strikeSpeed` | strike baseline 속도 (m/s) |
+| Strike Phase | `strikeSpeedCurve` | strike 속도 multiplier 커브 |
+| Strike Phase | `strikeMaxDuration` | strike 페이즈 hard cap (sec) |
+| Visual | `headSprite` | head sprite (null = 코드 생성 disc) |
+| Visual | `bodyRadius` | 콜라이더 + 비주얼 반경 |
+| Visual | `zOffset` | 라인/visual Z (lineZOffset 와 분리) |
+| Visual | `useTrail` | TrailRenderer on/off |
+| Visual | `trailTime`, `trailStartWidth`, `trailEndWidth` | trail 튜닝 |
+
+Emitter 인스펙터에는 `mortarPreset` (`GraniteBlastEmitterPreset` 슬롯) + `mortarConfig` (`GraniteBlastMortarConfig` 슬롯) 추가됨. 다른 모드와 동일한 OnValidate 자동 적용 + Start 시점 적용 + EnterPreFire 시점 재적용 패턴.
+
+### 거리 기반 모드 전환과의 관계
+`distanceBasedMode = true` 일 때 `closeMode / midMode / farMode` 셋 중 하나에 `Mortar` 를 지정 가능. 다른 모드와 동일하게 EnterPreFire 시점에 락인 → preset/config 에 따라 phase timing 갈아치움.
+
+### 관련 파일
+- [GraniteBlastEmitter.Mortar.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastEmitter.Mortar.cs) — partial: `PlanMortar` / `SpawnNextMortarIfDue` / 1발 spawn helper
+- [GraniteBlastMortar.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GraniteBlastMortar.cs) — projectile MonoBehaviour (Kinematic Rb2D + CircleCollider2D + Visual 분리)
+- [Configs/GraniteBlastMortarConfig.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Configs/GraniteBlastMortarConfig.cs) — Mortar 모드 SO 튜닝 (CreateAssetMenu: SlimeJumping/Granite Blast/Mortar Config)

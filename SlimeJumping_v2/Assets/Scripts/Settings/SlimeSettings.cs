@@ -5,6 +5,29 @@ namespace SlimeJumping.Settings
 {
     public enum HyperDashInertiaSource { ChargeStart, LaunchMoment }
 
+    // Selects how the friction-detach predicate combines tangent speed and ω.
+    // Heatmap in the SlimeSettings inspector visualizes each mode's detach region
+    // on the v × R plane assuming uniform-curvature sliding (ω = v/R).
+    public enum FrictionDetachFormula
+    {
+        // required = |v_tangent| · ω  (= v²/R). Detach scales with v². Default —
+        // matches the original "centrifugal force" spec. Fast slime falls off
+        // even at low curvature.
+        VelocityTimesOmega = 0,
+        // required = v_threshold · ω. Speed-independent — purely curvature-driven.
+        // ω alone (= 1/R at any speed) decides detach. Slow slime still falls off
+        // sharp corners; fast slime never falls off shallow curves.
+        ConstantTimesOmega = 1,
+        // VelocityTimesOmega + |Δθ| > cornerMinAngleDeg gate. Same v² scaling but
+        // ignores frames where the surface barely turns. Suppresses the "fast
+        // slime trips on flat-ish curves" case from the original formula.
+        VelocityTimesOmegaWithMinAngle = 2,
+        // ω > cornerOmegaThreshold. Pure angular-rate gate. v drops out entirely.
+        // Most predictable: a given curvature triggers at all speeds (above
+        // cornerDetachMinSpeed).
+        AngularRateThreshold = 3,
+    }
+
     [CreateAssetMenu(fileName = "SlimeSettings", menuName = "SlimeJumping/Slime Physical Settings")]
     public class SlimeSettings : ScriptableObject
     {
@@ -205,6 +228,34 @@ namespace SlimeJumping.Settings
         public float defaultStunDuration = 0.5f;
         [Tooltip("Default knockback force if hazard doesn't specify.")]
         public float defaultKnockbackForce = 8f;
+
+        [Header("Friction-Based Detachment")]
+        [Tooltip("Master toggle. true: 원심/관성 기반 detach 활성. false: 기존 ceiling-각도 분기만.")]
+        public bool useFrictionBasedDetachment = true;
+        [Tooltip("점착 가속도 한계 (m/s²). v·ω 가 (gravityHelp + 이 값) 을 넘으면 detach.")]
+        [Min(0f)] public float cornerAdhesionAccel = 60f;
+        [Tooltip("곡면 detach 의 누적 frame 수. ω 부호가 N frame 연속 일치해야 발동. 기본 2.")]
+        [Min(1)] public int cornerDetachSustainFrames = 2;
+        [Tooltip("|v_tangent| 이 이 값 미만이면 검사 skip. 정지 false-positive 방지.")]
+        [Min(0f)] public float cornerDetachMinSpeed = 1.5f;
+        [Tooltip("|Δθ| ≥ 이 값(rad) 이면 한 frame 만으로 detach (90° 코너용). 기본 0.4 ≈ 23°.")]
+        [Min(0f)] public float cornerBigSpikeAngle = 0.4f;
+        [Tooltip("CornerStressRatio LP filter rate (1/s). visual SmoothDamp 앞단 한 단계.")]
+        [Min(0.001f)] public float cornerStressRatioSmoothRate = 25f;
+        [Tooltip("Horizon lookahead time (s). 슬라임을 |v|·이 값 만큼 앞으로 projection 한 위치에서 발 아래 지면 검사.")]
+        [Min(0f)] public float cornerDetachHorizonTime = 0.08f;
+        [Tooltip("Horizon lookahead 최소 거리 (m). 느린 슬라임에서도 최소 검사 거리 보장.")]
+        [Min(0f)] public float cornerDetachHorizonMinDistance = 0.15f;
+        [Tooltip("Horizon raycast 의 발 아래 검사 깊이 skin (m). 깊이 = slimeRadius + 이 값. 작으면 작은 굴곡에도 detach, 크면 보수적.")]
+        [Min(0f)] public float cornerDetachHorizonProbeSkin = 0.25f;
+        [Tooltip("Detach 식 모드. 인스펙터 하단 heatmap 에 각 모드의 detach 영역이 시각화됨.")]
+        public FrictionDetachFormula frictionDetachFormula = FrictionDetachFormula.VelocityTimesOmega;
+        [Tooltip("ConstantTimesOmega 모드용 가상 속도 (m/s). 실제 속도 대신 이 값을 ω 와 곱해 required 계산.")]
+        [Min(0.01f)] public float cornerVelocityThreshold = 8f;
+        [Tooltip("VelocityTimesOmegaWithMinAngle 모드용 최소 각도 게이트 (deg). |Δθ| 이 값 미만이면 detach 검사 skip.")]
+        [Min(0f)] public float cornerMinAngleDeg = 5f;
+        [Tooltip("AngularRateThreshold 모드용 ω 임계 (rad/s). 이 값 초과 시 detach 통과 (centrifugal 게이트). 5 rad/s ≈ 0.1s 만에 90° 회전.")]
+        [Min(0.01f)] public float cornerOmegaThreshold = 5f;
 
         [Header("Default Surface Modifiers (used when no SurfaceTag is present, or as the override-off fallback for tagged surfaces)")]
         public AngleScaledValue carrierFriction = AngleScaledValue.Constant(1f);

@@ -22,6 +22,11 @@ namespace SlimeJumping.Controller
             launchSpeed = velocity.magnitude;
             launchPosition = rb.position;
             launchedByHop = false;
+            // Friction-detach state must clear so the next attach starts a fresh
+            // sustained-frame counter and the visual ratio doesn't bleed across flights.
+            sameSignFrames = 0;
+            cornerStressRatio = 0f;
+            smoothedCornerStressRatio = 0f;
             ChangeState(SlimeState.Airborne, intentional: true);
             postLaunchTimer = settings.postLaunchIgnoreTime;
         }

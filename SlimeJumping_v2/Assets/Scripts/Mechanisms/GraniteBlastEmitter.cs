@@ -19,7 +19,7 @@ namespace SlimeJumping.Mechanisms
     /// </summary>
     public partial class GraniteBlastEmitter : MonoBehaviour
     {
-        public enum FireMode { Branching, Beam, Burst }
+        public enum FireMode { Branching, Beam, Burst, Mortar }
         public enum State { Idle, Detecting, PreFire, FireStart, Firing, PostFire, Cooldown }
         // Beam tracking strategies after spawn:
         //   InitialLagThenLive — initial dir snapshots the lagged trail position, then
@@ -36,6 +36,8 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private GraniteBlastEmitterPreset beamPreset;
         [Tooltip("Preset applied when the active FireMode resolves to Burst.")]
         [SerializeField] private GraniteBlastEmitterPreset burstPreset;
+        [Tooltip("Preset applied when the active FireMode resolves to Mortar.")]
+        [SerializeField] private GraniteBlastEmitterPreset mortarPreset;
         // Per-slot 'last applied' caches so OnValidate detects which slot's
         // reference changed and re-applies just that one — local field edits
         // (with the same preset still attached) survive untouched.
@@ -43,6 +45,7 @@ namespace SlimeJumping.Mechanisms
         [SerializeField, HideInInspector] private GraniteBlastEmitterPreset _lastAppliedBranching;
         [SerializeField, HideInInspector] private GraniteBlastEmitterPreset _lastAppliedBeam;
         [SerializeField, HideInInspector] private GraniteBlastEmitterPreset _lastAppliedBurst;
+        [SerializeField, HideInInspector] private GraniteBlastEmitterPreset _lastAppliedMortar;
 
         [Header("Firing Mode Control")]
         [Tooltip("When true (default), the emitter auto-detects targets and fires on its own. When false, the emitter stays Idle until external code calls FireOnce() — used for scripted/triggered shots (e.g., GraniteBlastTrigger volumes).")]
@@ -135,6 +138,8 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private GraniteBlastBeamConfig beamConfig;
         [Tooltip("Burst mode tuning. Required for Burst shots — leave assigned to a GraniteBlastBurstConfig asset.")]
         [SerializeField] private GraniteBlastBurstConfig burstConfig;
+        [Tooltip("Mortar mode tuning. Required for Mortar shots — leave assigned to a GraniteBlastMortarConfig asset.")]
+        [SerializeField] private GraniteBlastMortarConfig mortarConfig;
 
         [Header("Branching Scene Refs")]
         [Tooltip("Optional A* navigation graph. When set, Branching tendrils route through navGraph.FindPath(muzzle, slime) ONLY IF a direct line from muzzle to slime is blocked by walls (navWallMask). Scene reference — kept on the emitter (cannot live in a ScriptableObject asset).")]
@@ -186,6 +191,9 @@ namespace SlimeJumping.Mechanisms
         private float burstFireStartFraction => burstConfig != null ? burstConfig.burstFireStartFraction : 1f;
         private float burstFlashInterval => burstConfig != null ? burstConfig.burstFlashInterval : 0f;
         private float burstFlashTravelSpeed => burstConfig != null ? burstConfig.burstFlashTravelSpeed : 150f;
+
+        // Mortar proxies — kept locally (used by GraniteBlastEmitter.Mortar.cs partial).
+        public GraniteBlastMortarConfig MortarConfig => mortarConfig;
 
         [Header("Visual Colors")]
         [Tooltip("Color of the beam / tendril line. Use a near-white core for max visibility.")]
@@ -374,6 +382,11 @@ namespace SlimeJumping.Mechanisms
                 _lastAppliedBurst = burstPreset;
                 if (burstPreset != null) ApplyPreset(burstPreset);
             }
+            if (mortarPreset != _lastAppliedMortar)
+            {
+                _lastAppliedMortar = mortarPreset;
+                if (mortarPreset != null) ApplyPreset(mortarPreset);
+            }
         }
 #endif
 
@@ -384,6 +397,7 @@ namespace SlimeJumping.Mechanisms
                 case FireMode.Branching: return branchingPreset;
                 case FireMode.Beam: return beamPreset;
                 case FireMode.Burst: return burstPreset;
+                case FireMode.Mortar: return mortarPreset;
             }
             return null;
         }
@@ -577,6 +591,7 @@ namespace SlimeJumping.Mechanisms
             HideTelegraph();
             pendingTendrils.Clear();
             pendingBullets.Clear();
+            mortarsSpawned = 0;
         }
 
         private void EnterDetecting()
@@ -623,9 +638,10 @@ namespace SlimeJumping.Mechanisms
             HideTelegraph();
 
             if (muzzleFlash != null) muzzleFlash.Play(true);
-            // Branching plays fireStartSound per-tendril (in SpawnTendrilsUpTo) instead of
-            // one global hit at FireStart, so each lightning bolt has its own muzzle crack.
-            if (fireStartSound != null && mode != FireMode.Branching)
+            // Branching/Mortar play fireStartSound per-projectile (in their spawn loops)
+            // instead of one global hit at FireStart, so each bolt/mortar has its own
+            // muzzle crack.
+            if (fireStartSound != null && mode != FireMode.Branching && mode != FireMode.Mortar)
                 SoundService.PlayAt(fireStartSound, lockedOrigin, SoundCategory.SFX_Object, fireStartVolume);
 
             // Pre-plan muzzle parameters now; endpoints are resolved at spawn time
@@ -653,6 +669,10 @@ namespace SlimeJumping.Mechanisms
                         SpawnBulletsUpTo(bulletsAtFireStart);
                     }
                     break;
+                case FireMode.Mortar:
+                    PlanMortar();
+                    SpawnNextMortarIfDue();
+                    break;
             }
         }
 
@@ -669,6 +689,9 @@ namespace SlimeJumping.Mechanisms
             // Make sure all planned spawns went out, even at low frame rates.
             if (mode == FireMode.Branching) SpawnTendrilsUpTo(pendingTendrils.Count);
             else if (mode == FireMode.Burst) SpawnBulletsUpTo(pendingBullets.Count);
+            // Mortar mode does NOT flush remaining spawns at PostFire — by design,
+            // spawning stops the moment Firing ends so the trailing projectiles
+            // arrive within the same fire window.
 
             StopChargeGlow();
             if (postFireSound != null)
@@ -681,6 +704,7 @@ namespace SlimeJumping.Mechanisms
             stateTimer = cooldownDuration;
             pendingTendrils.Clear();
             pendingBullets.Clear();
+            mortarsSpawned = 0;
         }
 
         // Tracks which range zone (Close/Mid/Far) the target currently sits in and,
@@ -780,6 +804,11 @@ namespace SlimeJumping.Mechanisms
                                   + Mathf.RoundToInt((total - tendrilsAtFireStart) * prog);
                     SpawnTendrilsUpTo(desired);
                     break;
+                }
+                case FireMode.Mortar:
+                {
+                    SpawnNextMortarIfDue();
+                    return;
                 }
                 case FireMode.Burst:
                 {

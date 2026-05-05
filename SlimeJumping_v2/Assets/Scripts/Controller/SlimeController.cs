@@ -270,6 +270,15 @@ namespace SlimeJumping.Controller
         private Vector2 arcPrevTangent;
         private bool arcHasPrevTangent;
 
+        // Friction-based detach state. ω = |Δθ|/dt measured between arcPrevTangent and
+        // surfaceTangent each FU; v·ω compared against (gravityHelp + cornerAdhesionAccel).
+        // sameSignFrames is the curve-sustained counter (only counted when convex,
+        // i.e. tangent rotation sign matches tangentSpeed sign — concave wall rejects).
+        // smoothedCornerStressRatio is the LP-filtered, sameSignFrames-gated visual exposure.
+        private int sameSignFrames;
+        private float cornerStressRatio;
+        private float smoothedCornerStressRatio;
+
         // Attach debounce: prevent rapid Attached↔Airborne oscillation at corners/edges
         private int attachToggleCount;
         private float lastAttachToggleTime;
@@ -370,6 +379,83 @@ namespace SlimeJumping.Controller
         // Payload = velocity written into the slime at dash start (direction × speed).
         // Consumers: SlimeAirDashVisual (trail/particles), audio, analytics.
         public event System.Action<Vector2> OnAirDashStarted;
+
+        // --- Friction-based detach event ---
+        // Fires when the slime is detached by centrifugal/inertial limit (NOT by ceiling
+        // angle / contact loss). Payload: (detachVelocity, surfaceNormal at detach,
+        // overshoot = ratio - 1). OnLaunch is also raised in the same call for audio
+        // and ignoredColliders bookkeeping; subscribe here for stress-specific reactions
+        // (pong overlay, dust burst).
+        public event System.Action<Vector2, Vector2, float> OnFrictionDetach;
+
+        /// <summary>LP-filtered + sameSignFrames-gated stress ratio (= required / available)
+        /// driven by FixedUpdateAttached. 0 when toggle off, in transient frame, or convex
+        /// sign hasn't held for at least one frame. Read by SlimeVisual for Phase 1 stretch.</summary>
+        public float CornerStressRatio => smoothedCornerStressRatio;
+
+        /// <summary>Signed tangent-direction speed snapshot (crawlVelocity + slideVelocity).
+        /// Read by SlimeVisual to align the shader's frontMask with motion.</summary>
+        public float TangentSpeed => crawlVelocity + slideVelocity;
+
+        /// <summary>Last-frame friction-detach diagnostic snapshot. Updated each
+        /// FixedUpdateAttached for debug UIs. Pure pull — debug consumers never write back.</summary>
+        public FrictionDetachDebug FrictionDebug => frictionDebug;
+        private FrictionDetachDebug frictionDebug;
+
+        public readonly struct FrictionDetachDebug
+        {
+            public readonly bool toggleOn;
+            public readonly bool inAttached;
+            public readonly bool transientFrame;
+            public readonly bool transientNoPrevTangent;
+            public readonly bool transientColliderChanged;
+            public readonly bool transientStickActive;
+            public readonly bool transientBelowMinSpeed;
+            public readonly float tangentSignedSpeed;
+            public readonly float dThetaDeg;
+            public readonly float omega;
+            public readonly float required;
+            public readonly float gravityHelp;
+            public readonly float available;
+            public readonly float rawRatio;
+            public readonly bool convex;
+            public readonly int sameSignFrames;
+            public readonly bool bigSpike;
+            public readonly bool curveSustained;
+            public readonly bool detachFiredThisFrame;
+
+            public FrictionDetachDebug(
+                bool toggleOn, bool inAttached, bool transientFrame,
+                bool tNoPrev, bool tColliderChanged, bool tStick, bool tBelowMinSpeed,
+                float tangentSignedSpeed, float dThetaDeg, float omega,
+                float required, float gravityHelp, float available, float rawRatio,
+                bool convex, int sameSignFrames,
+                bool bigSpike, bool curveSustained, bool detachFiredThisFrame)
+            {
+                this.toggleOn = toggleOn;
+                this.inAttached = inAttached;
+                this.transientFrame = transientFrame;
+                this.transientNoPrevTangent = tNoPrev;
+                this.transientColliderChanged = tColliderChanged;
+                this.transientStickActive = tStick;
+                this.transientBelowMinSpeed = tBelowMinSpeed;
+                this.tangentSignedSpeed = tangentSignedSpeed;
+                this.dThetaDeg = dThetaDeg;
+                this.omega = omega;
+                this.required = required;
+                this.gravityHelp = gravityHelp;
+                this.available = available;
+                this.rawRatio = rawRatio;
+                this.convex = convex;
+                this.sameSignFrames = sameSignFrames;
+                this.bigSpike = bigSpike;
+                this.curveSustained = curveSustained;
+                this.detachFiredThisFrame = detachFiredThisFrame;
+            }
+        }
+
+        // Internal write helper used by Attached's friction-detach block.
+        internal void SetFrictionDebug(in FrictionDetachDebug snap) => frictionDebug = snap;
 
         private void Awake()
         {
@@ -1074,6 +1160,24 @@ namespace SlimeJumping.Controller
             // FixedUpdateAirborne, so a stale value would fire on re-entry).
             if (currentState == SlimeState.Airborne && newState != SlimeState.Airborne)
                 airDashActiveTimer = 0f;
+
+            // Friction-detach state must reset on entry to Attached or Charging.
+            // Attached: new attach starts with sameSignFrames=0; the Attached check's
+            //   transientFrame guard covers the first frame anyway, but keeping these
+            //   in sync avoids stale stress ratio bleeding into the visual on rapid
+            //   land/launch chains.
+            // Charging: the friction check only runs in FixedUpdateAttached, so during
+            //   Charging the smoothedCornerStressRatio LP filter never updates and the
+            //   value freezes at whatever it was on the last Attached frame. Without
+            //   this reset, the visual shader keeps showing the pre-charge banana-bend
+            //   for the entire charge → launch sequence.
+            if ((newState == SlimeState.Attached || newState == SlimeState.Charging)
+                && currentState != newState)
+            {
+                sameSignFrames = 0;
+                cornerStressRatio = 0f;
+                smoothedCornerStressRatio = 0f;
+            }
 
             currentState = newState;
         }

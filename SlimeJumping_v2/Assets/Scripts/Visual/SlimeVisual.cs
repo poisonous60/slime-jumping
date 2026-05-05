@@ -60,6 +60,11 @@ public class SlimeVisual : MonoBehaviour
     private float impactTimer = -1f;
     private float impactMagnitude;
 
+    // Pong overlay (Phase 3) — driven by SlimeController.OnFrictionDetach.
+    // pongTimer < 0 = idle. Set to 0 on event, advances each LateUpdate, returns to -1 when finished.
+    private float pongTimer = -1f;
+    private float pongIntensity;
+
     // Coyote squash recovery phase (runs after EnergyCoyoteTimer reaches 0)
     private float coyoteRecoveryTimer = -1f;
     private float coyoteRecoveryStartMagnitude;
@@ -93,6 +98,11 @@ public class SlimeVisual : MonoBehaviour
     // Pushing the result (instead of raw speed + curve) keeps the shader
     // simple: just one scalar, no piecewise math in HLSL.
     private static readonly int VelocityStretchAmountID = Shader.PropertyToID("_VelocityStretchAmount");
+    // Phase 1 friction-detach stress (banana-bend in SlimeDeform.hlsl stage 6).
+    private static readonly int TangentDirWSID            = Shader.PropertyToID("_TangentDirWS");
+    private static readonly int CornerStressAmountID      = Shader.PropertyToID("_CornerStressAmount");
+    private static readonly int CornerStressTangentMaxID  = Shader.PropertyToID("_CornerStressTangentMax");
+    private static readonly int CornerStressOutwardMaxID  = Shader.PropertyToID("_CornerStressOutwardMax");
     private float smoothedSquashStrength;
     private float squashStrengthVel;
 
@@ -150,6 +160,12 @@ public class SlimeVisual : MonoBehaviour
     // Visual clearance
     private readonly RaycastHit2D[] clearanceHits = new RaycastHit2D[8];
 
+    private void OnDestroy()
+    {
+        if (slimeController != null)
+            slimeController.OnFrictionDetach -= HandleFrictionDetach;
+    }
+
     private void Start()
     {
         smoothedScale = Vector2.one;
@@ -158,6 +174,8 @@ public class SlimeVisual : MonoBehaviour
         prevState = slimeController.CurrentState;
         nextBlinkTime = Time.time + Random.Range(2f, 5f);
         mpb = new MaterialPropertyBlock();
+        if (slimeController != null)
+            slimeController.OnFrictionDetach += HandleFrictionDetach;
         bodyRenderer = body.GetComponent<SpriteRenderer>();
         transformRestLossyScaleY = transform.lossyScale.y;
         // Capture the inspector-set face position as the rest baseline. Done in Start
@@ -217,7 +235,8 @@ public class SlimeVisual : MonoBehaviour
         Vector2 breath = ComputeBreathing();
         Vector2 chargeTremor = ComputeChargingTremor();
         Vector2 coyoteSq = ComputeCoyoteSquash();
-        Vector2 finalScale = smoothedScale + impact + breath + chargeTremor + coyoteSq + externalCompression;
+        Vector2 pong = ComputePongOverlay();
+        Vector2 finalScale = smoothedScale + impact + breath + chargeTremor + coyoteSq + externalCompression + pong;
         finalScale.x = Mathf.Clamp(finalScale.x, settings.deformScaleMin, settings.deformScaleMax);
         finalScale.y = Mathf.Clamp(finalScale.y, settings.deformScaleMin, settings.deformScaleMax);
 
@@ -380,6 +399,25 @@ public class SlimeVisual : MonoBehaviour
                 ? settings.velocityStretch3DCurve.Evaluate(stretchT)
                 : 0f;
 
+            // Phase 1 friction-detach stress (banana-bend): drives stage 6 of
+            // SlimeDeform.hlsl. CornerStressRatio is already LP-filtered + gated
+            // by sameSignFrames>=1 in the controller; the curve here only remaps
+            // the visible band (>= cornerStressMinRatio) into shader's 0..1 input.
+            // tangentDirWS is signed by TangentSpeed so the shader's tangFrontMask
+            // tracks motion direction (slime moving left → tangent points left).
+            float stressRaw = slimeController.CornerStressRatio;
+            float stressT = (stressRaw >= settings.cornerStressMinRatio)
+                          ? Mathf.InverseLerp(settings.cornerStressMinRatio, 1f, stressRaw)
+                          : 0f;
+            float stressAmount = settings.cornerStressCurve != null
+                ? settings.cornerStressCurve.Evaluate(Mathf.Clamp01(stressT))
+                : Mathf.Clamp01(stressT);
+
+            Vector2 tangent2D = new Vector2(-lastSurfaceNormal.y, lastSurfaceNormal.x);
+            float tangentSign = Mathf.Sign(slimeController.TangentSpeed);
+            if (tangentSign == 0f) tangentSign = 1f;
+            Vector3 tangentDirWS = new Vector3(tangent2D.x * tangentSign, tangent2D.y * tangentSign, 0f);
+
             bodyMeshRenderer.GetPropertyBlock(mpb);
             mpb.SetFloat(AsymmetryID, asymmetry);
             mpb.SetFloat(ChargeDipID, chargeDip);
@@ -387,6 +425,10 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetVector(DipDirWSID, dipDirWS);
             mpb.SetVector(VelocityDirWSID, velocityDirWS);
             mpb.SetFloat(VelocityStretchAmountID, velocityStretchAmount);
+            mpb.SetVector(TangentDirWSID, tangentDirWS);
+            mpb.SetFloat(CornerStressAmountID, stressAmount);
+            mpb.SetFloat(CornerStressTangentMaxID, settings.cornerStressTangentMax);
+            mpb.SetFloat(CornerStressOutwardMaxID, settings.cornerStressOutwardMax);
             bodyMeshRenderer.SetPropertyBlock(mpb);
         }
 
@@ -747,6 +789,37 @@ public class SlimeVisual : MonoBehaviour
                     * Mathf.Cos(settings.impactOscFreq * Mathf.PI * t);
         float squash = curve * impactMagnitude * settings.impactSquashIntensity;
         return new Vector2(squash, -squash);
+    }
+
+    // --- Friction detach pong (Phase 3) ---
+    //
+    // Subscribes to SlimeController.OnFrictionDetach. Phase 3 lives on the fast
+    // (smoothed-bypass) scale layer so the release pop happens on the same frame
+    // the controller transitions to Airborne instead of being eased through
+    // SmoothDampV2 like the Phase 1 stress (which goes through the shader, not
+    // body.localScale).
+    private void HandleFrictionDetach(Vector2 detachVel, Vector2 sNormal, float overshoot)
+    {
+        pongTimer = 0f;
+        pongIntensity = Mathf.Clamp01(overshoot / Mathf.Max(0.001f, settings.pongFullOvershoot));
+    }
+
+    private Vector2 ComputePongOverlay()
+    {
+        if (pongTimer < 0f) return Vector2.zero;
+        pongTimer += Time.deltaTime;
+        if (pongTimer >= settings.pongDuration)
+        {
+            pongTimer = -1f;
+            pongIntensity = 0f;
+            return Vector2.zero;
+        }
+        float t = pongTimer / Mathf.Max(0.0001f, settings.pongDuration);
+        float curve = Mathf.Exp(-settings.pongDecay * t)
+                    * Mathf.Cos(settings.pongOscFreq * Mathf.PI * t);
+        float amt = curve * pongIntensity * settings.pongStretchMax;
+        // Body local: X (tangent) slight pinch, Y (outward) bulge.
+        return new Vector2(-amt * 0.4f, amt);
     }
 
     // --- Coyote squash (energy-conversion window) ---

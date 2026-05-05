@@ -34,6 +34,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Stunned](features/slime/stunned.md) — 기절 상태, HazardEffect
 - [Surface Material](features/slime/surface-material.md) — 표면별 AngleScaledValue 배율
 - [Visual Deformation](features/slime/visual-deformation.md) — Phase 1.5 절차적 변형 (C-1 ~ C-7)
+- [Friction Detach](features/slime/friction-detach.md) — 원심/Horizon 기반 detach (formula 4종 + 발 아래 raycast, banana-bend 셰이더 stage 6, Phase 1/2/3 visual)
 
 ## 플랫폼
 
