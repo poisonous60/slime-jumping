@@ -578,6 +578,9 @@ namespace SlimeJumping.Platforms
             return bonus;
         }
 
+        // V3-only carry channel; v1 has no position coupling.
+        public Vector2 ConsumeRiderCarryDelta(Vector2 _worldContact) => Vector2.zero;
+
         // === Editor ===
 
         void OnValidate()

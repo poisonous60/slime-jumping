@@ -386,6 +386,208 @@ namespace SlimeJumping.Editor
                 "All three ropes share identical sag physics — only the rebound multiplier differs.");
         }
 
+        // ===== RopeV3 (trampoline-coupled) tuning =====
+
+        struct RopeV3Tuning
+        {
+            public int segmentCount;
+            public float restLengthMul;
+            public int constraintIterations;
+            public float damping;
+            public float edgeRadius;
+            public float nodeGravity;
+            public float elasticFactor;
+            public float riderInfluenceSpacing;
+            public float riderEquilibriumDepth;
+            public float riderSpringStiffness;
+            public float riderSpringDamping;
+            public float impactCompressionFromVelocity;
+            public float referenceMass;
+            public float maxCarryPerStep;
+            public float maxTensionEnter;
+            public float maxTensionExit;
+            public int colliderSubsample;
+            public int visualSubdivisions;
+            public AnimationCurve timingBonusCurve;
+            public AnimationCurve chargeMultiplierCurve;
+            public float maxReboundSpeed;
+            public float previewRiderMass;
+            public int previewSteps;
+        }
+
+        // V3 canonical trampoline preset. Same Verlet shape as v1/v2 RubberRebound
+        // (segmentCount=15, restLengthMul=1.08, elasticFactor=0.3) so behavior
+        // diff from v2 isolates to the spring-based rider channel.
+        static RopeV3Tuning Trampoline_V3(AnimationCurve timing, AnimationCurve charge) => new RopeV3Tuning
+        {
+            segmentCount = 15,
+            restLengthMul = 1.08f,
+            constraintIterations = 3,
+            damping = 0.98f,
+            edgeRadius = 0f,
+            nodeGravity = 0.3f,
+            elasticFactor = 0.3f,
+            riderInfluenceSpacing = 4f,
+            riderEquilibriumDepth = 0.6f,
+            riderSpringStiffness = 60f,
+            riderSpringDamping = 0.3f,
+            impactCompressionFromVelocity = 0.04f,
+            referenceMass = 1f,
+            maxCarryPerStep = 0.25f,
+            maxTensionEnter = 1.25f,
+            maxTensionExit = 1.10f,
+            colliderSubsample = 2,
+            visualSubdivisions = 3,
+            timingBonusCurve = timing,
+            chargeMultiplierCurve = charge,
+            maxReboundSpeed = 18f,
+            previewRiderMass = 1f,
+            previewSteps = 120,
+        };
+
+        [MenuItem("SlimeJumping/Mechanism/Setup Rope Test V3 (Trampoline)")]
+        public static void SetupV3Trampoline()
+        {
+            var root = new GameObject("RopeTest_V3_Trampoline");
+            Undo.RegisterCreatedObjectUndo(root, "Create Rope Test V3 Trampoline");
+
+            CreatePlatform("Floor", root.transform,
+                new Vector3(0f, -6f, 0f), new Vector3(60f, 1f, 1f));
+            CreatePlatform("SpawnPad_Soft", root.transform,
+                new Vector3(-16f, -2f, 0f), new Vector3(3f, 1f, 1f));
+            CreatePlatform("SpawnPad_Trampoline", root.transform,
+                new Vector3(0f, -2f, 0f), new Vector3(3f, 1f, 1f));
+            CreatePlatform("SpawnPad_HeavyHammock", root.transform,
+                new Vector3(16f, -2f, 0f), new Vector3(3f, 1f, 1f));
+
+            const float anchorY = 3f;
+            const float halfSpan = 3.5f;
+
+            var timingLinear = AnimationCurve.Linear(0f, 0f, 20f, 20f);
+            var chargeFlat = AnimationCurve.Constant(0f, 1f, 1f);
+
+            // Soft — shallow dip, near-critical damping. Quick settle, gentle feel.
+            var soft = Trampoline_V3(timingLinear, chargeFlat);
+            soft.riderEquilibriumDepth = 0.3f;
+            soft.impactCompressionFromVelocity = 0.02f;
+            soft.riderSpringDamping = 0.7f;
+            BuildRopeV3(root.transform, "Rope_V3_Soft",
+                new Vector3(-16f - halfSpan, anchorY, 0f),
+                new Vector3(-16f + halfSpan, anchorY, 0f),
+                soft);
+
+            // Trampoline — V3 default. Deep dip + lively rebound.
+            BuildRopeV3(root.transform, "Rope_V3_Trampoline",
+                new Vector3(-halfSpan, anchorY, 0f),
+                new Vector3(halfSpan, anchorY, 0f),
+                Trampoline_V3(timingLinear, chargeFlat));
+
+            // HeavyHammock — deep static sag, slow rebound. Shows steady-state-only feel.
+            var hammock = Trampoline_V3(timingLinear, chargeFlat);
+            hammock.riderEquilibriumDepth = 1.2f;
+            hammock.riderSpringStiffness = 30f;
+            hammock.riderSpringDamping = 0.5f;
+            BuildRopeV3(root.transform, "Rope_V3_HeavyHammock",
+                new Vector3(16f - halfSpan, anchorY, 0f),
+                new Vector3(16f + halfSpan, anchorY, 0f),
+                hammock);
+
+            CreateHeightMarkers(root.transform, anchorY);
+
+            Finish(root,
+                "V3 Trampoline test (spring-coupled):\n" +
+                "  Rope_V3_Soft         — equilibrium=0.3 m, damping=0.7 (shallow, quick settle)\n" +
+                "  Rope_V3_Trampoline   — equilibrium=0.6 m, damping=0.3 (default, deep dip + bounce)\n" +
+                "  Rope_V3_HeavyHammock — equilibrium=1.2 m, k=30, damping=0.5 (deep sag, slow)\n" +
+                "\n" +
+                "How to evaluate:\n" +
+                "  1. Drop slime onto rope mid-span. The slime should stay attached the entire\n" +
+                "     dip-and-rebound cycle (V2 detached here — that's the bug being fixed).\n" +
+                "  2. Slime should visibly travel down with the rope into the dip, then ride\n" +
+                "     the rebound back up past rest-line before settling.\n" +
+                "  3. Charge + release Space at the rebound apex for a high jump (timing-bonus\n" +
+                "     formula is unchanged from v2 — but slime feels coupled now).\n" +
+                "  4. Tune riderEquilibriumDepth (m) directly in inspector for static sag depth;\n" +
+                "     riderSpringDamping for rebound liveliness; impactCompressionFromVelocity\n" +
+                "     for landing-dip-overshoot magnitude.");
+        }
+
+        static GameObject BuildRopeV3(Transform parent, string name,
+            Vector3 anchorAPos, Vector3 anchorBPos, RopeV3Tuning tuning)
+        {
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, false);
+
+            var anchorA = new GameObject("AnchorA");
+            anchorA.transform.SetParent(root.transform, false);
+            anchorA.transform.position = anchorAPos;
+
+            var anchorB = new GameObject("AnchorB");
+            anchorB.transform.SetParent(root.transform, false);
+            anchorB.transform.position = anchorBPos;
+
+            CreateAnchorMarker(anchorA.transform);
+            CreateAnchorMarker(anchorB.transform);
+
+            var body = new GameObject("Body");
+            body.transform.SetParent(root.transform, false);
+            body.layer = GroundLayer;
+
+            // Force Multi probe mode — V3's carry channel assumes the teleport
+            // branch zeroes rb.linearVelocity, so single-mode would double-count.
+            var probeOverride = body.AddComponent<SlimeJumping.Physics.SurfaceProbeModeOverride>();
+            probeOverride.mode = SlimeJumping.Physics.SurfaceProbeMode.Multi;
+
+            var edge = body.AddComponent<EdgeCollider2D>();
+            edge.edgeRadius = 0f;
+
+            var lineGo = new GameObject("LineRenderer");
+            lineGo.transform.SetParent(body.transform, false);
+            var line = lineGo.AddComponent<LineRenderer>();
+            line.useWorldSpace = true;
+            line.startWidth = line.endWidth = 0.08f;
+            line.textureMode = LineTextureMode.Tile;
+            line.alignment = LineAlignment.View;
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(RopeMaterialPath);
+            if (mat != null) line.sharedMaterial = mat;
+
+            var rope = body.AddComponent<RopeV3>();
+            var so = new SerializedObject(rope);
+            so.FindProperty("anchorA").objectReferenceValue = anchorA.transform;
+            so.FindProperty("anchorB").objectReferenceValue = anchorB.transform;
+            so.FindProperty("edge").objectReferenceValue = edge;
+            so.FindProperty("line").objectReferenceValue = line;
+            so.FindProperty("segmentCount").intValue = tuning.segmentCount;
+            so.FindProperty("restLengthMul").floatValue = tuning.restLengthMul;
+            so.FindProperty("constraintIterations").intValue = tuning.constraintIterations;
+            so.FindProperty("damping").floatValue = tuning.damping;
+            so.FindProperty("edgeRadius").floatValue = tuning.edgeRadius;
+            so.FindProperty("nodeGravity").floatValue = tuning.nodeGravity;
+            so.FindProperty("elasticFactor").floatValue = tuning.elasticFactor;
+            so.FindProperty("riderInfluenceSpacing").floatValue = tuning.riderInfluenceSpacing;
+            so.FindProperty("riderEquilibriumDepth").floatValue = tuning.riderEquilibriumDepth;
+            so.FindProperty("riderSpringStiffness").floatValue = tuning.riderSpringStiffness;
+            so.FindProperty("riderSpringDamping").floatValue = tuning.riderSpringDamping;
+            so.FindProperty("impactCompressionFromVelocity").floatValue = tuning.impactCompressionFromVelocity;
+            so.FindProperty("referenceMass").floatValue = tuning.referenceMass;
+            so.FindProperty("maxCarryPerStep").floatValue = tuning.maxCarryPerStep;
+            so.FindProperty("maxTensionEnter").floatValue = tuning.maxTensionEnter;
+            so.FindProperty("maxTensionExit").floatValue = tuning.maxTensionExit;
+            so.FindProperty("colliderSubsample").intValue = tuning.colliderSubsample;
+            so.FindProperty("visualSubdivisions").intValue = tuning.visualSubdivisions;
+            so.FindProperty("timingBonusCurve").animationCurveValue = tuning.timingBonusCurve;
+            so.FindProperty("chargeMultiplierCurve").animationCurveValue = tuning.chargeMultiplierCurve;
+            so.FindProperty("maxReboundSpeed").floatValue = tuning.maxReboundSpeed;
+            so.FindProperty("previewRiderMass").floatValue = tuning.previewRiderMass;
+            so.FindProperty("previewSteps").intValue = tuning.previewSteps;
+            so.ApplyModifiedProperties();
+
+            rope.Rebuild();
+            return root;
+        }
+
         // Thin unlit horizontal bars (no collider) at set heights above the rope row,
         // so launch-peak heights can be eyeballed in play mode.
         static void CreateHeightMarkers(Transform parent, float baseY)

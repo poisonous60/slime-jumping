@@ -663,6 +663,22 @@ namespace SlimeJumping.Controller
                     ropeVel = ropeVel.normalized * cap;
             }
 
+            // Rope rider carry — V3-only positional coupling. v1/v2 return zero;
+            // V3 returns the world-space displacement the rider's contact segment
+            // underwent this FixedUpdate. Applied directly to rb.position so the
+            // slime travels through the dip-and-rebound cycle with the rope rather
+            // than letting the rope sag out from under it (the failure mode that
+            // detached the slime mid-landing on V2). Assumes Multi probe mode —
+            // the teleport branch below zeroes rb.linearVelocity, so carry is the
+            // sole position channel and doesn't double-count with ropeVel.
+            if (currentRope != null && isTouchingSurface
+                && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
+            {
+                Vector2 carry = currentRope.ConsumeRiderCarryDelta(rb.position);
+                if (carry.sqrMagnitude > 0f)
+                    rb.position += carry;
+            }
+
             Vector2 finalVel = velocity
                 + platformVel * surfaceMod.carrierFriction.Evaluate(frictionAngle)
                 + ropeVel;

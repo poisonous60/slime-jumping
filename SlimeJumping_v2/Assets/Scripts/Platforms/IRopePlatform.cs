@@ -29,5 +29,13 @@ namespace SlimeJumping.Platforms
         // (rope-velocity-projection, chargeRatio). Always returns a value
         // already clamped to [0, MaxReboundSpeed].
         float GetLaunchBonus(Vector2 launchDir, Vector2 worldContact, float chargeRatio);
+
+        // V3-only positional coupling. Returns and clears the world-space
+        // displacement the rider's contact segment underwent since the last
+        // call; SlimeController applies it to rb.position the same frame so
+        // the slime stays glued to the rope through dip-and-rebound rather
+        // than floating above a surface that's been pulled out from under it.
+        // v1/v2 return Vector2.zero — they have no position-coupling channel.
+        Vector2 ConsumeRiderCarryDelta(Vector2 worldContact);
     }
 }

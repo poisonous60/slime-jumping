@@ -565,6 +565,10 @@ namespace SlimeJumping.Platforms
             return bonus;
         }
 
+        // V3-only carry channel; v2 keeps its impulse-based ApplyRiderImpact model
+        // and lets the controller's existing ropeVel inheritance handle tracking.
+        public Vector2 ConsumeRiderCarryDelta(Vector2 _worldContact) => Vector2.zero;
+
         // === Editor ===
 
         void OnValidate()
