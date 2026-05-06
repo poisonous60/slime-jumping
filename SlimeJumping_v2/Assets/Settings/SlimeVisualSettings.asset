@@ -251,8 +251,8 @@ MonoBehaviour:
   chargingTremorFrequency: 25
   chargingTremorMax: 0.03
   chargingTremorThreshold: 9
-  fullAimTremorAmplitude: 0.1
-  fullAimTremorFrequency: 22
+  fullAimTremorAmplitude: 0.05
+  fullAimTremorFrequency: 30
   breathAmplitude: 0.02
   breathFrequency: 0.4
   faceOffsetScale: 0.1
@@ -285,3 +285,35 @@ MonoBehaviour:
   chargeRingOccludedAlpha: 0.35
   chargeRingSurfaceTiltEuler: {x: 80, y: 0, z: 0}
   chargeRingEdgeSoftness: 0.015
+  cornerStressMinRatio: 0.5
+  cornerStressCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  cornerStressTangentMax: 0.35
+  cornerStressOutwardMax: 0.2
+  pongDuration: 0.18
+  pongDecay: 4
+  pongOscFreq: 1.2
+  pongStretchMax: 0.4
+  pongFullOvershoot: 1.5

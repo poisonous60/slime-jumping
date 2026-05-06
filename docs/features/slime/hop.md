@@ -2,6 +2,9 @@
 
 Attached 상태에서 W를 누르면 작은 점프. 접선 운동량을 보존하면서 살짝 띄우는 표현용 액션.
 
+## 마스터 토글
+`SlimeSettings.enableHop` (기본 true) 가 false 면 W 입력이 입력 레이어 (`HandleVerticalUpPressed`) 에서 무시됨. Attached 즉시 홉 / Airborne 코요테 버퍼 양쪽 모두 차단. air-control용 W 홀드 (gravity scale) 는 영향 없음.
+
 ## 기본 동작
 - `velocity += Vector2.up * hopPower`. 표면 법선과 무관하게 항상 위쪽. 스틱 중에는 `velocity = Vector2.up * hopPower` (충돌 잔여 속도 무시).
 - `crawlVelocity = 0` (접선 운동량은 velocity 필드로 이관).
@@ -49,6 +52,7 @@ velocity         = surfaceTangent * preservedTangent + hopDir * power
 ## 파라미터
 | 파라미터 | 기본값 | 설명 |
 |---------|--------|------|
+| enableHop | true | 마스터 토글. false 면 W 홉 차단 |
 | hopPower | 2.25 | hopMinAngle 이하 impulse |
 | hopPowerMin | 1.125 | hopMaxAngle에서 impulse |
 | hopMinAngle | 70 | 풀 파워 적용 상한 각도 |

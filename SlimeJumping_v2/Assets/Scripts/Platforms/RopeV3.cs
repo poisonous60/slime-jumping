@@ -141,6 +141,12 @@ namespace SlimeJumping.Platforms
         float riderMass = 1f;
         bool attachSnapshotValid;
 
+        // Debug introspection (set by ConsumeRiderCarryDelta — read by RopeV3Debug).
+        Vector2 dbgLastCarryRaw;
+        Vector2 dbgLastCarryReturned;
+        bool dbgLastCarryClamped;
+        int dbgLastCarryFrame = -1;
+
         // Preview cache.
         Vector2[] previewMaxSagPos;
         float previewMaxSagValue;
@@ -596,15 +602,25 @@ namespace SlimeJumping.Platforms
             activeImpactDepth = 0f;
             carryDeltaAccum = Vector2.zero;
             riderActive = false;
+            riderSegment = -1;
             OnRopeEvent?.Invoke(RopeEventType.LaunchRebound, worldContact);
         }
 
         public Vector2 ConsumeRiderCarryDelta(Vector2 _worldContact)
         {
-            Vector2 d = carryDeltaAccum;
+            Vector2 raw = carryDeltaAccum;
             carryDeltaAccum = Vector2.zero;
+            Vector2 d = raw;
+            bool clamped = false;
             if (maxCarryPerStep > 0f && d.sqrMagnitude > maxCarryPerStep * maxCarryPerStep)
+            {
                 d = d.normalized * maxCarryPerStep;
+                clamped = true;
+            }
+            dbgLastCarryRaw = raw;
+            dbgLastCarryReturned = d;
+            dbgLastCarryClamped = clamped;
+            dbgLastCarryFrame = Time.frameCount;
             return d;
         }
 
@@ -659,6 +675,63 @@ namespace SlimeJumping.Platforms
             if (bonus < 0f) bonus = 0f;
             if (maxReboundSpeed > 0f && bonus > maxReboundSpeed) bonus = maxReboundSpeed;
             return bonus;
+        }
+
+        // === Debug introspection (read-only) ===
+
+        public struct DebugSnapshot
+        {
+            public bool riderActive;
+            public bool attachSnapshotValid;
+            public int riderSegment;
+            public float riderSegmentT;
+            public Vector2 contactPos;
+            public Vector2 prevContactSampled;
+            public float activeImpactDepth;
+            public Vector2 pendingCarry;        // carryDeltaAccum BEFORE consume
+            public float maxCarryPerStep;
+            public Vector2 lastCarryRaw;        // last consume's pre-cap value
+            public Vector2 lastCarryReturned;   // last consume's post-cap value
+            public bool lastCarryClamped;
+            public int lastCarryFrame;
+            public int nodeCount;
+            public float segmentRestLen;
+            public float maxTensionRatio;
+        }
+
+        public DebugSnapshot GetDebugSnapshot()
+        {
+            float maxRatio = 0f;
+            if (nodeCount >= 2)
+            {
+                for (int i = 0; i < nodeCount - 1; i++)
+                {
+                    float len = Vector2.Distance(pos[i], pos[i + 1]);
+                    float r = len / Mathf.Max(1e-5f, segmentRestLen);
+                    if (r > maxRatio) maxRatio = r;
+                }
+            }
+            return new DebugSnapshot
+            {
+                riderActive = riderActive,
+                attachSnapshotValid = attachSnapshotValid,
+                riderSegment = riderSegment,
+                riderSegmentT = riderSegmentT,
+                contactPos = (riderSegment >= 0 && nodeCount >= 2)
+                    ? SamplePosAt(riderSegment, riderSegmentT)
+                    : Vector2.zero,
+                prevContactSampled = prevContactSampled,
+                activeImpactDepth = activeImpactDepth,
+                pendingCarry = carryDeltaAccum,
+                maxCarryPerStep = maxCarryPerStep,
+                lastCarryRaw = dbgLastCarryRaw,
+                lastCarryReturned = dbgLastCarryReturned,
+                lastCarryClamped = dbgLastCarryClamped,
+                lastCarryFrame = dbgLastCarryFrame,
+                nodeCount = nodeCount,
+                segmentRestLen = segmentRestLen,
+                maxTensionRatio = maxRatio,
+            };
         }
 
         // === Editor ===

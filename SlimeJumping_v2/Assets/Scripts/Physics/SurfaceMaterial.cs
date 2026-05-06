@@ -31,6 +31,13 @@ namespace SlimeJumping.Physics
         [Header("Landing")]
         [Tooltip("0 = instant stop (default), 1 = full tangent velocity preserved")]
         public AngleScaledValue landingVelocityRetention = AngleScaledValue.Constant(0f);
+        [Tooltip("Charged-launch landings only. Scales the EXCESS of post-retention landing tangent speed over the slime's pre-launch slide speed (= |slideVelocity + crawlVelocity| at the moment Launch fired).\n" +
+                 "1 (default) = current behavior, full excess preserved → launch+land cycles can accumulate speed.\n" +
+                 "0.5 = half of the cycle excess is preserved.\n" +
+                 "0 = caps landed tangent at pre-launch slide speed → launches don't accelerate slide speed beyond what it was pre-launch.\n" +
+                 ">1 = intentional accelerator surface.\n" +
+                 "Does NOT affect Hop landings, external-arrival impacts, or natural slide. Per-angle curve allows different gain on shallow vs steep landings.")]
+        public AngleScaledValue landingExcessGain = AngleScaledValue.Constant(1f);
         public AngleScaledValue stickDurationMultiplier = AngleScaledValue.Constant(1f);
         [Tooltip("0 = absorb normal impact (default), 0.5 = redirect 50% of normal speed to tangent")]
         public AngleScaledValue impactRedirectRatio = AngleScaledValue.Constant(0f);
@@ -122,6 +129,7 @@ namespace SlimeJumping.Physics
             slideUphillBrake = slideUphillBrake,
             carrierFriction = carrierFriction,
             landingVelocityRetention = landingVelocityRetention,
+            landingExcessGain = landingExcessGain,
             stickDuration = stickDurationMultiplier,
             impactRedirect = impactRedirectRatio,
             wallAttachDampen = wallAttachSpeedDampen,

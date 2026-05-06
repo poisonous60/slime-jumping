@@ -66,6 +66,24 @@ namespace SlimeJumping.Controller
             // Land on any surface
             if (isTouchingSurface)
             {
+                // Rope contact correction. EdgeCollider2D is a 1-D polyline with no
+                // inherent outside; fast vertical motion can land the slime on the
+                // underside. Detect that case by the contact normal pointing into
+                // gravity, then place the slime's center exactly slimeRadius above
+                // the rope's nearest point and re-orient the contact frame upward.
+                // Position offset is exactly slimeRadius (not + contactSkin) so the
+                // next FU's surface probe still registers overlap — otherwise the
+                // slime detaches, gravity pulls it back through the polyline, and
+                // we re-teleport every FU (visible as up-down oscillation).
+                if (currentRope != null && surfaceCollider == currentRope.Edge
+                    && Vector2.Dot(surfaceNormal, gravityUp) < 0f)
+                {
+                    Vector2 ropeContact = surfaceCollider.ClosestPoint(rb.position);
+                    rb.position = ropeContact + gravityUp * settings.slimeRadius;
+                    surfaceNormal = gravityUp;
+                    surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
+                }
+
                 float surfaceUp = Vector2.Dot(surfaceNormal, gravityUp);
 
                 // Resolve per-surface ceiling reattach threshold from the candidate's
@@ -341,12 +359,34 @@ namespace SlimeJumping.Controller
 
         private float ComputeLandingCrawlVelocity(float effectiveTangent, float landingAngle)
         {
+            float landed;
             if (preserveLandingVelocity)
             {
                 preserveLandingVelocity = false;
-                return effectiveTangent * settings.hopLandingRetention;
+                landed = effectiveTangent * settings.hopLandingRetention;
             }
-            return effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
+            else
+            {
+                landed = effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
+            }
+
+            // Charged-launch return: cap the EXCESS over pre-launch slide speed by landingExcessGain.
+            // Hop-originated and external-arrival flights leave launchOriginValid=false so this is a no-op
+            // for them, preserving Inertial Slide / impact-redirect "ride up the curve" behavior intact.
+            if (launchOriginValid)
+            {
+                float baseline = Mathf.Abs(launchOriginSlideV);
+                float absL = Mathf.Abs(landed);
+                if (absL > baseline)
+                {
+                    float excess = absL - baseline;
+                    float gain = surfaceMod.landingExcessGain.Evaluate(landingAngle);
+                    landed = Mathf.Sign(landed) * (baseline + excess * gain);
+                }
+                launchOriginValid = false;
+            }
+
+            return landed;
         }
 
         private float CalculateStickDuration(float impactSpeed)

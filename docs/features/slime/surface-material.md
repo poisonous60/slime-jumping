@@ -48,6 +48,7 @@ SurfaceTag 가 없거나 material이 비어있는 표면은 `SlimeSettings`의 "
 | slideDownhillGain | 1 | **관성 모드 한정.** `slideAccel`이 운동 방향과 같을 때 곱하는 게인. >1 = 내리막 가속 강화 |
 | slideUphillBrake | 1 | **관성 모드 한정.** `slideAccel`이 운동 방향과 반대일 때 곱하는 게인. >1 = 오르막 감속 강화 |
 | landingVelocityRetention | 0 | 착지 접선 보존 (0=정지, 0.8=빙판) |
+| **landingExcessGain** | 1 | **Charged-launch 착지 한정.** Pre-launch slide 속도(=baseline)를 초과하는 부분에만 곱하는 게인. 1=현재 동작(누적 가속 발생), 0=baseline에서 캡(launch+land 사이클이 가속을 안 만듦), 0.5=초과분의 절반만 보존. Hop / 외부 진입 / 자연 슬라이드는 영향 없음. 자세히는 아래 [Charged-launch landing 가속 제어](#charged-launch-landing-가속-제어-landingexcessgain) 섹션 참조 |
 | stickDurationMultiplier | 1 | 스틱 배율 (0=빙판) |
 | impactRedirectRatio | 0 | 법선 충돌 → 접선 전환 (벽에서만 자동 활성) |
 | wallAttachSpeedDampen | 1 | 착지 접선 속도 감쇠 |
@@ -113,6 +114,49 @@ slideVelocity  = MoveTowards(slideVelocity, 0, frictionDecel * dt)
 - `crawlVelocity`는 그대로 입력 가속/감속만 담당. 최종 접선 속도 = `crawlVelocity + slideVelocity`.
 - 두 모드 표면 사이를 기어다닐 때 `UpdateSurfaceModifiers`가 채널 간 접선 속도를 자동 이전 — 운동량 손실 없음.
 - Hop / Hyper-dash / Ground-dash 모두 합산 접선 속도를 읽어 자연스럽게 호환.
+
+## Charged-launch landing 가속 제어 (landingExcessGain)
+
+빙판/하프파이프(`useInertialSlide=true` + `landingVelocityRetention≈1`) 위에서 charged launch를 반복하면 launch+land 사이클이 매번 slide 속도를 증가시키는 문제가 있었음.
+
+원인 (redirect=0이어도 발생):
+1. Launch 직전 slide 속도 V → frictionless airtime 으로 진입.
+2. 곡면이 휘어 있어 새 surfaceTangent 방향이 launch 출발 tangent 와 다름.
+3. 착지에서 `tangentSpeed = velocity · newSurfaceTangent` 사영값이 V를 초과.
+4. `landingVelocityRetention ≈ 1` → 사영값 그대로 `slideVelocity` 누적.
+5. 매 사이클 +α 누적. `landingVelocityRetention` 을 깎아 막으려 하면 자연 inertia (= Inertial Slide의 의도된 핵심 기능) 도 같이 사라짐.
+
+해결: Land 쪽에 "초과분에만 적용되는 게인" 노출. Launch 쪽의 `tangentInheritanceFactor`+`hyperDashDeduction` ("baseline까지 무료, 초과분에 factor") 패턴을 거울 복사.
+
+```
+// SlimeController.Launch.Launch() 에서:
+launchOriginSlideV = preLaunchCrawl   // pre-launch slide+crawl 합산
+launchOriginValid  = true
+
+// SlimeController.Airborne.ComputeLandingCrawlVelocity() 에서:
+landed = effectiveTangent × landingVelocityRetention   // 기존
+if launchOriginValid:
+    baseline = |launchOriginSlideV|
+    if |landed| > baseline:
+        excess = |landed| - baseline
+        gain   = surfaceMod.landingExcessGain.Evaluate(landingAngle)
+        landed = sign(landed) × (baseline + excess × gain)
+    launchOriginValid = false   // 비행당 1회 소비
+```
+
+게인 의미:
+- **1.0** — 기존 동작과 동일 (excess 전체 보존, 누적 가속 발생).
+- **0.5** — 사이클 excess의 절반만 보존, 누적 속도 천천히.
+- **0.0** — `|launchOriginSlideV|` 에서 캡. Launch+land 사이클이 slide 속도를 못 늘림.
+- **>1.0** — 의도적 가속 표면 (예: "boost ice").
+
+발동 조건:
+- `Launch()` 만 `launchOriginValid = true` 설정. `Hop()`은 설정 안 함 → 홉 착지는 영향 없음.
+- 외부 진입 비행 (절벽에서 떨어짐, ForceAirborneWithVelocity 등) 도 `launchOriginValid=false` → impact-redirect 기반 "아래에서 곡면 타고 오르기" 메커닉 무손상.
+
+Cross-collider: 게이트 없음. 게인은 *착지 표면*의 속성. Grass 에서 launch → Ice 착지 시 ice의 게인이 grass-side baseline 위에 적용. "ice 는 가속이 누적 안 되는 표면" 이라는 직관과 일치.
+
+Out of scope: `landingExcessDeduction` (free zone 추가) 은 v1 미포함. 단일 factor 가 부족할 때 추가 가능.
 
 ## 값 검증
 - `SurfaceMaterial.OnValidate()`: 음수 방지, friction/retention은 0~1로 클램핑.

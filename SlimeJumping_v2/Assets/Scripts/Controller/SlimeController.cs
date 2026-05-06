@@ -89,6 +89,10 @@ namespace SlimeJumping.Controller
         public float PostLaunchTimer => postLaunchTimer;
         public float StickTimer => stickTimer;
         public Collider2D SurfaceCollider => surfaceCollider;
+        public Collider2D CachedSurfaceCollider => cachedSurfaceCollider;
+        public Collider2D PrevSurfaceCollider => prevSurfaceCollider;
+        public IRopePlatform CurrentRope => currentRope;
+        public PlatformCarrier Carrier => carrier;
         public int AttachToggleCount => attachToggleCount;
         public float AttachLockoutTimer => attachLockoutTimer;
         public float StickDeccelTimer => stickDeccelTimer;
@@ -237,6 +241,12 @@ namespace SlimeJumping.Controller
         // True when the current airborne flight was started by Hop (not Launch / walk-off / ForceAirborne).
         // Consumed by the landing energy-conversion formula to apply hopConversionBonus / hopConversionEnergyBonus.
         private bool launchedByHop;
+
+        // Pre-launch slide+crawl tangent speed captured at Launch(). Consumed by ComputeLandingCrawlVelocity
+        // as the "free zone" baseline for landingExcessGain on charged-launch returns. launchOriginValid is
+        // cleared on the first landing so the cap fires once per flight.
+        private float launchOriginSlideV;
+        private bool launchOriginValid;
 
         // Charging coyote time (grace period after leaving surface)
         private float coyoteTimer;
@@ -610,6 +620,37 @@ namespace SlimeJumping.Controller
             // empty contacts, ProjectVelocityAgainstContacts no-ops, slide gravity
             // teleports the slime past a thin edge before Phase A can catch it.
             DecideProbeMode();
+
+            // Rope position-lock (pre-probe). When still bound to a rope from the
+            // previous FU and the rope-rider channel was active, snap rb.position
+            // onto the rope's current nearest surface point BEFORE CheckSurface
+            // runs. Why pre-probe: the rope's spring rebound can move the contact
+            // node by more than (slimeRadius + contactSkin) per FU, which leaves
+            // the slime out of overlap range — the probe then reports no contact,
+            // FixedUpdateAttached transitions to Airborne, and the carry channel
+            // (which would have tracked the slime to the rope's new position) is
+            // gated on state ∈ {Attached, Charging} so it never fires that frame.
+            // Result: visible attach/airborne oscillation. Locking pre-probe keeps
+            // the slime stuck to the rope's surface so the probe finds contact and
+            // the state machine stays consistent.
+            if (currentRope != null
+                && (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
+                && currentRope.Edge != null)
+            {
+                Vector2 ropeContact = currentRope.Edge.ClosestPoint(rb.position);
+                Vector2 toSlime = rb.position - ropeContact;
+                float ropeLockDist = toSlime.magnitude;
+                // Bound the lock to ~1.5× slime radius — beyond that assume the
+                // slime intentionally left the rope (crawled off the polyline end,
+                // teleported, etc.) and let the probe handle detach normally.
+                if (ropeLockDist < settings.slimeRadius * 1.5f)
+                {
+                    Vector2 dir = ropeLockDist > 0.0001f
+                        ? (toSlime / ropeLockDist)
+                        : gravityUp;
+                    rb.position = ropeContact + dir * settings.slimeRadius;
+                }
+            }
 
             float surfaceMultiplier = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 ? settings.attachedCheckMultiplier : settings.airborneCheckMultiplier;

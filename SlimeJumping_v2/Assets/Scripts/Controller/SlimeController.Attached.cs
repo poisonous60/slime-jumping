@@ -283,9 +283,7 @@ namespace SlimeJumping.Controller
                         // and traveled horizontally; the floor is below that height,
                         // so every flat-ground frame read as "horizon clear".
                         Vector2 velDir = velocity / Mathf.Max(0.0001f, velocity.magnitude);
-                        float lookahead = Mathf.Max(
-                            settings.cornerDetachHorizonMinDistance,
-                            tangentSpeedAbs * settings.cornerDetachHorizonTime);
+                        float lookahead = settings.cornerDetachHorizonLookaheadCurve.Evaluate(tangentSpeedAbs);
                         Vector2 projectedCenter = rb.position + velDir * lookahead;
                         // Probe distance = slimeRadius + a generous skin so a small
                         // bump in surface depth (chord-arc gap, polygon facets) still

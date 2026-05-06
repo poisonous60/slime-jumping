@@ -98,11 +98,6 @@ public class SlimeVisual : MonoBehaviour
     // Pushing the result (instead of raw speed + curve) keeps the shader
     // simple: just one scalar, no piecewise math in HLSL.
     private static readonly int VelocityStretchAmountID = Shader.PropertyToID("_VelocityStretchAmount");
-    // Phase 1 friction-detach stress (banana-bend in SlimeDeform.hlsl stage 6).
-    private static readonly int TangentDirWSID            = Shader.PropertyToID("_TangentDirWS");
-    private static readonly int CornerStressAmountID      = Shader.PropertyToID("_CornerStressAmount");
-    private static readonly int CornerStressTangentMaxID  = Shader.PropertyToID("_CornerStressTangentMax");
-    private static readonly int CornerStressOutwardMaxID  = Shader.PropertyToID("_CornerStressOutwardMax");
     private float smoothedSquashStrength;
     private float squashStrengthVel;
 
@@ -399,25 +394,6 @@ public class SlimeVisual : MonoBehaviour
                 ? settings.velocityStretch3DCurve.Evaluate(stretchT)
                 : 0f;
 
-            // Phase 1 friction-detach stress (banana-bend): drives stage 6 of
-            // SlimeDeform.hlsl. CornerStressRatio is already LP-filtered + gated
-            // by sameSignFrames>=1 in the controller; the curve here only remaps
-            // the visible band (>= cornerStressMinRatio) into shader's 0..1 input.
-            // tangentDirWS is signed by TangentSpeed so the shader's tangFrontMask
-            // tracks motion direction (slime moving left → tangent points left).
-            float stressRaw = slimeController.CornerStressRatio;
-            float stressT = (stressRaw >= settings.cornerStressMinRatio)
-                          ? Mathf.InverseLerp(settings.cornerStressMinRatio, 1f, stressRaw)
-                          : 0f;
-            float stressAmount = settings.cornerStressCurve != null
-                ? settings.cornerStressCurve.Evaluate(Mathf.Clamp01(stressT))
-                : Mathf.Clamp01(stressT);
-
-            Vector2 tangent2D = new Vector2(-lastSurfaceNormal.y, lastSurfaceNormal.x);
-            float tangentSign = Mathf.Sign(slimeController.TangentSpeed);
-            if (tangentSign == 0f) tangentSign = 1f;
-            Vector3 tangentDirWS = new Vector3(tangent2D.x * tangentSign, tangent2D.y * tangentSign, 0f);
-
             bodyMeshRenderer.GetPropertyBlock(mpb);
             mpb.SetFloat(AsymmetryID, asymmetry);
             mpb.SetFloat(ChargeDipID, chargeDip);
@@ -425,10 +401,6 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetVector(DipDirWSID, dipDirWS);
             mpb.SetVector(VelocityDirWSID, velocityDirWS);
             mpb.SetFloat(VelocityStretchAmountID, velocityStretchAmount);
-            mpb.SetVector(TangentDirWSID, tangentDirWS);
-            mpb.SetFloat(CornerStressAmountID, stressAmount);
-            mpb.SetFloat(CornerStressTangentMaxID, settings.cornerStressTangentMax);
-            mpb.SetFloat(CornerStressOutwardMaxID, settings.cornerStressOutwardMax);
             bodyMeshRenderer.SetPropertyBlock(mpb);
         }
 

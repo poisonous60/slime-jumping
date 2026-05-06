@@ -126,6 +126,7 @@ namespace SlimeJumping.Controller
         private void HandleVerticalUpPressed()
         {
             if (_override != null || currentState == SlimeState.Stunned) return;
+            if (!settings.enableHop) return;
 
             if (currentState == SlimeState.Attached)
             {

@@ -17,6 +17,7 @@ namespace SlimeJumping.Physics
         public AngleScaledValue slideUphillBrake;
         public AngleScaledValue carrierFriction;
         public AngleScaledValue landingVelocityRetention;
+        public AngleScaledValue landingExcessGain;
         public AngleScaledValue stickDuration;
         public AngleScaledValue impactRedirect;
         public AngleScaledValue wallAttachDampen;
@@ -61,6 +62,7 @@ namespace SlimeJumping.Physics
             slideUphillBrake = AngleScaledValue.Constant(1f),
             carrierFriction = AngleScaledValue.Constant(1f),
             landingVelocityRetention = AngleScaledValue.Constant(0f),
+            landingExcessGain = AngleScaledValue.Constant(1f),
             stickDuration = AngleScaledValue.Constant(1f),
             impactRedirect = AngleScaledValue.Constant(0f),
             wallAttachDampen = AngleScaledValue.Constant(1f),
@@ -113,6 +115,7 @@ namespace SlimeJumping.Physics
                 slideUphillBrake          = AngleScaledValue.Lerp(a.slideUphillBrake,          b.slideUphillBrake,          t),
                 carrierFriction           = AngleScaledValue.Lerp(a.carrierFriction,           b.carrierFriction,           t),
                 landingVelocityRetention  = AngleScaledValue.Lerp(a.landingVelocityRetention,  b.landingVelocityRetention,  t),
+                landingExcessGain         = AngleScaledValue.Lerp(a.landingExcessGain,         b.landingExcessGain,         t),
                 stickDuration             = AngleScaledValue.Lerp(a.stickDuration,             b.stickDuration,             t),
                 impactRedirect            = AngleScaledValue.Lerp(a.impactRedirect,            b.impactRedirect,            t),
                 wallAttachDampen          = AngleScaledValue.Lerp(a.wallAttachDampen,          b.wallAttachDampen,          t),

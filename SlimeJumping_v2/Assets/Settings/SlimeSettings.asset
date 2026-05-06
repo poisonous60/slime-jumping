@@ -26,6 +26,7 @@ MonoBehaviour:
   groundDashAngleMax: 60
   dashFalloffStart: 3
   dashFalloffEnd: 6
+  enableHop: 1
   hopAlongSurfaceNormal: 1
   hopPower: 3
   hopPowerMin: 1
@@ -41,14 +42,14 @@ MonoBehaviour:
   hyperDashDeduction: 1
   hyperDashConversionDampingMin: 1.2
   hyperDashConversionDampingMax: 2
-  chargeRadius: 2
+  chargeRadius: 0.5
   autoDriftSpeed: 4
   inputAcceleration: 2
   baseLaunchPower: 9
-  minLaunchPower: 3
+  minLaunchPower: 0
   chargeCurveExponent: 0.6
   chargeFullAimTime: 0.1
-  maxAimAngularSpeed: 90
+  maxAimAngularSpeed: 720
   chargeNormalFollowSpeed: 5
   chargingCoyoteTime: 0.3
   coyoteGraceTime: 0.1
@@ -65,15 +66,15 @@ MonoBehaviour:
   hopConversionEnergyBonus: 0.3
   aimDriftRadiusScale: 0.7
   energyConversionCoyoteTime: 0.12
-  minStickDuration: 0.3
-  maxStickDuration: 0.3
+  minStickDuration: 0.03
+  maxStickDuration: 0.05
   stickSpeedScale: 0.1
   stickDecelerationTime: 0.2
   stickSlopeThreshold: 0.7
   stickCrawlMultiplier: 0.2
   stickSlideTransitionRampTime: 0.6
   chargeEntryStickBonus: 0
-  chargingSlideGravityScale: 0.7
+  chargingSlideGravityScale: 1
   ceilingAngle: 150
   ceilingReattachAngle: 140
   airMaxHorizontalSpeed: 5
@@ -123,10 +124,50 @@ MonoBehaviour:
   cornerDetachMinSpeed: 1.5
   cornerBigSpikeAngle: 0.4
   cornerStressRatioSmoothRate: 25
-  cornerDetachHorizonTime: 0.08
-  cornerDetachHorizonMinDistance: 0.15
-  cornerDetachHorizonProbeSkin: 0.25
-  frictionDetachFormula: 1
+  cornerDetachHorizonLookaheadCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0.15
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 3.75
+      value: 0.15
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 15.074657
+      value: 0.2427098
+      inSlope: 0.021484641
+      outSlope: 0.021484641
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.1510335
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 20
+      value: 0.8
+      inSlope: 0.04
+      outSlope: 0.04
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  cornerDetachHorizonProbeSkin: 0.5
+  frictionDetachFormula: 2
   cornerVelocityThreshold: 8
   cornerMinAngleDeg: 5
   cornerOmegaThreshold: 5
@@ -188,6 +229,11 @@ MonoBehaviour:
   landingVelocityRetention:
     baseValue: 0
     fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  landingExcessGain:
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   stickDurationMultiplier:

@@ -24,7 +24,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Crawling & Slide](features/slime/crawling.md) — 접선 이동 + 중력 분해
 - [Ground Dash](features/slime/ground-dash.md) — A/D 더블탭 순간 부스트
 - [Shift Dash](features/slime/air-dash.md) — Shift 8방향 대시, Attached/Airborne (Celeste-style, 독립 컴포넌트)
-- [Hop](features/slime/hop.md) — W 표면 점프 + 모멘텀
+- [Hop](features/slime/hop.md) — W 표면 점프 + 모멘텀 (`SlimeSettings.enableHop` 으로 끌 수 있음)
 - [Hyper Dash](features/slime/hyper-dash.md) — Dash → Charge → Launch 콤보
 - [Stick Timer](features/slime/stick-timer.md) — 착지 고정 + Charge Entry Grace
 - [Attach Debounce](features/slime/attach-debounce.md) — 코너 오실레이션 방지
@@ -32,7 +32,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Energy Conversion](features/slime/energy-conversion.md) — 확장 판정원, 에너지 보존 공식
 - [Airborne](features/slime/airborne.md) — 중력, 에어컨트롤, 착지 분기
 - [Stunned](features/slime/stunned.md) — 기절 상태, HazardEffect
-- [Surface Material](features/slime/surface-material.md) — 표면별 AngleScaledValue 배율
+- [Surface Material](features/slime/surface-material.md) — 표면별 AngleScaledValue 배율 (포함: `landingExcessGain` — charged-launch 착지의 누적 가속을 표면 단위로 제어)
 - [Visual Deformation](features/slime/visual-deformation.md) — Phase 1.5 절차적 변형 (C-1 ~ C-7)
 - [Friction Detach](features/slime/friction-detach.md) — 원심/Horizon 기반 detach (formula 4종 + 발 아래 raycast, banana-bend 셰이더 stage 6, Phase 1/2/3 visual)
 

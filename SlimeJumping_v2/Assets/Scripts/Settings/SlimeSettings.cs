@@ -51,6 +51,8 @@ namespace SlimeJumping.Settings
         public float dashFalloffEnd = 13f;
 
         [Header("Hop")]
+        [Tooltip("Master toggle for the W-key hop. False disables both the immediate Attached hop and the air-buffered hop on landing.")]
+        public bool enableHop = true;
         [Tooltip("If true, hop along the surface normal (tangent-based). If false, hop in world-up (gravity-up) direction.")]
         public bool hopAlongSurfaceNormal = true;
         public float hopPower = 2.25f;
@@ -242,10 +244,11 @@ namespace SlimeJumping.Settings
         [Min(0f)] public float cornerBigSpikeAngle = 0.4f;
         [Tooltip("CornerStressRatio LP filter rate (1/s). visual SmoothDamp 앞단 한 단계.")]
         [Min(0.001f)] public float cornerStressRatioSmoothRate = 25f;
-        [Tooltip("Horizon lookahead time (s). 슬라임을 |v|·이 값 만큼 앞으로 projection 한 위치에서 발 아래 지면 검사.")]
-        [Min(0f)] public float cornerDetachHorizonTime = 0.08f;
-        [Tooltip("Horizon lookahead 최소 거리 (m). 느린 슬라임에서도 최소 검사 거리 보장.")]
-        [Min(0f)] public float cornerDetachHorizonMinDistance = 0.15f;
+        [Tooltip("Horizon lookahead 곡선. X = |v| (m/s), Y = lookahead 거리 (m).\n" +
+                 "그래프 에디터로 자유롭게 모양 조절. 빠른 슬라임에서 lookahead 를 가파르게 / 완만하게 하거나, 특정 속도대에 평탄 구간을 두는 등.\n" +
+                 "기본값은 legacy 식 max(0.15, |v|·0.08) 의 두 끝점 키프레임 (linear).")]
+        public AnimationCurve cornerDetachHorizonLookaheadCurve =
+            new AnimationCurve(new Keyframe(0f, 0.15f), new Keyframe(20f, 1.6f));
         [Tooltip("Horizon raycast 의 발 아래 검사 깊이 skin (m). 깊이 = slimeRadius + 이 값. 작으면 작은 굴곡에도 detach, 크면 보수적.")]
         [Min(0f)] public float cornerDetachHorizonProbeSkin = 0.25f;
         [Tooltip("Detach 식 모드. 인스펙터 하단 heatmap 에 각 모드의 detach 영역이 시각화됨.")]
@@ -270,6 +273,8 @@ namespace SlimeJumping.Settings
         public AngleScaledValue slideDownhillGain = AngleScaledValue.Constant(1f);
         public AngleScaledValue slideUphillBrake = AngleScaledValue.Constant(1f);
         public AngleScaledValue landingVelocityRetention = AngleScaledValue.Constant(0f);
+        [Tooltip("Charged-launch landings only. Scales the excess of post-retention landing tangent speed over the slime's pre-launch slide speed. 1 = current behavior. 0 = launch+land cycle does not accelerate slide speed past pre-launch. See SurfaceMaterial.landingExcessGain for details.")]
+        public AngleScaledValue landingExcessGain = AngleScaledValue.Constant(1f);
         public AngleScaledValue stickDurationMultiplier = AngleScaledValue.Constant(1f);
         public AngleScaledValue impactRedirectRatio = AngleScaledValue.Constant(0f);
         public AngleScaledValue groundDashScale = AngleScaledValue.Constant(1f);
@@ -300,6 +305,7 @@ namespace SlimeJumping.Settings
             slideUphillBrake = slideUphillBrake,
             carrierFriction = carrierFriction,
             landingVelocityRetention = landingVelocityRetention,
+            landingExcessGain = landingExcessGain,
             stickDuration = stickDurationMultiplier,
             impactRedirect = impactRedirectRatio,
             wallAttachDampen = wallAttachSpeedDampen,

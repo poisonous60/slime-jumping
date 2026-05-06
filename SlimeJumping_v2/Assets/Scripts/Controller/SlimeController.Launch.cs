@@ -79,6 +79,8 @@ namespace SlimeJumping.Controller
             float preLaunchCrawl = settings.hyperDashInertiaSource == HyperDashInertiaSource.LaunchMoment
                 ? (crawlVelocity + slideVelocity)
                 : chargeEntryCrawl;
+            launchOriginSlideV = preLaunchCrawl;
+            launchOriginValid = true;
             chargeEntryCrawl = 0f;
             crawlVelocity = 0f;
             slideVelocity = 0f;

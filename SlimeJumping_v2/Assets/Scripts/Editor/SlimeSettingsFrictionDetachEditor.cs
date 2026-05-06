@@ -47,7 +47,11 @@ public class SlimeSettingsFrictionDetachEditor : Editor
             return;
         }
 
-        float gravityAccel = s.Gravity;                    // |g| (positive)
+        // Match runtime GravityVector (SlimeController.cs): magnitude only.
+        // settings.gravity is stored as a negative scalar (-20 by default); without
+        // Abs the heatmap's availableFlat collapses below availableWall and the
+        // "wall-only detach" (orange) bucket becomes mathematically unreachable.
+        float gravityAccel = Mathf.Abs(s.Gravity);
         float adhesion = s.cornerAdhesionAccel;
         float minSpeed = s.cornerDetachMinSpeed;
         float availableFlat = gravityAccel + adhesion;     // 평지 가정 |g·n| = gravity
@@ -134,8 +138,61 @@ public class SlimeSettingsFrictionDetachEditor : Editor
             "튜닝 가이드:\n" +
             "• 빨강 영역이 너무 크다 (저속·완만한 곡면도 detach) → cornerAdhesionAccel ↑ 또는 omegaThreshold ↑\n" +
             "• 빠른 슬라임만 detach 시키고 싶다 → cornerDetachMinSpeed ↑ (왼쪽 영역 잘라냄)\n" +
+            "• 속도 무관 각도 기반 → frictionDetachFormula = AngularRateThreshold (수평 빨강 띠. cornerOmegaThreshold 만 영향).\n" +
             "• 평지 sliding 중에도 detach 됨 → cornerDetachHorizonProbeSkin ↑ (별개 게이트)\n" +
             "• 절벽 끝에서 더 일찍 detach → cornerDetachHorizonTime ↑",
+            MessageType.None);
+
+        EditorGUILayout.Space(8);
+        DrawHorizonReadout(s);
+    }
+
+    // Horizon gate is geometry-dependent (raycast against scene colliders) so it
+    // can't be rendered on the v×R parameter chart. Instead, sample the lookahead
+    // curve at a few speeds and show concrete distances — the numbers the user
+    // needs to reason about whether lookahead reaches a cliff edge or probe depth
+    // covers a small bump on their level.
+    private static void DrawHorizonReadout(SlimeSettings s)
+    {
+        EditorGUILayout.LabelField("Horizon 검사 (geometry 의존 — heatmap 에 안 나옴)", EditorStyles.miniBoldLabel);
+
+        float probeSkin = s.cornerDetachHorizonProbeSkin;
+        float slimeRadius = s.slimeRadius;
+        float probeDepth = slimeRadius + probeSkin;
+        var curve = s.cornerDetachHorizonLookaheadCurve;
+        bool curveOk = curve != null && curve.length >= 1;
+
+        EditorGUILayout.LabelField($"probeSkin = {probeSkin:F2}m    slimeRadius = {slimeRadius:F2}m    → probeDepth = {probeDepth:F2}m");
+
+        EditorGUILayout.Space(4);
+        EditorGUILayout.LabelField("속도별 lookahead = LookaheadCurve.Evaluate(|v|):", EditorStyles.miniLabel);
+        if (!curveOk)
+        {
+            EditorGUILayout.HelpBox("LookaheadCurve 가 비어있음 — 키프레임을 최소 1개 추가하세요.", MessageType.Warning);
+        }
+        else
+        {
+            float[] sampleSpeeds = { 1f, 2f, 5f, 10f, 15f, 20f };
+            foreach (var v in sampleSpeeds)
+            {
+                float lookahead = curve.Evaluate(v);
+                EditorGUILayout.LabelField($"  v = {v,5:F1} m/s   →   lookahead = {lookahead,5:F2} m");
+            }
+            float curveStart = curve[0].time;
+            float curveEnd = curve[curve.length - 1].time;
+            EditorGUILayout.LabelField($"  curve domain: |v| ∈ [{curveStart:F1}, {curveEnd:F1}] m/s  (밖은 PostInfinity 모드 따라 클램프/extrapolate)",
+                EditorStyles.miniLabel);
+        }
+
+        EditorGUILayout.Space(2);
+        EditorGUILayout.HelpBox(
+            "동작: centrifugal 통과 후, 진행 방향으로 lookahead 만큼 옮긴 가상 위치에서 -surfaceNormal 방향 probeDepth 깊이로 raycast. " +
+            "지면이 안 잡히면 detach (= 절벽 끝). 잡히면 wrap 유지.\n\n" +
+            "튜닝:\n" +
+            "• 곡선 위 키프레임 Y 값 ↑ → lookahead 거리 ↑ → 그 속도대에서 절벽 더 일찍 감지 (false-positive 도 늘어남)\n" +
+            "• 곡선 위 키프레임 Y 값 ↓ → 원형 플랫폼 옆면 같은 곡면에서 sagitta 가 probeDepth 안에 들어와 wrap 유지\n" +
+            "• 작은 굴곡·계단·다각형 facet 에 잘못 detach → probeSkin ↑ (probeDepth 깊어져 작은 갭 무시)\n" +
+            "• 저속 절벽 감지 보장 → curve 의 v=0 부근 Y 값을 충분히 (예: 0.15m 이상) 두기",
             MessageType.None);
     }
 
