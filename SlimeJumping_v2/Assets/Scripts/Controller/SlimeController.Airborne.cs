@@ -375,12 +375,18 @@ namespace SlimeJumping.Controller
                 landed = effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
             }
 
-            // Charged-launch return: cap the EXCESS over pre-launch slide speed by landingExcessGain.
-            // Hop-originated and external-arrival flights leave launchOriginValid=false so this is a no-op
-            // for them, preserving Inertial Slide / impact-redirect "ride up the curve" behavior intact.
+            // Charged-launch return: cap the EXCESS over the player's "explicit speed budget" by
+            // landingExcessGain. Baseline = max(|preLaunchSlideV|, aimPower) so BOTH pre-launch slide
+            // (natural inertia, must not be clipped on a fast-slide launch) AND the aim power the
+            // player chose to spend (stationary launches must not collapse to zero) are preserved.
+            // Only the residual gain — projection efficiency on curved surfaces, frictionless airtime,
+            // gravity-from-height — is dialed.
+            //
+            // Hop-originated and external-arrival flights leave launchOriginValid=false so this is a
+            // no-op for them, preserving Inertial Slide / impact-redirect "ride up the curve" intact.
             if (launchOriginValid)
             {
-                float baseline = Mathf.Abs(launchOriginSlideV);
+                float baseline = Mathf.Max(Mathf.Abs(launchOriginSlideV), launchOriginAimPower);
                 float absL = Mathf.Abs(landed);
                 if (absL > baseline)
                 {
@@ -389,6 +395,18 @@ namespace SlimeJumping.Controller
                     landed = Mathf.Sign(landed) * (baseline + excess * gain);
                 }
                 launchOriginValid = false;
+            }
+
+            // Optional non-linear remap of final tangent speed (saturating curve for ice etc.).
+            // Toggle gates the feature so authored curves can be temporarily disabled without
+            // losing keys. Applied last so it covers hop, regular, and charged-launch landings.
+            if (surfaceMod.enableLandingTangentSpeedRemap)
+            {
+                var remap = surfaceMod.landingTangentSpeedRemapCurve;
+                if (remap != null && remap.length > 0)
+                {
+                    landed = Mathf.Sign(landed) * remap.Evaluate(Mathf.Abs(landed));
+                }
             }
 
             return landed;

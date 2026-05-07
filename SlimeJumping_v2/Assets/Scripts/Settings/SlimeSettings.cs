@@ -275,6 +275,10 @@ namespace SlimeJumping.Settings
         public AngleScaledValue landingVelocityRetention = AngleScaledValue.Constant(0f);
         [Tooltip("Charged-launch landings only. Scales the excess of post-retention landing tangent speed over the slime's pre-launch slide speed. 1 = current behavior. 0 = launch+land cycle does not accelerate slide speed past pre-launch. See SurfaceMaterial.landingExcessGain for details.")]
         public AngleScaledValue landingExcessGain = AngleScaledValue.Constant(1f);
+        [Tooltip("Toggle the landing tangent speed remap curve for untagged surfaces. OFF (default) = curve ignored.")]
+        public bool enableLandingTangentSpeedRemap = false;
+        [Tooltip("Default landing tangent speed remap curve for untagged surfaces. Only evaluated when enableLandingTangentSpeedRemap is ON. See SurfaceMaterial.landingTangentSpeedRemapCurve.")]
+        public AnimationCurve landingTangentSpeedRemapCurve = new AnimationCurve();
         public AngleScaledValue stickDurationMultiplier = AngleScaledValue.Constant(1f);
         public AngleScaledValue impactRedirectRatio = AngleScaledValue.Constant(0f);
         public AngleScaledValue groundDashScale = AngleScaledValue.Constant(1f);
@@ -306,6 +310,8 @@ namespace SlimeJumping.Settings
             carrierFriction = carrierFriction,
             landingVelocityRetention = landingVelocityRetention,
             landingExcessGain = landingExcessGain,
+            enableLandingTangentSpeedRemap = enableLandingTangentSpeedRemap,
+            landingTangentSpeedRemapCurve = landingTangentSpeedRemapCurve,
             stickDuration = stickDurationMultiplier,
             impactRedirect = impactRedirectRatio,
             wallAttachDampen = wallAttachSpeedDampen,

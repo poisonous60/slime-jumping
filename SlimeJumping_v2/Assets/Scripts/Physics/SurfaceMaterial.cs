@@ -38,6 +38,10 @@ namespace SlimeJumping.Physics
                  ">1 = intentional accelerator surface.\n" +
                  "Does NOT affect Hop landings, external-arrival impacts, or natural slide. Per-angle curve allows different gain on shallow vs steep landings.")]
         public AngleScaledValue landingExcessGain = AngleScaledValue.Constant(1f);
+        [Tooltip("Toggle the landing tangent speed remap curve below. OFF (default) = curve ignored, current behavior. ON = curve evaluated. Lets you author a curve and toggle without losing the keys.")]
+        public bool enableLandingTangentSpeedRemap = false;
+        [Tooltip("When enableLandingTangentSpeedRemap is ON: non-linear remap of the final landed tangent speed (after retention + impactRedirect + landingExcessGain). X (m/s) = |landed|, Y (m/s) = remapped magnitude. Use a saturating curve on ice/halfpipes to compress high-speed landings (e.g. (0,0)→(10,10)→(25,14)) so vertical hops don't translate to runaway slide speed.")]
+        public AnimationCurve landingTangentSpeedRemapCurve = new AnimationCurve();
         public AngleScaledValue stickDurationMultiplier = AngleScaledValue.Constant(1f);
         [Tooltip("0 = absorb normal impact (default), 0.5 = redirect 50% of normal speed to tangent")]
         public AngleScaledValue impactRedirectRatio = AngleScaledValue.Constant(0f);
@@ -137,6 +141,8 @@ namespace SlimeJumping.Physics
             carrierFriction = carrierFriction,
             landingVelocityRetention = landingVelocityRetention,
             landingExcessGain = landingExcessGain,
+            enableLandingTangentSpeedRemap = enableLandingTangentSpeedRemap,
+            landingTangentSpeedRemapCurve = landingTangentSpeedRemapCurve,
             stickDuration = stickDurationMultiplier,
             impactRedirect = impactRedirectRatio,
             wallAttachDampen = wallAttachSpeedDampen,

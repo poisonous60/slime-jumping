@@ -42,14 +42,14 @@ MonoBehaviour:
   hyperDashDeduction: 1
   hyperDashConversionDampingMin: 1.2
   hyperDashConversionDampingMax: 2
-  chargeRadius: 0.5
+  chargeRadius: 0.8
   autoDriftSpeed: 4
   inputAcceleration: 2
   baseLaunchPower: 9
   minLaunchPower: 0
   chargeCurveExponent: 0.6
   chargeFullAimTime: 0.1
-  maxAimAngularSpeed: 720
+  maxAimAngularSpeed: 180
   chargeNormalFollowSpeed: 5
   chargingCoyoteTime: 0.3
   coyoteGraceTime: 0.1

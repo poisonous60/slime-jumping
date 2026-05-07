@@ -79,10 +79,18 @@ namespace SlimeJumping.Platforms
         [SerializeField, Min(0.01f)] float springStiffness = 60f;
         [Tooltip("Damping ratio while slime is on rope. <1 = bounce on landing, =1 = no overshoot.")]
         [SerializeField, Range(0f, 2f)] float attachedDampingRatio = 0.5f;
+        [Tooltip("Damping ratio while a trampoline cycle is active (between impact and trampolineHoldTimer expiry). Much lower than attachedDampingRatio so the rope visibly OSCILLATES up and down around the deep target inside the bowl rather than snapping to it once. Default 0.15 → ~4–5 visible bounces over a 1-second hold (period ≈ 2π/√springStiffness ≈ 0.8s).")]
+        [SerializeField, Range(0f, 2f)] float trampolineDampingRatio = 0.15f;
         [Tooltip("Damping ratio after slime detaches. ≥1 = no oscillation past baseline.")]
         [SerializeField, Range(0.5f, 3f)] float detachedDampingRatio = 1.2f;
         [Tooltip("Initial dipVelocity kick per (m/s) of impact velocity into gravity. 0 = no impact reaction.")]
         [SerializeField, Min(0f)] float impactCompressionFromVelocity = 0.05f;
+
+        [Header("Trampoline (impulse-driven bounce)")]
+        [Tooltip("Impact speed (m/s into gravity) → initial DOWNWARD dipVelocity injected at landing. The spring's target stays at baseEquilibrium — this impulse drives the rope deep, the spring then pulls it back up THROUGH baseline and overshoots ABOVE baseline (because trampolineDampingRatio is underdamped). Asymmetric bouncing: deep first dip, smaller upward overshoot, decaying. X axis: impact speed (m/s). Y axis: dipVelocity kick (m/s downward).")]
+        [SerializeField] AnimationCurve trampolineImpactKickCurve = AnimationCurve.Linear(0f, 0f, 30f, 15f);
+        [Tooltip("Impact speed (m/s into gravity) → seconds the rope stays in the underdamped (trampolineDampingRatio) regime after impact. Longer = more visible up/down cycles before damping reverts to attachedDampingRatio. Independent of the natural spring period — you can have many quick cycles or a few slow cycles by tuning springStiffness. X axis: impact speed (m/s). Y axis: window duration (s).")]
+        [SerializeField] AnimationCurve trampolineHoldCurve = AnimationCurve.Linear(0f, 0f, 30f, 1.5f);
 
         [Header("Launch boost (effect-mode)")]
         [Tooltip("Bonus speed added to slime's launch velocity at FULL charge (m/s). Scales linearly with chargeRatio.")]
@@ -93,12 +101,22 @@ namespace SlimeJumping.Platforms
         [SerializeField] AnimationCurve launchImpactKickCurve = AnimationCurve.Linear(0f, 0f, 1f, 4f);
         [Tooltip("Minimum upward (worldUp) velocity guaranteed for any launch off this rope (m/s). Constant — does not scale with charge. 0 = disabled. Prevents near-horizontal launches from being immediately recaught by the rope's spring rebound.")]
         [SerializeField, Min(0f)] float minLaunchVerticalSpeed = 3f;
+        [Tooltip("Multiplier on jumpBoost based on the rope's UPWARD speed at the launch moment. X axis: rope upward speed (m/s, = -dipVelocity, peaks as the rope passes through baseline on its way up). Y axis: multiplier on jumpBoost. Default Linear((0,0)→(5,1)) — zero bonus when rope is still or moving down, full bonus when rising at 5 m/s. Rewards player for syncing jump with the rope's upward swing.")]
+        [SerializeField] AnimationCurve jumpTimingCurve = AnimationCurve.Linear(0f, 0f, 5f, 1f);
 
         [Header("Pass-through (one-way semi-solid)")]
         [Tooltip("Per-FU duration to refresh IgnoredCollider timer while in passthrough (s).")]
         [SerializeField, Min(0.05f)] float passthroughRefreshDuration = 0.2f;
         [Tooltip("|dipVelocity| below this (m/s) means rope settled enough to release post-launch passthrough.")]
         [SerializeField, Min(0.001f)] float settleVelocityThreshold = 0.05f;
+
+        [Header("Surface Override")]
+        [Tooltip("SurfaceMaterial pushed onto the slime's override stack while attached to this rope. " +
+                 "Mirrors WaterCurrentZone / SpringyBranchPlatform pattern — Push on attach edge, " +
+                 "Pop on detach edge (and safety pop in OnDisable). Use to grant rope-specific tuning " +
+                 "(low friction, longer energyConversionCoyoteTime, etc.) without touching global " +
+                 "SlimeSettings. Leave empty to skip override.")]
+        [SerializeField] SurfaceMaterial ropeSurfaceMaterial;
 
         public EdgeCollider2D Edge => null;     // null → Attempt-4/5 hacks in SlimeController bypass naturally
         public float MaxReboundSpeed => maxCap;
@@ -126,8 +144,21 @@ namespace SlimeJumping.Platforms
         SlimeController.SlimeState lastState = SlimeController.SlimeState.Airborne;
         bool postDetach;        // Use detachedDampingRatio while true
 
+        // Trampoline state. Impulse-driven model — target stays at baseEquilibrium
+        // throughout. ApplyRiderImpact injects a downward dipVelocity kick (proportional
+        // to impact speed via trampolineImpactKickCurve), and trampolineHoldTimer keeps
+        // the spring in the underdamped (trampolineDampingRatio) regime for a duration
+        // proportional to impact speed. Spring physics naturally produce asymmetric
+        // bouncing: deep first dip, smaller upward overshoot above baseline, decaying.
+        float trampolineHoldTimer;
+
         // Pass-through (from-below) state
         bool inPassthroughBelow;
+
+        // True while ropeSurfaceMaterial is on the slime's override stack and we still
+        // owe a Pop. Tracked so that disabling the rope mid-attach doesn't leak the
+        // override (mirrors WaterCurrentZone.overridePushed semantics).
+        bool overridePushed;
 
         Rigidbody2D slimeRb;
         Collider2D slimeCol;
@@ -140,6 +171,15 @@ namespace SlimeJumping.Platforms
             if (polygon != null) polygon.isTrigger = true;
             ResolveSlime();
             Rebuild();
+        }
+
+        void OnDisable()
+        {
+            // Safety pop — disabling the rope while a slime is attached must not leak
+            // ropeSurfaceMaterial onto the slime's override stack.
+            if (overridePushed && slime != null && ropeSurfaceMaterial != null)
+                slime.PopSurfaceMaterialOverride(ropeSurfaceMaterial);
+            overridePushed = false;
         }
 
         void OnValidate()
@@ -255,6 +295,25 @@ namespace SlimeJumping.Platforms
                 riderActive = false;
             }
 
+            // --- 2b. Surface override push/pop edges ---
+            // Mirrors WaterCurrentZone: Push on attach edge, Pop on detach edge. Driven by
+            // riderActive transitions rather than trigger callbacks so it stays in sync with
+            // the rest of the rope's state machine even if SlimeController detaches the slime
+            // by other means (e.g. friction-detach mid-rope).
+            if (ropeSurfaceMaterial != null)
+            {
+                if (riderActive && !overridePushed)
+                {
+                    slime.PushSurfaceMaterialOverride(ropeSurfaceMaterial);
+                    overridePushed = true;
+                }
+                else if (!riderActive && overridePushed)
+                {
+                    slime.PopSurfaceMaterialOverride(ropeSurfaceMaterial);
+                    overridePushed = false;
+                }
+            }
+
             // --- 3. Detach edge → switch spring to overdamped (no upward overshoot) ---
             // No IgnoredCollider work here — SlimeController.Launch already registered
             // our polygon as ReattachGuard via ignoredColliderList.RegisterOverlapping,
@@ -264,6 +323,16 @@ namespace SlimeJumping.Platforms
             if (wasOnRope && nowAirborne)
             {
                 postDetach = true;
+                // Trampoline state belongs to the rider that just left — clear so the
+                // damping window doesn't carry over to no-rider physics.
+                trampolineHoldTimer = 0f;
+            }
+
+            // --- 3b. Tick trampoline damping window ---
+            if (trampolineHoldTimer > 0f)
+            {
+                trampolineHoldTimer -= dt;
+                if (trampolineHoldTimer < 0f) trampolineHoldTimer = 0f;
             }
 
             // --- 4. Compute spring target ---
@@ -271,6 +340,10 @@ namespace SlimeJumping.Platforms
             // dipVelocity kick at launch (see GetLaunchBonus) so the player feels the
             // rope punch DOWN as the slime kicks off, instead of slowly sagging while
             // they hold charge.
+            // Trampoline does NOT shift the target — it injects an initial dipVelocity
+            // impulse and lowers the damping ratio so the spring rings around the same
+            // baseline target. Result: deep first dip, smaller upward overshoot ABOVE
+            // baseline, decaying — natural asymmetric bouncing instead of a held bowl.
             float target = 0f;
             if (riderActive)
             {
@@ -279,7 +352,14 @@ namespace SlimeJumping.Platforms
 
             // --- 5. Integrate spring (semi-implicit Euler) ---
             // c = 2 ζ √k → ζ controls overshoot: <1 underdamped (visible bounce), ≥1 overdamped (no overshoot).
-            float zeta = postDetach ? detachedDampingRatio : attachedDampingRatio;
+            // Three damping regimes:
+            //   postDetach            → detachedDampingRatio (overdamped, no upward catch on launching slime)
+            //   trampolineHoldTimer>0 → trampolineDampingRatio (underdamped, visible oscillation in the bowl)
+            //   else                  → attachedDampingRatio (steady-state attached behavior)
+            float zeta;
+            if (postDetach) zeta = detachedDampingRatio;
+            else if (trampolineHoldTimer > 0f) zeta = trampolineDampingRatio;
+            else zeta = attachedDampingRatio;
             float c = 2f * zeta * Mathf.Sqrt(springStiffness);
             float accel = springStiffness * (target - dipDepth) - c * dipVelocity;
             dipVelocity += accel * dt;
@@ -489,10 +569,24 @@ namespace SlimeJumping.Platforms
 
         public void ApplyRiderImpact(Vector2 _worldContact, Vector2 impactVelocity)
         {
-            // Hard landing kicks the spring downward — visual deepening on slam.
-            if (impactCompressionFromVelocity <= 0f) return;
             float vDown = Mathf.Max(0f, Vector2.Dot(impactVelocity, worldDown));
-            dipVelocity += vDown * impactCompressionFromVelocity;
+            if (vDown <= 0f) return;
+
+            // Punch: small extra dipVelocity kick on top of trampoline impulse — keeps the
+            // existing per-(m/s) coefficient available for fine-tuning. Set to 0 to use
+            // pure trampoline curve.
+            if (impactCompressionFromVelocity > 0f)
+                dipVelocity += vDown * impactCompressionFromVelocity;
+
+            // Trampoline: inject downward dipVelocity proportional to impact speed and
+            // open the underdamped damping window. Spring target stays at baseEquilibrium
+            // (no shift), so the system rings around baseline rather than around a deep
+            // point — that's what lets it actually go ABOVE baseline on the upswing.
+            // largest-wins composes near-simultaneous impacts into the bigger of the two.
+            float kick = trampolineImpactKickCurve != null ? trampolineImpactKickCurve.Evaluate(vDown) : 0f;
+            float hold = trampolineHoldCurve != null ? trampolineHoldCurve.Evaluate(vDown) : 0f;
+            if (kick > 0f) dipVelocity += kick;
+            if (hold > trampolineHoldTimer) trampolineHoldTimer = hold;
         }
 
         public float GetLaunchBonus(Vector2 launchDir, Vector2 _worldContact, float chargeRatio)
@@ -511,9 +605,17 @@ namespace SlimeJumping.Platforms
             if (launchDir.sqrMagnitude < 1e-6f) return 0f;
             Vector2 dir = launchDir.normalized;
             float upward = Mathf.Max(0f, Vector2.Dot(dir, worldUp));
-            // Effect-mode (β): bonus scales linearly with chargeRatio, capped.
-            // Designer tunes by jumpBoost (full-charge boost) + maxCap (hard cap).
-            float bonus = jumpBoost * Mathf.Clamp01(chargeRatio) * upward;
+            // Timing gate: rope's upward speed at this instant gates the bonus. dipVelocity
+            // is in worldDown (+= downward), so -dipVelocity is upward speed. Peaks as the
+            // rope passes through baseline on its way back up after a trampoline release.
+            // jumpTimingCurve maps that speed to a multiplier — designer can shape what
+            // counts as "good timing" (default Linear((0,0)→(5,1))).
+            float ropeUpSpeed = Mathf.Max(0f, -dipVelocity);
+            float timing = jumpTimingCurve != null ? jumpTimingCurve.Evaluate(ropeUpSpeed) : 1f;
+            // Effect-mode (β): bonus scales linearly with chargeRatio, capped, gated by timing.
+            // Designer tunes by jumpBoost (full-charge boost) + maxCap (hard cap) +
+            // jumpTimingCurve (timing window shape).
+            float bonus = jumpBoost * Mathf.Clamp01(chargeRatio) * upward * Mathf.Max(0f, timing);
             return Mathf.Clamp(bonus, 0f, maxCap);
         }
 

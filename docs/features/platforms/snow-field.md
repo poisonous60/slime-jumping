@@ -37,14 +37,33 @@ ScriptableObject 한 개에 모든 snow tuning 이 모임 (deposit / mesh / rend
 
 low-poly 호스트 메쉬에서도 carve 가 보이도록, `SnowPatchSubdivider.Subdivide` 가 BFS taper 전에 host triangle 들을 barycentric 으로 재귀 세분화. midpoint normal/heightRest 는 endpoint 보간으로 계산 → **3D 굴곡 보존**, 단지 vertex 만 dense 해짐. `subdivLevels` (0~3, 기본 1 = 4× verts) 은 SnowSettings 에 있음.
 
-### Overlap mask (Phase 2 origin, Z-aware + manual keep 추가됨)
+### Overlap mask (Phase 2 origin, Z-aware + manual keep + 모드 토글 추가됨)
 
-`SnowField.MaskOutOverlap` 이 `excludeOverlapWithOtherPlatforms=true` 일 때 Subdivide 직후 BFS taper 직전에 실행. 한 번의 `Physics2D.OverlapArea` 로 패치 AABB 안의 candidate Collider2D 를 모은 다음 hostCollider / sister SnowField (priority 낮은 쪽) / 본인의 `manualKeepPolygons` 를 제외해 `foreign` 리스트를 만든다. 각 snow tri 의 4개 sample (3 verts + centroid) 중 하나라도 foreign 안이면 tri drop.
+`SnowField.MaskOutOverlap` 이 `excludeOverlapWithOtherPlatforms=true` 일 때 Subdivide 직후 BFS taper 직전에 실행. 한 번의 `Physics2D.OverlapArea` 로 패치 AABB 안의 candidate Collider2D 를 모은 다음 hostCollider / sister SnowField (priority 낮은 쪽) / 본인의 `manualKeepColliders` 를 제외해 `foreign` 리스트를 만든다.
 
-두 가지 추가 룰:
+**드롭 알고리즘은 `maskMode` 로 두 경로 중 선택**:
 
-- **Z-aware mask** (`maskUsesZ`, `maskZWindow`) — foreign collider 의 `transform.position.z` 를 미리 캐싱해두고, sample 의 world Z 와 ±`maskZWindow` 안일 때만 그 foreign 으로 mask. Z 깊이가 있는 큰 mesh 한 장에 SnowField 한 개를 붙여도, 앞쪽-Z 슬라이스만 foreground 와 mask 되고 뒤쪽-Z 슬라이스 (foreground 뒤 void 영역) 는 같은 SnowField 안에서 snow 그대로 유지 → 별도 backdrop mesh 필요 없음.
-- **Manual keep override** (`manualKeepColliders`) — drop 결정 후 tri ↔ collider 의 **실제 영역 overlap** (tri 정점이 collider 안 / collider 정점이 tri 안 / edge 끼리 교차 중 하나) 이면 tri 를 **복원**. mask 가 너무 적극적으로 잘라낸 seam 갭을 designer 가 collider 한 장으로 덮어 메우는 용도. PolygonCollider2D / BoxCollider2D 는 풀-precision (4 corner / N path 정점 추출 후 PointInTri + 엣지 교차), Circle / Capsule / Edge / Composite 는 cheap fallback (tri 정점이 collider 안만 봄) — 부분 overlap 케이스는 못 잡지만 정점 inside 는 잡음. **출력은 tri 단위** — collider 가 tri 의 일부만 덮어도 tri 전체 복원 (더 정밀한 boundary 필요하면 `subdivLevels` 를 올린다). 초기 구현은 4-sample (3 verts + centroid) OverlapPoint 였지만 polygon 이 sample 점들 *사이* 에 끼면 아무것도 복원 못 해서 격자 무늬가 보였음 → 실제 overlap 테스트로 교체. keep collider 자체는 (a) `useTriggers=false` 로 인한 자동 제외 + (b) `IsManualKeep` 의 명시적 거름 두 단계로 절대 자기 자신이 foreign 이 되지 않게 한다.
+#### `SampleBased` (default — 기존 동작)
+
+각 snow tri 의 4개 sample (3 verts + centroid) 중 하나라도 foreign 안이면 tri 를 통째로 drop. Subdivision 으로 인접 tri 가 정점을 공유하므로 단일 정점이 foreign 안에 들어가면 그 정점의 1-ring fan (~6 tris) 이 함께 drop 됨 → "캐스케이드" 로 인해 보이는 갭이 foreign 의 실제 XY footprint 보다 넓어진다. 빠르고 기존 씬 동작과 byte-identical 하지만 정확도가 떨어짐.
+
+#### `GeometricClipping` (opt-in)
+
+Sutherland-Hodgman tri-vs-foreign 기하학적 차집합. 각 tri 를 foreign 의 각 엣지에서 정확히 잘라내 `(tri ∩ NOT foreign)` 만 남긴다. 캐스케이드 없음, rim 이 foreign 엣지에 정확히 안착. 새로 생기는 cut 정점은 mesh-local position / vertNormal 을 tri 의 세 corner 에서 barycentric 보간으로 산출하고, position-quantized dedup (1e-4) 으로 인접 tri 가 같은 cut 점을 emit 하면 한 인덱스로 합친다 (그렇지 않으면 boundary regen 이 seam 을 두 boundary 로 인식해 BFS taper 가 패치 내부에 가짜 rim 을 seed 한다).
+
+**커버리지**:
+- **Convex fast-path (1-piece SH)** — `BoxCollider2D`, `CircleCollider2D` (24-gon tessellate), `CapsuleCollider2D` (양 끝 반원 12분할 + 직선변, 26-gon), 그리고 `PolygonCollider2D` 단일-path 볼록 폴리곤. PolygonCollider2D 는 SH 직전에 `SimplifyCollinear` (perpendicular ε=1e-4f) 로 near-collinear 중간 verts 를 corner 로 줄임 — `MeshToCollider2DGenerator` 가 시각적으로 직선인 변에 vert 를 dense 하게 박는데, 이걸 그대로 SH 의 per-edge half-plane 으로 돌리면 얇게 어긋난 normal 들이 누적돼 rim 이 ~1 sub-tri 안쪽으로 밀린다. 면적 보존되는 simplify (collinear vert 의 shoelace 기여 = 0) 라 시각/물리적 의미 변화 없이 SH 정확도만 올라간다.
+- **Decomposition path (N-piece SH)** — concave 단일-path PolygonCollider2D, multi-path PolygonCollider2D (outer/hole 자동 분류). `TryDecomposeForeignPolygon` 이 ear-clipping triangulation 으로 foreign 을 convex piece (≈ tri) 들의 union 으로 쪼갠 뒤, 각 piece 마다 fast-path 와 동일한 SH per-edge 루프를 돌려 누적 차감. `(snow tri − foreign) ≡ ((snow tri − piece₁) − piece₂) − ⋯` 가 disjoint piece 들에 대해 성립. multi-path 는 nesting depth (= "이 path 의 첫 vert 를 다른 path 가 포함하는 횟수") 로 outer (even) / hole (odd) 자동 분류 → CCW outer + CW hole 로 winding 정규화 → standard hole-bridge (rightmost-vert + closest +x ray cast) 로 단일 weakly simple polygon 으로 합쳐 ear-clip. 분해 결과는 self-check (path 자기교차 검증 + piece 면적 합 ≈ 입력 면적, 1% 허용) 를 통과해야 적용; 통과 못 하면 sample-based 폴백.
+- **Per-pair sample-based fallback** — `EdgeCollider2D` (두께 0, mask 의미 정의 안 됨), `CompositeCollider2D`, 분해 self-check 가 거절한 자기교차 / degenerate polygon, 그 외 처리 못 하는 collider 종류. 그 한 쌍만 sample-based 로 fallback → 모드 전환했다고 지원 외 케이스가 더 나빠지지 않음.
+
+Manual keep 은 clipping 을 **선점** — keep collider 와 tri 가 영역을 공유하면 clipping 을 건너뛰고 tri 를 통째 유지. Z-aware filter (`maskUsesZ`/`maskZWindow`) 는 per-pair 로 적용 (centroid Z 기준).
+
+Default 가 `SampleBased` 인 이유: 기존 씬 (이미 튜닝된 SnowField 들) 의 동작이 토글 없이 변하면 안 되므로. 캐스케이드 갭이 신경 쓰이는 SnowField 만 인스펙터에서 `GeometricClipping` 으로 전환.
+
+#### 두 모드 공통
+
+- **Z-aware mask** (`maskUsesZ`, `maskZWindow`) — foreign collider 의 `transform.position.z` 를 미리 캐싱해두고, ±`maskZWindow` 안일 때만 그 foreign 으로 mask 발동. Z 깊이가 있는 큰 mesh 한 장에 SnowField 한 개를 붙여도, 앞쪽-Z 슬라이스만 foreground 와 mask 되고 뒤쪽-Z 슬라이스 (foreground 뒤 void 영역) 는 같은 SnowField 안에서 snow 그대로 유지 → 별도 backdrop mesh 필요 없음. SampleBased 는 per-sample, GeometricClipping 은 per-pair (centroid 기준) 으로 적용.
+- **Manual keep override** (`manualKeepColliders`) — SampleBased 에선 drop 결정 후 tri ↔ collider 의 **실제 영역 overlap** (tri 정점이 collider 안 / collider 정점이 tri 안 / edge 끼리 교차 중 하나) 이면 tri 를 **복원**. GeometricClipping 에선 같은 영역 overlap 테스트로 clipping 을 **선점** (keep 영역과 겹치는 tri 는 통째 유지). PolygonCollider2D / BoxCollider2D 는 풀-precision, Circle / Capsule / Edge / Composite 는 cheap fallback (tri 정점이 collider 안만 봄). 출력은 tri 단위 — collider 가 tri 의 일부만 덮어도 tri 전체 복원/유지. keep collider 자체는 (a) `useTriggers=false` 로 인한 자동 제외 + (b) `IsManualKeep` 의 명시적 거름 두 단계로 자기 자신이 foreign 이 되지 않게 한다.
 
 drop 후엔 새 boundary 를 다시 dirSet (a→b, b→a 검사) 으로 추출 → BFS taper 가 잘라낸 가장자리도 자연스럽게 동그랗게 내려감.
 
@@ -279,7 +298,8 @@ per-instance reference 만 — tuning 은 settings asset 으로.
 | Settings | None | `SnowSettings` 자산 참조. null 이면 baked-in 기본값 |
 | Source Mesh Filter | auto | 호스트 메쉬. 같은 GO 또는 자식에서 자동 resolve |
 | Host Collider | None | 슬라임 SurfaceCollider 와 매칭될 호스트의 Collider2D — registry 키 |
-| Exclude Overlap With Other Platforms | true | rebuild 시점에 각 snow tri 의 4개 sample (3 verts + centroid) 중 하나라도 (hostCollider 가 아닌) 다른 Collider2D 안이면 그 tri 를 drop. 다른 플랫폼 mesh 와 겹쳐서 z-fighting 나는 영역이 사라지고, 외곽 rim 만 남음. boundary 는 잘라낸 모양에 맞게 재생성되어 BFS taper 가 새 가장자리에서도 둥글게 내려감 |
+| Exclude Overlap With Other Platforms | true | rebuild 시점에 각 snow tri 가 (hostCollider 가 아닌) 다른 Collider2D 와 겹치면 그 tri 를 drop. 다른 플랫폼 mesh 와 겹쳐서 z-fighting 나는 영역이 사라지고, 외곽 rim 만 남음. boundary 는 잘라낸 모양에 맞게 재생성되어 BFS taper 가 새 가장자리에서도 둥글게 내려감. drop 알고리즘은 `Mask Mode` 로 선택 |
+| Mask Mode | SampleBased | drop 알고리즘 선택. **SampleBased**: 4-sample (3 verts + centroid) 중 하나라도 foreign 안이면 tri 통째 drop. 빠르고 기존 동작 유지하지만 정점 공유로 인한 캐스케이드로 갭이 foreign 실제 footprint 보다 넓어짐. **GeometricClipping**: Sutherland-Hodgman 으로 tri 를 foreign 엣지에서 정확히 잘라 `(tri ∩ NOT foreign)` 만 남김. 캐스케이드 없음, rim 이 foreign 엣지에 정확히 안착. 지원: Box / 단일-path 볼록 Polygon. Fallback: Circle/Capsule/Edge/Composite, 다중 path / concave Polygon, "foreign 이 단일 tri 안에 완전히 포함" 케이스. 기존 씬 byte-identical 동작 유지를 위해 default 는 SampleBased — 캐스케이드 갭이 신경 쓰이는 SnowField 만 인스펙터에서 전환 |
 | Overlap Layer Mask | Everything | 위 toggle 이 켜져 있을 때 검사할 레이어. hostCollider 는 항상 제외 |
 | Overlap Priority | 0 | 두 SnowField 가 XY 로 겹칠 때 tiebreak. 높은 priority 가 겹친 영역의 snow 를 가져감 |
 | Mask Uses Z | false | overlap mask 가 Z 깊이를 고려하는지. true 면 foreign collider 의 world Z 가 snow tri 의 world Z 와 ±`maskZWindow` 안에 있을 때만 mask 발동. **Z 깊이가 있는 큰 mesh 에서 앞쪽-Z 슬라이스는 foreground 에 의해 mask 되고, 뒤쪽-Z 슬라이스 (foreground 뒤 void 영역) 는 같은 SnowField 안에서 그대로 snow 유지**. false (기본) 면 XY 만 보고 모두 mask — 기존 동작 |

@@ -55,14 +55,42 @@ dipVelocity += accel × dt
 dipDepth    += dipVelocity × dt                                [no clamp — 위로 튈 수도 있음]
 ```
 
-`ζ` 는 슬라임 상태에 따라 전환:
+`ζ` 는 슬라임 상태 + trampoline 활성 여부에 따라 전환:
 
-| 슬라임 상태 | ζ (damping ratio) | 효과 |
+| 조건 | ζ (damping ratio) | 효과 |
 |---|---|---|
-| `Attached` / `Charging` | `attachedDampingRatio` (default 0.5) | 살짝 underdamped — 착지 시 dip 한 번 overshoot 후 정착 |
+| `trampolineHoldTimer > 0` (trampoline 진행 중) | `trampolineDampingRatio` (default 0.15) | 매우 underdamped — 깊은 target 주변에서 위아래로 4~5번 통통 |
+| `Attached` / `Charging` (trampoline 비활성) | `attachedDampingRatio` (default 0.5) | 살짝 underdamped — 착지 시 dip 한 번 overshoot 후 정착 |
 | `Airborne` (탈출 직후) | `detachedDampingRatio` (default 1.2) | Overdamped — baseline 으로 부드럽게 복귀, 위로 튀어 슬라임 못 잡음 |
 
 `postDetach` 플래그가 detach 순간 켜지고, dipDepth + dipVelocity 가 settle 임계값 아래로 내려가면 자동 해제.
+
+### Hard-landing trampoline (impulse-driven bouncing)
+
+빠르게 떨어진 슬라임이 줄에 닿으면 줄이 baseline 주위로 비대칭 진동 (아래 깊게, 위 덜 깊게, 점점 작아짐). target 은 그대로 `baseEquilibrium` — 이동하지 **않음**. 충돌이 dipVelocity 에 임펄스를 주고, 스프링이 baseline 으로 끌어당기다 underdamped 라 baseline 통과해서 **위로 overshoot**.
+
+| 곡선 | 의미 |
+|---|---|
+| `trampolineImpactKickCurve` | `vDown → 초기 dipVelocity 임펄스 (m/s, downward)` — 첫 dip 깊이를 결정 |
+| `trampolineHoldCurve` | `vDown → 진동 지속시간 (s)` — `trampolineDampingRatio` 적용 윈도우 |
+
+**메커니즘:**
+1. `ApplyRiderImpact(impactVelocity)` (착지 순간) → 두 곡선 evaluate.
+2. `dipVelocity += impactKickCurve(vDown)` (downward 임펄스), `trampolineHoldTimer = max(prev, holdCurve(vDown))`.
+3. FixedUpdate target = `baseEquilibrium × shape` (변경 없음).
+4. `trampolineHoldTimer > 0` 동안 ζ = `trampolineDampingRatio` (underdamped, default 0.15). 스프링이 baseline 주변에서 비대칭 진동:
+   - 첫 peak (아래): 가장 깊음 (impactKick 직접 결정)
+   - 두 번째 peak (위): 첫 peak 의 ~62% 만큼 baseline 위로
+   - 세 번째 peak (아래): ~38%
+   - decaying ringing
+5. timer 만료 시 ζ = `attachedDampingRatio` (0.5) 로 복귀 → 빠르게 정착.
+6. detach 시 timer 리셋.
+
+**이전 모델과 차이:** 이전엔 target 자체를 `baseEq + extraSag` 로 깊게 옮겨서 스프링이 그 deep 점 주위에서 진동 → baseline 위로 절대 못 감. 임펄스 모델에선 target 이 baseline 이라 진동이 자연스럽게 baseline 을 가로질러 위로 올라감.
+
+**비대칭이 자연스러운 이유:** underdamped 시스템의 step-velocity 응답에서 각 peak 는 이전 peak × `e^(-ζπ/√(1-ζ²))` 로 감쇠. ζ=0.15 → ~0.62 비율. 그래서 "내려간 만큼 위로 올라가지 않음" 이라는 사용자 직관이 그대로 구현됨.
+
+기존 `impactCompressionFromVelocity` (dipVelocity kick) 도 그대로 동시에 fire — 작은 punch + 깊은 bowl 조합. punch 만 원하면 sagCurve / holdCurve 의 Y 값을 0 으로 깔면 되고, bowl 만 원하면 `impactCompressionFromVelocity = 0` 으로.
 
 ### Trampoline 메커니즘 (충전 → 발사)
 
@@ -83,9 +111,11 @@ charge 가 천천히 줄을 누르는 게 아니라, 슬라임이 차고 박차�
 ## 점프 boost (Effect-mode)
 
 ```csharp
-// GetLaunchBonus — launchDir 방향 스칼라 보너스
+// GetLaunchBonus — launchDir 방향 스칼라 보너스 (timing-gated)
+ropeUpSpeed = max(0, -dipVelocity)                          // 줄 위쪽 속도 (m/s)
+timing      = jumpTimingCurve.Evaluate(ropeUpSpeed)         // multiplier
 upwardComponent = max(0, dot(launchDir.normalized, worldUp))
-bonus = jumpBoost × clamp01(chargeRatio) × upwardComponent
+bonus = jumpBoost × clamp01(chargeRatio) × upwardComponent × max(0, timing)
 return clamp(bonus, 0, maxCap)
 
 // PostprocessLaunchVelocity — 최종 launch vector 후처리
@@ -94,12 +124,15 @@ if (upSpeed < minLaunchVerticalSpeed)
     launchVel += worldUp × (minLaunchVerticalSpeed - upSpeed)
 ```
 
+**타이밍 게이트:** 줄이 위로 빠르게 움직일 때 (= release 후 baseline 통과하는 순간 부근) 점프하면 max boost. 정지 중이거나 아래로 가라앉는 중엔 boost 0. 디자이너는 `jumpTimingCurve` 의 X축 (rope 위쪽 속도, m/s) 과 Y축 (multiplier) 을 자유롭게 조정 — Linear 로 두면 시간 동기화 정확도가 그대로 결과로, EaseIn 이면 정점 근처만 큰 보너스, 평면 (Y=1) 이면 timing 무시.
+
 디자이너가 다루는 변수:
 
 | 변수 | 단위 | 의미 |
 |---|---|---|
-| `jumpBoost` | m/s | full charge 시 launchDir 방향으로 더해지는 양 |
+| `jumpBoost` | m/s | full charge 시 launchDir 방향으로 더해지는 양 (timing × chargeRatio 가 곱해짐) |
 | `maxCap` | m/s | jumpBoost 의 하드 캡 |
+| `jumpTimingCurve` | curve(ropeUpSpeed→mul) | 줄 상승 속도별 boost multiplier. default `Linear((0,0)→(5,1))` |
 | `minLaunchVerticalSpeed` | m/s | 모든 launch 의 최소 worldUp 속도 (chargeRatio 무관 일정). 0 = disable |
 | `launchImpactKickCurve` | curve(ratio→m/s) | 발사 순간 줄이 받는 downward dipVelocity 펄스 (시각 효과) |
 
@@ -197,7 +230,7 @@ ReattachGuard release 후 슬라임 다시 떨어져 오면, `postDetach=true` �
 | `ReportRiderContact(...)` | No-op. `riderActive` 는 `slime.SurfaceCollider == polygon` 검사로 매 FU 도출. |
 | `NotifyFirstAttach(p)` | `postDetach = false`. `OnRopeEvent(FirstAttach)`. |
 | `NotifyLaunchRebound(p)` | `OnRopeEvent(LaunchRebound)`. detach 자체는 FixedUpdate 의 state edge 검출에서 처리 — 이 hook 은 외부 listener 용. |
-| `ApplyRiderImpact(p, vel)` | `dipVelocity += max(0, dot(vel, worldDown)) × impactCompressionFromVelocity`. 0 이면 무시. 시각적 깊은 dip (착지 임팩트). |
+| `ApplyRiderImpact(p, vel)` | `vDown = max(0, dot(vel, worldDown))`. ① `dipVelocity += vDown × impactCompressionFromVelocity` (punch). ② trampoline 상태 set (`extraSag = max(prev, sagCurve(vDown))`, `holdTimer = max(prev, holdCurve(vDown))`) — 깊은 bowl. |
 | `SampleVelocityAt(p)` | `worldDown × dipVelocity × Bell(uAtP, riderT)`. SlimeController 의 ropeVel inheritance 에 사용. |
 | `GetLaunchBonus(dir, p, ratio)` | side-effect: `dipVelocity += launchImpactKickCurve.Evaluate(ratio)` (downward punch). 반환: `clamp(jumpBoost × ratio × upwardComponent, 0, maxCap)`. |
 | `PostprocessLaunchVelocity(vel)` | `dot(vel, worldUp) < minLaunchVerticalSpeed` 이면 worldUp 성분만 끌어올림. 수평 성분 보존. |
@@ -226,18 +259,36 @@ ReattachGuard release 후 슬라임 다시 떨어져 오면, `postDetach=true` �
   springStiffness           : 1/s²  (default 60)    — k
   attachedDampingRatio      : ζ     (default 0.5)   — 부착 중 underdamped
   detachedDampingRatio      : ζ     (default 1.2)   — 탈출 후 overdamped
-  impactCompressionFromVelocity : (default 0.05)   — 착지 임팩트 → dipVelocity kick
+  impactCompressionFromVelocity : (default 0.05)   — 착지 임팩트 → dipVelocity kick (작은 punch)
+
+[Trampoline (impulse-driven bounce)]
+  trampolineImpactKickCurve : curve(impactSpeed→m/s, default Linear(0,0)→(30,15))  — 충돌 시 dipVelocity 다운 임펄스 (첫 dip 깊이 결정)
+  trampolineHoldCurve       : curve(impactSpeed→s,   default Linear(0,0)→(30,1.5)) — 진동(underdamped) 윈도우 길이
 
 [Launch boost (effect-mode)]
   jumpBoost                 : m/s   (default 3)     — full charge 시 launch boost (launchDir 방향)
   maxCap                    : m/s   (default 6)     — jumpBoost 의 하드 캡
   launchImpactKickCurve     : curve  (default Linear(0,0)→(1,4))  — chargeRatio → 발사 순간 dipVelocity 다운펄스
   minLaunchVerticalSpeed    : m/s   (default 3)     — launch 후 최소 worldUp 속도 (일정, charge 무관). 0 = disable
+  jumpTimingCurve           : curve(ropeUpSpeed→mul, default Linear(0,0)→(5,1))  — 줄 상승 속도별 boost multiplier (timing window)
 
 [Pass-through]
   passthroughRefreshDuration : s   (default 0.2)    — IgnoredCollider timer 갱신 주기
   settleVelocityThreshold   : m/s  (default 0.05)   — postDetach 해제 임계
+
+[Surface Override]
+  ropeSurfaceMaterial       : SurfaceMaterial (null = no override) — attach 중 슬라임 surfaceMod 덮어쓰기
 ```
+
+## Surface override
+
+WaterCurrentZone / SpringyBranchPlatform 동일 패턴. `ropeSurfaceMaterial` 가 설정되어 있으면:
+
+- attach edge (FixedUpdate 에서 `riderActive` false→true) → `slime.PushSurfaceMaterialOverride(ropeSurfaceMaterial)`.
+- detach edge (true→false) → `slime.PopSurfaceMaterialOverride(ropeSurfaceMaterial)`.
+- `OnDisable` 안전망 — push 된 상태로 컴포넌트 비활성화되면 pop.
+
+`overridePushed` 플래그가 push 상태를 추적해서 중복 push 막음. 비워두면 (`null`) 슬라임은 host SurfaceTag 그대로 사용.
 
 ## 사용
 

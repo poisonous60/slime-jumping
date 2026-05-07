@@ -31,7 +31,7 @@ struct AngleScaledValue {
 두 surface 프로필 사이를 0..1 weight 로 component-wise lerp 하는 helper. 모든 `AngleScaledValue` 필드는 4 scalar (baseValue/fullValue/angleMin/angleMax) lerp, 일반 float 필드는 lerp, bool/curve 는 t≥0.5 snap. snow 결합이 첫 사용처 — 향후 다른 layered surface (얼음/이끼 위에 눈 등) 도 동일 패턴 재사용 가능.
 
 ## 글로벌 디폴트 (SlimeSettings)
-SurfaceTag 가 없거나 material이 비어있는 표면은 `SlimeSettings`의 "Default Surface Modifiers" 섹션 값을 사용. 이전엔 `SurfaceModifiers.Default` (하드코딩 1.0/0.0)를 썼지만 이제 인스펙터에서 조정 가능. 동일한 필드 셋 (carrierFriction, crawlSpeedMultiplier, ..., hopVelocityRetention, hopNormalToTangentRatio, hopInstantFlip, useInertialSlide) + dash 관련 (`groundDashAngleFalloffCurve`, `dashSpeedFalloffCurve`, `disableDashFalloff`)을 SlimeSettings 에서 직접 설정 가능. 태그 없는 표면 = SlimeSettings 값 그대로, 태그 있고 override off = SlimeSettings dash 값 fallback (impulse/min/max/falloff/curve/disable 모두), 태그 있고 override on = SurfaceMaterial 값.
+SurfaceTag 가 없거나 material이 비어있는 표면은 `SlimeSettings`의 "Default Surface Modifiers" 섹션 값을 사용. 이전엔 `SurfaceModifiers.Default` (하드코딩 1.0/0.0)를 썼지만 이제 인스펙터에서 조정 가능. 동일한 필드 셋 (carrierFriction, crawlSpeedMultiplier, ..., hopVelocityRetention, hopNormalToTangentRatio, hopInstantFlip, useInertialSlide) + dash 관련 (`groundDashAngleFalloffCurve`, `dashSpeedFalloffCurve`, `disableDashFalloff`) + landing remap (`landingTangentSpeedRemapCurve`)을 SlimeSettings 에서 직접 설정 가능. 태그 없는 표면 = SlimeSettings 값 그대로, 태그 있고 override off = SlimeSettings dash 값 fallback (impulse/min/max/falloff/curve/disable 모두), 태그 있고 override on = SurfaceMaterial 값.
 
 ## 파라미터
 | 파라미터 | 기본 | 설명 |
@@ -48,7 +48,9 @@ SurfaceTag 가 없거나 material이 비어있는 표면은 `SlimeSettings`의 "
 | slideDownhillGain | 1 | **관성 모드 한정.** `slideAccel`이 운동 방향과 같을 때 곱하는 게인. >1 = 내리막 가속 강화 |
 | slideUphillBrake | 1 | **관성 모드 한정.** `slideAccel`이 운동 방향과 반대일 때 곱하는 게인. >1 = 오르막 감속 강화 |
 | landingVelocityRetention | 0 | 착지 접선 보존 (0=정지, 0.8=빙판) |
-| **landingExcessGain** | 1 | **Charged-launch 착지 한정.** Pre-launch slide 속도(=baseline)를 초과하는 부분에만 곱하는 게인. 1=현재 동작(누적 가속 발생), 0=baseline에서 캡(launch+land 사이클이 가속을 안 만듦), 0.5=초과분의 절반만 보존. Hop / 외부 진입 / 자연 슬라이드는 영향 없음. 자세히는 아래 [Charged-launch landing 가속 제어](#charged-launch-landing-가속-제어-landingexcessgain) 섹션 참조 |
+| **landingExcessGain** | 1 | **Charged-launch 착지 한정.** `baseline = max(|preLaunchSlideV|, aimPower)` 를 초과하는 부분에만 곱하는 게인. 1=현재 동작(누적 가속 발생), 0=baseline에서 캡(launch+land 사이클이 baseline 위로 가속을 못 만듦), 0.5=초과분의 절반만 보존. Hop / 외부 진입 / 자연 슬라이드는 영향 없음. 자세히는 아래 [Charged-launch landing 가속 제어](#charged-launch-landing-가속-제어-landingexcessgain) 섹션 참조 |
+| **enableLandingTangentSpeedRemap** | false | 아래 곡선을 적용할지의 toggle. 곡선을 작성해 두고 임시로 끄고 싶을 때 사용 (곡선 키 유지) |
+| **landingTangentSpeedRemapCurve** | (empty) | **모든 착지 공통.** `enableLandingTangentSpeedRemap = true` 일 때만 평가됨. retention + impactRedirect + landingExcessGain 가 모두 적용된 뒤 최종 `\|landed\|` 를 X (m/s), 출력 속도를 Y (m/s) 로 매핑하는 비선형 remap. ice/하프파이프에서 saturating curve(예: (0,0)→(10,10)→(25,14))를 깔면 저속 착지는 유지하면서 고속 착지만 압축 → 수직 hop 으로 인한 slide 속도 폭주 방지 |
 | stickDurationMultiplier | 1 | 스틱 배율 (0=빙판) |
 | impactRedirectRatio | 0 | 법선 충돌 → 접선 전환 (벽에서만 자동 활성) |
 | wallAttachSpeedDampen | 1 | 착지 접선 속도 감쇠 |
@@ -130,13 +132,14 @@ slideVelocity  = MoveTowards(slideVelocity, 0, frictionDecel * dt)
 
 ```
 // SlimeController.Launch.Launch() 에서:
-launchOriginSlideV = preLaunchCrawl   // pre-launch slide+crawl 합산
-launchOriginValid  = true
+launchOriginSlideV    = preLaunchCrawl   // pre-launch slide+crawl 합산 (자연 inertia)
+launchOriginAimPower  = power            // aim 기반 launch 파워 (player가 명시 투입)
+launchOriginValid     = true
 
 // SlimeController.Airborne.ComputeLandingCrawlVelocity() 에서:
 landed = effectiveTangent × landingVelocityRetention   // 기존
 if launchOriginValid:
-    baseline = |launchOriginSlideV|
+    baseline = max(|launchOriginSlideV|, launchOriginAimPower)
     if |landed| > baseline:
         excess = |landed| - baseline
         gain   = surfaceMod.landingExcessGain.Evaluate(landingAngle)
@@ -144,11 +147,25 @@ if launchOriginValid:
     launchOriginValid = false   // 비행당 1회 소비
 ```
 
+**Baseline = max(|preLaunchSlideV|, aimPower) 인 이유**
+
+baseline이 두 가지를 모두 보존해야 함:
+1. **Pre-launch slide 속도** — 이미 가지고 있던 자연 inertia. 빠르게 미끄러지다가 launch 했을 때 착지 후 inertia 가 보존되어야 함.
+2. **Aim power** — player 가 charge 해서 명시적으로 투입한 에너지. 정지 상태에서 charge → launch 했을 때 착지 후 launch 에너지가 0 으로 깎이면 안 됨.
+
+`baseline = |preLaunchSlideV|` 단독이면 정지 launch 가 baseline=0 → gain=0 일 때 **착지에서 무조건 정지** 하는 버그. `baseline = aimPower` 단독이면 빠른 slide 후 launch 가 aimPower 로 강제 클램프 되어 inertia 손실. `max` 로 두 케이스 모두 보존.
+
 게인 의미:
 - **1.0** — 기존 동작과 동일 (excess 전체 보존, 누적 가속 발생).
 - **0.5** — 사이클 excess의 절반만 보존, 누적 속도 천천히.
-- **0.0** — `|launchOriginSlideV|` 에서 캡. Launch+land 사이클이 slide 속도를 못 늘림.
+- **0.0** — `max(|preLaunchSlideV|, aimPower)` 에서 캡. Launch+land 사이클이 baseline 위로 가속 못 만듦. 단, baseline 자체는 (slide ↑ 또는 aim ↑) 으로 cycle 마다 갱신될 수 있음 — slide < aimPower 인 동안에는 sliding 으로 인한 cycle 누적은 발생하지 않고 aimPower 에서 plateau.
 - **>1.0** — 의도적 가속 표면 (예: "boost ice").
+
+**시나리오 예시** (aim power = 15)
+- 정지 → launch → 착지 raw=13: baseline=max(0,15)=15. 13<15 → 클램프 안 됨 → 13 보존.
+- Slide 8 → launch → 착지 raw=17: baseline=max(8,15)=15. 17>15 → 클램프: `15 + 2×gain`. gain=0 → 15. 사이클당 8→15 누적 (aim power 까지) 후 plateau.
+- Slide 25 → launch → 착지 raw=24: baseline=max(25,15)=25. 24<25 → 클램프 안 됨 → 24 보존. 자연 inertia 무손상.
+- Slide 25 → launch → 착지 raw=27 (projection efficiency): baseline=25. 27>25 → 클램프: `25 + 2×gain`. gain=0 → 25 (사이클 가속 0).
 
 발동 조건:
 - `Launch()` 만 `launchOriginValid = true` 설정. `Hop()`은 설정 안 함 → 홉 착지는 영향 없음.

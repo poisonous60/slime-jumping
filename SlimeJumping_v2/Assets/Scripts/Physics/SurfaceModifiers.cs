@@ -18,6 +18,8 @@ namespace SlimeJumping.Physics
         public AngleScaledValue carrierFriction;
         public AngleScaledValue landingVelocityRetention;
         public AngleScaledValue landingExcessGain;
+        public bool enableLandingTangentSpeedRemap;
+        public AnimationCurve landingTangentSpeedRemapCurve;
         public AngleScaledValue stickDuration;
         public AngleScaledValue impactRedirect;
         public AngleScaledValue wallAttachDampen;
@@ -67,6 +69,8 @@ namespace SlimeJumping.Physics
             carrierFriction = AngleScaledValue.Constant(1f),
             landingVelocityRetention = AngleScaledValue.Constant(0f),
             landingExcessGain = AngleScaledValue.Constant(1f),
+            enableLandingTangentSpeedRemap = false,
+            landingTangentSpeedRemapCurve = null,
             stickDuration = AngleScaledValue.Constant(1f),
             impactRedirect = AngleScaledValue.Constant(0f),
             wallAttachDampen = AngleScaledValue.Constant(1f),
@@ -122,6 +126,10 @@ namespace SlimeJumping.Physics
                 carrierFriction           = AngleScaledValue.Lerp(a.carrierFriction,           b.carrierFriction,           t),
                 landingVelocityRetention  = AngleScaledValue.Lerp(a.landingVelocityRetention,  b.landingVelocityRetention,  t),
                 landingExcessGain         = AngleScaledValue.Lerp(a.landingExcessGain,         b.landingExcessGain,         t),
+                enableLandingTangentSpeedRemap = snapToB ? b.enableLandingTangentSpeedRemap : a.enableLandingTangentSpeedRemap,
+                landingTangentSpeedRemapCurve = snapToB && b.landingTangentSpeedRemapCurve != null
+                    ? b.landingTangentSpeedRemapCurve
+                    : a.landingTangentSpeedRemapCurve ?? b.landingTangentSpeedRemapCurve,
                 stickDuration             = AngleScaledValue.Lerp(a.stickDuration,             b.stickDuration,             t),
                 impactRedirect            = AngleScaledValue.Lerp(a.impactRedirect,            b.impactRedirect,            t),
                 wallAttachDampen          = AngleScaledValue.Lerp(a.wallAttachDampen,          b.wallAttachDampen,          t),

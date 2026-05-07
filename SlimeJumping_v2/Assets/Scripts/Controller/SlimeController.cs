@@ -284,7 +284,11 @@ namespace SlimeJumping.Controller
         // Pre-launch slide+crawl tangent speed captured at Launch(). Consumed by ComputeLandingCrawlVelocity
         // as the "free zone" baseline for landingExcessGain on charged-launch returns. launchOriginValid is
         // cleared on the first landing so the cap fires once per flight.
+        // launchOriginAimPower is the aim-only launch magnitude (excluding hyperDash inheritance) so the
+        // baseline preserves both pre-launch slide AND the player-chosen launch energy: a stationary launch
+        // does not collapse to zero, and a fast slide does not get clamped down to aim power.
         private float launchOriginSlideV;
+        private float launchOriginAimPower;
         private bool launchOriginValid;
 
         // Charging coyote time (grace period after leaving surface)
@@ -1077,6 +1081,8 @@ namespace SlimeJumping.Controller
                     snow.overrideCeilingAngle    = hostSurfaceMod.overrideCeilingAngle;
                     snow.groundDashAngleFalloffCurve = hostSurfaceMod.groundDashAngleFalloffCurve;
                     snow.dashSpeedFalloffCurve   = hostSurfaceMod.dashSpeedFalloffCurve;
+                    snow.enableLandingTangentSpeedRemap = hostSurfaceMod.enableLandingTangentSpeedRemap;
+                    snow.landingTangentSpeedRemapCurve = hostSurfaceMod.landingTangentSpeedRemapCurve;
                     surfaceMod = snow;
                     snowBlendActive = true;
                 }

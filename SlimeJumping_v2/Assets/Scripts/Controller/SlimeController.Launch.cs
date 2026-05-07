@@ -100,6 +100,7 @@ namespace SlimeJumping.Controller
             float power = isEnergyConversion
                 ? curvedRatio * settings.baseLaunchPower
                 : settings.minLaunchPower + curvedRatio * (settings.baseLaunchPower - settings.minLaunchPower);
+            launchOriginAimPower = power;
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
             velocity = dir * power;
 

@@ -72,14 +72,62 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
+  landingExcessGain:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  enableLandingTangentSpeedRemap: 0
+  landingTangentSpeedRemapCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 1.0009221
+      outSlope: 1.0009221
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 10
+      value: 10.009221
+      inSlope: 0.7502106
+      outSlope: 0.7502106
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 30
+      value: 19.999203
+      inSlope: 0.060582355
+      outSlope: 0.060582355
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.28640738
+      outWeight: 0.18902223
+    - serializedVersion: 3
+      time: 100.01721
+      value: 50.005295
+      inSlope: 1.0900768
+      outSlope: 1.0900768
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.17579557
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   stickDurationMultiplier:
     baseValue: 0
     fullValue: 0
     angleMin: 0
     angleMax: 90
   impactRedirectRatio:
-    baseValue: 0
-    fullValue: 0
+    baseValue: 0.9
+    fullValue: 0.9
     angleMin: 0
     angleMax: 90
   groundDashScale:
@@ -178,3 +226,5 @@ MonoBehaviour:
   overrideCeilingAngle: 1
   ceilingAngle: 150
   ceilingReattachAngle: 140
+  overrideEnergyConversionCoyoteTime: 0
+  energyConversionCoyoteTime: 0.12
