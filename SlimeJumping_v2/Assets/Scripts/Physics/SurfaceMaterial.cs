@@ -2,6 +2,18 @@ using UnityEngine;
 
 namespace SlimeJumping.Physics
 {
+    public enum LaunchInertiaBlendMode
+    {
+        // Pure vector add: velocity = launchVec + inheritedVec. Legacy / current behavior.
+        Sum,
+        // Magnitude lerps between max(|L|,|I|) and |L+I|; direction follows (L+I).
+        // launchInertiaLerpFactor 0 = max, 1 = sum.
+        LerpMaxToSum,
+        // Magnitude is the p-norm of the two magnitudes; direction follows (L+I).
+        // launchInertiaPNorm 1 = sum, 2 = energy-style, large p -> max.
+        PNorm
+    }
+
     [CreateAssetMenu(menuName = "SlimeJumping/Surface Material")]
     public class SurfaceMaterial : ScriptableObject
     {
@@ -91,6 +103,19 @@ namespace SlimeJumping.Physics
         [Tooltip("ON = inertial slide (gravity-along-tangent integrated as acceleration; slideResistance is friction in m/s²; landed tangent velocity flows into the inertial channel). OFF (default, untagged surfaces) = legacy steady-state slide where slideSpeed is recomputed each frame from current tangent gravity. Use ON for ice / halfpipes where kinetic energy must convert back to height.")]
         public bool useInertialSlide = false;
 
+        [Header("Launch Inertia Blend")]
+        [Tooltip("How the inherited tangent vector (from preLaunchCrawl × tangentInheritanceFactor, after hyperDashDeduction) combines with the aim-launch vector.\n" +
+                 "Sum (default) = legacy pure vector add (velocity += inherited).\n" +
+                 "LerpMaxToSum = magnitude is Lerp(max(|L|,|I|), |L+I|, launchInertiaLerpFactor); direction follows (L+I).\n" +
+                 "PNorm = magnitude is (|L|^p + |I|^p)^(1/p) with p = launchInertiaPNorm; direction follows (L+I).")]
+        public LaunchInertiaBlendMode launchInertiaBlendMode = LaunchInertiaBlendMode.Sum;
+        [Range(0f, 1f)]
+        [Tooltip("LerpMaxToSum only. 0 = magnitude clamps at max(|launch|,|inherited|) (still slightly biased in direction). 1 = full vector sum (== legacy Sum mode).")]
+        public float launchInertiaLerpFactor = 0.5f;
+        [Range(1f, 8f)]
+        [Tooltip("PNorm only. 1 = sum, 2 = pythagorean / energy-style, large values approach max. Typical tuning range 1.5–3.")]
+        public float launchInertiaPNorm = 2f;
+
         [Header("Audio")]
         [Tooltip("Hard landing clip override. Null → SlimeLocomotionAudio's default landHardClip plays.")]
         public AudioClip landHardClip;
@@ -164,6 +189,9 @@ namespace SlimeJumping.Physics
             dashSpeedFalloffCurve = dashSpeedFalloffCurve,
             disableDashFalloff = disableDashFalloff,
             useInertialSlide = useInertialSlide,
+            launchInertiaBlendMode = launchInertiaBlendMode,
+            launchInertiaLerpFactor = launchInertiaLerpFactor,
+            launchInertiaPNorm = launchInertiaPNorm,
             overrideCeilingAngle = overrideCeilingAngle,
             ceilingThresholdOverride = Mathf.Cos(ceilingAngle * Mathf.Deg2Rad),
             ceilingReattachThresholdOverride = Mathf.Cos(ceilingReattachAngle * Mathf.Deg2Rad),

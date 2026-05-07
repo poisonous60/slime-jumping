@@ -51,7 +51,6 @@ namespace SlimeJumping.Controller
             {
                 isVolumeCharging = false;
                 aimOffset = Vector2.zero;
-                if (chargeVisual != null) chargeVisual.Hide();
             }
 
             if (carrier != null) carrier.Detach();
@@ -108,7 +107,8 @@ namespace SlimeJumping.Controller
             {
                 // Surface launch: hyper dash + carrier
                 float excess = Mathf.Max(0f, Mathf.Abs(preLaunchCrawl) - settings.hyperDashDeduction);
-                velocity += lastSurfaceTangent * Mathf.Sign(preLaunchCrawl) * excess * settings.tangentInheritanceFactor;
+                Vector2 inheritedVec = lastSurfaceTangent * Mathf.Sign(preLaunchCrawl) * excess * settings.tangentInheritanceFactor;
+                velocity = BlendLaunchInertia(velocity, inheritedVec, surfaceMod);
                 if (carrier != null)
                 {
                     velocity += carrier.GetLaunchVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
@@ -146,7 +146,6 @@ namespace SlimeJumping.Controller
             OnLaunch?.Invoke(rb.position, velocity, false);
             FinalizeAirborneExit();
             postLaunchAirControlLockTimer = settings.postLaunchAirControlLockTime;
-            if (chargeVisual != null) chargeVisual.Hide();
         }
 
         private void Hop()
@@ -247,6 +246,41 @@ namespace SlimeJumping.Controller
             OnLaunch?.Invoke(rb.position, velocity, true);
             FinalizeAirborneExit();
             launchedByHop = true;
+        }
+
+        // Blends the aim-launch vector with the inherited tangent vector per the surface's
+        // LaunchInertiaBlendMode. Direction always follows (L+I); only magnitude differs.
+        // Sum reproduces legacy `velocity += inherited` exactly (so untagged surfaces are
+        // bit-identical to pre-feature behavior).
+        private static Vector2 BlendLaunchInertia(Vector2 launchVec, Vector2 inheritedVec, SurfaceModifiers mod)
+        {
+            if (inheritedVec.sqrMagnitude < 1e-8f)
+                return launchVec;
+            Vector2 sum = launchVec + inheritedVec;
+            if (sum.sqrMagnitude < 1e-8f)
+                return launchVec;
+
+            switch (mod.launchInertiaBlendMode)
+            {
+                case LaunchInertiaBlendMode.LerpMaxToSum:
+                {
+                    float maxMag = Mathf.Max(launchVec.magnitude, inheritedVec.magnitude);
+                    float sumMag = sum.magnitude;
+                    float blendedMag = Mathf.Lerp(maxMag, sumMag, Mathf.Clamp01(mod.launchInertiaLerpFactor));
+                    return sum.normalized * blendedMag;
+                }
+                case LaunchInertiaBlendMode.PNorm:
+                {
+                    float p = Mathf.Max(1f, mod.launchInertiaPNorm);
+                    float lMag = launchVec.magnitude;
+                    float iMag = inheritedVec.magnitude;
+                    float blendedMag = Mathf.Pow(Mathf.Pow(lMag, p) + Mathf.Pow(iMag, p), 1f / p);
+                    return sum.normalized * blendedMag;
+                }
+                case LaunchInertiaBlendMode.Sum:
+                default:
+                    return sum;
+            }
         }
 
         private void ApplyGroundDash(float inputSign)

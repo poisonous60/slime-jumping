@@ -28,7 +28,6 @@ namespace SlimeJumping.Controller
             surfaceProbeMissFrames = 0;
             cachedSurfaceCollider = null;
             hasPrevSmoothedNormal = false;
-            if (chargeVisual != null) chargeVisual.Hide();
 
             // Carrier detach
             if (carrier != null) carrier.Detach();

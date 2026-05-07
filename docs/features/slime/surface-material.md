@@ -72,6 +72,9 @@ SurfaceTag 가 없거나 material이 비어있는 표면은 `SlimeSettings`의 "
 | dashSpeedFalloffCurve | Linear (0,1)→(1,0) | (override 시) `t = InverseLerp(dashFalloffStart, dashFalloffEnd, sameDirSpeed)` 후 이 곡선이 t∈[0,1]을 falloff로 매핑. 기본은 선형이라 레거시(`1 - t`)와 동일. ease-out, plateau, 다단 cliff 자유 표현 |
 | disableDashFalloff | false | (override 시) true면 dashSpeedFalloffCurve를 무시하고 항상 풀 임펄스 적용 — 빙판에서 속도 무한 누적용 |
 | useInertialSlide | false | 관성 슬라이드 사용 (true=ice/halfpipe — 운동에너지↔높이 보존, false=기존 정상상태 슬라이드) |
+| **launchInertiaBlendMode** | Sum | Charged-launch 시 inherited tangent vec(I)와 aim launch vec(L) 합산 방식. `Sum`(레거시 단순합) / `LerpMaxToSum` / `PNorm`. 자세한 공식은 [hyper-dash.md](hyper-dash.md#launch-inertia-blend-per-surface) |
+| launchInertiaLerpFactor | 0.5 | LerpMaxToSum 모드: 크기 = `Lerp(max(\|L\|,\|I\|), \|L+I\|, factor)`. 0=max, 1=Sum |
+| launchInertiaPNorm | 2 | PNorm 모드: 크기 = `(\|L\|^p + \|I\|^p)^(1/p)`. 1=Sum, 2=피타고라스, ≫1≈max |
 | **overrideCeilingAngle** | false | true 시 아래 두 값으로 SlimeSettings 의 `ceilingAngle` / `ceilingReattachAngle` 을 표면 단위로 덮어씀. false 면 글로벌 SlimeSettings 사용. 끈끈이 표면(180°=오버행 전부 부착) / 미끄러운 표면(예: 95°에서 이미 천장) 같은 표현에 사용 |
 | ceilingAngle | 107 | (override 시) 분리/필터 각도. `surfaceUp < cos(this)` 인 컨택트는 천장으로 처리되어 부착 불가 + Step 1.5 / EffectiveNormal 에서 제외 |
 | ceilingReattachAngle | 101 | (override 시) Airborne 재부착 각도. `surfaceUp < cos(this)` 면 착지 시 부착 안 함. 히스테리시스 위해 ≤ ceilingAngle 권장 |

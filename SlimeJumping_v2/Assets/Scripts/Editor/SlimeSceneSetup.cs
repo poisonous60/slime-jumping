@@ -13,6 +13,8 @@ namespace SlimeJumping.Editor
         private const string SettingsPath = "Assets/Settings/SlimeSettings.asset";
         private const string VisualSettingsPath = "Assets/Settings/SlimeVisualSettings.asset";
         private const string InputActionsPath = "Assets/InputSystem_Actions.inputactions";
+        private const string ChargeRingMatPath = "Assets/Materials/ChargeRing.mat";
+        private const string AimLineMatPath = "Assets/Materials/AimLine.mat";
 
         [MenuItem("SlimeJumping/Create Slime Settings")]
         public static void CreateSlimeSettings()
@@ -115,60 +117,52 @@ namespace SlimeJumping.Editor
                 soInput.ApplyModifiedProperties();
             }
 
-            // --- Charge Visual Canvas (Screen Space Overlay) ---
+            // --- Charge Visual ---
             var chargeVis = slimeGo.GetComponent<SlimeChargeVisual>();
             if (chargeVis == null) chargeVis = slimeGo.AddComponent<SlimeChargeVisual>();
 
-            // Remove old LineRenderer components if any
-            foreach (var lr in slimeGo.GetComponentsInChildren<LineRenderer>())
-                Object.DestroyImmediate(lr.gameObject == slimeGo ? (Object)lr : lr.gameObject);
+            // Clean legacy UI canvas if it lingers from older setups
+            var legacyCanvas = GameObject.Find("ChargeVisualCanvas");
+            if (legacyCanvas != null) Object.DestroyImmediate(legacyCanvas);
 
-            // Find or create Canvas
-            var canvasGo = GameObject.Find("ChargeVisualCanvas");
-            if (canvasGo == null)
+            // --- ChargeRing (world-space, child of Slime, SDF shader) ---
+            var ringT = slimeGo.transform.Find("ChargeRing");
+            GameObject ringGo;
+            if (ringT == null)
             {
-                canvasGo = new GameObject("ChargeVisualCanvas");
-                var canvas = canvasGo.AddComponent<Canvas>();
-                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                canvas.sortingOrder = 100;
-                canvasGo.AddComponent<CanvasScaler>();
+                ringGo = new GameObject("ChargeRing");
+                ringGo.transform.SetParent(slimeGo.transform, false);
             }
-            var canvasComp = canvasGo.GetComponent<Canvas>();
+            else ringGo = ringT.gameObject;
 
-            // Circle outline (ring image)
-            var circleRT = FindOrCreateUI(canvasGo.transform, "ChargeCircle");
-            var circleImg = circleRT.GetComponent<Image>();
-            circleImg.sprite = MakeRingSprite();
-            circleImg.color = new Color(1f, 1f, 1f, 0.4f);
-            circleImg.raycastTarget = false;
-            circleRT.sizeDelta = new Vector2(300f, 300f);
-            circleRT.gameObject.SetActive(false);
+            var ringSR = ringGo.GetComponent<SpriteRenderer>();
+            if (ringSR == null) ringSR = ringGo.AddComponent<SpriteRenderer>();
+            ringSR.sprite = MakeUnitSquareSprite();
+            ringSR.sharedMaterial = LoadOrCreateChargeRingMaterial();
+            ringSR.sortingOrder = 1;
+            ringGo.SetActive(false);
 
-            // Aim dot
-            var aimDotRT = FindOrCreateUI(canvasGo.transform, "AimDot");
-            var aimDotImg = aimDotRT.GetComponent<Image>();
-            aimDotImg.sprite = MakeCircleSpriteUI();
-            aimDotImg.color = Color.white;
-            aimDotImg.raycastTarget = false;
-            aimDotRT.sizeDelta = new Vector2(10f, 10f);
-            aimDotRT.gameObject.SetActive(false);
+            // --- AimLine (world-space LineRenderer, child of Slime) ---
+            var aimLineT = slimeGo.transform.Find("ChargeAimLine");
+            GameObject aimLineGo;
+            if (aimLineT == null)
+            {
+                aimLineGo = new GameObject("ChargeAimLine");
+                aimLineGo.transform.SetParent(slimeGo.transform, false);
+            }
+            else aimLineGo = aimLineT.gameObject;
 
-            // Aim line (stretched rect)
-            var aimLineRT = FindOrCreateUI(canvasGo.transform, "AimLine");
-            var aimLineImg = aimLineRT.GetComponent<Image>();
-            aimLineImg.color = Color.green;
-            aimLineImg.raycastTarget = false;
-            aimLineRT.pivot = new Vector2(0f, 0.5f);
-            aimLineRT.sizeDelta = new Vector2(0f, 3f);
-            aimLineRT.gameObject.SetActive(false);
-
-            // Wire references
-            var soVis = new SerializedObject(chargeVis);
-            soVis.FindProperty("canvas").objectReferenceValue = canvasComp;
-            soVis.FindProperty("circleImage").objectReferenceValue = circleRT;
-            soVis.FindProperty("aimDotImage").objectReferenceValue = aimDotRT;
-            soVis.FindProperty("aimLineImage").objectReferenceValue = aimLineImg;
-            soVis.ApplyModifiedProperties();
+            var aimLineLR = aimLineGo.GetComponent<LineRenderer>();
+            if (aimLineLR == null) aimLineLR = aimLineGo.AddComponent<LineRenderer>();
+            aimLineLR.useWorldSpace = true;
+            aimLineLR.positionCount = 2;
+            aimLineLR.startWidth = 0.025f;
+            aimLineLR.endWidth = 0.025f;
+            aimLineLR.numCapVertices = 4;
+            aimLineLR.numCornerVertices = 0;
+            aimLineLR.sortingOrder = 2;
+            aimLineLR.sharedMaterial = LoadOrCreateAimLineMaterial();
+            aimLineGo.SetActive(false);
 
             // --- SlimeController ---
             var controller = slimeGo.GetComponent<SlimeController>();
@@ -181,8 +175,14 @@ namespace SlimeJumping.Editor
             var soCtrl = new SerializedObject(controller);
             soCtrl.FindProperty("inputReader").objectReferenceValue = inputReader;
             soCtrl.FindProperty("settings").objectReferenceValue = slimeSettings;
-            soCtrl.FindProperty("chargeVisual").objectReferenceValue = chargeVis;
             soCtrl.ApplyModifiedProperties();
+
+            var soVis = new SerializedObject(chargeVis);
+            soVis.FindProperty("controller").objectReferenceValue = controller;
+            soVis.FindProperty("chargeRing").objectReferenceValue = ringGo.transform;
+            soVis.FindProperty("chargeRingRenderer").objectReferenceValue = ringSR;
+            soVis.FindProperty("aimLine").objectReferenceValue = aimLineLR;
+            soVis.ApplyModifiedProperties();
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
                 UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene()
@@ -228,36 +228,49 @@ namespace SlimeJumping.Editor
             return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
         }
 
-        private static Sprite MakeCircleSpriteUI()
+        private static Material LoadOrCreateChargeRingMaterial()
         {
-            int size = 32;
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            float center = size / 2f;
-            float radius = center - 1f;
-            for (int y = 0; y < size; y++)
-                for (int x = 0; x < size; x++)
-                    tex.SetPixel(x, y, Vector2.Distance(new Vector2(x, y), new Vector2(center, center)) <= radius ? Color.white : Color.clear);
-            tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(ChargeRingMatPath);
+            if (existing != null) return existing;
+
+            var shader = Shader.Find("World/SDFRing");
+            if (shader == null)
+            {
+                Debug.LogWarning("World/SDFRing shader not found; ChargeRing will fall back to default material.");
+                return null;
+            }
+
+            var mat = new Material(shader) { name = "ChargeRing" };
+            AssetDatabase.CreateAsset(mat, ChargeRingMatPath);
+            AssetDatabase.SaveAssets();
+            return mat;
         }
 
-        private static Sprite MakeRingSprite()
+        private static Material LoadOrCreateAimLineMaterial()
         {
-            int size = 128;
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            float center = size / 2f;
-            float outerR = center - 1f;
-            float innerR = outerR - 3f;
-            for (int y = 0; y < size; y++)
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(AimLineMatPath);
+            if (existing != null) return existing;
+
+            var shader = Shader.Find("World/AimLine");
+            if (shader == null)
             {
-                for (int x = 0; x < size; x++)
-                {
-                    float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
-                    tex.SetPixel(x, y, dist >= innerR && dist <= outerR ? Color.white : Color.clear);
-                }
+                Debug.LogWarning("World/AimLine shader not found; AimLine will fall back to Sprites/Default.");
+                return new Material(Shader.Find("Sprites/Default"));
             }
+
+            var mat = new Material(shader) { name = "AimLine" };
+            AssetDatabase.CreateAsset(mat, AimLineMatPath);
+            AssetDatabase.SaveAssets();
+            return mat;
+        }
+
+        private static Sprite MakeUnitSquareSprite()
+        {
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            tex.SetPixels(new[] { Color.white, Color.white, Color.white, Color.white });
+            tex.filterMode = FilterMode.Bilinear;
             tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
+            return Sprite.Create(tex, new Rect(0, 0, 2, 2), new Vector2(0.5f, 0.5f), 2);
         }
     }
 }

@@ -64,7 +64,7 @@ MonoBehaviour:
   notJumpConversionBonus: 1
   hopConversionBonus: 1.1
   hopConversionEnergyBonus: 0.3
-  aimDriftRadiusScale: 0.7
+  aimDriftRadiusScale: 0.5
   energyConversionCoyoteTime: 0.12
   minStickDuration: 0.03
   maxStickDuration: 0.05
@@ -236,6 +236,13 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
+  enableLandingTangentSpeedRemap: 0
+  landingTangentSpeedRemapCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   stickDurationMultiplier:
     baseValue: 1
     fullValue: 1

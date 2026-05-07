@@ -41,6 +41,9 @@ namespace SlimeJumping.Physics
         public AnimationCurve dashSpeedFalloffCurve;
         public bool disableDashFalloff;
         public bool useInertialSlide;
+        public LaunchInertiaBlendMode launchInertiaBlendMode;
+        public float launchInertiaLerpFactor;
+        public float launchInertiaPNorm;
         public bool overrideCeilingAngle;
         public float ceilingThresholdOverride;
         public float ceilingReattachThresholdOverride;
@@ -92,6 +95,9 @@ namespace SlimeJumping.Physics
             dashSpeedFalloffCurve = null,
             disableDashFalloff = false,
             useInertialSlide = false,
+            launchInertiaBlendMode = LaunchInertiaBlendMode.Sum,
+            launchInertiaLerpFactor = 1f,
+            launchInertiaPNorm = 1f,
             overrideCeilingAngle = false,
             ceilingThresholdOverride = 0f,
             ceilingReattachThresholdOverride = 0f,
@@ -156,6 +162,9 @@ namespace SlimeJumping.Physics
                     : a.dashSpeedFalloffCurve ?? b.dashSpeedFalloffCurve,
                 disableDashFalloff      = snapToB ? b.disableDashFalloff      : a.disableDashFalloff,
                 useInertialSlide        = snapToB ? b.useInertialSlide        : a.useInertialSlide,
+                launchInertiaBlendMode  = snapToB ? b.launchInertiaBlendMode  : a.launchInertiaBlendMode,
+                launchInertiaLerpFactor = Mathf.Lerp(a.launchInertiaLerpFactor, b.launchInertiaLerpFactor, t),
+                launchInertiaPNorm      = Mathf.Lerp(a.launchInertiaPNorm,      b.launchInertiaPNorm,      t),
                 overrideCeilingAngle    = snapToB ? b.overrideCeilingAngle    : a.overrideCeilingAngle,
                 ceilingThresholdOverride         = Mathf.Lerp(a.ceilingThresholdOverride,         b.ceilingThresholdOverride,         t),
                 ceilingReattachThresholdOverride = Mathf.Lerp(a.ceilingReattachThresholdOverride, b.ceilingReattachThresholdOverride, t),

@@ -197,7 +197,6 @@ namespace SlimeJumping.Controller
                     surfaceProbeMissFrames = 0;
                     cachedSurfaceCollider = surfaceCollider;
                     SnapToSurface();
-                    if (chargeVisual != null) chargeVisual.Show();
                     // Intentionally before CheckPlatformEffect: dust puff on JumpPad contact is natural.
                     OnLanded?.Invoke(surfaceCollider.ClosestPoint(rb.position), surfaceNormal);
 

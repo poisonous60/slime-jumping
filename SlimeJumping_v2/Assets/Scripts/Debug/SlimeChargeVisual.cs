@@ -1,47 +1,43 @@
 using UnityEngine;
-using UnityEngine.UI;
 using SlimeJumping.Settings;
+using SlimeJumping.Controller;
 
 namespace SlimeJumping.Debugging
 {
     public class SlimeChargeVisual : MonoBehaviour
     {
         [Header("References")]
-        [SerializeField] private Canvas canvas;
-        [SerializeField] private RectTransform circleImage;
-        [SerializeField] private RectTransform aimDotImage;
-        [SerializeField] private Image aimLineImage;
-
-        [Header("Toggle")]
-        [SerializeField] private bool showCircle = true;
-        [SerializeField] private bool showAimDot = true;
+        [SerializeField] private SlimeController controller;
+        [SerializeField] private Transform chargeRing;
+        [SerializeField] private SpriteRenderer chargeRingRenderer;
+        [SerializeField] private LineRenderer aimLine;
 
         [Header("Visual Settings")]
-        [SerializeField] private Color unchargedColor = Color.green;
-        [SerializeField] private Color fullChargeColor = Color.red;
-        [SerializeField] private float circleScreenRadius = 150f;
+        [SerializeField] private Color unchargedColor = new Color(1f, 1f, 1f, 0.7f);
+        [SerializeField] private Color fullChargeColor = new Color(1f, 0.4f, 0.4f, 0.9f);
+        [SerializeField] private float aimLineWidth = 0.025f;
 
-        private UnityEngine.Camera cam;
-        private RectTransform canvasRect;
-
-        // Tracks the controller's "should be shown" intent independent of the
-        // debug option. This way the option toggle can hide/restore visuals
-        // mid-charge without losing what the controller asked for.
-        private bool requestedVisible;
         private bool optionEnabled = true;
+        private MaterialPropertyBlock mpb;
 
         private void Awake()
         {
-            cam = UnityEngine.Camera.main;
-            if (canvas != null)
-                canvasRect = canvas.GetComponent<RectTransform>();
+            mpb = new MaterialPropertyBlock();
+
+            if (aimLine != null)
+            {
+                aimLine.useWorldSpace = true;
+                aimLine.positionCount = 2;
+                aimLine.startWidth = aimLineWidth;
+                aimLine.endWidth = aimLineWidth;
+            }
         }
 
         private void OnEnable()
         {
             optionEnabled = GameOptions.ChargeVisualEnabled;
             GameOptions.ChargeVisualEnabledChanged += OnOptionChanged;
-            ApplyVisibility();
+            ApplyVisibility(false);
         }
 
         private void OnDisable()
@@ -52,81 +48,66 @@ namespace SlimeJumping.Debugging
         private void OnOptionChanged(bool on)
         {
             optionEnabled = on;
-            ApplyVisibility();
         }
 
-        private void ApplyVisibility()
+        private void LateUpdate()
         {
-            bool visible = requestedVisible && optionEnabled;
-            if (circleImage != null) circleImage.gameObject.SetActive(visible && showCircle);
-            if (aimDotImage != null) aimDotImage.gameObject.SetActive(visible && showAimDot);
-            if (aimLineImage != null) aimLineImage.gameObject.SetActive(visible && showAimDot);
-        }
+            bool show = optionEnabled
+                && controller != null
+                && controller.CurrentState == SlimeController.SlimeState.Charging;
 
-        public void Show()
-        {
-            requestedVisible = true;
-            ApplyVisibility();
-        }
-
-        public void Hide()
-        {
-            requestedVisible = false;
-            ApplyVisibility();
-        }
-
-        public void UpdateVisual(Vector2 worldCenter, Vector2 worldAimPoint, float chargeRadius)
-        {
-            if (!optionEnabled || !requestedVisible) return;
-            if (cam == null || canvasRect == null) return;
-
-            // World → screen → canvas local position
-            Vector2 screenCenter = cam.WorldToScreenPoint(worldCenter);
-            Vector2 screenAim = cam.WorldToScreenPoint(worldAimPoint);
-
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                canvasRect, screenCenter, null, out Vector2 canvasCenter);
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                canvasRect, screenAim, null, out Vector2 canvasAim);
-
-            // Compute scale: how many screen pixels per world unit at slime depth
-            Vector2 screenEdge = cam.WorldToScreenPoint(worldCenter + Vector2.right * chargeRadius);
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                canvasRect, screenEdge, null, out Vector2 canvasEdge);
-            float canvasRadius = Vector2.Distance(canvasCenter, canvasEdge);
-
-            // Circle
-            if (circleImage != null)
+            if (!show)
             {
-                circleImage.anchoredPosition = canvasCenter;
-                float diameter = canvasRadius * 2f;
-                circleImage.sizeDelta = new Vector2(diameter, diameter);
+                ApplyVisibility(false);
+                return;
             }
 
-            // Aim dot
-            if (aimDotImage != null)
+            ApplyVisibility(true);
+            UpdateRing();
+            UpdateAimLine();
+        }
+
+        private void ApplyVisibility(bool visible)
+        {
+            if (chargeRing != null && chargeRing.gameObject.activeSelf != visible)
+                chargeRing.gameObject.SetActive(visible);
+            if (aimLine != null && aimLine.gameObject.activeSelf != visible)
+                aimLine.gameObject.SetActive(visible);
+        }
+
+        private void UpdateRing()
+        {
+            if (chargeRing == null) return;
+
+            // Unit-square sprite mesh spans 2 world units at scale=1, so localScale = radius
+            // yields a final diameter of 2 * radius (matches charge area).
+            float radius = controller.ActiveChargeRadius;
+            chargeRing.localScale = new Vector3(radius, radius, 1f);
+
+            if (chargeRingRenderer != null)
             {
-                aimDotImage.anchoredPosition = canvasAim;
+                Color c = Color.Lerp(unchargedColor, fullChargeColor,
+                    Mathf.Clamp01(controller.ChargingProgress));
+                chargeRingRenderer.GetPropertyBlock(mpb);
+                mpb.SetColor("_Color", c);
+                chargeRingRenderer.SetPropertyBlock(mpb);
             }
+        }
 
-            // Aim line (stretched Image from center to aim point)
-            Vector2 offset = worldAimPoint - worldCenter;
-            float ratio = Mathf.Clamp(offset.magnitude / chargeRadius, 0f, 2f);
+        private void UpdateAimLine()
+        {
+            if (aimLine == null) return;
 
-            if (aimLineImage != null)
-            {
-                Vector2 canvasOffset = canvasAim - canvasCenter;
-                float length = canvasOffset.magnitude;
-                float angle = Mathf.Atan2(canvasOffset.y, canvasOffset.x) * Mathf.Rad2Deg;
+            Vector3 worldCenter = controller.transform.position;
+            Vector3 worldAim = worldCenter + (Vector3)controller.AimOffset;
 
-                var rt = aimLineImage.rectTransform;
-                rt.anchoredPosition = canvasCenter;
-                rt.sizeDelta = new Vector2(length, 3f);
-                rt.pivot = new Vector2(0f, 0.5f);
-                rt.localRotation = Quaternion.Euler(0f, 0f, angle);
+            aimLine.SetPosition(0, worldCenter);
+            aimLine.SetPosition(1, worldAim);
 
-                aimLineImage.color = Color.Lerp(unchargedColor, fullChargeColor, ratio);
-            }
+            Color c = Color.Lerp(unchargedColor, fullChargeColor,
+                Mathf.Clamp01(controller.ChargingProgress));
+            aimLine.startColor = c;
+            aimLine.endColor = c;
         }
     }
 }

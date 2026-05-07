@@ -21,10 +21,22 @@ SlimeJumping_v2 is a **2.5D platformer** built in **Unity 6** (6000.3.11f1) wher
 Use `unity-cli` command to interact with the Unity Editor.
 Available commands: `list`, `exec`, `run_tests`, `console`, `screenshot`, `refresh_unity`, `manage_editor`, `execute_menu_item`, `reserialize_assets`.
 
-- 코드를 파악할 때는 unity-cli로 파악하지 말고 코드 구현만 파악할 것. unity-cli로 실시간 동작을 봐야 할 경우는 debug component를 작성해서 사용자에게 실행 부탁할 것.
-- Before using `exec`, check if another `unity-cli` command can query/modify/add what you need.
-- After changes, only check the error log. Do not run the game and take a screenshot.
-- 새로 만든 `.cs` 파일이 인스펙터 Add Component 에서 안 뜨고, `Type.GetType(...)` 로도 NOT FOUND 나는 경우. Unity가 메타(guid)는 등록했지만 컴파일 목록(`Library/Bee/artifacts/*.dag/Assembly-CSharp.rsp`)에는 추가하지 않은 상태. 해결: `unity-cli exec "UnityEditor.AssetDatabase.DeleteAsset(\"<path>\"); return \"deleted\";"` → `Write` 로 동일 경로에 재생성 → `unity-cli refresh_unity`.
+exec : Execute C# Code
+Run arbitrary C# code inside the Unity Editor at runtime. This is the most powerful command — it gives you full access to UnityEngine, UnityEditor, ECS, and every loaded assembly. No need to write a custom tool for one-off queries or mutations.
+
+Use return to get output. Common namespaces are included by default. Add --usings only for project-specific types (e.g. Unity.Entities). The csc compiler and dotnet runtime are auto-detected; if detection fails, specify manually with --csc <path> or --dotnet <path>.
+
+```
+unity-cli exec "return Application.dataPath;"
+unity-cli exec "return EditorSceneManager.GetActiveScene().name;"
+unity-cli exec "return World.All.Count;" --usings Unity.Entities
+
+# Pipe via stdin to avoid shell escaping issues
+echo 'Debug.Log("hello"); return null;' | unity-cli exec
+echo 'var go = new GameObject("Marker"); go.tag = "EditorOnly"; return go.name;' | unity-cli exec
+```
+
+Because exec compiles and runs real C#, it can do anything a custom tool can — inspect ECS entities, modify assets, call internal APIs, run editor utilities. For AI agents, this means zero-friction access to Unity's entire runtime without writing a single line of tool code. Piping via stdin avoids shell escaping headaches with complex code.
 
 
 

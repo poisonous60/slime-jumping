@@ -80,8 +80,6 @@ namespace SlimeJumping.Controller
             cachedSurfaceCollider = surfaceCollider;
             if (carrier != null) carrier.Attach(surfaceCollider);
             UpdateSurfaceModifiers(surfaceCollider);
-
-            if (chargeVisual != null) chargeVisual.Show();
         }
 
         private void EnterVolumeCharging()
@@ -103,7 +101,6 @@ namespace SlimeJumping.Controller
             slideVelocity = 0f;
 
             ChangeState(SlimeState.Charging, intentional: true);
-            if (chargeVisual != null) chargeVisual.Show();
         }
 
         private void HandleJumpReleased()

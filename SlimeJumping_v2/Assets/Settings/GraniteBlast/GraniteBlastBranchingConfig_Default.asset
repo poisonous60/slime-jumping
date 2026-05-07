@@ -19,7 +19,7 @@ MonoBehaviour:
   navEntryJitter: 0.3
   tendrilPathNoiseAmplitude: 0.5
   tendrilPathNoiseFrequency: 0.8
-  tendrilCount: 27
+  tendrilCount: 8
   targetRadius: 1
   bowHeight: 3
   bowDepthZ: 0

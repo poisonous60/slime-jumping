@@ -1,7 +1,6 @@
 using UnityEngine;
 using SlimeJumping.Settings;
 using SlimeJumping.InputHandling;
-using SlimeJumping.Debugging;
 using SlimeJumping.Physics;
 using SlimeJumping.Platforms;
 using SlimeJumping.Platforms.Snow;
@@ -16,7 +15,6 @@ namespace SlimeJumping.Controller
     {
         [SerializeField] private SlimeInputReader inputReader;
         [SerializeField] private SlimeSettings settings;
-        [SerializeField] private SlimeChargeVisual chargeVisual;
         [SerializeField] private PlatformCarrier carrier;
         [SerializeField] private InteractionDetector interactionDetector;
 
@@ -140,6 +138,7 @@ namespace SlimeJumping.Controller
         public Vector2 AimDirection => aimOffset.sqrMagnitude > 0.0001f
             ? -aimOffset.normalized
             : surfaceNormal;
+        public Vector2 AimOffset => aimOffset;
         public float ChargingProgress => activeChargeRadius > 0.0001f
             ? aimOffset.magnitude / activeChargeRadius
             : 0f;
@@ -702,9 +701,6 @@ namespace SlimeJumping.Controller
                 postLaunchTimer -= Time.deltaTime;
                 return;
             }
-
-            if (currentState == SlimeState.Charging && chargeVisual != null)
-                chargeVisual.UpdateVisual(rb.position, rb.position + aimOffset, activeChargeRadius);
 
         }
 
@@ -1504,7 +1500,6 @@ namespace SlimeJumping.Controller
             if (currentState == SlimeState.Charging)
             {
                 isVolumeCharging = false;
-                if (chargeVisual != null) chargeVisual.Hide();
             }
 
             // Detach
@@ -1619,7 +1614,6 @@ namespace SlimeJumping.Controller
             if (currentState == SlimeState.Charging)
             {
                 isVolumeCharging = false;
-                if (chargeVisual != null) chargeVisual.Hide();
             }
             if (carrier != null) carrier.Detach();
             ClearPlatformEffect();

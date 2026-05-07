@@ -183,5 +183,5 @@ MonoBehaviour:
   overrideCeilingAngle: 0
   ceilingAngle: 107
   ceilingReattachAngle: 101
-  overrideEnergyConversionCoyoteTime: 0
-  energyConversionCoyoteTime: 0.12
+  overrideEnergyConversionCoyoteTime: 1
+  energyConversionCoyoteTime: 1

@@ -21,11 +21,22 @@ preLaunchCrawl = (hyperDashInertiaSource == LaunchMoment)
                   ? (crawlVelocity + slideVelocity)   // 발사 프레임 값
                   : chargeEntryCrawl                  // 차징 시작 시 캡처
 excess = Max(0, |preLaunchCrawl| - hyperDashDeduction)
-velocity += lastSurfaceTangent * sign(preLaunchCrawl) * excess * tangentInheritanceFactor
+inheritedVec = lastSurfaceTangent * sign(preLaunchCrawl) * excess * tangentInheritanceFactor
+velocity = BlendLaunchInertia(launchVec, inheritedVec, surfaceMod)   // surface별 blend 모드
 ```
 - `hyperDashDeduction`(5): 이 속도 이하 crawl은 무시. 0으로 설정하면 전체 반영.
 - 일반 crawl → charge = boost 0 (crawlSpeed 전체가 deduction 처리).
 - dash → charge = dash 초과분만 boost.
+
+### Launch Inertia Blend (per-surface)
+관성 벡터(`I`)와 조준 발사 벡터(`L`)를 합치는 방식은 `SurfaceMaterial.launchInertiaBlendMode`로 결정. 방향은 항상 `(L+I).normalized`, 크기만 모드에 따라 달라짐.
+| 모드 | 크기 공식 | 특징 |
+|------|-----------|------|
+| `Sum` (기본, 레거시) | `\|L+I\|` | 순수 벡터합. ice + inertial slide에서 슬라이드 속도 누적이 가장 큼. |
+| `LerpMaxToSum` | `Lerp(max(\|L\|,\|I\|), \|L+I\|, launchInertiaLerpFactor)` | 0=max, 1=Sum. ice에서 누적 억제용 0.3~0.5 권장. |
+| `PNorm` | `(\|L\|^p + \|I\|^p)^(1/p)` | p=1=Sum, p=2=피타고라스(에너지 합산), p≫1≈max. 일반적으로 1.5~3. |
+
+기본값은 `Sum` — 미설정 surface는 레거시 동작과 동일하다.
 
 ## 에너지 전환 감쇠
 에너지 전환 크기에 비례하여 crawl boost 감쇠:
@@ -48,6 +59,9 @@ conversionRatio = activeChargeRadius / chargeRadius
 | hyperDashDeduction | 5 | 이 이하 crawl은 발사 합산 제외 (0=전체 반영) |
 | hyperDashConversionDampingMin | 1.2 | 이 전환 비율 이하 100% 유지 |
 | hyperDashConversionDampingMax | 2.0 | 이 전환 비율 이상 0% |
+| launchInertiaBlendMode (per-surface) | Sum | 발사 관성 합산 방식 (Sum / LerpMaxToSum / PNorm) |
+| launchInertiaLerpFactor (per-surface) | 0.5 | LerpMaxToSum 모드: 0=max, 1=Sum |
+| launchInertiaPNorm (per-surface) | 2.0 | PNorm 모드: 1=Sum, 2=에너지, ≫1≈max |
 
 ## 관련
 - [ground-dash.md](ground-dash.md)

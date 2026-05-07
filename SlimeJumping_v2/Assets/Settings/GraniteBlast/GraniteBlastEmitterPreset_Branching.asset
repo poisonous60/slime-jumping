@@ -21,7 +21,7 @@ MonoBehaviour:
   fireStartDuration: 0.08
   firingDuration: 0.6
   postFireDuration: 0.25
-  cooldownDuration: 10
+  cooldownDuration: 7
   loseSightGrace: 0.5
   maxRange: 50
   bulletHitMask:

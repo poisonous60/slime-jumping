@@ -257,7 +257,6 @@ namespace SlimeJumping.Controller
             ClearPlatformEffect();
             surfaceMod = settings.BuildDefaultModifiers();
             ChangeState(SlimeState.Airborne);
-            if (chargeVisual != null) chargeVisual.Hide();
         }
     }
 }
