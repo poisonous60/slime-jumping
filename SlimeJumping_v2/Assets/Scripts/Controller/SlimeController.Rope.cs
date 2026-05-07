@@ -1,5 +1,5 @@
 using UnityEngine;
-using SlimeJumping.Interfaces;
+using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Controller
 {
