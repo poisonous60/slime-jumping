@@ -75,47 +75,6 @@ namespace SlimeJumping.Controller
                 crawlVelocity += tangentDelta;
         }
 
-        /// Hazard-driven push channel. Adds the deltaV through the same external-velocity
-        /// channel as wind/conveyors, but ALSO fires OnHazardPushed so visual systems
-        /// (SlimeBurnVisual etc.) can react. Used by GraniteBlast hits — no stun, no
-        /// input lockout, just pushes the slime around with a side signal.
-        /// hitPoint is the world position of the actual contact (used by visuals to
-        /// place burn-mark decals); pass slime.Position when no specific contact exists.
-        public void ApplyHazardPush(Vector2 deltaV, Vector2 hitPoint)
-        {
-            externalDeltaV += deltaV;
-            OnHazardPushed?.Invoke(deltaV, hitPoint);
-        }
-
-        /// Hazard-driven OVERWRITE channel. While Attached/Charging, replaces the
-        /// persistent surface-slide momentum (crawlVelocity / slideVelocity) with the
-        /// deltaV's tangent component instead of accumulating onto it — so a slime
-        /// already sliding at full speed gets pinned to the new push value, not
-        /// pushed-on-top-of-existing-motion. Airborne/Stunned: behaves identically to
-        /// ApplyHazardPush (the slide channels aren't active there). Gravity-driven
-        /// slope slideSpeed is still recomputed each frame by FixedUpdateAttached, so
-        /// downhill momentum returns naturally once the hazard stops calling.
-        /// Used by GraniteBlast Beam mode while a slime stays inside a tracking beam.
-        public void ApplyHazardPushOverwriteSlide(Vector2 deltaV, Vector2 hitPoint)
-        {
-            if (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
-            {
-                Vector2 t = surfaceTangent;
-                float setSpeed = t.sqrMagnitude > 0.0001f ? Vector2.Dot(deltaV, t) : 0f;
-                crawlVelocity = setSpeed;
-                slideVelocity = 0f;
-            }
-            else
-            {
-                externalDeltaV += deltaV;
-            }
-            OnHazardPushed?.Invoke(deltaV, hitPoint);
-        }
-
-        /// Fired whenever ApplyHazardPush / ApplyHazardPushOverwriteSlide is called. Payload: (deltaV, worldHitPoint).
-        /// Subscribers: SlimeBurnVisual (places burn-mark decals at hit point + drives
-        /// stuck-compression visual).
-        public event System.Action<Vector2, Vector2> OnHazardPushed;
         public float CoyoteTimer => coyoteTimer;
         public float EnergyCoyoteTimer => energyCoyoteTimer;
         public float EnergyCoyoteDuration => energyCoyoteDuration;
@@ -124,7 +83,6 @@ namespace SlimeJumping.Controller
         public Collider2D SurfaceCollider => surfaceCollider;
         public Collider2D CachedSurfaceCollider => cachedSurfaceCollider;
         public Collider2D PrevSurfaceCollider => prevSurfaceCollider;
-        public IRopePlatform CurrentRope => currentRope;
         public PlatformCarrier Carrier => carrier;
         public int AttachToggleCount => attachToggleCount;
         public float AttachLockoutTimer => attachLockoutTimer;
@@ -176,10 +134,6 @@ namespace SlimeJumping.Controller
 
         // Volume charging flag (sand: Airborne → Charging without surface)
         private bool isVolumeCharging;
-
-        // Current drag zone (set by DragZone.OnTriggerEnter/Exit, single zone only)
-        public DragZone CurrentDragZone { get; private set; }
-        public bool IsInChargeVolume => CurrentDragZone != null && CurrentDragZone.allowCharging;
 
         // --- Gravity Field ---
         // LIFO stack of active gravity zones. Empty = world gravity.
@@ -336,48 +290,6 @@ namespace SlimeJumping.Controller
         private float lastAttachToggleTime;
         private float attachLockoutTimer;
 
-        private SurfaceModifiers surfaceMod = SurfaceModifiers.Default;
-
-        // Snow gameplay coupling (read-only pull from SnowFieldRegistry).
-        // hostSurfaceMod: the unblended host SurfaceTag → modifiers, captured at attach.
-        // cachedSnowField + cachedSnowMods: pre-resolved snow side, refreshed at attach.
-        // Each FixedUpdate while attached, RefreshSnowBlend samples whether the slime's
-        // contact xy is over a snow patch; if yes, surfaceMod = snow tag, otherwise host.
-        // Pure binary — no depth-graduated blend, no plow drag.
-        private SurfaceModifiers hostSurfaceMod = SurfaceModifiers.Default;
-        private SurfaceMaterial hostSurfaceMaterial;
-        private bool snowBlendActive;
-        private SnowField cachedSnowField;
-        private SurfaceModifiers cachedSnowMods;
-        private bool hasCachedSnowMods;
-        // cos(MaxSnowSlopeDeg) cached per attach so the per-FU primary gate is a
-        // single dot-product compare. Snow can only deposit on faces with
-        // normal.y ≥ cosMax (matches SnowTopSurfaceExtractor's filter), so a
-        // contact below cosMax is guaranteed bare regardless of footprint.
-        private float cachedSnowSlopeCos;
-        // Footprint hit captured by RefreshSnowBlend each FU and read by
-        // ApplySnowDrag in the same FU — lets the drag path skip its own
-        // nearest-vertex sweep and just index into the strip arrays. Null when
-        // the slime isn't on snow this FU. Lifetime: one FU only.
-        private SnowStrip cachedFootprintStrip;
-        private int cachedFootprintVertIdx;
-
-        // Resolved gameplay-active SurfaceMaterial: override when a zone has pushed one,
-        // else snow when the contact-point depth gate has flipped surfaceMod to snow,
-        // otherwise the host SurfaceTag's material. Null while airborne / no surface.
-        public SurfaceMaterial ActiveSurfaceMaterial => !isTouchingSurface
-            ? null
-            : (ActiveSurfaceMaterialOverride != null
-                ? ActiveSurfaceMaterialOverride
-                : (snowBlendActive && cachedSnowField != null && cachedSnowField.settings != null
-                    ? cachedSnowField.settings.snowSurfaceMaterial
-                    : hostSurfaceMaterial));
-
-        // Plow-drag depth-ratio floor. Below this, snow is too thin to be worth
-        // applying drag — avoids the exponential-decay asymptote twitching forever
-        // on a slime sitting just inside a barely-tapered patch edge.
-        private const float SnowSurfaceTagThreshold = 0.05f;
-
         // --- Stunned state ---
         private float stunTimer;
         private DamageType lastDamageType;
@@ -386,17 +298,8 @@ namespace SlimeJumping.Controller
         public float StunTimer => stunTimer;
         public DamageType LastDamageType => lastDamageType;
 
-        // --- External controller override ---
-        private IExternalController _override;
-        public bool HasOverride => _override != null;
-
         // --- Platform effect ---
         private IPlatformEffect activePlatformEffect;
-
-        // --- Rope coupling (#4) ---
-        // IRopePlatform so both v1 (sag-bonus Rope) and v2 (timing-bonus RopeV2)
-        // hand the controller their own GetLaunchBonus formula polymorphically.
-        private IRopePlatform currentRope;
 
         // --- Environmental zone flags ---
         // Set by zones (e.g. WaterZone) to block landing while inside.
@@ -413,88 +316,6 @@ namespace SlimeJumping.Controller
         public bool InFluid => inFluidCount > 0;
         public void PushInFluid() { inFluidCount++; }
         public void PopInFluid() { inFluidCount = Mathf.Max(0, inFluidCount - 1); }
-
-        // Stack of SurfaceMaterial overrides pushed by trigger zones (e.g. WaterCurrentZone).
-        // When non-empty, the top of the stack wins over both snow blend and host SurfaceTag in
-        // RefreshSnowBlend. Mirrors snow's surfaceMod swap pattern but driven by zone presence
-        // rather than per-FU position sampling. Last-in-wins; LIFO removal handles overlapping
-        // zones that exit out of order.
-        private readonly List<SurfaceMaterial> surfaceMaterialOverrideStack = new();
-        // Cached top-of-stack modifiers, recomputed only on Push/Pop. Avoids per-FU ToModifiers()
-        // allocation in RefreshSnowBlend.
-        private SurfaceModifiers cachedOverrideMods;
-        private bool hasOverrideMods;
-        public SurfaceMaterial ActiveSurfaceMaterialOverride => surfaceMaterialOverrideStack.Count > 0
-            ? surfaceMaterialOverrideStack[surfaceMaterialOverrideStack.Count - 1]
-            : null;
-
-        public void PushSurfaceMaterialOverride(SurfaceMaterial mat)
-        {
-            if (mat == null) return;
-            bool wasInertial = surfaceMod.useInertialSlide;
-            surfaceMaterialOverrideStack.Add(mat);
-            cachedOverrideMods = mat.ToModifiers();
-            hasOverrideMods = true;
-            if (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
-            {
-                RefreshSnowBlend();
-                MigrateSlideChannelOnInertialFlip(wasInertial);
-            }
-        }
-
-        public void PopSurfaceMaterialOverride(SurfaceMaterial mat)
-        {
-            if (mat == null) return;
-            bool wasInertial = surfaceMod.useInertialSlide;
-            // Remove last occurrence (LIFO). Searching from the end is correct for both
-            // single-zone push/pop and the stacked-zone case where the most recently entered
-            // zone is the most likely to exit first.
-            for (int i = surfaceMaterialOverrideStack.Count - 1; i >= 0; i--)
-            {
-                if (surfaceMaterialOverrideStack[i] == mat)
-                {
-                    surfaceMaterialOverrideStack.RemoveAt(i);
-                    break;
-                }
-            }
-            int n = surfaceMaterialOverrideStack.Count;
-            if (n > 0)
-            {
-                cachedOverrideMods = surfaceMaterialOverrideStack[n - 1].ToModifiers();
-                hasOverrideMods = true;
-            }
-            else
-            {
-                hasOverrideMods = false;
-            }
-            if (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
-            {
-                RefreshSnowBlend();
-                MigrateSlideChannelOnInertialFlip(wasInertial);
-            }
-        }
-
-        // Mirrors UpdateSurfaceModifiers' channel migration: when the active slide model flips
-        // (legacy ↔ inertial), move the existing tangent speed into the destination channel so
-        // the slime's velocity isn't stranded. Without this, pushing a water override on a
-        // slime crawling on a non-inertial wall would leave crawlVelocity populated but
-        // surfaceMod.useInertialSlide=true → the inertial path reads slideVelocity=0 and the
-        // slime appears to dead-stop on water entry.
-        private void MigrateSlideChannelOnInertialFlip(bool wasInertial)
-        {
-            bool isInertial = surfaceMod.useInertialSlide;
-            if (wasInertial == isInertial) return;
-            if (wasInertial && !isInertial)
-            {
-                crawlVelocity += slideVelocity;
-                slideVelocity = 0f;
-            }
-            else
-            {
-                slideVelocity += crawlVelocity;
-                crawlVelocity = 0f;
-            }
-        }
 
         private SpriteRenderer spriteRenderer;
 
@@ -759,21 +580,7 @@ namespace SlimeJumping.Controller
             if (currentRope != null
                 && (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 && currentRope.Edge != null)
-            {
-                Vector2 ropeContact = currentRope.Edge.ClosestPoint(rb.position);
-                Vector2 toSlime = rb.position - ropeContact;
-                float ropeLockDist = toSlime.magnitude;
-                // Bound the lock to ~1.5× slime radius — beyond that assume the
-                // slime intentionally left the rope (crawled off the polyline end,
-                // teleported, etc.) and let the probe handle detach normally.
-                if (ropeLockDist < settings.slimeRadius * 1.5f)
-                {
-                    Vector2 dir = ropeLockDist > 0.0001f
-                        ? (toSlime / ropeLockDist)
-                        : gravityUp;
-                    rb.position = ropeContact + dir * settings.slimeRadius;
-                }
-            }
+                LockRopePosition();
 
             float surfaceMultiplier = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 ? settings.attachedCheckMultiplier : settings.airborneCheckMultiplier;
@@ -984,179 +791,6 @@ namespace SlimeJumping.Controller
             }
         }
 
-        // --- Surface Modifiers ---
-
-        private void UpdateSurfaceModifiers(Collider2D col)
-        {
-            SurfaceTag tag = null;
-            if (col != null)
-            {
-                var tags = col.GetComponentsInParent<SurfaceTag>();
-                for (int i = 0; i < tags.Length; i++)
-                {
-                    if (tags[i].enabled) { tag = tags[i]; break; }
-                }
-            }
-            bool wasInertial = surfaceMod.useInertialSlide;
-            hostSurfaceMaterial = (tag != null) ? tag.material : null;
-            hostSurfaceMod = (hostSurfaceMaterial != null)
-                ? hostSurfaceMaterial.ToModifiers()
-                : settings.BuildDefaultModifiers();
-
-            // Snow side: cache the field + pre-resolved snow modifiers so the per-FU
-            // blend doesn't re-walk the registry / re-allocate ToModifiers each tick.
-            cachedSnowField = null;
-            hasCachedSnowMods = false;
-            cachedSnowSlopeCos = 0f;
-            if (col != null && SnowFieldRegistry.TryGet(col, out var sf) && sf != null)
-            {
-                cachedSnowField = sf;
-                cachedSnowSlopeCos = Mathf.Cos(sf.MaxSnowSlopeDeg * Mathf.Deg2Rad);
-                var snowSettings = sf.settings;
-                if (snowSettings != null && snowSettings.snowSurfaceMaterial != null)
-                {
-                    cachedSnowMods = snowSettings.snowSurfaceMaterial.ToModifiers();
-                    hasCachedSnowMods = true;
-                }
-            }
-
-            RefreshSnowBlend();
-
-            // Transition between inertial and legacy slide surfaces: keep tangent speed
-            // consistent by moving the inertial channel into crawl when leaving inertial,
-            // and seeding the inertial channel from crawl when entering inertial.
-            if (wasInertial && !surfaceMod.useInertialSlide)
-            {
-                crawlVelocity += slideVelocity;
-                slideVelocity = 0f;
-            }
-            else if (!wasInertial && surfaceMod.useInertialSlide)
-            {
-                slideVelocity += crawlVelocity;
-                crawlVelocity = 0f;
-            }
-        }
-
-        /// <summary>
-        /// Per-FU surface-tag refresh while attached/charging on a snow host.
-        /// Samples whether the slime's contact xy is over a snow patch — if yes,
-        /// surfaceMod = snow tag (Snow.asset modifiers), otherwise = host. Pure
-        /// binary; no depth-graduated blend, no plow drag.
-        /// Discrete fields (useInertialSlide, override flags, curves) stay pinned
-        /// to host so the slide-model can't flip mid-attach and strand velocity
-        /// in the wrong channel.
-        /// </summary>
-        private void RefreshSnowBlend()
-        {
-            cachedFootprintStrip = null;
-            cachedFootprintVertIdx = -1;
-
-            // Snow blend (when host has snow). Two-stage probe: (1) slope-normal primary gate
-            // — snow only deposits on upward-facing tris (SnowTopSurfaceExtractor filters by
-            // maxSnowSlopeDeg); (2) mesh-local nearest-vertex hit-test against heightRest > 0.
-            // Caches the (strip, vertIdx) so ApplySnowDrag can read heightCurrent[idx] without
-            // re-running the sweep.
-            if (hasCachedSnowMods && cachedSnowField != null)
-            {
-                bool onSnow = false;
-                if (isTouchingSurface && surfaceNormal.y >= cachedSnowSlopeCos)
-                {
-                    Vector2 sample = rb.position - surfaceNormal * settings.slimeRadius;
-                    onSnow = cachedSnowField.TryFindFootprintHit(
-                        sample, out cachedFootprintStrip, out cachedFootprintVertIdx);
-                }
-
-                if (onSnow)
-                {
-                    var snow = cachedSnowMods;
-                    snow.useInertialSlide        = hostSurfaceMod.useInertialSlide;
-                    snow.overrideHopMomentum     = hostSurfaceMod.overrideHopMomentum;
-                    snow.hopInstantFlip          = hostSurfaceMod.hopInstantFlip;
-                    snow.overrideGroundDash      = hostSurfaceMod.overrideGroundDash;
-                    snow.disableDashFalloff      = hostSurfaceMod.disableDashFalloff;
-                    snow.overrideCeilingAngle    = hostSurfaceMod.overrideCeilingAngle;
-                    snow.groundDashAngleFalloffCurve = hostSurfaceMod.groundDashAngleFalloffCurve;
-                    snow.dashSpeedFalloffCurve   = hostSurfaceMod.dashSpeedFalloffCurve;
-                    snow.enableLandingTangentSpeedRemap = hostSurfaceMod.enableLandingTangentSpeedRemap;
-                    snow.landingTangentSpeedRemapCurve = hostSurfaceMod.landingTangentSpeedRemapCurve;
-                    surfaceMod = snow;
-                    snowBlendActive = true;
-                }
-                else
-                {
-                    surfaceMod = hostSurfaceMod;
-                    snowBlendActive = false;
-                }
-            }
-            else
-            {
-                surfaceMod = hostSurfaceMod;
-                snowBlendActive = false;
-            }
-
-            // Zone override (e.g. WaterCurrentZone) wins over both snow blend and host. Runs
-            // unconditionally — must NOT be gated by hasCachedSnowMods, because the most
-            // common case is "slime in water on a non-snow wall" and the override has to
-            // apply there too. Discrete fields (useInertialSlide etc.) are NOT pinned to host,
-            // unlike snow — water explicitly wants inertial slide so jump momentum is preserved
-            // instead of replaced by the legacy equilibrium-slide formula.
-            // Push/PopSurfaceMaterialOverride handles the channel migration when
-            // useInertialSlide changes mid-attach.
-            if (hasOverrideMods)
-            {
-                surfaceMod = cachedOverrideMods;
-                // Override implies non-snow gameplay (drag/footprint paths shouldn't apply).
-                snowBlendActive = false;
-                cachedFootprintStrip = null;
-                cachedFootprintVertIdx = -1;
-            }
-        }
-
-        // Drag-only plow. Depth gate matches SnowSurfaceTagThreshold so this
-        // engages exactly when the surface-tag swap engages. Stop speed snaps
-        // to 0 below this floor to prevent the exponential decay from
-        // asymptote-twitching forever.
-        private const float SnowDragStopSpeed = 0.3f;
-
-        /// <summary>
-        /// Apply exponential velocity decay while the slime is attached/charging
-        /// on a snow patch. No continuous carve, no airborne probe — drag is the
-        /// only physical effect snow has on the slime now. Runs after the state
-        /// handler so the decay applies to whatever crawl/slide velocity the
-        /// state just produced.
-        /// </summary>
-        private void ApplySnowDrag(float dt)
-        {
-            if (currentState != SlimeState.Attached && currentState != SlimeState.Charging) return;
-            if (!hasCachedSnowMods || cachedSnowField == null) return;
-            var snowSettings = cachedSnowField.settings;
-            if (snowSettings == null || snowSettings.plowDragK <= 0f) return;
-
-            // Reuse RefreshSnowBlend's nearest-vertex result from earlier this FU
-            // instead of running a second SampleDepthRatio01 sweep. Null cache means
-            // RefreshSnowBlend already determined the contact isn't on snow — drag
-            // can't engage either.
-            var s = cachedFootprintStrip;
-            int idx = cachedFootprintVertIdx;
-            if (s == null || idx < 0) return;
-            if (s.heightRest == null || s.heightCurrent == null) return;
-            if (idx >= s.heightRest.Length || idx >= s.heightCurrent.Length) return;
-            float rest = s.heightRest[idx];
-            if (rest <= 1e-5f) return;
-            float depth = Mathf.Clamp01(s.heightCurrent[idx] / rest);
-            if (depth <= SnowSurfaceTagThreshold) return;
-
-            float decay = Mathf.Exp(-snowSettings.plowDragK * depth * dt);
-            if (decay < 0f) decay = 0f;
-
-            slideVelocity *= decay;
-            crawlVelocity *= decay;
-            velocity *= decay;
-            if (Mathf.Abs(slideVelocity) < SnowDragStopSpeed) slideVelocity = 0f;
-            if (Mathf.Abs(crawlVelocity) < SnowDragStopSpeed) crawlVelocity = 0f;
-            if (velocity.sqrMagnitude < SnowDragStopSpeed * SnowDragStopSpeed) velocity = Vector2.zero;
-        }
-
         // Scratch for the per-frame probe-mode broadphase scan.
         private readonly Collider2D[] modeProbeBuffer = new Collider2D[8];
 
@@ -1180,58 +814,6 @@ namespace SlimeJumping.Controller
                 if (ovr != null) { desired = ovr.mode; break; }
             }
             if (desired != currentProbeMode) SetProbeMode(desired);
-        }
-
-        // Rope reference cache. Called on surface change.
-        private void UpdateRopeReference(Collider2D col)
-        {
-            IRopePlatform newRope = col != null ? col.GetComponentInParent<IRopePlatform>() : null;
-            if (ReferenceEquals(newRope, currentRope)) return;
-
-            currentRope = newRope;
-
-            if (currentRope != null)
-            {
-                currentRope.NotifyFirstAttach(rb.position);
-            }
-        }
-
-        // --- Drag Zone API (called by DragZone.cs) ---
-
-        public void OnDragZoneEnter(DragZone zone)
-        {
-            velocity *= zone.entryMultiplier;
-            CurrentDragZone = zone;
-
-            if (currentState == SlimeState.Airborne && zone.allowCharging
-                && inputReader.IsJumpHeld && postLaunchTimer <= 0f)
-            {
-                EnterVolumeCharging();
-            }
-        }
-
-        public void OnDragZoneExit(DragZone zone)
-        {
-            if (CurrentDragZone != zone) return;
-            float savedFall = Vector2.Dot(velocity, gravityUp); // negative when falling
-            velocity *= zone.exitMultiplier;
-            if (savedFall < 0f)
-            {
-                float hSpeed = Vector2.Dot(velocity, gravityRight);
-                velocity = gravityUp * savedFall + gravityRight * hSpeed;
-            }
-            CurrentDragZone = null;
-        }
-
-        public void ApplyDragFactor(float factor) { velocity *= factor; }
-        public void ClampFallSpeed(float max)
-        {
-            float fallSpeed = -Vector2.Dot(velocity, gravityUp); // positive when falling
-            if (fallSpeed > max)
-            {
-                float hSpeed = Vector2.Dot(velocity, gravityRight);
-                velocity = gravityUp * (-max) + gravityRight * hSpeed;
-            }
         }
 
         private float GetSurfaceAngle()
@@ -1464,96 +1046,6 @@ namespace SlimeJumping.Controller
             activePlatformEffect = null;
         }
 
-        // --- Hazard API ---
-
-        /// <summary>
-        /// Single entry point for all hazard contact. Transitions to Stunned state
-        /// with configurable knockback and duration.
-        /// </summary>
-        /// Overload that also fires OnHazardPushed at a known contact point so visual
-        /// systems (SlimeBurnVisual, etc.) can react to stun-channel hits the same way
-        /// they do to push-channel hits. The Stunned i-frame guard still applies — if
-        /// the slime is already stunned, neither the stun nor the burn fires.
-        public void ApplyHazardEffect(HazardEffect effect, Vector2 hitPoint)
-        {
-            if (currentState == SlimeState.Stunned) return;
-            ApplyHazardEffect(effect);
-            // Use the knockback as the deltaV payload so subscribers (e.g. burn flash
-            // intensity) can scale by impact strength. Sized to match push-channel
-            // semantics: deltaV in m/s.
-            Vector2 deltaV = effect.knockbackDirection.sqrMagnitude > 0.0001f
-                ? effect.knockbackDirection.normalized * effect.knockbackForce
-                : Vector2.up * effect.knockbackForce;
-            OnHazardPushed?.Invoke(deltaV, hitPoint);
-        }
-
-        public void ApplyHazardEffect(HazardEffect effect)
-        {
-            if (_override != null) return;
-            // TODO: time-based i-frame (stunIFrameDuration) for hazard variety.
-            // Current policy: stunned = immune. Sufficient for Phase 0-1.
-            // For Phase 5+ (lightning after saw blade), split into time-based window
-            // so stun expiry can be immediately followed by a new hazard hit.
-            if (currentState == SlimeState.Stunned) return;
-
-            // Clean up charging state
-            if (currentState == SlimeState.Charging)
-            {
-                isVolumeCharging = false;
-            }
-
-            // Detach
-            if (carrier != null) carrier.Detach();
-            ClearPlatformEffect();
-            surfaceMod = settings.BuildDefaultModifiers();
-
-            // Compute knockback direction
-            Vector2 kbDir = effect.knockbackDirection;
-            if (kbDir.sqrMagnitude < 0.0001f)
-                kbDir = gravityUp;
-
-            // Apply knockback velocity
-            velocity = kbDir.normalized * effect.knockbackForce;
-
-            // Reset state fields
-            crawlVelocity = 0f;
-            slideVelocity = 0f;
-            chargeEntryCrawl = 0f;
-            aimOffset = Vector2.zero;
-            chargeFullAimTimer = 0f;
-            coyoteTimer = 0f;
-            ClearPendingEnergyConversion(executeDeferredReset: false);
-            stickTimer = 0f;
-            stickDeccelTimer = 0f;
-            slideRampTimer = 0f;
-            hopRequested = false;
-            hopBufferTimer = 0f;
-            dashBufferTimer = 0f;
-            chargeBufferTimer = 0f;
-            postLaunchTimer = 0f;
-            postLaunchAirControlLockTimer = 0f;
-            wasStuck = false;
-            preserveLandingVelocity = false;
-            blockAttachCount = 0;
-            inFluidCount = 0;
-            surfaceMaterialOverrideStack.Clear();
-            hasOverrideMods = false;
-
-            // Enter Stunned
-            stunTimer = effect.stunDuration;
-            lastDamageType = effect.damageType;
-            launchSpeed = 0f;
-            launchPosition = rb.position;
-            launchedByHop = false;
-            conversionCount = 0;
-            ignoredColliderList.RegisterOverlapping(
-                rb.position,
-                settings.slimeRadius + settings.launchClearanceThreshold,
-                settings.groundLayer);
-
-            ChangeState(SlimeState.Stunned, intentional: true);
-        }
-
         /// <summary>
         /// Registers a collider as Passthrough — slime physically transits through it
         /// (Physics2D.IgnoreCollision) AND SurfaceProbe skips it. For hazard body
@@ -1567,102 +1059,6 @@ namespace SlimeJumping.Controller
         public void UnregisterIgnoredCollider(Collider2D col)
         {
             ignoredColliderList.Unregister(col);
-        }
-
-        // --- External Controller Override ---
-
-        /// <summary>
-        /// Direct velocity write. Only callable while HasOverride==true.
-        /// Use AddExternalVelocity / MultiplyVelocity for normal velocity changes.
-        /// NOTE: OverridePosition is not yet needed — add when #5/#27/#31 require
-        /// path-based slime movement during override.
-        /// </summary>
-        public void OverrideVelocity(Vector2 v)
-        {
-            if (!HasOverride)
-            {
-                Debug.LogError("[SlimeController] OverrideVelocity called outside of override context");
-                return;
-            }
-            velocity = v;
-        }
-
-        /// <summary>
-        /// Direct position write. Only callable while HasOverride==true. Used by
-        /// path-based traversal controllers (#31 pipe transit) that lerp the slime
-        /// along an external path while suspending normal physics.
-        /// </summary>
-        public void OverridePosition(Vector2 p)
-        {
-            if (!HasOverride)
-            {
-                Debug.LogError("[SlimeController] OverridePosition called outside of override context");
-                return;
-            }
-            rb.position = p;
-        }
-
-        public void SetOverride(IExternalController controller)
-        {
-            if (_override != null)
-            {
-                Debug.LogWarning("[SlimeController] Override already set. Releasing previous before setting new.");
-                _override.OnReleaseControl(this);
-            }
-
-            // Clean up current state
-            if (currentState == SlimeState.Charging)
-            {
-                isVolumeCharging = false;
-            }
-            if (carrier != null) carrier.Detach();
-            ClearPlatformEffect();
-            surfaceMod = settings.BuildDefaultModifiers();
-            blockAttachCount = 0;
-            inFluidCount = 0;
-            surfaceMaterialOverrideStack.Clear();
-            hasOverrideMods = false;
-            stunTimer = 0f;
-            // Pending energy-conversion coyote would otherwise survive the override
-            // (timer only ticks in FixedUpdateAttached) and fire a spurious energy
-            // conversion on the next Attached landing after release.
-            ClearPendingEnergyConversion(executeDeferredReset: false);
-
-            // Unity doesn't fire OnTriggerExit2D after override — clear stale candidates
-            interactionDetector.ClearCandidates();
-
-            _override = controller;
-            _override.OnTakeControl(this);
-        }
-
-        public void ReleaseOverride(IExternalController controller)
-        {
-            if (_override != controller) return;
-
-            _override.OnReleaseControl(this);
-            _override = null;
-
-            // SetOverride cleared detector candidates; if we're still overlapping
-            // the same interactable (e.g. standing up from a bench), Unity won't
-            // re-fire OnTriggerEnter2D. Rescan current overlaps so W works again.
-            interactionDetector.Rescan();
-
-            // Clear stale gravity fields (slime may have moved during override).
-            // NOTE: If slime is still physically inside a GravityField after release,
-            // that zone won't re-fire OnTriggerEnter2D. The IExternalController
-            // implementation is responsible for moving the slime outside gravity zones
-            // before releasing, or the zone will be silently orphaned until re-entry.
-            gravityFieldStack.Clear();
-            gravityUp = Vector2.up;
-            gravityRight = Vector2.right;
-
-            // Resume as Airborne
-            launchSpeed = 0f;
-            launchPosition = rb.position;
-            launchedByHop = false;
-            conversionCount = 0;
-            stunTimer = 0f;
-            ChangeState(SlimeState.Airborne, intentional: true);
         }
     }
 }

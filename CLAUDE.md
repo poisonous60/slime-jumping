@@ -45,6 +45,7 @@ Because exec compiles and runs real C#, it can do anything a custom tool can —
 - If some feature add or change, update  `SlimeJumping_메커닉_설계_v6.md`, `프로토타입_구현_현황.md` document in /docs folder
 - Never use `??` or `?.` with UnityEngine.Object references (Component, GameObject, etc). C# null-coalescing operators bypass Unity's overloaded `==` and mis-handle "fake null" (destroyed-but-not-null) references.
 - Divide visual and collider. Don't let them effect each other (e.g. even if visual rotate, collider shouldn't be effected)
+- SlimeController에 외부 시스템(Zone, Platform, Hazard, IExternalController 등) 통합 코드를 추가할 때는 `SlimeController.{SubsystemName}.cs` partial 파일로 분리한다. Main `SlimeController.cs`에는 라이프사이클(Awake/Update/FixedUpdate orchestration), 상태머신 dispatch, 공유 유틸/공유 상태 필드만 둔다. 상태별 처리(Attached/Charging/Airborne/Stunned)는 별도 패턴이며 기존대로 유지.
 
 
 
