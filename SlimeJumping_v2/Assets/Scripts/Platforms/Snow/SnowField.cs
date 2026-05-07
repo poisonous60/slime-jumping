@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace SlimeJumping.Platforms.Snow
 {
@@ -55,9 +56,28 @@ namespace SlimeJumping.Platforms.Snow
         [Tooltip("Tiebreak when two SnowFields overlap each other. Higher priority keeps snow in the overlap; lower priority drops it. Equal priority falls back to hostCollider InstanceID (higher wins). Without this rule both fields would mask each other and the overlap stays bare.")]
         public int overlapPriority = 0;
 
+        [Tooltip("When true, the overlap mask only fires if the foreign collider's world Z is within ±maskZWindow of the snow triangle's world Z. Lets a single SnowField on a Z-deep mesh keep snow on its back-Z slice (which sits in the void behind foreground objects) while still masking the front-Z slice that shares Z with foreground colliders. When false (default) the mask fires on any XY overlap regardless of Z, matching the original behavior.")]
+        public bool maskUsesZ = false;
+
+        [Tooltip("World-Z window for the maskUsesZ check. A foreign collider at world Z = Cz only masks a snow triangle whose world Z is in [Cz - maskZWindow, Cz + maskZWindow]. Smaller = stricter (only same-Z foregrounds mask), larger = looser (deeper foregrounds also mask). Typical 0.2 ~ 0.5. Ignored when maskUsesZ is false.")]
+        [Min(0f)] public float maskZWindow = 0.5f;
+
+        [Header("Mask overrides")]
+        [Tooltip("Collider2D override regions that RESTORE snow tris the overlap mask would otherwise drop — use to plug seam gaps where the foreground-overlap test was too aggressive. A snow triangle is restored when it actually shares area with any collider listed here (verts of either inside the other, or edges cross). Supported with full-precision overlap: PolygonCollider2D and BoxCollider2D. Other Collider2D types (Circle, Capsule, Edge, Composite) fall back to a cheap 'tri vertex inside collider' check — works but coarser. Author by adding an empty GameObject with the desired collider over each gap, set Is Trigger = true on the collider (otherwise it would itself act as a foreign mask), then drag the GameObject's collider into this list. No effect when excludeOverlapWithOtherPlatforms is off (everything is kept anyway). Output is tri-granular — bump SnowSettings.subdivLevels for finer boundaries.")]
+        [FormerlySerializedAs("manualKeepPolygons")]
+        public List<Collider2D> manualKeepColliders = new List<Collider2D>();
+
         [Header("Debug")]
         public bool drawPatchOutlines = true;
         public bool drawVertNormals = false;
+
+        [Tooltip("On the next rebuild, log every Collider2D that the overlap mask treated as 'foreign' (and dropped snow tris against), and draw their world-space bounds as red wire boxes in the scene view. Use to diagnose unexpected gaps — toggle on, click Rebuild Now, look at the console + scene view to find the offender. The console entry is clickable and pings the GameObject in the hierarchy.")]
+        public bool debugLogMaskColliders = false;
+
+        // Snapshot of last rebuild's foreign colliders. Populated only when
+        // debugLogMaskColliders is on; consumed by OnDrawGizmos for the red wire cubes.
+        // HashSet to dedupe across patches that share foreign candidates.
+        [System.NonSerialized] readonly HashSet<Collider2D> debugLastForeignColliders = new HashSet<Collider2D>();
 
         // -- Settings accessors (settings asset wins, otherwise fall back) -------
 
@@ -371,6 +391,11 @@ namespace SlimeJumping.Platforms.Snow
                 return;
             }
 
+            // Reset foreign-collider snapshot so the gizmo reflects only THIS rebuild's
+            // candidates. Done unconditionally — the cache is cheap and the toggle gates
+            // the population step inside MaskOutOverlap.
+            debugLastForeignColliders.Clear();
+
             var mesh = sourceMeshFilter.sharedMesh;
             var patches = SnowTopSurfaceExtractor.Extract(mesh, MaxSnowSlopeDeg, detectSlopeCut: SlopeCutTaperHops > 0);
 
@@ -583,15 +608,157 @@ namespace SlimeJumping.Platforms.Snow
             lastHostMeshHash = ComputeHostMeshHash(mesh);
         }
 
-        static bool HitsAnyForeign(Vector2 worldXY, List<Collider2D> foreign)
+        // Z-aware variant: when useZ is true, a foreign hit only counts if the
+        // sample's world Z is within zWindow of the foreign's pre-cached world Z.
+        // Lets a single SnowField on a Z-deep mesh keep snow on its back-Z slice
+        // (deep in the void behind foreground objects) while still masking the
+        // front-Z slice that shares Z with foreground colliders.
+        static bool HitsAnyForeign(Vector3 worldPos, List<Collider2D> foreign, float[] foreignZs, bool useZ, float zWindow)
         {
+            Vector2 xy = new Vector2(worldPos.x, worldPos.y);
             for (int i = 0; i < foreign.Count; i++)
             {
                 var c = foreign[i];
                 if (c == null) continue;
-                if (c.OverlapPoint(worldXY)) return true;
+                if (useZ && Mathf.Abs(worldPos.z - foreignZs[i]) > zWindow) continue;
+                if (c.OverlapPoint(xy)) return true;
             }
             return false;
+        }
+
+        // Membership test against the manual-keep override list. Used both during
+        // candidate filtering (so our own override colliders never act as foreign
+        // maskers, even if the user forgot isTrigger=true) and during the per-tri
+        // restore pass (so a seam tri the foreign mask dropped gets resurrected
+        // when it overlaps a keep collider).
+        bool IsManualKeep(Collider2D c)
+        {
+            if (manualKeepColliders == null) return false;
+            for (int i = 0; i < manualKeepColliders.Count; i++)
+                if (manualKeepColliders[i] == c) return true;
+            return false;
+        }
+
+        // Tri-vs-keep-collider overlap. Replaces the old 4-sample (3 verts + centroid)
+        // OverlapPoint check, which only fired when one of those 4 specific points was
+        // inside the collider — small ones between sample points restored nothing,
+        // partially-covered tris restored either fully or not at all → blocky "grid"
+        // pattern visible in the result. The proper overlap test fires whenever the
+        // collider and triangle actually share any area. Output is still tri-granular —
+        // bump SnowSettings.subdivLevels for finer boundaries.
+        bool TriOverlapsAnyKeep(Vector2 a, Vector2 b, Vector2 c, ref Vector2[] worldPathBuf)
+        {
+            if (manualKeepColliders == null) return false;
+            for (int i = 0; i < manualKeepColliders.Count; i++)
+            {
+                var col = manualKeepColliders[i];
+                if (col == null) continue;
+                if (TriOverlapsCollider(a, b, c, col, ref worldPathBuf)) return true;
+            }
+            return false;
+        }
+
+        static bool TriOverlapsCollider(Vector2 a, Vector2 b, Vector2 c, Collider2D col, ref Vector2[] worldPathBuf)
+        {
+            // Cheap path: any tri vert inside the collider (Unity's optimized PIP works
+            // for every Collider2D subtype, so this branch covers Circle/Capsule/Edge/
+            // Composite "for free" without a type-specific edge extraction).
+            if (col.OverlapPoint(a)) return true;
+            if (col.OverlapPoint(b)) return true;
+            if (col.OverlapPoint(c)) return true;
+
+            // Type-specific edge extraction for the proper overlap test (poly vert in tri
+            // + edge-edge cross). Supported: PolygonCollider2D, BoxCollider2D. Other
+            // types fall back to the cheap path only — partial overlaps where neither
+            // a tri vert nor a collider vert is inside the other (e.g. a small circle
+            // crossing a tri edge between vertices) won't restore. Acceptable trade-off
+            // for now; bump subdivLevels or use a Polygon/Box if you hit that case.
+            if (col is PolygonCollider2D poly)
+            {
+                var polyT = poly.transform;
+                Vector2 ofs = poly.offset;
+                int pathCount = poly.pathCount;
+                for (int p = 0; p < pathCount; p++)
+                {
+                    var path = poly.GetPath(p);
+                    int n = path.Length;
+                    if (n < 2) continue;
+                    if (worldPathBuf == null || worldPathBuf.Length < n) worldPathBuf = new Vector2[n];
+                    for (int i = 0; i < n; i++)
+                    {
+                        Vector3 pw = polyT.TransformPoint(new Vector3(path[i].x + ofs.x, path[i].y + ofs.y, 0f));
+                        worldPathBuf[i] = new Vector2(pw.x, pw.y);
+                    }
+                    if (PathOverlapsTri(worldPathBuf, n, a, b, c)) return true;
+                }
+                return false;
+            }
+
+            if (col is BoxCollider2D box)
+            {
+                // Build world-space corners from local size + offset so a rotated box
+                // is handled correctly. Box.bounds (axis-aligned in world) would lose
+                // orientation if the GO is rotated.
+                var boxT = box.transform;
+                Vector2 half = box.size * 0.5f;
+                Vector2 ofs = box.offset;
+                if (worldPathBuf == null || worldPathBuf.Length < 4) worldPathBuf = new Vector2[4];
+                Vector3 p0 = boxT.TransformPoint(new Vector3(-half.x + ofs.x, -half.y + ofs.y, 0f));
+                Vector3 p1 = boxT.TransformPoint(new Vector3( half.x + ofs.x, -half.y + ofs.y, 0f));
+                Vector3 p2 = boxT.TransformPoint(new Vector3( half.x + ofs.x,  half.y + ofs.y, 0f));
+                Vector3 p3 = boxT.TransformPoint(new Vector3(-half.x + ofs.x,  half.y + ofs.y, 0f));
+                worldPathBuf[0] = new Vector2(p0.x, p0.y);
+                worldPathBuf[1] = new Vector2(p1.x, p1.y);
+                worldPathBuf[2] = new Vector2(p2.x, p2.y);
+                worldPathBuf[3] = new Vector2(p3.x, p3.y);
+                return PathOverlapsTri(worldPathBuf, 4, a, b, c);
+            }
+
+            return false;
+        }
+
+        static bool PathOverlapsTri(Vector2[] path, int n, Vector2 a, Vector2 b, Vector2 c)
+        {
+            // Any path vert inside tri (catches collider fully contained inside a tri).
+            for (int i = 0; i < n; i++)
+                if (PointInTri(path[i], a, b, c)) return true;
+            // Any tri edge crosses any path edge (catches partial overlaps where no
+            // vertex of either is inside the other).
+            for (int i = 0; i < n; i++)
+            {
+                Vector2 pa = path[i];
+                Vector2 pb = path[(i + 1) % n];
+                if (SegmentsIntersect(a, b, pa, pb)) return true;
+                if (SegmentsIntersect(b, c, pa, pb)) return true;
+                if (SegmentsIntersect(c, a, pa, pb)) return true;
+            }
+            return false;
+        }
+
+        // Half-plane test via signed cross-product. Inclusive on edges (collinear → in).
+        static bool PointInTri(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+        {
+            float d1 = (p.x - b.x) * (a.y - b.y) - (a.x - b.x) * (p.y - b.y);
+            float d2 = (p.x - c.x) * (b.y - c.y) - (b.x - c.x) * (p.y - c.y);
+            float d3 = (p.x - a.x) * (c.y - a.y) - (c.x - a.x) * (p.y - a.y);
+            bool hasNeg = (d1 < 0f) || (d2 < 0f) || (d3 < 0f);
+            bool hasPos = (d1 > 0f) || (d2 > 0f) || (d3 > 0f);
+            return !(hasNeg && hasPos);
+        }
+
+        // Strict (non-collinear, non-endpoint-sharing) segment intersection. Collinear
+        // overlaps are rare in practice and would already be caught by the
+        // PointInTri / OverlapPoint checks above.
+        static bool SegmentsIntersect(Vector2 p1, Vector2 p2, Vector2 p3, Vector2 p4)
+        {
+            Vector2 r = p2 - p1;
+            Vector2 s = p4 - p3;
+            float rxs = r.x * s.y - r.y * s.x;
+            if (Mathf.Abs(rxs) < 1e-9f) return false;
+            Vector2 qmp = p3 - p1;
+            float t = (qmp.x * s.y - qmp.y * s.x) / rxs;
+            float u = (qmp.x * r.y - qmp.y * r.x) / rxs;
+            return t > 0f && t < 1f && u > 0f && u < 1f;
         }
 
         // Filter out triangles where any of (3 verts, centroid) — in world XY — falls
@@ -637,7 +804,8 @@ namespace SlimeJumping.Platforms.Snow
             Physics2D.OverlapArea(new Vector2(wxmin, wymin), new Vector2(wxmax, wymax), filter, hitList);
 
             // Reduce candidates to the foreign-and-loses-arbitration set. Anything else
-            // (host's own collider, sister SnowField that wins arbitration) is ignored.
+            // (host's own collider, sister SnowField that wins arbitration, our own
+            // manual-keep polys) is ignored.
             int myId = hostCollider != null ? hostCollider.GetInstanceID() : GetInstanceID();
             var foreign = new List<Collider2D>(hitList.Count);
             for (int i = 0; i < hitList.Count; i++)
@@ -645,6 +813,11 @@ namespace SlimeJumping.Platforms.Snow
                 var h = hitList[i];
                 if (h == null) continue;
                 if (h == hostCollider) continue;
+                // Belt-and-braces: our own manual-keep polys are an override mechanism,
+                // not occluders. Triggers are already excluded by useTriggers=false above,
+                // but skip them here too so a non-trigger keep poly can't accidentally
+                // mask the field it's supposed to restore.
+                if (IsManualKeep(h)) continue;
                 if (SnowFieldRegistry.TryGet(h, out var otherField) && otherField != null && otherField != this)
                 {
                     if (otherField.overlapPriority > overlapPriority) { foreign.Add(h); continue; }
@@ -653,6 +826,22 @@ namespace SlimeJumping.Platforms.Snow
                     continue;
                 }
                 foreign.Add(h);
+            }
+
+            // Debug log — surface every foreign collider this patch is masking against,
+            // with hierarchy path and bounds. Click the log entry to ping the GO.
+            if (debugLogMaskColliders)
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.Append($"[SnowField '{name}'] mask candidates: hit by AABB={hitList.Count}, kept as foreign={foreign.Count}");
+                for (int i = 0; i < foreign.Count; i++)
+                {
+                    var f = foreign[i];
+                    if (f == null) continue;
+                    debugLastForeignColliders.Add(f);
+                    sb.Append($"\n  [{i}] {GetGameObjectPath(f.gameObject)} ({f.GetType().Name}) pos={f.transform.position} bounds={f.bounds}");
+                }
+                Debug.Log(sb.ToString(), this);
             }
 
             int triCount = patch.tris.Length / 3;
@@ -665,7 +854,22 @@ namespace SlimeJumping.Platforms.Snow
                 return patch;
             }
 
-            // Sample 4 points per tri (3 verts + centroid) instead of centroid only.
+            // Pre-cache per-foreign world Z so the per-tri Z-window check avoids a
+            // transform.position dispatch per (tri, foreign) pair.
+            var foreignZs = new float[foreign.Count];
+            for (int i = 0; i < foreign.Count; i++)
+            {
+                var c = foreign[i];
+                foreignZs[i] = c != null ? c.transform.position.z : 0f;
+            }
+
+            bool useZ = maskUsesZ;
+            float zWin = maskZWindow;
+            bool hasKeepPolys = manualKeepColliders != null && manualKeepColliders.Count > 0;
+            // Reused per-collider world-space path buffer for the tri-vs-collider overlap test.
+            Vector2[] keepPathBuf = null;
+
+            // Sample 4 points per tri (3 verts + centroid) for the FOREIGN mask.
             // Centroid-only kept tris that straddle the overlap boundary — one vertex
             // pokes into the other platform — producing a thin tearing band along the
             // seam. Dropping the tri if any of the 4 samples is inside another platform
@@ -678,17 +882,29 @@ namespace SlimeJumping.Platforms.Snow
                 Vector3 wa = meshT.TransformPoint(patch.verts[ia]);
                 Vector3 wb = meshT.TransformPoint(patch.verts[ib]);
                 Vector3 wc = meshT.TransformPoint(patch.verts[ic]);
-                Vector2 p0 = new Vector2(wa.x, wa.y);
-                Vector2 p1 = new Vector2(wb.x, wb.y);
-                Vector2 p2 = new Vector2(wc.x, wc.y);
-                Vector2 pc = new Vector2(
+                Vector3 wcen = new Vector3(
                     (wa.x + wb.x + wc.x) / 3f,
-                    (wa.y + wb.y + wc.y) / 3f);
+                    (wa.y + wb.y + wc.y) / 3f,
+                    (wa.z + wb.z + wc.z) / 3f);
 
-                bool dropTri = HitsAnyForeign(p0, foreign)
-                            || HitsAnyForeign(p1, foreign)
-                            || HitsAnyForeign(p2, foreign)
-                            || HitsAnyForeign(pc, foreign);
+                bool dropTri = HitsAnyForeign(wa,   foreign, foreignZs, useZ, zWin)
+                            || HitsAnyForeign(wb,   foreign, foreignZs, useZ, zWin)
+                            || HitsAnyForeign(wc,   foreign, foreignZs, useZ, zWin)
+                            || HitsAnyForeign(wcen, foreign, foreignZs, useZ, zWin);
+
+                // Manual-keep override: tri-vs-poly overlap test (NOT 4-sample). Restore
+                // the tri whenever it shares any area with a user-drawn keep polygon —
+                // verts of one inside the other, or edges cross. Old 4-sample test left
+                // a blocky grid pattern when the polygon sat between sample points.
+                if (dropTri && hasKeepPolys)
+                {
+                    Vector2 a2 = new Vector2(wa.x, wa.y);
+                    Vector2 b2 = new Vector2(wb.x, wb.y);
+                    Vector2 c2 = new Vector2(wc.x, wc.y);
+                    if (TriOverlapsAnyKeep(a2, b2, c2, ref keepPathBuf))
+                        dropTri = false;
+                }
+
                 keep[t] = !dropTri;
                 if (keep[t]) kept++;
             }
@@ -899,6 +1115,20 @@ namespace SlimeJumping.Platforms.Snow
 
         void OnDrawGizmos()
         {
+            // Debug overlay: foreign colliders the last rebuild treated as maskers,
+            // drawn as red wire boxes using world-space AABB. Independent of the patch
+            // outline gizmos so it stays visible whether or not the field is selected.
+            if (debugLogMaskColliders && debugLastForeignColliders.Count > 0)
+            {
+                Gizmos.color = new Color(1f, 0.25f, 0.25f, 0.9f);
+                foreach (var f in debugLastForeignColliders)
+                {
+                    if (f == null) continue;
+                    var b = f.bounds;
+                    Gizmos.DrawWireCube(b.center, b.size);
+                }
+            }
+
             if (!drawPatchOutlines && !drawVertNormals) return;
             if (sourceMeshFilter == null || sourceMeshFilter.sharedMesh == null) return;
 
@@ -934,6 +1164,21 @@ namespace SlimeJumping.Platforms.Snow
                     }
                 }
             }
+        }
+
+        // "Path/To/GO" — used in mask-debug logs so the user can find the offending
+        // collider quickly even when the scene has many similarly-named GameObjects.
+        static string GetGameObjectPath(GameObject go)
+        {
+            if (go == null) return "(null)";
+            string path = go.name;
+            var t = go.transform.parent;
+            while (t != null)
+            {
+                path = t.name + "/" + path;
+                t = t.parent;
+            }
+            return path;
         }
     }
 }

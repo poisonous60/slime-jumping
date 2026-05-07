@@ -42,11 +42,15 @@ namespace SlimeJumping.Physics
         public bool overrideCeilingAngle;
         public float ceilingThresholdOverride;
         public float ceilingReattachThresholdOverride;
+        public bool overrideEnergyConversionCoyoteTime;
+        public float energyConversionCoyoteTimeOverride;
 
         public float GetCeilingThreshold(SlimeSettings settings) =>
             overrideCeilingAngle ? ceilingThresholdOverride : settings.ceilingThreshold;
         public float GetCeilingReattachThreshold(SlimeSettings settings) =>
             overrideCeilingAngle ? ceilingReattachThresholdOverride : settings.ceilingReattachThreshold;
+        public float GetEnergyConversionCoyoteTime(SlimeSettings settings) =>
+            overrideEnergyConversionCoyoteTime ? energyConversionCoyoteTimeOverride : settings.energyConversionCoyoteTime;
 
         public static readonly SurfaceModifiers Default = new()
         {
@@ -86,7 +90,9 @@ namespace SlimeJumping.Physics
             useInertialSlide = false,
             overrideCeilingAngle = false,
             ceilingThresholdOverride = 0f,
-            ceilingReattachThresholdOverride = 0f
+            ceilingReattachThresholdOverride = 0f,
+            overrideEnergyConversionCoyoteTime = false,
+            energyConversionCoyoteTimeOverride = 0f
         };
 
         /// <summary>
@@ -145,6 +151,8 @@ namespace SlimeJumping.Physics
                 overrideCeilingAngle    = snapToB ? b.overrideCeilingAngle    : a.overrideCeilingAngle,
                 ceilingThresholdOverride         = Mathf.Lerp(a.ceilingThresholdOverride,         b.ceilingThresholdOverride,         t),
                 ceilingReattachThresholdOverride = Mathf.Lerp(a.ceilingReattachThresholdOverride, b.ceilingReattachThresholdOverride, t),
+                overrideEnergyConversionCoyoteTime = snapToB ? b.overrideEnergyConversionCoyoteTime : a.overrideEnergyConversionCoyoteTime,
+                energyConversionCoyoteTimeOverride = Mathf.Lerp(a.energyConversionCoyoteTimeOverride, b.energyConversionCoyoteTimeOverride, t),
             };
         }
     }

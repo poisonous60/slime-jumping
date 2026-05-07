@@ -1,5 +1,6 @@
 using UnityEngine;
 using SlimeJumping.Controller;
+using SlimeJumping.Physics;
 
 namespace SlimeJumping.Platforms
 {
@@ -10,6 +11,9 @@ namespace SlimeJumping.Platforms
         Rigidbody2D rb;
         SlimeController slime;
         PlatformMotor currentPlatform;
+        // Tracks the SurfaceMaterial we pushed onto the slime so we can pop the same
+        // instance later — needs to survive the platform's own field changing mid-attach.
+        SurfaceMaterial pushedSurfaceMaterial;
 
         [SerializeField] float slimeMass = 1f;
 
@@ -26,19 +30,40 @@ namespace SlimeJumping.Platforms
         public void Attach(Collider2D surfaceCollider)
         {
             if (currentPlatform != null) currentPlatform.RemoveRider();
+            // Pop the previous platform's override before resolving the new one so a
+            // chain of springy-branch hops doesn't leak overrides onto the stack.
+            PopSurfaceOverride();
 
             currentPlatform = surfaceCollider
                 ? surfaceCollider.GetComponentInParent<PlatformMotor>()
                 : null;
 
             if (currentPlatform != null)
+            {
+                PushSurfaceOverride(currentPlatform.OverrideSurfaceMaterial);
                 currentPlatform.ApplyRiderInfluence(rb.position, slimeMass, RiderVelocity, RiderIsCharging);
+            }
         }
 
         public void Detach()
         {
             if (currentPlatform != null) currentPlatform.RemoveRider();
+            PopSurfaceOverride();
             currentPlatform = null;
+        }
+
+        void PushSurfaceOverride(SurfaceMaterial mat)
+        {
+            if (mat == null || slime == null) return;
+            slime.PushSurfaceMaterialOverride(mat);
+            pushedSurfaceMaterial = mat;
+        }
+
+        void PopSurfaceOverride()
+        {
+            if (pushedSurfaceMaterial == null || slime == null) { pushedSurfaceMaterial = null; return; }
+            slime.PopSurfaceMaterialOverride(pushedSurfaceMaterial);
+            pushedSurfaceMaterial = null;
         }
 
         void FixedUpdate()

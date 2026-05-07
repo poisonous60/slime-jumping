@@ -115,6 +115,13 @@ namespace SlimeJumping.Physics
         [Tooltip("Re-attach angle (Airborne landing). Hysteresis: must be ≤ ceilingAngle.")]
         public float ceilingReattachAngle = 101f;
 
+        [Header("Energy Conversion Coyote")]
+        [Tooltip("Override the SlimeSettings energyConversionCoyoteTime with the value below. OFF = use global SlimeSettings (default). Surfaces like SpringyBranch can extend the post-landing window for late-Space energy conversion.")]
+        public bool overrideEnergyConversionCoyoteTime = false;
+        [Min(0f)]
+        [Tooltip("Seconds after landing during which a Space press still grants the same expanded charge radius a Space-held landing would have. 0 = disabled on this surface.")]
+        public float energyConversionCoyoteTime = 0.12f;
+
         public SurfaceModifiers ToModifiers() => new SurfaceModifiers
         {
             crawlSpeed = crawlSpeedMultiplier,
@@ -153,7 +160,9 @@ namespace SlimeJumping.Physics
             useInertialSlide = useInertialSlide,
             overrideCeilingAngle = overrideCeilingAngle,
             ceilingThresholdOverride = Mathf.Cos(ceilingAngle * Mathf.Deg2Rad),
-            ceilingReattachThresholdOverride = Mathf.Cos(ceilingReattachAngle * Mathf.Deg2Rad)
+            ceilingReattachThresholdOverride = Mathf.Cos(ceilingReattachAngle * Mathf.Deg2Rad),
+            overrideEnergyConversionCoyoteTime = overrideEnergyConversionCoyoteTime,
+            energyConversionCoyoteTimeOverride = energyConversionCoyoteTime
         };
     }
 }

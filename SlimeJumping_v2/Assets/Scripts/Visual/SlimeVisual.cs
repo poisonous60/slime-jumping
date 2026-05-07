@@ -799,7 +799,11 @@ public class SlimeVisual : MonoBehaviour
     private Vector2 ComputeCoyoteSquash()
     {
         if (slimeSettings == null) return Vector2.zero;
-        float duration = slimeSettings.energyConversionCoyoteTime;
+        // Prefer the controller's active duration (matches the per-surface override
+        // SurfaceMaterial may have applied at landing); fall back to the global
+        // setting when nothing is currently armed.
+        float armedDuration = slimeController.EnergyCoyoteDuration;
+        float duration = armedDuration > 0f ? armedDuration : slimeSettings.energyConversionCoyoteTime;
         if (duration <= 0f)
         {
             coyoteRecoveryTimer = -1f;

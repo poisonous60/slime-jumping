@@ -1,4 +1,5 @@
 using UnityEngine;
+using SlimeJumping.Physics;
 
 namespace SlimeJumping.Platforms
 {
@@ -8,6 +9,15 @@ namespace SlimeJumping.Platforms
     // so PlatformCarrier.GetEffectiveVelocity only adds AngularVelocity * arm.
     public class SpringyBranchPlatform : PlatformMotor
     {
+        [Header("Surface Override")]
+        [Tooltip("SurfaceMaterial pushed onto the slime's override stack while attached. " +
+                 "Mirrors WaterCurrentZone's pattern; PlatformCarrier handles the Push/Pop on " +
+                 "Attach/Detach. Use to grant a longer energyConversionCoyoteTime (or other " +
+                 "per-surface tuning) without touching the global SlimeSettings.")]
+        [SerializeField] SurfaceMaterial branchSurfaceMaterial;
+
+        public override SurfaceMaterial OverrideSurfaceMaterial => branchSurfaceMaterial;
+
         [Header("Geometry")]
         [SerializeField, Min(0.1f)] float branchLength = 4f;
 

@@ -1,16 +1,57 @@
 using System;
 using UnityEngine;
+using SlimeJumping.Controller;
+using SlimeJumping.Physics;
 
 namespace SlimeJumping.Platforms
 {
-    // Static-baseline rope: a parabolic baseline between two anchors,
-    // deformed only by a localized spring-damped dip under the rider.
-    // Replaces RopeV3's verlet polyline (kept alongside, not removed) to
-    // sidestep the contact-node thrashing that broke re-attach after an
-    // intermediate non-rope contact. SlimeController stays untouched —
-    // implements IRopePlatform like the rest of the rope family.
+    // Power-line / tightrope rope. Built from scratch for the slime project —
+    // no shared lineage with Rope/RopeV2/RopeV3 (verlet-based, all had attach
+    // and underside bugs).
+    //
+    // Core model:
+    //   Static parabolic baseline (gentle gravity sag, designer-tunable).
+    //   Single 1D spring-damper integrator on dipDepth (the rider-induced
+    //   sag depth). Curve shape = baseline + worldDown × dipDepth × Bell(u, riderT)
+    //   where Bell is a piecewise-smoothstep that peaks at the rider's parameter
+    //   along the rope and tapers to 0 at both anchors. The whole rope
+    //   responds to the rider, deepest exactly under them.
+    //
+    // Trampoline behaviour:
+    //   While charging the rope sits at its steady-state baseEquilibrium dip —
+    //   no extra deepening. At launch, GetLaunchBonus injects a one-shot
+    //   downward dipVelocity pulse (launchImpactKickCurve(chargeRatio) m/s)
+    //   so the rope reads as PUNCHED by the kickoff, not slowly compressed.
+    //   PostprocessLaunchVelocity then clamps the slime's upward component up
+    //   to minLaunchVerticalSpeed so a near-horizontal aim isn't immediately
+    //   recaught by the rope's rebound. Spring switches to overdamped mode
+    //   on detach so the rope returns to baseline smoothly without snap-back
+    //   that could catch the launching slime.
+    //
+    // Underside / pass-through:
+    //   Rope collider is a thin trigger PolygonCollider2D ribbon, never an
+    //   EdgeCollider2D (which always tunneled in past attempts).
+    //   When slime enters from below (vy > 0), TautLine registers the
+    //   polygon in slime.IgnoredColliderList (Passthrough mode) for the
+    //   transit duration, so SurfaceProbe skips it and slime continues
+    //   through. Same KnifeHazard-style pattern.
+    //
+    // Post-launch:
+    //   No extra IgnoredCollider work — SlimeController.Launch already calls
+    //   ignoredColliderList.RegisterOverlapping (ReattachGuard mode) which
+    //   filters our polygon from SurfaceProbe until the slime physically
+    //   clears it. The spring's overdamped post-detach mode (detachedDamping
+    //   ≥1) prevents any upward overshoot that could catch the slime.
+    //
+    // Slime tracking:
+    //   No carry-delta channel (RopeV3's ConsumeRiderCarryDelta accumulated
+    //   small per-FU deltas + maxCarryPerStep clamp → desync → detach bug).
+    //   TautLine instead writes rb.position absolutely each FU (executionOrder
+    //   200, after SlimeController) — slime is recomputed from baseline
+    //   projection to the current curve, no accumulation, no clamp.
     [ExecuteAlways]
-    [DefaultExecutionOrder(-100)]
+    [DefaultExecutionOrder(200)]
+    [RequireComponent(typeof(PolygonCollider2D))]
     public class TautLine : MonoBehaviour, IRopePlatform
     {
         [Header("Anchors")]
@@ -18,87 +59,135 @@ namespace SlimeJumping.Platforms
         [SerializeField] Transform anchorB;
 
         [Header("Targets")]
-        [SerializeField] EdgeCollider2D edge;
+        [SerializeField] PolygonCollider2D polygon;
         [SerializeField] LineRenderer line;
 
-        [Header("Baseline shape")]
-        [SerializeField, Min(2)] int sampleCount = 32;
-        [Tooltip("Peak parabolic sag at midpoint (m). 0 = perfectly straight.")]
+        [Header("Slime ref (auto-find if null)")]
+        [SerializeField] SlimeController slime;
+
+        [Header("Shape")]
+        [SerializeField, Min(4)] int sampleCount = 32;
+        [Tooltip("Static parabolic sag at midpoint with no rider (m). 0 = perfectly straight.")]
         [SerializeField, Min(0f)] float baselineSag = 0.15f;
+        [Tooltip("Polygon collider thickness (perpendicular to curve, m). Anti-tunnel.")]
+        [SerializeField, Min(0.02f)] float ribbonThickness = 0.1f;
 
-        [Header("Rider Spring")]
-        [Tooltip("Steady-state dip target (m) per kg of rider mass.")]
-        [SerializeField, Min(0f)] float equilibriumDepthPerKg = 0.4f;
-        [Tooltip("Spring stiffness k (1/s²). Higher = faster settle, shorter period.")]
+        [Header("Spring (rider sag)")]
+        [Tooltip("Steady-state dip depth at center under standing slime (m).")]
+        [SerializeField, Min(0f)] float baseEquilibrium = 0.3f;
+        [Tooltip("Spring stiffness k (1/s²). Higher = faster settle, shorter visible oscillation.")]
         [SerializeField, Min(0.01f)] float springStiffness = 60f;
-        [Tooltip("Damping coefficient (1/s). Higher = quicker settle, less ringing.")]
-        [SerializeField, Min(0f)] float springDamping = 5f;
-        [Tooltip("Spring-velocity kick per (m/s) of impact velocity into gravity.")]
-        [SerializeField, Min(0f)] float impactCompressionFromVelocity = 0.3f;
-        [Tooltip("Per-FU carry safety cap (m). Bounds slime teleport per frame.")]
-        [SerializeField, Min(0f)] float maxCarryPerStep = 0.25f;
+        [Tooltip("Damping ratio while slime is on rope. <1 = bounce on landing, =1 = no overshoot.")]
+        [SerializeField, Range(0f, 2f)] float attachedDampingRatio = 0.5f;
+        [Tooltip("Damping ratio after slime detaches. ≥1 = no oscillation past baseline.")]
+        [SerializeField, Range(0.5f, 3f)] float detachedDampingRatio = 1.2f;
+        [Tooltip("Initial dipVelocity kick per (m/s) of impact velocity into gravity. 0 = no impact reaction.")]
+        [SerializeField, Min(0f)] float impactCompressionFromVelocity = 0.05f;
 
-        [Header("Local-dip kernel")]
-        [Tooltip("Half-width of the local depression, in baseline parameter (u ∈ [0,1]) space.")]
-        [SerializeField, Range(0.01f, 0.5f)] float kernelHalfWidth = 0.15f;
+        [Header("Launch boost (effect-mode)")]
+        [Tooltip("Bonus speed added to slime's launch velocity at FULL charge (m/s). Scales linearly with chargeRatio.")]
+        [SerializeField, Min(0f)] float jumpBoost = 3f;
+        [Tooltip("Hard cap on bonus speed (m/s).")]
+        [SerializeField, Min(0f)] float maxCap = 6f;
+        [Tooltip("Downward dipVelocity kick (m/s) applied to the rope at launch — visual punch as the slime kicks off. Curve maps chargeRatio∈[0,1] to kick magnitude.")]
+        [SerializeField] AnimationCurve launchImpactKickCurve = AnimationCurve.Linear(0f, 0f, 1f, 4f);
+        [Tooltip("Minimum upward (worldUp) velocity guaranteed for any launch off this rope (m/s). Constant — does not scale with charge. 0 = disabled. Prevents near-horizontal launches from being immediately recaught by the rope's spring rebound.")]
+        [SerializeField, Min(0f)] float minLaunchVerticalSpeed = 3f;
 
-        [Header("Launch — bonus curves")]
-        [SerializeField] AnimationCurve timingBonusCurve = AnimationCurve.Linear(0f, 0f, 20f, 20f);
-        [SerializeField] AnimationCurve chargeMultiplierCurve = AnimationCurve.Constant(0f, 1f, 1f);
-        [SerializeField, Min(0f)] float maxReboundSpeed = 18f;
+        [Header("Pass-through (one-way semi-solid)")]
+        [Tooltip("Per-FU duration to refresh IgnoredCollider timer while in passthrough (s).")]
+        [SerializeField, Min(0.05f)] float passthroughRefreshDuration = 0.2f;
+        [Tooltip("|dipVelocity| below this (m/s) means rope settled enough to release post-launch passthrough.")]
+        [SerializeField, Min(0.001f)] float settleVelocityThreshold = 0.05f;
 
-        public EdgeCollider2D Edge => edge;
-        public float MaxReboundSpeed => maxReboundSpeed;
+        public EdgeCollider2D Edge => null;     // null → Attempt-4/5 hacks in SlimeController bypass naturally
+        public float MaxReboundSpeed => maxCap;
         public event Action<RopeEventType, Vector2> OnRopeEvent;
 
         Vector2[] baselinePoints;
+        Vector3[] lineWorldPoints;
+        Vector2[] polygonLocalPoints;
         Vector2 worldDown = new Vector2(0f, -1f);
-
-        Vector2[] displacedLocal;
-        Vector3[] displacedWorld;
-
-        bool riderActive;
-        float riderMass;
-        float riderT;
-        float dipDepth;
-        float dipVelocity;
-        Vector2 prevContactWorld;
-        bool prevContactValid;
-        Vector2 carryDeltaAccum;
+        Vector2 worldUp = new Vector2(0f, 1f);
+        Vector2 baselineTangent = new Vector2(1f, 0f);
+        Vector2 baselineNormal = new Vector2(0f, 1f);
 
         Vector3 lastAnchorAPos;
         Vector3 lastAnchorBPos;
         int lastSampleCount;
         float lastBaselineSag;
+        float lastRibbonThickness;
 
-        void OnEnable() { Rebuild(); }
+        // Runtime spring state
+        bool riderActive;
+        float riderT;
+        float dipDepth;
+        float dipVelocity;
+        SlimeController.SlimeState lastState = SlimeController.SlimeState.Airborne;
+        bool postDetach;        // Use detachedDampingRatio while true
+
+        // Pass-through (from-below) state
+        bool inPassthroughBelow;
+
+        Rigidbody2D slimeRb;
+        Collider2D slimeCol;
+
+        void Reset() { polygon = GetComponent<PolygonCollider2D>(); }
+
+        void OnEnable()
+        {
+            if (polygon == null) polygon = GetComponent<PolygonCollider2D>();
+            if (polygon != null) polygon.isTrigger = true;
+            ResolveSlime();
+            Rebuild();
+        }
 
         void OnValidate()
         {
-            if (sampleCount < 2) sampleCount = 2;
+            if (sampleCount < 4) sampleCount = 4;
+            if (polygon != null) polygon.isTrigger = true;
             if (isActiveAndEnabled) Rebuild();
+        }
+
+        void ResolveSlime()
+        {
+            if (slime == null) slime = FindFirstObjectByType<SlimeController>();
+            if (slime != null)
+            {
+                slimeRb = slime.GetComponent<Rigidbody2D>();
+                slimeCol = slime.GetComponent<CircleCollider2D>();
+            }
         }
 
         public void Rebuild()
         {
             if (anchorA == null || anchorB == null) return;
-            if (sampleCount < 2) sampleCount = 2;
+            if (sampleCount < 4) sampleCount = 4;
 
             if (baselinePoints == null || baselinePoints.Length != sampleCount)
             {
                 baselinePoints = new Vector2[sampleCount];
-                displacedLocal = new Vector2[sampleCount];
-                displacedWorld = new Vector3[sampleCount];
+                lineWorldPoints = new Vector3[sampleCount];
+                polygonLocalPoints = new Vector2[sampleCount * 2];
             }
 
             Vector2 g = Physics2D.gravity;
             worldDown = g.sqrMagnitude > 1e-6f ? g.normalized : new Vector2(0f, -1f);
+            worldUp = -worldDown;
 
             Vector2 a = anchorA.position;
             Vector2 b = anchorB.position;
+            Vector2 ab = b - a;
+            baselineTangent = ab.sqrMagnitude > 1e-6f ? ab.normalized : new Vector2(1f, 0f);
+            // perpendicular pointing in worldUp direction (away from gravity)
+            Vector2 perp = new Vector2(-baselineTangent.y, baselineTangent.x);
+            if (Vector2.Dot(perp, worldUp) < 0f) perp = -perp;
+            baselineNormal = perp;
+
             for (int i = 0; i < sampleCount; i++)
             {
                 float u = i / (float)(sampleCount - 1);
+                // Parabolic sag: 4u(1-u) gives 1 at midpoint, 0 at ends.
                 baselinePoints[i] = Vector2.Lerp(a, b, u)
                     + worldDown * (baselineSag * 4f * u * (1f - u));
             }
@@ -107,8 +196,9 @@ namespace SlimeJumping.Platforms
             lastAnchorBPos = anchorB.position;
             lastSampleCount = sampleCount;
             lastBaselineSag = baselineSag;
+            lastRibbonThickness = ribbonThickness;
 
-            Sync(-1f);
+            SyncShapes();
         }
 
         bool AnchorsOrShapeChanged()
@@ -117,7 +207,17 @@ namespace SlimeJumping.Platforms
             return lastAnchorAPos != anchorA.position
                 || lastAnchorBPos != anchorB.position
                 || lastSampleCount != sampleCount
-                || !Mathf.Approximately(lastBaselineSag, baselineSag);
+                || !Mathf.Approximately(lastBaselineSag, baselineSag)
+                || !Mathf.Approximately(lastRibbonThickness, ribbonThickness);
+        }
+
+        void Update()
+        {
+            // Editor-mode preview: rebuild on anchor change so designer sees baseline shape.
+            if (Application.isPlaying) return;
+            if (anchorA == null || anchorB == null) return;
+            if (AnchorsOrShapeChanged()) Rebuild();
+            else SyncShapes();
         }
 
         void FixedUpdate()
@@ -125,158 +225,135 @@ namespace SlimeJumping.Platforms
             if (!Application.isPlaying) return;
             if (anchorA == null || anchorB == null) return;
             if (AnchorsOrShapeChanged()) Rebuild();
+            if (slime == null) ResolveSlime();
+            if (slime == null) return;
 
             float dt = Time.fixedDeltaTime;
 
-            float target = riderActive ? Mathf.Max(0f, riderMass) * equilibriumDepthPerKg : 0f;
-            float accel = springStiffness * (target - dipDepth) - springDamping * dipVelocity;
-            dipVelocity += accel * dt;
-            dipDepth += dipVelocity * dt;
+            // --- 1. State edge detection ---
+            var state = slime.CurrentState;
+            bool wasOnRope = (lastState == SlimeController.SlimeState.Attached
+                           || lastState == SlimeController.SlimeState.Charging)
+                           && riderActive;   // riderActive last FU
+            bool nowAirborne = state == SlimeController.SlimeState.Airborne;
 
-            if (dipDepth < 0f)
-            {
-                dipDepth = 0f;
-                if (dipVelocity < 0f) dipVelocity = 0f;
-            }
+            // --- 2. Update riderActive from current attach state ---
+            // (Slime is "on this rope" iff it is attached AND its surface collider is our polygon.)
+            bool onThisRope = (state == SlimeController.SlimeState.Attached
+                            || state == SlimeController.SlimeState.Charging)
+                            && polygon != null
+                            && slime.SurfaceCollider == polygon;
 
-            if (riderActive)
+            if (onThisRope)
             {
-                Vector2 contactWorld = SampleBaseline(riderT) + worldDown * dipDepth;
-                if (prevContactValid)
-                {
-                    Vector2 delta = contactWorld - prevContactWorld;
-                    if (maxCarryPerStep > 0f && delta.sqrMagnitude > maxCarryPerStep * maxCarryPerStep)
-                        delta = delta.normalized * maxCarryPerStep;
-                    carryDeltaAccum += delta;
-                }
-                prevContactWorld = contactWorld;
-                prevContactValid = true;
+                riderActive = true;
+                riderT = ProjectToBaselineParam(slime.Position);
+                postDetach = false;   // re-attached; clear post-detach mode
             }
             else
             {
-                prevContactValid = false;
+                riderActive = false;
             }
 
-            Sync(riderActive ? riderT : -1f);
+            // --- 3. Detach edge → switch spring to overdamped (no upward overshoot) ---
+            // No IgnoredCollider work here — SlimeController.Launch already registered
+            // our polygon as ReattachGuard via ignoredColliderList.RegisterOverlapping,
+            // which filters us from SurfaceProbe until slime physically clears the area
+            // (or postLaunchTimer expires). Adding extra Passthrough on top blocks the
+            // legitimate fall-back-and-land that the player expects.
+            if (wasOnRope && nowAirborne)
+            {
+                postDetach = true;
+            }
 
-            riderActive = false;
+            // --- 4. Compute spring target ---
+            // Charging no longer deepens the rope — that mass is delivered as a one-shot
+            // dipVelocity kick at launch (see GetLaunchBonus) so the player feels the
+            // rope punch DOWN as the slime kicks off, instead of slowly sagging while
+            // they hold charge.
+            float target = 0f;
+            if (riderActive)
+            {
+                target = baseEquilibrium * ShapeFactor(riderT);
+            }
+
+            // --- 5. Integrate spring (semi-implicit Euler) ---
+            // c = 2 ζ √k → ζ controls overshoot: <1 underdamped (visible bounce), ≥1 overdamped (no overshoot).
+            float zeta = postDetach ? detachedDampingRatio : attachedDampingRatio;
+            float c = 2f * zeta * Mathf.Sqrt(springStiffness);
+            float accel = springStiffness * (target - dipDepth) - c * dipVelocity;
+            dipVelocity += accel * dt;
+            dipDepth += dipVelocity * dt;
+
+            // --- 6. Clear post-detach when settled ---
+            if (postDetach
+                && Mathf.Abs(dipVelocity) < settleVelocityThreshold
+                && Mathf.Abs(dipDepth) < settleVelocityThreshold * 0.1f)
+            {
+                postDetach = false;
+                dipDepth = 0f;
+                dipVelocity = 0f;
+            }
+
+            // --- 7. Sync collider + visual ---
+            SyncShapes();
+
+            // --- 8. Snap slime to current curve (overrides SlimeController's positioning) ---
+            if (riderActive && slimeRb != null)
+            {
+                Vector2 curvePoint = SampleCurveAt(riderT);
+                Vector2 desired = curvePoint + baselineNormal * slime.SlimeRadius;
+                slimeRb.position = desired;
+            }
+
+            lastState = state;
         }
 
-        void Update()
+        // --- Curve sampling --------------------------------------------------
+
+        float ShapeFactor(float u) => 4f * u * (1f - u);   // 1 at u=0.5, 0 at endpoints
+
+        // Piecewise smoothstep bell, peaks at u=riderT, 0 at u=0 and u=1.
+        // Smoothstep gives C¹ continuity at the peak — no kink under slime.
+        float Bell(float u, float t)
         {
-            if (Application.isPlaying) return;
-            if (anchorA == null || anchorB == null) return;
-            if (AnchorsOrShapeChanged()) Rebuild();
-            else Sync(-1f);
+            t = Mathf.Clamp01(t);
+            if (u <= t)
+            {
+                if (t < 1e-5f) return 0f;
+                float s = u / t;
+                return s * s * (3f - 2f * s);
+            }
+            else
+            {
+                float r = 1f - t;
+                if (r < 1e-5f) return 0f;
+                float s = (1f - u) / r;
+                return s * s * (3f - 2f * s);
+            }
         }
 
-        Vector2 SampleBaseline(float u)
+        Vector2 SampleBaselineAt(float u)
         {
+            if (baselinePoints == null || baselinePoints.Length < 2) return Vector2.zero;
             u = Mathf.Clamp01(u);
-            float ix = u * (sampleCount - 1);
+            float ix = u * (baselinePoints.Length - 1);
             int i0 = Mathf.FloorToInt(ix);
-            int i1 = Mathf.Min(i0 + 1, sampleCount - 1);
+            int i1 = Mathf.Min(i0 + 1, baselinePoints.Length - 1);
             float t = ix - i0;
             return Vector2.Lerp(baselinePoints[i0], baselinePoints[i1], t);
         }
 
-        float Kernel(float du)
+        Vector2 SampleCurveAt(float u)
         {
-            float a = Mathf.Abs(du) / Mathf.Max(0.0001f, kernelHalfWidth);
-            if (a >= 1f) return 0f;
-            float s = 1f - a;
-            return s * s * (3f - 2f * s);
+            return SampleBaselineAt(u) + worldDown * (dipDepth * Bell(u, riderT));
         }
 
-        void Sync(float riderUOrNeg)
-        {
-            if (baselinePoints == null) return;
-
-            for (int i = 0; i < sampleCount; i++)
-            {
-                float u = i / (float)(sampleCount - 1);
-                Vector2 p = baselinePoints[i];
-                if (riderUOrNeg >= 0f)
-                    p += worldDown * (dipDepth * Kernel(u - riderUOrNeg));
-                displacedWorld[i] = new Vector3(p.x, p.y, 0f);
-            }
-
-            if (line != null)
-            {
-                if (line.positionCount != sampleCount) line.positionCount = sampleCount;
-                line.SetPositions(displacedWorld);
-            }
-
-            if (edge != null)
-            {
-                for (int i = 0; i < sampleCount; i++)
-                {
-                    Vector2 w = new Vector2(displacedWorld[i].x, displacedWorld[i].y);
-                    displacedLocal[i] = transform.InverseTransformPoint(w);
-                }
-                edge.points = displacedLocal;
-            }
-        }
-
-        public Vector2 SampleVelocityAt(Vector2 worldPoint)
-        {
-            float u = ParamFromWorld(worldPoint);
-            return worldDown * (dipVelocity * Kernel(u - riderT));
-        }
-
-        public void ReportRiderContact(Collider2D _slimeCol, Vector2 worldContact, float mass, Vector2 _riderVel)
-        {
-            riderActive = true;
-            riderMass = mass;
-            riderT = ParamFromWorld(worldContact);
-        }
-
-        public void NotifyFirstAttach(Vector2 worldContact)
-        {
-            riderT = ParamFromWorld(worldContact);
-            OnRopeEvent?.Invoke(RopeEventType.FirstAttach, worldContact);
-        }
-
-        public void NotifyLaunchRebound(Vector2 worldContact)
-        {
-            dipDepth = 0f;
-            dipVelocity = 0f;
-            carryDeltaAccum = Vector2.zero;
-            prevContactValid = false;
-            riderActive = false;
-            OnRopeEvent?.Invoke(RopeEventType.LaunchRebound, worldContact);
-        }
-
-        public void ApplyRiderImpact(Vector2 worldContact, Vector2 impactVelocity)
-        {
-            riderT = ParamFromWorld(worldContact);
-            float vDown = Mathf.Max(0f, Vector2.Dot(impactVelocity, worldDown));
-            dipVelocity += vDown * impactCompressionFromVelocity;
-        }
-
-        public float GetLaunchBonus(Vector2 launchDir, Vector2 worldContact, float chargeRatio)
-        {
-            if (launchDir.sqrMagnitude < 1e-6f) return 0f;
-            Vector2 dir = launchDir.normalized;
-            Vector2 ropeVel = SampleVelocityAt(worldContact);
-            float proj = Mathf.Max(0f, Vector2.Dot(ropeVel, dir));
-            float timing = timingBonusCurve.Evaluate(proj);
-            float charge = chargeMultiplierCurve.Evaluate(chargeRatio);
-            return Mathf.Clamp(timing * charge, 0f, maxReboundSpeed);
-        }
-
-        public Vector2 ConsumeRiderCarryDelta(Vector2 _worldContact)
-        {
-            Vector2 d = carryDeltaAccum;
-            carryDeltaAccum = Vector2.zero;
-            return d;
-        }
-
-        float ParamFromWorld(Vector2 p)
+        float ProjectToBaselineParam(Vector2 worldPos)
         {
             if (baselinePoints == null || baselinePoints.Length < 2) return 0f;
             int n = baselinePoints.Length;
-            float bestDistSq = float.MaxValue;
+            float bestSq = float.MaxValue;
             float bestU = 0f;
             for (int i = 0; i < n - 1; i++)
             {
@@ -284,16 +361,179 @@ namespace SlimeJumping.Platforms
                 Vector2 b = baselinePoints[i + 1];
                 Vector2 ab = b - a;
                 float len2 = ab.sqrMagnitude;
-                float t = len2 > 1e-8f ? Mathf.Clamp01(Vector2.Dot(p - a, ab) / len2) : 0f;
+                float t = len2 > 1e-8f ? Mathf.Clamp01(Vector2.Dot(worldPos - a, ab) / len2) : 0f;
                 Vector2 c = a + ab * t;
-                float d2 = (p - c).sqrMagnitude;
-                if (d2 < bestDistSq)
+                float d2 = (worldPos - c).sqrMagnitude;
+                if (d2 < bestSq)
                 {
-                    bestDistSq = d2;
+                    bestSq = d2;
                     bestU = (i + t) / (float)(n - 1);
                 }
             }
             return bestU;
+        }
+
+        // --- Polygon + LineRenderer sync -----------------------------------
+
+        void SyncShapes()
+        {
+            if (baselinePoints == null) return;
+            int n = baselinePoints.Length;
+
+            // Top edge of ribbon = displaced curve (where slime sits).
+            // Bottom edge = top edge + worldDown × ribbonThickness.
+            // Polygon is closed loop: top-left → top-right → bottom-right → bottom-left.
+            for (int i = 0; i < n; i++)
+            {
+                float u = i / (float)(n - 1);
+                Vector2 top = baselinePoints[i] + worldDown * (dipDepth * Bell(u, riderT));
+                lineWorldPoints[i] = new Vector3(top.x, top.y, 0f);
+                Vector2 bottom = top + worldDown * ribbonThickness;
+                polygonLocalPoints[i] = transform.InverseTransformPoint(top);
+                polygonLocalPoints[2 * n - 1 - i] = transform.InverseTransformPoint(bottom);
+            }
+
+            if (line != null)
+            {
+                if (line.positionCount != n) line.positionCount = n;
+                line.SetPositions(lineWorldPoints);
+            }
+
+            if (polygon != null)
+            {
+                polygon.SetPath(0, polygonLocalPoints);
+            }
+        }
+
+        // --- One-way pass-through (from-below entry) -----------------------
+
+        void OnTriggerEnter2D(Collider2D other)
+        {
+            if (slime == null || polygon == null) return;
+            var hitSlime = other.GetComponentInParent<SlimeController>();
+            if (hitSlime != slime) return;
+
+            if (slime.Velocity.y > 0f)
+            {
+                // Approaching upward → register Passthrough so probe skips us.
+                slime.RegisterIgnoredCollider(polygon, passthroughRefreshDuration);
+                inPassthroughBelow = true;
+                return;
+            }
+
+            // Falling onto polygon. Anti-tunneling rescue:
+            // Fast slime can move > polygon thickness in one FU, ending up DEEPLY inside the
+            // polygon's interior. SurfaceProbe's ClosestPoint then returns the query point
+            // itself ([SingleContactSurfaceProbe.cs:30-31] deep-penetration skip), so the
+            // probe never sees the contact and slime tunnels through. Unity's normal contact
+            // manifold doesn't have this problem; ours does.
+            //
+            // Pull slime back to the curve's top edge + slimeRadius so SurfaceProbe sees a
+            // normal contact next FU and attaches cleanly.
+            if (baselinePoints == null) return;
+            float u = ProjectToBaselineParam(slime.Position);
+            Vector2 topAtU = SampleCurveAt(u);
+            Vector2 toSlime = (Vector2)slime.Position - topAtU;
+            float aboveDistance = Vector2.Dot(toSlime, baselineNormal);
+            if (aboveDistance < slime.SlimeRadius && slimeRb != null)
+            {
+                slimeRb.position = topAtU + baselineNormal * slime.SlimeRadius;
+            }
+        }
+
+        void OnTriggerStay2D(Collider2D other)
+        {
+            if (!inPassthroughBelow) return;
+            if (slime == null || polygon == null) return;
+            var hitSlime = other.GetComponentInParent<SlimeController>();
+            if (hitSlime != slime) return;
+            // Refresh timer while still transiting.
+            slime.RegisterIgnoredCollider(polygon, passthroughRefreshDuration);
+        }
+
+        void OnTriggerExit2D(Collider2D other)
+        {
+            if (!inPassthroughBelow) return;
+            if (slime == null || polygon == null) return;
+            var hitSlime = other.GetComponentInParent<SlimeController>();
+            if (hitSlime != slime) return;
+            slime.UnregisterIgnoredCollider(polygon);
+            inPassthroughBelow = false;
+        }
+
+        // --- IRopePlatform implementation ----------------------------------
+
+        public Vector2 SampleVelocityAt(Vector2 worldPoint)
+        {
+            // Velocity at any point on rope = worldDown × dipVelocity × Bell(u, riderT).
+            float u = ProjectToBaselineParam(worldPoint);
+            return worldDown * (dipVelocity * Bell(u, riderT));
+        }
+
+        // We derive riderActive from slime.SurfaceCollider in FixedUpdate, not from this callback.
+        // SlimeController calls ReportRiderContact every FU while attached; ignored here.
+        public void ReportRiderContact(Collider2D _slimeCol, Vector2 _worldContact, float _mass, Vector2 _riderVel) { }
+
+        public void NotifyFirstAttach(Vector2 worldContact)
+        {
+            postDetach = false;
+            OnRopeEvent?.Invoke(RopeEventType.FirstAttach, worldContact);
+        }
+
+        public void NotifyLaunchRebound(Vector2 worldContact)
+        {
+            // Detach edge detection in FixedUpdate already starts the settle coroutine;
+            // this hook is kept for parity with v1/v2/v3 and external listeners.
+            OnRopeEvent?.Invoke(RopeEventType.LaunchRebound, worldContact);
+        }
+
+        public void ApplyRiderImpact(Vector2 _worldContact, Vector2 impactVelocity)
+        {
+            // Hard landing kicks the spring downward — visual deepening on slam.
+            if (impactCompressionFromVelocity <= 0f) return;
+            float vDown = Mathf.Max(0f, Vector2.Dot(impactVelocity, worldDown));
+            dipVelocity += vDown * impactCompressionFromVelocity;
+        }
+
+        public float GetLaunchBonus(Vector2 launchDir, Vector2 _worldContact, float chargeRatio)
+        {
+            // Side effect: the rope absorbs the slime's kickoff as a downward dipVelocity
+            // pulse, shaped by launchImpactKickCurve(chargeRatio). The visual deepening
+            // that v6 used to draw during charging now happens here, in one frame, at
+            // the moment the slime actually pushes off — so the rope reads as elastic
+            // (punched, not slowly compressed).
+            if (launchImpactKickCurve != null)
+            {
+                float kick = launchImpactKickCurve.Evaluate(Mathf.Clamp01(chargeRatio));
+                if (kick > 0f) dipVelocity += kick;
+            }
+
+            if (launchDir.sqrMagnitude < 1e-6f) return 0f;
+            Vector2 dir = launchDir.normalized;
+            float upward = Mathf.Max(0f, Vector2.Dot(dir, worldUp));
+            // Effect-mode (β): bonus scales linearly with chargeRatio, capped.
+            // Designer tunes by jumpBoost (full-charge boost) + maxCap (hard cap).
+            float bonus = jumpBoost * Mathf.Clamp01(chargeRatio) * upward;
+            return Mathf.Clamp(bonus, 0f, maxCap);
+        }
+
+        public Vector2 PostprocessLaunchVelocity(Vector2 launchVel)
+        {
+            // Guarantee the slime leaves with at least minLaunchVerticalSpeed of upward
+            // (worldUp) speed. A near-horizontal aim otherwise drops the slime onto the
+            // rope's spring rebound, which then catches it and re-attaches.
+            if (minLaunchVerticalSpeed <= 0f) return launchVel;
+            float upSpeed = Vector2.Dot(launchVel, worldUp);
+            if (upSpeed >= minLaunchVerticalSpeed) return launchVel;
+            return launchVel + worldUp * (minLaunchVerticalSpeed - upSpeed);
+        }
+
+        public Vector2 ConsumeRiderCarryDelta(Vector2 _worldContact)
+        {
+            // Carry channel is unused — TautLine writes rb.position absolutely each FU
+            // in SnapSlimeIfAttached. Returning zero here keeps SlimeController's
+            // existing carry-add-to-rb.position branch a no-op for this rope.
+            return Vector2.zero;
         }
     }
 }

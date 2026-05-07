@@ -46,6 +46,11 @@ BranchPivot   (월드 고정, 회전만. Rigidbody2D + SpringyBranchPlatform + S
 ## ApplyRiderInfluence 시그니처
 `ApplyRiderInfluence(bool isCharging)` 파라미터를 받음 (PlatformMotor 시그니처 확장). PushDoor 등은 `riderVelocity` 파라미터도 받음 — [../infra/external-velocity-two-channel.md](../infra/external-velocity-two-channel.md) 참조.
 
+## Surface Material 오버라이드
+인스펙터의 `branchSurfaceMaterial` 슬롯에 `SurfaceMaterial`을 지정하면 `PlatformCarrier`가 Attach 시 `slime.PushSurfaceMaterialOverride`, Detach 시 Pop 으로 자동 적용 (WaterCurrentZone 패턴과 동일). `SurfaceMaterial.overrideEnergyConversionCoyoteTime` 등의 표면별 튜닝(예: 튕기는 가지에서 에너지 전환 코요테 시간 연장)을 SlimeSettings 글로벌 변경 없이 표면 단위로 지정.
+
+API: `PlatformMotor.OverrideSurfaceMaterial` virtual 프로퍼티 → `SpringyBranchPlatform`이 `branchSurfaceMaterial` 필드를 노출. `null`이면 호스트 SurfaceTag만 사용 (오버라이드 미적용).
+
 ## 한계
 - 단일 라이더 가정.
 - `pivotWorldPos`는 Awake에서 캡처 — 런타임 이동 불가.

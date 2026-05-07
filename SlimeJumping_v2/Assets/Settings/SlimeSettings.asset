@@ -26,7 +26,7 @@ MonoBehaviour:
   groundDashAngleMax: 60
   dashFalloffStart: 3
   dashFalloffEnd: 6
-  enableHop: 1
+  enableHop: 0
   hopAlongSurfaceNormal: 1
   hopPower: 3
   hopPowerMin: 1
@@ -61,7 +61,7 @@ MonoBehaviour:
   attachLockoutDuration: 0.1
   initialConversionRate: 1.05
   subsequentConversionRate: 0.95
-  notJumpConversionBonus: 1.2
+  notJumpConversionBonus: 1
   hopConversionBonus: 1.1
   hopConversionEnergyBonus: 0.3
   aimDriftRadiusScale: 0.7

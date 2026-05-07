@@ -49,12 +49,12 @@ MonoBehaviour:
     angleMax: 90
   slideRampUpTime:
     baseValue: 0
-    fullValue: 0.3
+    fullValue: 0
     angleMin: 15
     angleMax: 80
   slideLinearDrag:
-    baseValue: 0.1
-    fullValue: 0.1
+    baseValue: 0
+    fullValue: 0
     angleMin: 0
     angleMax: 90
   slideDownhillGain:
@@ -78,8 +78,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   impactRedirectRatio:
-    baseValue: 0.9
-    fullValue: 0.9
+    baseValue: 0
+    fullValue: 0
     angleMin: 0
     angleMax: 90
   groundDashScale:

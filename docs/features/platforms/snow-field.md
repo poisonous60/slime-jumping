@@ -37,6 +37,17 @@ ScriptableObject 한 개에 모든 snow tuning 이 모임 (deposit / mesh / rend
 
 low-poly 호스트 메쉬에서도 carve 가 보이도록, `SnowPatchSubdivider.Subdivide` 가 BFS taper 전에 host triangle 들을 barycentric 으로 재귀 세분화. midpoint normal/heightRest 는 endpoint 보간으로 계산 → **3D 굴곡 보존**, 단지 vertex 만 dense 해짐. `subdivLevels` (0~3, 기본 1 = 4× verts) 은 SnowSettings 에 있음.
 
+### Overlap mask (Phase 2 origin, Z-aware + manual keep 추가됨)
+
+`SnowField.MaskOutOverlap` 이 `excludeOverlapWithOtherPlatforms=true` 일 때 Subdivide 직후 BFS taper 직전에 실행. 한 번의 `Physics2D.OverlapArea` 로 패치 AABB 안의 candidate Collider2D 를 모은 다음 hostCollider / sister SnowField (priority 낮은 쪽) / 본인의 `manualKeepPolygons` 를 제외해 `foreign` 리스트를 만든다. 각 snow tri 의 4개 sample (3 verts + centroid) 중 하나라도 foreign 안이면 tri drop.
+
+두 가지 추가 룰:
+
+- **Z-aware mask** (`maskUsesZ`, `maskZWindow`) — foreign collider 의 `transform.position.z` 를 미리 캐싱해두고, sample 의 world Z 와 ±`maskZWindow` 안일 때만 그 foreign 으로 mask. Z 깊이가 있는 큰 mesh 한 장에 SnowField 한 개를 붙여도, 앞쪽-Z 슬라이스만 foreground 와 mask 되고 뒤쪽-Z 슬라이스 (foreground 뒤 void 영역) 는 같은 SnowField 안에서 snow 그대로 유지 → 별도 backdrop mesh 필요 없음.
+- **Manual keep override** (`manualKeepColliders`) — drop 결정 후 tri ↔ collider 의 **실제 영역 overlap** (tri 정점이 collider 안 / collider 정점이 tri 안 / edge 끼리 교차 중 하나) 이면 tri 를 **복원**. mask 가 너무 적극적으로 잘라낸 seam 갭을 designer 가 collider 한 장으로 덮어 메우는 용도. PolygonCollider2D / BoxCollider2D 는 풀-precision (4 corner / N path 정점 추출 후 PointInTri + 엣지 교차), Circle / Capsule / Edge / Composite 는 cheap fallback (tri 정점이 collider 안만 봄) — 부분 overlap 케이스는 못 잡지만 정점 inside 는 잡음. **출력은 tri 단위** — collider 가 tri 의 일부만 덮어도 tri 전체 복원 (더 정밀한 boundary 필요하면 `subdivLevels` 를 올린다). 초기 구현은 4-sample (3 verts + centroid) OverlapPoint 였지만 polygon 이 sample 점들 *사이* 에 끼면 아무것도 복원 못 해서 격자 무늬가 보였음 → 실제 overlap 테스트로 교체. keep collider 자체는 (a) `useTriggers=false` 로 인한 자동 제외 + (b) `IsManualKeep` 의 명시적 거름 두 단계로 절대 자기 자신이 foreign 이 되지 않게 한다.
+
+drop 후엔 새 boundary 를 다시 dirSet (a→b, b→a 검사) 으로 추출 → BFS taper 가 잘라낸 가장자리도 자연스럽게 동그랗게 내려감.
+
 ### Edge taper (Phase 1 origin)
 
 graph BFS로 boundary로부터 hop count 계산. `edgeTaperHops` 설정 (기본 1):
@@ -268,8 +279,12 @@ per-instance reference 만 — tuning 은 settings asset 으로.
 | Settings | None | `SnowSettings` 자산 참조. null 이면 baked-in 기본값 |
 | Source Mesh Filter | auto | 호스트 메쉬. 같은 GO 또는 자식에서 자동 resolve |
 | Host Collider | None | 슬라임 SurfaceCollider 와 매칭될 호스트의 Collider2D — registry 키 |
-| Exclude Overlap With Other Platforms | true | rebuild 시점에 각 snow tri 의 XY centroid 가 (hostCollider 가 아닌) 다른 Collider2D 안이면 그 tri 를 drop. 다른 플랫폼 mesh 와 겹쳐서 z-fighting 나는 영역이 사라지고, 외곽 rim 만 남음. boundary 는 잘라낸 모양에 맞게 재생성되어 BFS taper 가 새 가장자리에서도 둥글게 내려감 |
+| Exclude Overlap With Other Platforms | true | rebuild 시점에 각 snow tri 의 4개 sample (3 verts + centroid) 중 하나라도 (hostCollider 가 아닌) 다른 Collider2D 안이면 그 tri 를 drop. 다른 플랫폼 mesh 와 겹쳐서 z-fighting 나는 영역이 사라지고, 외곽 rim 만 남음. boundary 는 잘라낸 모양에 맞게 재생성되어 BFS taper 가 새 가장자리에서도 둥글게 내려감 |
 | Overlap Layer Mask | Everything | 위 toggle 이 켜져 있을 때 검사할 레이어. hostCollider 는 항상 제외 |
+| Overlap Priority | 0 | 두 SnowField 가 XY 로 겹칠 때 tiebreak. 높은 priority 가 겹친 영역의 snow 를 가져감 |
+| Mask Uses Z | false | overlap mask 가 Z 깊이를 고려하는지. true 면 foreign collider 의 world Z 가 snow tri 의 world Z 와 ±`maskZWindow` 안에 있을 때만 mask 발동. **Z 깊이가 있는 큰 mesh 에서 앞쪽-Z 슬라이스는 foreground 에 의해 mask 되고, 뒤쪽-Z 슬라이스 (foreground 뒤 void 영역) 는 같은 SnowField 안에서 그대로 snow 유지**. false (기본) 면 XY 만 보고 모두 mask — 기존 동작 |
+| Mask Z Window | 0.5 | `maskUsesZ` 의 Z 허용 범위 (m). 작을수록 엄격 (정확히 같은 Z 의 foreground 만 mask), 클수록 느슨. `maskUsesZ=false` 면 무시 |
+| Manual Keep Colliders | empty | overlap mask 가 너무 적극적으로 잘라낸 seam 갭을 메우는 override 영역 리스트. 각 Collider2D 와 snow tri 가 영역을 공유하면 그 tri 가 *복원* 됨. **풀-precision 지원**: PolygonCollider2D, BoxCollider2D (rotated 박스도 4 corner 추출). **Cheap-fallback**: Circle/Capsule/Edge/Composite 는 'tri 정점이 collider 안' 만 봄 → 부분 overlap (collider 가 tri 한가운데를 가로지르지만 정점은 안 들어가는 케이스) 은 복원 못 함. **출력은 tri 단위** — collider 가 tri 의 일부만 덮어도 tri 전체 복원, 더 정밀한 외곽 필요하면 `subdivLevels` 를 올림. 사용법: 빈 GO 에 원하는 collider 그려 갭 모양 잡고 → `Is Trigger = true` 로 (안 그러면 자기 자신이 foreign mask 가 됨; 본 컴포넌트가 belt-and-braces 로도 한번 더 거르긴 함) → 인스펙터 list 에 드래그. `Exclude Overlap With Other Platforms` 가 off 면 어차피 모든 tri 유지되므로 효과 없음. (이전 이름 `manualKeepPolygons` — `[FormerlySerializedAs]` 로 자동 마이그레이션) |
 | Draw Patch Outlines | true | scene 기즈모: 패치 외곽 초록 line |
 | Draw Vert Normals | false | per-vertex 노멀 파란 line |
 

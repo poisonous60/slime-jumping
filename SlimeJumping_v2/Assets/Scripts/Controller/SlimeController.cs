@@ -43,6 +43,40 @@ namespace SlimeJumping.Controller
         public float ImpactNormalSpeed => impactNormalSpeed;
         public void AddExternalVelocity(Vector2 deltaV) { externalDeltaV += deltaV; }
 
+        /// <summary>
+        /// Sustained-flow push (water current, etc) that should INTEGRATE into the slime's
+        /// persistent velocity channel instead of just contributing to one frame.
+        ///
+        /// Why a separate method from AddExternalVelocity:
+        ///   - In Airborne/Stunned, AddExternalVelocity's per-frame add naturally compounds
+        ///     into `velocity` because the state handler doesn't overwrite it. Push reaches
+        ///     flowTerminalSpeed via accumulation across frames.
+        ///   - In Attached/Charging, FixedUpdateAttached at line 168-169 overwrites
+        ///     `velocity = (slideSpeed + crawlVelocity) * tangent` every frame. An external push
+        ///     added to `velocity` is wiped on the next frame's state-handler pass — the
+        ///     effective per-frame contribution is just flowAccel*dt (~0.16 m/s at flowAccel=8,
+        ///     50Hz), making the same flowAccel produce a ~50× smaller speed than in Airborne.
+        ///   - This method projects the delta onto surfaceTangent and integrates it into the
+        ///     persistent channel (slideVelocity for inertial, crawlVelocity for legacy), so
+        ///     the push compounds across frames identically in both states.
+        ///
+        /// Falloff and direction resolution remain the caller's responsibility — pass the
+        /// final per-frame deltaV (e.g. dir * flowAccel * falloff * dt).
+        /// </summary>
+        public void AddSustainedFlowImpulse(Vector2 deltaV)
+        {
+            if (currentState == SlimeState.Airborne || currentState == SlimeState.Stunned)
+            {
+                externalDeltaV += deltaV;
+                return;
+            }
+            float tangentDelta = Vector2.Dot(deltaV, surfaceTangent);
+            if (surfaceMod.useInertialSlide)
+                slideVelocity += tangentDelta;
+            else
+                crawlVelocity += tangentDelta;
+        }
+
         /// Hazard-driven push channel. Adds the deltaV through the same external-velocity
         /// channel as wind/conveyors, but ALSO fires OnHazardPushed so visual systems
         /// (SlimeBurnVisual etc.) can react. Used by GraniteBlast hits — no stun, no
@@ -86,6 +120,7 @@ namespace SlimeJumping.Controller
         public event System.Action<Vector2, Vector2> OnHazardPushed;
         public float CoyoteTimer => coyoteTimer;
         public float EnergyCoyoteTimer => energyCoyoteTimer;
+        public float EnergyCoyoteDuration => energyCoyoteDuration;
         public float PostLaunchTimer => postLaunchTimer;
         public float StickTimer => stickTimer;
         public Collider2D SurfaceCollider => surfaceCollider;
@@ -196,6 +231,10 @@ namespace SlimeJumping.Controller
         // presses Space before energyCoyoteTimer expires, HandleSurfaceChargeEntry
         // consumes these values instead of using the default chargeRadius.
         private float energyCoyoteTimer;
+        // Duration energyCoyoteTimer was armed with (per-surface override applies).
+        // Visuals (SlimeVisual.ComputeCoyoteSquash) read this to normalize progress so
+        // a longer surface-overridden window doesn't drive the squash curve out of range.
+        private float energyCoyoteDuration;
         private float pendingEnergyChargeRadius;
         // True when the deferred floor conversionCount=0 reset is owed on pending expiry.
         // The reset is deferred because consuming pending continues the chain (matching
@@ -320,14 +359,16 @@ namespace SlimeJumping.Controller
         private SnowStrip cachedFootprintStrip;
         private int cachedFootprintVertIdx;
 
-        // Resolved gameplay-active SurfaceMaterial: snow when the contact-point depth
-        // gate has flipped surfaceMod to snow, otherwise the host SurfaceTag's material.
-        // Null while airborne / no surface.
+        // Resolved gameplay-active SurfaceMaterial: override when a zone has pushed one,
+        // else snow when the contact-point depth gate has flipped surfaceMod to snow,
+        // otherwise the host SurfaceTag's material. Null while airborne / no surface.
         public SurfaceMaterial ActiveSurfaceMaterial => !isTouchingSurface
             ? null
-            : (snowBlendActive && cachedSnowField != null && cachedSnowField.settings != null
-                ? cachedSnowField.settings.snowSurfaceMaterial
-                : hostSurfaceMaterial);
+            : (ActiveSurfaceMaterialOverride != null
+                ? ActiveSurfaceMaterialOverride
+                : (snowBlendActive && cachedSnowField != null && cachedSnowField.settings != null
+                    ? cachedSnowField.settings.snowSurfaceMaterial
+                    : hostSurfaceMaterial));
 
         // Plow-drag depth-ratio floor. Below this, snow is too thin to be worth
         // applying drag — avoids the exponential-decay asymptote twitching forever
@@ -369,6 +410,88 @@ namespace SlimeJumping.Controller
         public bool InFluid => inFluidCount > 0;
         public void PushInFluid() { inFluidCount++; }
         public void PopInFluid() { inFluidCount = Mathf.Max(0, inFluidCount - 1); }
+
+        // Stack of SurfaceMaterial overrides pushed by trigger zones (e.g. WaterCurrentZone).
+        // When non-empty, the top of the stack wins over both snow blend and host SurfaceTag in
+        // RefreshSnowBlend. Mirrors snow's surfaceMod swap pattern but driven by zone presence
+        // rather than per-FU position sampling. Last-in-wins; LIFO removal handles overlapping
+        // zones that exit out of order.
+        private readonly List<SurfaceMaterial> surfaceMaterialOverrideStack = new();
+        // Cached top-of-stack modifiers, recomputed only on Push/Pop. Avoids per-FU ToModifiers()
+        // allocation in RefreshSnowBlend.
+        private SurfaceModifiers cachedOverrideMods;
+        private bool hasOverrideMods;
+        public SurfaceMaterial ActiveSurfaceMaterialOverride => surfaceMaterialOverrideStack.Count > 0
+            ? surfaceMaterialOverrideStack[surfaceMaterialOverrideStack.Count - 1]
+            : null;
+
+        public void PushSurfaceMaterialOverride(SurfaceMaterial mat)
+        {
+            if (mat == null) return;
+            bool wasInertial = surfaceMod.useInertialSlide;
+            surfaceMaterialOverrideStack.Add(mat);
+            cachedOverrideMods = mat.ToModifiers();
+            hasOverrideMods = true;
+            if (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
+            {
+                RefreshSnowBlend();
+                MigrateSlideChannelOnInertialFlip(wasInertial);
+            }
+        }
+
+        public void PopSurfaceMaterialOverride(SurfaceMaterial mat)
+        {
+            if (mat == null) return;
+            bool wasInertial = surfaceMod.useInertialSlide;
+            // Remove last occurrence (LIFO). Searching from the end is correct for both
+            // single-zone push/pop and the stacked-zone case where the most recently entered
+            // zone is the most likely to exit first.
+            for (int i = surfaceMaterialOverrideStack.Count - 1; i >= 0; i--)
+            {
+                if (surfaceMaterialOverrideStack[i] == mat)
+                {
+                    surfaceMaterialOverrideStack.RemoveAt(i);
+                    break;
+                }
+            }
+            int n = surfaceMaterialOverrideStack.Count;
+            if (n > 0)
+            {
+                cachedOverrideMods = surfaceMaterialOverrideStack[n - 1].ToModifiers();
+                hasOverrideMods = true;
+            }
+            else
+            {
+                hasOverrideMods = false;
+            }
+            if (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
+            {
+                RefreshSnowBlend();
+                MigrateSlideChannelOnInertialFlip(wasInertial);
+            }
+        }
+
+        // Mirrors UpdateSurfaceModifiers' channel migration: when the active slide model flips
+        // (legacy ↔ inertial), move the existing tangent speed into the destination channel so
+        // the slime's velocity isn't stranded. Without this, pushing a water override on a
+        // slime crawling on a non-inertial wall would leave crawlVelocity populated but
+        // surfaceMod.useInertialSlide=true → the inertial path reads slideVelocity=0 and the
+        // slime appears to dead-stop on water entry.
+        private void MigrateSlideChannelOnInertialFlip(bool wasInertial)
+        {
+            bool isInertial = surfaceMod.useInertialSlide;
+            if (wasInertial == isInertial) return;
+            if (wasInertial && !isInertial)
+            {
+                crawlVelocity += slideVelocity;
+                slideVelocity = 0f;
+            }
+            else
+            {
+                slideVelocity += crawlVelocity;
+                crawlVelocity = 0f;
+            }
+        }
 
         private SpriteRenderer spriteRenderer;
 
@@ -707,13 +830,14 @@ namespace SlimeJumping.Controller
                 if (carrier != null) carrier.Attach(surfaceCollider);
                 UpdateSurfaceModifiers(surfaceCollider);
             }
-            else if (isTouchingSurface && hasCachedSnowMods
+            else if (isTouchingSurface && (hasCachedSnowMods || hasOverrideMods)
                 && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
             {
-                // Same host as last frame, but the host has snow on it — re-blend
-                // so carve/recovery progress flows into slide gravity dynamically.
-                // Skipped on the surface-change frame because UpdateSurfaceModifiers
-                // already called RefreshSnowBlend with the fresh host mods.
+                // Same host as last frame, but either the host has snow on it OR a zone has
+                // pushed a SurfaceMaterial override — re-blend so carve/recovery progress
+                // flows into slide gravity dynamically AND override stays applied per-FU.
+                // Skipped on the surface-change frame because UpdateSurfaceModifiers already
+                // called RefreshSnowBlend with the fresh host mods.
                 RefreshSnowBlend();
             }
 
@@ -927,48 +1051,62 @@ namespace SlimeJumping.Controller
             cachedFootprintStrip = null;
             cachedFootprintVertIdx = -1;
 
-            if (!hasCachedSnowMods || cachedSnowField == null)
-            {
-                surfaceMod = hostSurfaceMod;
-                snowBlendActive = false;
-                return;
-            }
-
-            // Two-stage probe. (1) Slope-normal primary gate: snow only deposits on
-            // upward-facing tris (SnowTopSurfaceExtractor filters by maxSnowSlopeDeg),
-            // so a contact whose normal is steeper than that cutoff cannot be on snow
-            // regardless of xy position — free reject for slime hugging cliff faces.
-            // (2) Mesh-local nearest-vertex hit-test against heightRest > 0 — the
-            // build pipeline's unified output for slope filter, overlap mask, taper,
-            // slope-curve, and any future region masking. Caches the (strip, vertIdx)
-            // so ApplySnowDrag can read heightCurrent[idx]/heightRest[idx] without
+            // Snow blend (when host has snow). Two-stage probe: (1) slope-normal primary gate
+            // — snow only deposits on upward-facing tris (SnowTopSurfaceExtractor filters by
+            // maxSnowSlopeDeg); (2) mesh-local nearest-vertex hit-test against heightRest > 0.
+            // Caches the (strip, vertIdx) so ApplySnowDrag can read heightCurrent[idx] without
             // re-running the sweep.
-            bool onSnow = false;
-            if (isTouchingSurface && surfaceNormal.y >= cachedSnowSlopeCos)
+            if (hasCachedSnowMods && cachedSnowField != null)
             {
-                Vector2 sample = rb.position - surfaceNormal * settings.slimeRadius;
-                onSnow = cachedSnowField.TryFindFootprintHit(
-                    sample, out cachedFootprintStrip, out cachedFootprintVertIdx);
-            }
+                bool onSnow = false;
+                if (isTouchingSurface && surfaceNormal.y >= cachedSnowSlopeCos)
+                {
+                    Vector2 sample = rb.position - surfaceNormal * settings.slimeRadius;
+                    onSnow = cachedSnowField.TryFindFootprintHit(
+                        sample, out cachedFootprintStrip, out cachedFootprintVertIdx);
+                }
 
-            if (onSnow)
-            {
-                var snow = cachedSnowMods;
-                snow.useInertialSlide        = hostSurfaceMod.useInertialSlide;
-                snow.overrideHopMomentum     = hostSurfaceMod.overrideHopMomentum;
-                snow.hopInstantFlip          = hostSurfaceMod.hopInstantFlip;
-                snow.overrideGroundDash      = hostSurfaceMod.overrideGroundDash;
-                snow.disableDashFalloff      = hostSurfaceMod.disableDashFalloff;
-                snow.overrideCeilingAngle    = hostSurfaceMod.overrideCeilingAngle;
-                snow.groundDashAngleFalloffCurve = hostSurfaceMod.groundDashAngleFalloffCurve;
-                snow.dashSpeedFalloffCurve   = hostSurfaceMod.dashSpeedFalloffCurve;
-                surfaceMod = snow;
-                snowBlendActive = true;
+                if (onSnow)
+                {
+                    var snow = cachedSnowMods;
+                    snow.useInertialSlide        = hostSurfaceMod.useInertialSlide;
+                    snow.overrideHopMomentum     = hostSurfaceMod.overrideHopMomentum;
+                    snow.hopInstantFlip          = hostSurfaceMod.hopInstantFlip;
+                    snow.overrideGroundDash      = hostSurfaceMod.overrideGroundDash;
+                    snow.disableDashFalloff      = hostSurfaceMod.disableDashFalloff;
+                    snow.overrideCeilingAngle    = hostSurfaceMod.overrideCeilingAngle;
+                    snow.groundDashAngleFalloffCurve = hostSurfaceMod.groundDashAngleFalloffCurve;
+                    snow.dashSpeedFalloffCurve   = hostSurfaceMod.dashSpeedFalloffCurve;
+                    surfaceMod = snow;
+                    snowBlendActive = true;
+                }
+                else
+                {
+                    surfaceMod = hostSurfaceMod;
+                    snowBlendActive = false;
+                }
             }
             else
             {
                 surfaceMod = hostSurfaceMod;
                 snowBlendActive = false;
+            }
+
+            // Zone override (e.g. WaterCurrentZone) wins over both snow blend and host. Runs
+            // unconditionally — must NOT be gated by hasCachedSnowMods, because the most
+            // common case is "slime in water on a non-snow wall" and the override has to
+            // apply there too. Discrete fields (useInertialSlide etc.) are NOT pinned to host,
+            // unlike snow — water explicitly wants inertial slide so jump momentum is preserved
+            // instead of replaced by the legacy equilibrium-slide formula.
+            // Push/PopSurfaceMaterialOverride handles the channel migration when
+            // useInertialSlide changes mid-attach.
+            if (hasOverrideMods)
+            {
+                surfaceMod = cachedOverrideMods;
+                // Override implies non-snow gameplay (drag/footprint paths shouldn't apply).
+                snowBlendActive = false;
+                cachedFootprintStrip = null;
+                cachedFootprintVertIdx = -1;
             }
         }
 
@@ -1185,6 +1323,7 @@ namespace SlimeJumping.Controller
                 conversionCount = 0;
             pendingEnergyChargeRadius = 0f;
             energyCoyoteTimer = 0f;
+            energyCoyoteDuration = 0f;
             pendingFloorReset = false;
         }
 
@@ -1396,6 +1535,8 @@ namespace SlimeJumping.Controller
             preserveLandingVelocity = false;
             blockAttachCount = 0;
             inFluidCount = 0;
+            surfaceMaterialOverrideStack.Clear();
+            hasOverrideMods = false;
 
             // Enter Stunned
             stunTimer = effect.stunDuration;
@@ -1479,6 +1620,8 @@ namespace SlimeJumping.Controller
             surfaceMod = settings.BuildDefaultModifiers();
             blockAttachCount = 0;
             inFluidCount = 0;
+            surfaceMaterialOverrideStack.Clear();
+            hasOverrideMods = false;
             stunTimer = 0f;
             // Pending energy-conversion coyote would otherwise survive the override
             // (timer only ticks in FixedUpdateAttached) and fire a spurious energy

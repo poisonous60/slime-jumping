@@ -4,18 +4,16 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.EditorTools
 {
-    // Spawns a SampleScene-style TautLine test layout: floor, a SpawnPad
-    // (used to reproduce the "rope → bounce off another surface → rope"
-    // SUSPECT case that broke RopeV3), and one TautLine instance.
-    // Independent of RopeTestSetup — duplicates a few small helpers
-    // intentionally so RopeTestSetup.cs stays untouched.
+    // Spawns a TautLine test layout in the active scene: floor + a SpawnPad
+    // (used to reproduce the "rope → bounce off another surface → rope" case
+    // that broke RopeV3) + one TautLine. Independent of RopeTestSetup.
     public static class TautLineSetup
     {
         const string RopeMaterialPath = "Assets/Prebs/Platform/Materials/RopeMaterial.mat";
         const int GroundLayer = 7;
 
         [MenuItem("SlimeJumping/Mechanism/Setup TautLine Test")]
-        public static void SetupTautLine()
+        public static void SetupTautLineMenu()
         {
             var root = new GameObject("TautLineTest");
             Undo.RegisterCreatedObjectUndo(root, "Create TautLine Test");
@@ -33,15 +31,25 @@ namespace SlimeJumping.EditorTools
                 new Vector3(halfSpan, anchorY, 0f));
 
             Finish(root,
-                "TautLine test:\n" +
-                "  TautLine_Default — static parabolic baseline + local spring dip.\n" +
+                "TautLine test scene:\n" +
+                "  TautLine_Default — static parabolic baseline + per-rider spring dip\n" +
+                "                     across the whole rope (smoothstep bell, peaks under slime).\n" +
                 "\n" +
-                "How to evaluate the bug fix (SUSPECT repro):\n" +
-                "  1. Drop slime onto TautLine. Should attach with no Attached/Airborne flicker.\n" +
-                "  2. Charge-launch upward → land on SpawnPad_Soft → bounce/walk → fall back\n" +
-                "     onto TautLine. Should attach cleanly. RopeV3 oscillated here; TautLine\n" +
-                "     should not.\n" +
-                "  3. Tune baselineSag in inspector (0 = perfectly straight power-line look).");
+                "Verification (bug fix targets):\n" +
+                "  1. Land on TautLine: should attach with no Attached/Airborne flicker.\n" +
+                "  2. Charge → release: rope visibly deepens during charge, then returns to\n" +
+                "     baseline smoothly (no snap-back oscillation that catches slime).\n" +
+                "  3. SUSPECT repro: launch up → bounce off SpawnPad_Soft → fall back to rope.\n" +
+                "     Attach should be clean (no oscillation). RopeV3 oscillated here.\n" +
+                "  4. Jump from below: slime moving up should pass through the rope\n" +
+                "     without attaching. Slime keeps full velocity.\n" +
+                "\n" +
+                "Tuning:\n" +
+                "  jumpBoost (m/s) — full-charge bonus speed at launch.\n" +
+                "  maxCap (m/s)    — hard cap on bonus speed.\n" +
+                "  baselineSag, baseEquilibrium, chargeExtraDepth — visual sag knobs.\n" +
+                "  springStiffness, attachedDampingRatio — bounce feel during attached.\n" +
+                "  detachedDampingRatio — keep ≥1 so post-launch rope doesn't oscillate.");
         }
 
         static GameObject BuildTautLine(Transform parent, string name,
@@ -65,11 +73,22 @@ namespace SlimeJumping.EditorTools
             body.transform.SetParent(rootGo.transform, false);
             body.layer = GroundLayer;
 
+            // SurfaceProbe Multi-mode is required: TautLine writes rb.position
+            // absolutely each FU, and Multi mode's teleport branch zeroes
+            // rb.linearVelocity so the manual write isn't fought by Unity's
+            // contact integrator.
             var probeOverride = body.AddComponent<SlimeJumping.Physics.SurfaceProbeModeOverride>();
             probeOverride.mode = SlimeJumping.Physics.SurfaceProbeMode.Multi;
 
-            var edge = body.AddComponent<EdgeCollider2D>();
-            edge.edgeRadius = 0f;
+            // Polygon (trigger) ribbon — TautLine populates points each FU.
+            var poly = body.AddComponent<PolygonCollider2D>();
+            poly.isTrigger = true;
+            // Seed with a 1-segment dummy so the inspector and serialization
+            // doesn't complain before TautLine.Rebuild runs.
+            poly.points = new Vector2[] {
+                Vector2.zero, new Vector2(0.1f, 0f),
+                new Vector2(0.1f, -0.05f), new Vector2(0f, -0.05f)
+            };
 
             var lineGo = new GameObject("LineRenderer");
             lineGo.transform.SetParent(body.transform, false);
@@ -87,7 +106,7 @@ namespace SlimeJumping.EditorTools
             var so = new SerializedObject(taut);
             so.FindProperty("anchorA").objectReferenceValue = anchorA.transform;
             so.FindProperty("anchorB").objectReferenceValue = anchorB.transform;
-            so.FindProperty("edge").objectReferenceValue = edge;
+            so.FindProperty("polygon").objectReferenceValue = poly;
             so.FindProperty("line").objectReferenceValue = line;
             so.ApplyModifiedProperties();
 

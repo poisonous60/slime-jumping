@@ -569,6 +569,9 @@ namespace SlimeJumping.Platforms
         // and lets the controller's existing ropeVel inheritance handle tracking.
         public Vector2 ConsumeRiderCarryDelta(Vector2 _worldContact) => Vector2.zero;
 
+        // TautLine-only minimum-vy enforcement; v2 leaves launch velocity unchanged.
+        public Vector2 PostprocessLaunchVelocity(Vector2 launchVel) => launchVel;
+
         // === Editor ===
 
         void OnValidate()

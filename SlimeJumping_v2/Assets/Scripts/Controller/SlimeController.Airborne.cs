@@ -249,9 +249,13 @@ namespace SlimeJumping.Controller
                     // landing would have granted and stash it. If the player presses
                     // Space within energyConversionCoyoteTime, HandleSurfaceChargeEntry
                     // consumes this to grant the same expanded charge radius.
+                    // Per-surface override: SurfaceMaterial.overrideEnergyConversionCoyoteTime
+                    // extends/shortens the window (e.g. SpringyBranch grants a longer
+                    // grace period because riders rebound off it).
                     bool isFloorLanding = surfaceUp >= settings.stickSlopeThreshold;
                     bool coyoteArmed = false;
-                    if (settings.energyConversionCoyoteTime > 0f)
+                    float coyoteWindow = surfaceMod.GetEnergyConversionCoyoteTime(settings);
+                    if (coyoteWindow > 0f)
                     {
                         float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
                         float shadowSpeedSq = launchSpeed * launchSpeed
@@ -271,7 +275,8 @@ namespace SlimeJumping.Controller
                         if (candidate > settings.chargeRadius)
                         {
                             pendingEnergyChargeRadius = candidate;
-                            energyCoyoteTimer = settings.energyConversionCoyoteTime;
+                            energyCoyoteTimer = coyoteWindow;
+                            energyCoyoteDuration = coyoteWindow;
                             pendingFloorReset = isFloorLanding;
                             coyoteArmed = true;
                         }

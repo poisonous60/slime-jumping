@@ -30,6 +30,12 @@ namespace SlimeJumping.Platforms
         // already clamped to [0, MaxReboundSpeed].
         float GetLaunchBonus(Vector2 launchDir, Vector2 worldContact, float chargeRatio);
 
+        // Final pass over the slime's launch velocity after GetLaunchBonus + drag
+        // zone scaling. Lets a rope clamp / reshape the vector — TautLine uses it to
+        // guarantee a minimum upward component so a near-horizontal launch isn't
+        // re-caught by the rope's spring rebound. v1/v2/v3 return input unchanged.
+        Vector2 PostprocessLaunchVelocity(Vector2 launchVel);
+
         // V3-only positional coupling. Returns and clears the world-space
         // displacement the rider's contact segment underwent since the last
         // call; SlimeController applies it to rb.position the same frame so

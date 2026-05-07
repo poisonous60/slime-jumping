@@ -64,6 +64,7 @@ activeDriftSpeed = autoDriftSpeed * lerp(1, radiusRatio, aimDriftRadiusScale)
 ## 코요테 창
 `energyConversionCoyoteTime`(0.12초): 스페이스 없이 착지한 뒤 이 시간 이내 스페이스 누르면 Space-held 착지와 동일한 확장 판정원 부여. 0이면 비활성.
 - 활성 중 시각적으로 `coyoteSquashCurve`를 따라 서서히 눌리다 유예창 종료 순간 피크, 이후 `coyoteSquashRecoveryTime` 동안 복구.
+- **표면별 오버라이드**: `SurfaceMaterial.overrideEnergyConversionCoyoteTime` ON 시 `SurfaceMaterial.energyConversionCoyoteTime` 값으로 대체. SpringyBranch처럼 튕기는 표면에서 유예창을 늘리는 데 사용. 시각적 squash 진행도(`SlimeVisual.ComputeCoyoteSquash`)도 활성 시 컨트롤러의 `EnergyCoyoteDuration`을 따라 정규화되어 곡선이 범위 밖으로 새지 않음.
 
 ## 파라미터
 | 파라미터 | 기본값 | 설명 |

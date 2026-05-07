@@ -56,6 +56,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Drag Zone](features/mechanisms/drag-zone.md) — 감속/모래 + 볼륨 차징
 - [Gravity Field](features/mechanisms/gravity-field.md) — 중력 방향 치환
 - [Water Zone](features/mechanisms/water-zone.md) — 물 v1/v2 + 파도 + Underwater 포스트
+- [Water Current Zone](features/mechanisms/water-current-zone.md) — 벽면 흐르는 물살 (centerline 리본 + 5-vert 반-튜브 단면 + 좌/우 채널 파도 시뮬 + Water_FlowingRefraction 셰이더)
 - [Push Door v1/v2/v3](features/mechanisms/push-door.md) — 밀어서 여는 문 (v2: 살롱 도어 충격량 모델, v3: 표준 FBX 각도 모델)
 - [Jump Pad](features/mechanisms/jump-pad.md)
 - [Jump Ball](features/mechanisms/jump-ball.md) — 트리거 자동 점프, 보빙 비주얼

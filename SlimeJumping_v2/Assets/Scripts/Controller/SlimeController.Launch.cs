@@ -132,6 +132,12 @@ namespace SlimeJumping.Controller
             if (CurrentDragZone != null)
                 velocity *= CurrentDragZone.launchMultiplier;
 
+            // Final pass on the launch vector — TautLine clamps the upward component up
+            // to a minimum so a near-horizontal launch isn't immediately recaught by the
+            // rope's spring rebound. Other rope variants pass through.
+            if (currentRope != null)
+                velocity = currentRope.PostprocessLaunchVelocity(velocity);
+
             isVolumeCharging = false;
             // Fire OnLaunch BEFORE FinalizeAirborneExit so listeners can read
             // ActiveSurfaceMaterial (still resolved while attached) — audio reads it

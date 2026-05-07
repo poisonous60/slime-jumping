@@ -1,4 +1,5 @@
 using UnityEngine;
+using SlimeJumping.Physics;
 
 namespace SlimeJumping.Platforms
 {
@@ -50,6 +51,12 @@ namespace SlimeJumping.Platforms
         protected abstract (Vector2 position, float rotation) ComputeMotion(float dt);
 
         public virtual float VelocityTransferScale => 1f;
+
+        // SurfaceMaterial pushed onto the slime's override stack while attached to this
+        // platform. PlatformCarrier handles the Push/Pop on Attach/Detach — mirrors the
+        // WaterCurrentZone trigger pattern but driven by carrier attach state. Null = no
+        // override (slime keeps the host SurfaceTag's material).
+        public virtual SurfaceMaterial OverrideSurfaceMaterial => null;
 
         public virtual void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity, bool isCharging) { }
         public virtual void RemoveRider() { }

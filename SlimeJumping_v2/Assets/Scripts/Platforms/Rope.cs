@@ -581,6 +581,9 @@ namespace SlimeJumping.Platforms
         // V3-only carry channel; v1 has no position coupling.
         public Vector2 ConsumeRiderCarryDelta(Vector2 _worldContact) => Vector2.zero;
 
+        // TautLine-only minimum-vy enforcement; v1 leaves launch velocity unchanged.
+        public Vector2 PostprocessLaunchVelocity(Vector2 launchVel) => launchVel;
+
         // === Editor ===
 
         void OnValidate()

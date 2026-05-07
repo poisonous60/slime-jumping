@@ -624,6 +624,9 @@ namespace SlimeJumping.Platforms
             return d;
         }
 
+        // TautLine-only minimum-vy enforcement; v3 leaves launch velocity unchanged.
+        public Vector2 PostprocessLaunchVelocity(Vector2 launchVel) => launchVel;
+
         public void ApplyWorldImpulseToRange(Vector2 worldImpulse, int fromIdx, int toIdx)
         {
             if (nodeCount == 0) return;
