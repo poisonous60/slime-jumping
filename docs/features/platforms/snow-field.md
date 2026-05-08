@@ -6,7 +6,7 @@ Stage 2 눈 비주얼. 플랫폼의 위쪽 면에 자동으로 눈이 깔리고,
 
 1. **눈은 비주얼 전용**. 콜라이더 없음, SurfaceTag 없음. 슬라임은 항상 호스트 플랫폼의 콜라이더 위에서 attach/이동.
 2. **호스트 플랫폼**의 콜라이더에 별도 `Snow.asset` SurfaceMaterial 할당 (Mud-like 접착감). SnowField와 결합 없음 — 디자이너가 per-level 셋업.
-3. **자동 적층** — 슬로프 ≤ `maxSnowSlopeDeg` (기본 45°)인 윗면에만 눈이 형성. 수직 벽이나 오버행은 비어있음.
+3. **자동 적층** — 슬로프 ≤ `maxSnowSlopeDeg` (기본 45°)인 윗면에만 눈이 형성. 수직 벽이나 오버행은 비어있음. SnowField 컴포넌트에서 `overrideMaxSnowSlope` 토글로 per-field 덮어쓰기 가능 — OFF 면 SnowSettings 자산 값 사용, ON 이면 `maxSnowSlopeDegOverride` 가 그 SnowField 한정으로 대체 (자산은 변경 안 됨).
 4. **3D 굴곡 따라가기** — 호스트의 실제 윗면 triangulation을 그대로 복사해 vertex normal 방향으로 offset (surface-offset shell). 평지/슬로프/언덕/heightmap 변위 모두 정확히 따라감.
 5. **착지 carve** — 슬라임이 떨어진 X 위치에 가우시안 dip. Trail-style 누적 (한 번 = 얕은 자국, 반복 = 깊은 자국).
 6. **시간 회복** — 눈이 내리며 `heightCurrent[v]`가 `heightRest[v]`를 향해 lerp. 자국이 점진적으로 채워짐.

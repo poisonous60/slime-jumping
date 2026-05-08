@@ -84,38 +84,47 @@ MonoBehaviour:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 1.0009221
-      outSlope: 1.0009221
+      inSlope: 0.9442234
+      outSlope: 0.9442234
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 10
-      value: 10.009221
-      inSlope: 0.7502106
-      outSlope: 0.7502106
+      time: 10.582071
+      value: 9.991839
+      inSlope: 0.70338744
+      outSlope: 0.70338744
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.37976235
+    - serializedVersion: 3
+      time: 20.338823
+      value: 17.711678
+      inSlope: 0.6037258
+      outSlope: 0.6037258
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.39331663
+    - serializedVersion: 3
+      time: 32.30621
+      value: 23.475895
+      inSlope: 0.36014438
+      outSlope: 0.36014438
       tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 30
-      value: 19.999203
-      inSlope: 0.060582355
-      outSlope: 0.060582355
+      time: 50.025146
+      value: 27.704134
+      inSlope: 0.03130484
+      outSlope: 0.03130484
       tangentMode: 0
       weightedMode: 0
-      inWeight: 0.28640738
-      outWeight: 0.18902223
-    - serializedVersion: 3
-      time: 100.01721
-      value: 50.005295
-      inSlope: 1.0900768
-      outSlope: 1.0900768
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.17579557
+      inWeight: 0.46852568
       outWeight: 0
     m_PreInfinity: 2
     m_PostInfinity: 2
@@ -126,8 +135,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   impactRedirectRatio:
-    baseValue: 0.9
-    fullValue: 0.9
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   groundDashScale:
@@ -215,6 +224,9 @@ MonoBehaviour:
   hopMomentumBonus: 1
   hopMomentumMaxSpeed: 30
   useInertialSlide: 1
+  launchInertiaBlendMode: 2
+  launchInertiaLerpFactor: 0.5
+  launchInertiaPNorm: 2
   landHardClip: {fileID: 0}
   landSoftClip: {fileID: 0}
   launchClip: {fileID: 0}

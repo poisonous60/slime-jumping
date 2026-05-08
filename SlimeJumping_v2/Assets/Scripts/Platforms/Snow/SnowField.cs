@@ -52,6 +52,12 @@ namespace SlimeJumping.Platforms.Snow
         [Tooltip("Tuning asset (deposit slope / mesh density / carve depth-radius / recovery rate / snow material). All snow tuning lives here so multiple platforms share one source of truth. If null, the inspector falls back to baked-in defaults.")]
         public SnowSettings settings;
 
+        [Tooltip("Per-field override for the deposit slope angle. When OFF (default), this field uses settings.maxSnowSlopeDeg from the SnowSettings asset. When ON, maxSnowSlopeDegOverride below replaces it for THIS SnowField only — settings asset is not mutated. Use to tune one platform's snow extent without forking the whole settings asset.")]
+        public bool overrideMaxSnowSlope = false;
+
+        [Tooltip("Override value for the deposit slope angle (degrees from horizontal). Triangles whose face normal exceeds this stay bare. Only consumed when overrideMaxSnowSlope is true.")]
+        [Range(0f, 89f)] public float maxSnowSlopeDegOverride = 45f;
+
         [Header("Source")]
         [Tooltip("MeshFilter whose sharedMesh provides the host triangulation. Auto-resolved on Reset to this GO or first child with a mesh.")]
         public MeshFilter sourceMeshFilter;
@@ -105,7 +111,10 @@ namespace SlimeJumping.Platforms.Snow
         const int   DefaultSubdivLevels    = 1;
         const float DefaultAccumRate       = 0.05f;
 
-        public float MaxSnowSlopeDeg => settings != null ? settings.maxSnowSlopeDeg : DefaultMaxSnowSlopeDeg;
+        public float MaxSnowSlopeDeg =>
+            overrideMaxSnowSlope ? maxSnowSlopeDegOverride
+            : settings != null   ? settings.maxSnowSlopeDeg
+            : DefaultMaxSnowSlopeDeg;
         public int   MinPatchTris    => settings != null ? settings.minPatchTris    : DefaultMinPatchTris;
         public float RestThickness   => settings != null ? settings.restThickness   : DefaultRestThickness;
         public int   EdgeTaperHops   => settings != null ? settings.edgeTaperHops   : DefaultEdgeTaperHops;

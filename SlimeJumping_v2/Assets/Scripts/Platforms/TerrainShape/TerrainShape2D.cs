@@ -15,11 +15,23 @@ namespace SlimeJumping.TerrainShape
     }
 
     [Serializable]
+    public class OutlineLoop
+    {
+        public List<OutlinePoint> points = new List<OutlinePoint>();
+    }
+
+    [Serializable]
     public class OutlineLayer
     {
         public string name = "Layer";
         public float z = 0f;
-        public List<OutlinePoint> outline = new List<OutlinePoint>();
+        public List<OutlineLoop> loops = new List<OutlineLoop>();
+
+        // Legacy field — pre-v2 single-loop assets stored their outline here.
+        // TerrainShape2D.MigrateLegacyOutlineIfNeeded() copies it into loops[0] on first access
+        // and then clears this. Do not read or write outside that helper.
+        [Obsolete("Migrated into loops[0] by MigrateLegacyOutlineIfNeeded.")]
+        public List<OutlinePoint> outline = null;
     }
 
     [Serializable]
@@ -95,18 +107,34 @@ namespace SlimeJumping.TerrainShape
         public bool HasHeightmap => heightmapData != null && heightmapW > 0 && heightmapH > 0
             && heightmapData.Length == heightmapW * heightmapH;
 
+        // bbox of the union of all loops in `layer`. Returns false if the layer has no points.
+        public static bool ComputeUnionBounds(OutlineLayer layer, out Vector2 min, out Vector2 max)
+        {
+            min = max = Vector2.zero;
+            if (layer == null || layer.loops == null) return false;
+            bool first = true;
+            foreach (var loop in layer.loops)
+            {
+                if (loop == null || loop.points == null) continue;
+                foreach (var p in loop.points)
+                {
+                    if (first) { min = max = p.pos; first = false; }
+                    else
+                    {
+                        min = Vector2.Min(min, p.pos);
+                        max = Vector2.Max(max, p.pos);
+                    }
+                }
+            }
+            return !first;
+        }
+
         public float SampleHeightmapZ(Vector2 local)
         {
             var L = FrontLayer;
-            if (L == null || L.outline.Count < 3) return 0f;
+            if (L == null || OutlineCount < 3) return 0f;
             if (!useHeightmap || !HasHeightmap) return L.z;
-
-            Vector2 mn = L.outline[0].pos, mx = L.outline[0].pos;
-            for (int i = 1; i < L.outline.Count; i++)
-            {
-                mn = Vector2.Min(mn, L.outline[i].pos);
-                mx = Vector2.Max(mx, L.outline[i].pos);
-            }
+            if (!ComputeUnionBounds(L, out var mn, out var mx)) return L.z;
             Vector2 size = mx - mn;
             if (size.x < 1e-6f || size.y < 1e-6f) return L.z;
 
@@ -134,13 +162,48 @@ namespace SlimeJumping.TerrainShape
 
         public OutlineLayer FrontLayer => layers.Count > 0 ? layers[0] : null;
         public OutlineLayer BackLayer => layers.Count > 0 ? layers[layers.Count - 1] : null;
-        public int OutlineCount => FrontLayer != null ? FrontLayer.outline.Count : 0;
+
+        // Sum of point counts across all loops in the front layer. Used as the canonical "do we
+        // have a valid outline" gate (mesh build requires >= 3 in any single loop AND >= 3 total).
+        public int OutlineCount
+        {
+            get
+            {
+                var L = FrontLayer;
+                if (L == null || L.loops == null) return 0;
+                int total = 0;
+                for (int i = 0; i < L.loops.Count; i++)
+                    if (L.loops[i] != null && L.loops[i].points != null) total += L.loops[i].points.Count;
+                return total;
+            }
+        }
 
         public OutlinePoint FindOutlineByIdInLayer(OutlineLayer layer, int id)
         {
-            for (int i = 0; i < layer.outline.Count; i++)
-                if (layer.outline[i].id == id) return layer.outline[i];
+            if (layer == null || layer.loops == null) return null;
+            for (int li = 0; li < layer.loops.Count; li++)
+            {
+                var pts = layer.loops[li].points;
+                for (int i = 0; i < pts.Count; i++)
+                    if (pts[i].id == id) return pts[i];
+            }
             return null;
+        }
+
+        // (loopIndex, pointIndex) of the vertex with the given id, if found.
+        public bool TryFindOutlineLocByIdInLayer(OutlineLayer layer, int id, out int loopIndex, out int pointIndex)
+        {
+            loopIndex = -1; pointIndex = -1;
+            if (layer == null || layer.loops == null) return false;
+            for (int li = 0; li < layer.loops.Count; li++)
+            {
+                var pts = layer.loops[li].points;
+                for (int i = 0; i < pts.Count; i++)
+                {
+                    if (pts[i].id == id) { loopIndex = li; pointIndex = i; return true; }
+                }
+            }
+            return false;
         }
 
         public InteriorPoint FindInteriorById(int id)
@@ -182,18 +245,23 @@ namespace SlimeJumping.TerrainShape
             {
                 name = $"Layer {layers.Count}",
                 z = src.z + zOffset,
-                outline = new List<OutlinePoint>(src.outline.Count)
+                loops = new List<OutlineLoop>(src.loops.Count)
             };
-            foreach (var p in src.outline)
+            foreach (var loop in src.loops)
             {
-                copy.outline.Add(new OutlinePoint
+                var copyLoop = new OutlineLoop { points = new List<OutlinePoint>(loop.points.Count) };
+                foreach (var p in loop.points)
                 {
-                    id = p.id,
-                    pos = p.pos,
-                    smooth = p.smooth,
-                    tangentIn = p.tangentIn,
-                    tangentOut = p.tangentOut
-                });
+                    copyLoop.points.Add(new OutlinePoint
+                    {
+                        id = p.id,
+                        pos = p.pos,
+                        smooth = p.smooth,
+                        tangentIn = p.tangentIn,
+                        tangentOut = p.tangentOut
+                    });
+                }
+                copy.loops.Add(copyLoop);
             }
             layers.Add(copy);
         }
@@ -205,39 +273,66 @@ namespace SlimeJumping.TerrainShape
             layers.RemoveAt(index);
         }
 
-        public int InsertOutlinePointInAllLayers(int afterIdx, int activeLayerIdx, Vector2 onEdgeActiveLayer)
+        // v2 invariant: every layer holds the same XY for the same id. So inserting on edge
+        // means inserting at the same XY in every layer (no per-layer interpolation as v1 did —
+        // since the user's accepted Q3 answer dropped that flexibility).
+        public int InsertOutlinePointInAllLayers(int loopIndex, int afterIdx, Vector2 pos)
         {
             if (layers.Count == 0) return 0;
-            int newId = AllocateId();
-            var active = layers[activeLayerIdx];
-            int prev = afterIdx;
-            int next = (afterIdx + 1) % active.outline.Count;
-            Vector2 pa = active.outline[prev].pos;
-            Vector2 pb = active.outline[next].pos;
-            Vector2 ab = pb - pa;
-            float l2 = ab.sqrMagnitude;
-            float t = l2 > 1e-9f ? Mathf.Clamp01(Vector2.Dot(onEdgeActiveLayer - pa, ab) / l2) : 0.5f;
-
+            // v2 invariant: every layer has the same loop count + per-loop vertex order. Validate
+            // this before inserting so we don't NRE on a corrupt asset.
             for (int li = 0; li < layers.Count; li++)
             {
-                var L = layers[li];
-                Vector2 p = (li == activeLayerIdx)
-                    ? onEdgeActiveLayer
-                    : Vector2.Lerp(L.outline[prev].pos, L.outline[next].pos, t);
-                int insertAt = afterIdx + 1;
-                L.outline.Insert(insertAt, new OutlinePoint { id = newId, pos = p });
+                if (layers[li].loops == null || loopIndex < 0 || loopIndex >= layers[li].loops.Count)
+                    return 0;
+            }
+            int newId = AllocateId();
+            int insertAt = afterIdx + 1;
+            for (int li = 0; li < layers.Count; li++)
+            {
+                var loop = layers[li].loops[loopIndex];
+                loop.points.Insert(insertAt, new OutlinePoint { id = newId, pos = pos });
             }
             return newId;
         }
 
-        public void RemoveOutlinePointInAllLayers(int idx)
+        // Remove the point at (loopIndex, pointIdx) in EVERY layer's same-loop. If the loop drops
+        // below 3 points, the loop itself is removed from every layer. Returns true if anything
+        // changed; false if blocked by safety guards.
+        // Guard: refuse to remove if doing so would drop the front layer's TOTAL point count
+        // below 3 — at least one valid outer must remain.
+        public bool RemoveOutlinePointInAllLayers(int loopIndex, int pointIdx)
         {
-            if (layers.Count == 0) return;
-            if (FrontLayer.outline.Count <= 3) return;
-            int delId = layers[0].outline[idx].id;
+            if (layers.Count == 0) return false;
+            if (loopIndex < 0 || loopIndex >= FrontLayer.loops.Count) return false;
+            // Validate every layer has the same loop count and per-loop vertex count before
+            // mutating so a corrupt asset can't NRE us mid-loop.
             for (int li = 0; li < layers.Count; li++)
-                layers[li].outline.RemoveAt(idx);
+            {
+                var L = layers[li];
+                if (L.loops == null || loopIndex >= L.loops.Count) return false;
+                if (pointIdx >= L.loops[loopIndex].points.Count) return false;
+            }
+            var loop0 = FrontLayer.loops[loopIndex];
+            if (pointIdx < 0 || pointIdx >= loop0.points.Count) return false;
+
+            // If this removal would push the loop below 3 points, the loop will be removed
+            // entirely. Refuse if removing the whole loop drops total count below 3.
+            bool wouldRemoveLoop = (loop0.points.Count - 1) < 3;
+            int totalAfter = OutlineCount - 1;
+            if (wouldRemoveLoop) totalAfter = OutlineCount - loop0.points.Count;
+            if (totalAfter < 3) return false;
+
+            int delId = loop0.points[pointIdx].id;
+            for (int li = 0; li < layers.Count; li++)
+            {
+                var L = layers[li];
+                var ll = L.loops[loopIndex];
+                ll.points.RemoveAt(pointIdx);
+                if (ll.points.Count < 3) L.loops.RemoveAt(loopIndex);
+            }
             forcedEdges.RemoveAll(fe => fe.idA == delId || fe.idB == delId);
+            return true;
         }
 
         void Reset()
@@ -248,14 +343,38 @@ namespace SlimeJumping.TerrainShape
             nextId = 1;
 
             var front = new OutlineLayer { name = "Front", z = 0f };
-            front.outline.Add(new OutlinePoint { id = AllocateId(), pos = new Vector2(-1f, -1f) });
-            front.outline.Add(new OutlinePoint { id = AllocateId(), pos = new Vector2(1f, -1f) });
-            front.outline.Add(new OutlinePoint { id = AllocateId(), pos = new Vector2(1f, 1f) });
-            front.outline.Add(new OutlinePoint { id = AllocateId(), pos = new Vector2(-1f, 1f) });
+            var loop = new OutlineLoop();
+            loop.points.Add(new OutlinePoint { id = AllocateId(), pos = new Vector2(-1f, -1f) });
+            loop.points.Add(new OutlinePoint { id = AllocateId(), pos = new Vector2(1f, -1f) });
+            loop.points.Add(new OutlinePoint { id = AllocateId(), pos = new Vector2(1f, 1f) });
+            loop.points.Add(new OutlinePoint { id = AllocateId(), pos = new Vector2(-1f, 1f) });
+            front.loops.Add(loop);
             layers.Add(front);
 
             AddLayerCopy(0, 0.5f);
             layers[1].name = "Back";
+        }
+
+        // Migrate any pre-v2 single-loop assets: copy the legacy `outline` field into loops[0]
+        // and clear the legacy field. Idempotent — safe to call repeatedly.
+        public void MigrateLegacyOutlineIfNeeded()
+        {
+            if (layers == null) return;
+            for (int li = 0; li < layers.Count; li++)
+            {
+                var L = layers[li];
+                if (L == null) continue;
+                if (L.loops == null) L.loops = new List<OutlineLoop>();
+
+#pragma warning disable 0618
+                var legacy = L.outline;
+                if (legacy != null && legacy.Count > 0 && L.loops.Count == 0)
+                {
+                    L.loops.Add(new OutlineLoop { points = new List<OutlinePoint>(legacy) });
+                }
+                L.outline = null;
+#pragma warning restore 0618
+            }
         }
     }
 }

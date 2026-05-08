@@ -183,12 +183,12 @@ namespace SlimeJumping.TerrainShape.Editor
         void DrawOutlineOverlay(Rect canvas)
         {
             var L = _target.FrontLayer;
-            if (L == null || L.outline.Count < 3) return;
-            Vector2 mn = L.outline[0].pos, mx = L.outline[0].pos;
-            for (int i = 1; i < L.outline.Count; i++)
+            if (L == null || L.loops == null || L.loops.Count == 0 || L.loops[0].points.Count < 3) return;
+            Vector2 mn = L.loops[0].points[0].pos, mx = L.loops[0].points[0].pos;
+            for (int i = 1; i < L.loops[0].points.Count; i++)
             {
-                mn = Vector2.Min(mn, L.outline[i].pos);
-                mx = Vector2.Max(mx, L.outline[i].pos);
+                mn = Vector2.Min(mn, L.loops[0].points[i].pos);
+                mx = Vector2.Max(mx, L.loops[0].points[i].pos);
             }
             Vector2 size = mx - mn;
             if (size.x < 1e-6f || size.y < 1e-6f) return;
@@ -202,11 +202,11 @@ namespace SlimeJumping.TerrainShape.Editor
 
             Handles.BeginGUI();
             Handles.color = Color.cyan;
-            int n = L.outline.Count;
+            int n = L.loops[0].points.Count;
             var pts = new Vector3[n + 1];
             for (int i = 0; i < n; i++)
             {
-                var p2 = ToCanvas(L.outline[i].pos);
+                var p2 = ToCanvas(L.loops[0].points[i].pos);
                 pts[i] = new Vector3(p2.x, p2.y, 0);
             }
             pts[n] = pts[0];
