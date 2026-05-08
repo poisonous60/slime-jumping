@@ -52,7 +52,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Categories](features/mechanisms/mechanism-categories.md) — 6분류 (환경존/위험/플랫폼효과/인터랙터블/오버라이드/소프트피직스)
 - [Portal](features/mechanisms/portal.md) — 텔레포터 쌍 + PortalSwapper (v2: 소비/재생성, 자동 페어링, 색 지정)
 - [Signal / Button](features/mechanisms/signal-button.md) — SignalSource, WeightDescendPlatform
-- [Wind Zone](features/mechanisms/wind-zone.md)
+- [Wind Zone](features/mechanisms/wind-zone.md) — v1 (slime physics push), v2 (= v1 + Snow ParticleSystemForceField 연동)
 - [Drag Zone](features/mechanisms/drag-zone.md) — 감속/모래 + 볼륨 차징
 - [Gravity Field](features/mechanisms/gravity-field.md) — 중력 방향 치환
 - [Water Zone](features/mechanisms/water-zone.md) — 물 v1/v2 + 파도 + Underwater 포스트
@@ -66,7 +66,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Turret Hazard](features/mechanisms/turret-hazard.md) — CCTV 확장 사격
 - [Icicle Hazard](features/mechanisms/icicle-hazard.md) — 낙하 고드름 (진동 → 낙하 → 파괴)
 - [Falling Train](features/mechanisms/falling-train.md) — 1회 한정 낙하 기차 (텔레그래프 → 연결부 분리 → 곡선 낙하 → 숏컷)
-- [Snowball](features/mechanisms/snowball.md) — Stage 2 굴러가는 / 날아오는 눈덩이 (Rolling/Flying mode + Falling 서브상태 + ObjectPool 스포너)
+- [Snowball](features/mechanisms/snowball.md) — Stage 2 굴러가는 / 날아오는 눈덩이 (Rolling/Flying mode + Falling 서브상태 + ObjectPool 스포너 + [SnowField 상호작용](features/mechanisms/snowball.md#snowfield-상호작용-phase-9): 연속 carve, 거리 비례 반경 성장, 착지 splash 분화구+둔덕)
 - [Granite Blast Attackable](features/mechanisms/granite-blast.md#12-attackable-슬라임이-닿으면-파괴되는-카운터) — 슬라임이 닿으면 BulbShatter warp + WorldTimeFreezeService 협력형 freeze 후 emitter 파괴되는 카운터
 - [Tier 1 Interactables](features/mechanisms/tier1-interactables.md) — E키 (Sit, TV, Shrine 등)
 - [Tier 1 Fullscreen Hazards](features/mechanisms/tier1-fullscreen-hazards.md) — Jumpscare, CameraFlash

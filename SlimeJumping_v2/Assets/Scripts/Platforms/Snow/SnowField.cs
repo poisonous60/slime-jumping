@@ -110,6 +110,8 @@ namespace SlimeJumping.Platforms.Snow
         const int   DefaultEdgeTaperHops   = 1;
         const int   DefaultSubdivLevels    = 1;
         const float DefaultAccumRate       = 0.05f;
+        const float DefaultSettleRate      = 0f;
+        const float DefaultHeightMaxMult   = 1.5f;
 
         public float MaxSnowSlopeDeg =>
             overrideMaxSnowSlope ? maxSnowSlopeDegOverride
@@ -120,6 +122,8 @@ namespace SlimeJumping.Platforms.Snow
         public int   EdgeTaperHops   => settings != null ? settings.edgeTaperHops   : DefaultEdgeTaperHops;
         public int   SubdivLevels    => settings != null ? settings.subdivLevels    : DefaultSubdivLevels;
         public float AccumulationRate=> settings != null ? settings.accumulationRate: DefaultAccumRate;
+        public float SettleRate      => settings != null ? settings.settleRate      : DefaultSettleRate;
+        public float HeightMaxMultiplier => settings != null ? settings.heightMaxMultiplier : DefaultHeightMaxMult;
         public Material SnowMaterial => settings != null ? settings.snowMaterial    : null;
 
         public int SlopeCutTaperHops => settings != null ? settings.slopeCutTaperHops : 0;
@@ -217,9 +221,9 @@ namespace SlimeJumping.Platforms.Snow
             {
                 var strip = tickBuffer[i];
                 if (strip == null) { activeStrips.Remove(strip); continue; }
-                bool stillBelow = strip.TickRecovery(dt, AccumulationRate);
+                bool stillRecovering = strip.TickRecovery(dt, AccumulationRate, SettleRate);
                 strip.FlushIfDirty();
-                if (!stillBelow) activeStrips.Remove(strip);
+                if (!stillRecovering) activeStrips.Remove(strip);
             }
         }
 
@@ -277,6 +281,43 @@ namespace SlimeJumping.Platforms.Snow
                 if (strip == null) continue;
                 if (strip.CarveLocal(localImpact, depth, radius, profile))
                     activeStrips.Add(strip);
+            }
+        }
+
+        /// <summary>Crater + raised rim splash at a world-space point. Pairs with
+        /// <see cref="Carve"/> as the explicit-args sibling that also pushes a wider
+        /// surrounding raise (capped at heightRest * <see cref="HeightMaxMultiplier"/>).
+        /// dipRadius controls the inner crater footprint; ringRadius is the outer
+        /// raise footprint and should be larger than dipRadius. The two operations
+        /// share the strip walk and CarveProfile — the raise's center-peaked falloff
+        /// re-fills the crater partially, but as long as dipDepth dominates ringRaise
+        /// the dent stays visible. Off-snow / zero-rest verts are ignored by
+        /// RaiseLocal automatically.</summary>
+        public void Splash(Vector2 contactWorld, float dipDepth, float dipRadius, float ringRaise, float ringRadius)
+        {
+            if (sourceMeshFilter == null) return;
+            bool wantDip   = dipDepth  > 0f && dipRadius  > 0f;
+            bool wantRaise = ringRaise > 0f && ringRadius > 0f;
+            if (!wantDip && !wantRaise) return;
+
+            Vector3 localImpact = sourceMeshFilter.transform.InverseTransformPoint(
+                new Vector3(contactWorld.x, contactWorld.y, 0f));
+
+            var profile = CarveProfile;
+            float maxMult = HeightMaxMultiplier;
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                var child = transform.GetChild(i);
+                if (child == null) continue;
+                var strip = child.GetComponent<SnowStrip>();
+                if (strip == null) continue;
+
+                bool changed = false;
+                if (wantDip   && strip.CarveLocal(localImpact, dipDepth, dipRadius, profile))
+                    changed = true;
+                if (wantRaise && strip.RaiseLocal(localImpact, ringRaise, ringRadius, profile, maxMult))
+                    changed = true;
+                if (changed) activeStrips.Add(strip);
             }
         }
 

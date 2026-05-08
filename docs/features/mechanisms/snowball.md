@@ -150,6 +150,51 @@ Active        — 굴러감 / 날아감
 4. **Pool 안전**: `Initialize` 가 `respawnTime = -1` 강제 → 풀 인스턴스가 자체 부활하지 않음.
 5. **WorldTimeFreezeService 존중**: Update / FixedUpdate 진입 시 `IsFrozen` 체크 (JumpBall 패턴).
 
+## SnowField 상호작용 (Phase 9)
+
+Rolling 중 표면이 [SnowField](../platforms/snow-field.md) 로 등록된 host collider 위면 세 가지가 동시에 발동:
+
+1. **연속 carve** — 매 FixedUpdate `field.Carve(snapHit.point, carveDepthPerSec * dt, radius * carveRadiusMultiplier)`. 그라나잇 블래스트의 단발 임팩트와 같은 채널을 누적 호출해 매끈한 도랑 생성.
+2. **점진 성장** — `radius += growthPerMeterByRadius.Evaluate(radius) * step.magnitude`. AnimationCurve x 축이 raw 반경(m), y 축이 미터당 자라는 양. `maxRadius` 하드캡. `ApplySizeFromRadius` 가 visualRoot 스케일 + CircleCollider2D 반경 동기화 — 게임플레이 튜닝(maxSpeed/gravity/breakSlope)은 손대지 않음, **순수 visual + collider 스케일**.
+3. **Rolling trail VFX** — `rollingSnowParticles.emission.enabled` 토글. RateOverDistance 는 prefab 측에 위임해 속도 자동 스케일.
+
+**활성 게이트**: `snapHit.collider` 가 `SnowFieldRegistry` 에 등록되어 있고 `field.SampleDepthRatio01(snapHit.point) > snowActiveRatioThreshold` 일 때만. 자기가 다 파먹은 도랑에 다시 굴러들어와도 무한 성장 / 헛 입자 안 나오도록.
+
+**라이프 리셋**: `Awake` 에서 `startRadius = radius` 캐시. `EnterActive` (자체 respawn) / `Initialize` (pool spawn) 둘 다 `radius = startRadius; ApplySizeFromRadius();` 로 인스펙터 시작값 복원 — 자라난 채로 다음 라이프 시작하지 않음.
+
+### 착지 Splash (Falling → Rolling)
+
+절벽에서 떨어져 SnowField 위에 다시 착지하는 순간 (`ResumeRollingFromLanding`):
+
+```
+field.Splash(hit.point, splashDipDepth, splashDipRadius, splashRingRaise, splashRingRadius);
+landingSplashParticles.Play(true);
+```
+
+- 중앙에 `splashDipDepth` 만큼 한 번 푹 파임 (단발 carve)
+- 외곽 ring 영역에 `splashRingRaise` 만큼 둔덕이 솟음 — 신규 `SnowField.Splash` API 가 [`SnowSettings.heightMaxMultiplier`](../platforms/snow-field.md#heightmax--splash--raiselocal-phase-9) 캡까지 raise
+- `landingSplashParticles` (별도 ParticleSystem 슬롯, `snowDustParticles` 와 분리) burst
+- `splashMinImpactSpeed` 이하면 splash 발동 안 함 — 부드러운 착지는 조용히 다시 굴러감
+
+기존 `snowDustParticles` 는 작은 눈덩이 조각이 흩어지는 시각이라 "눈가루가 흩날린다" 느낌과 안 맞음 — landingSplashParticles 별도 슬롯으로 분리한 이유.
+
+### 인스펙터 (Snow Interaction)
+
+| 그룹 | 필드 | 기본값 | 설명 |
+|---|---|---|---|
+| Continuous (Rolling) | Carve Depth Per Sec | 0.06 | m/s. 매 FixedUpdate 누적되는 carve 깊이. 0 = carve 비활성 |
+| | Carve Radius Multiplier | 1.0 | `carveRadius = ball.radius × this` |
+| | Snow Active Ratio Threshold | 0.05 | `SampleDepthRatio01 > threshold` 일 때만 carve/grow/VFX |
+| Growth | Growth Per Meter By Radius | curve | x = 현재 반경(m), y = 미터당 자라는 양(m/m). 작은 공일수록 빠르게, 큰 공이면 둔화 |
+| | Max Radius | 3 | 성장 하드 캡 (m) |
+| Landing Splash | Splash Dip Depth | 0.18 | m. 중앙 분화구 깊이 |
+| | Splash Dip Radius | 0.6 | m. 분화구 footprint 반경 |
+| | Splash Ring Raise | 0.10 | m. 옆 둔덕 높이 (heightMax 캡 적용) |
+| | Splash Ring Radius | 1.2 | m. raise 가 적용되는 외곽 반경 (dipRadius < 이 값) |
+| | Splash Min Impact Speed | 1.5 | m/s. 이하 컷오프 |
+| VFX | Rolling Snow Particles | None | 굴러가는 동안 emission 토글되는 자식 PS |
+| | Landing Splash Particles | None | 착지 splash 한 번 burst 하는 자식 PS |
+
 ## 관련 파일
 
 - [Snowball.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Snowball.cs) — 메인 컴포넌트

@@ -193,6 +193,69 @@ namespace SlimeJumping.Platforms.Snow
             return anyChange;
         }
 
+        /// <summary>Apply a raise (mound) at the given mesh-local position using the chosen
+        /// falloff profile. Mirror of <see cref="CarveLocal"/> but pushes heightCurrent
+        /// UPWARD instead of down, capped at heightRest * heightMaxMultiplier per vertex.
+        /// Returns true if any vertex was actually raised (caller adds to active-tick set
+        /// so settle recovery picks it up). Verts whose heightRest is 0 (taper edge / bare)
+        /// have a 0 ceiling and stay flat — mounds can't grow on bare ground.</summary>
+        public bool RaiseLocal(Vector3 localImpactPos, float raise, float radius, CarveProfileType profile, float heightMaxMultiplier)
+        {
+            if (heightCurrent == null || heightRest == null || verts == null) return false;
+            if (raise <= 0f || radius <= 0f) return false;
+            if (heightMaxMultiplier <= 1f) return false;
+
+            if (localImpactPos.x < aabbMin.x - radius || localImpactPos.x > aabbMax.x + radius ||
+                localImpactPos.y < aabbMin.y - radius || localImpactPos.y > aabbMax.y + radius)
+                return false;
+
+            float invR = 1f / radius;
+            float ix = localImpactPos.x;
+            float iy = localImpactPos.y;
+            bool anyChange = false;
+            for (int v = 0; v < heightCurrent.Length; v++)
+            {
+                float dx = (verts[v].x - ix) * invR;
+                float dy = (verts[v].y - iy) * invR;
+                float d2 = dx * dx + dy * dy;
+                float falloff;
+                switch (profile)
+                {
+                    case CarveProfileType.Gaussian:
+                        falloff = Mathf.Exp(-4f * d2);
+                        break;
+                    case CarveProfileType.SphericalCap:
+                        falloff = d2 >= 1f ? 0f : Mathf.Sqrt(1f - d2);
+                        break;
+                    case CarveProfileType.Parabola:
+                        falloff = d2 >= 1f ? 0f : (1f - d2);
+                        break;
+                    case CarveProfileType.RaisedCosine:
+                    default:
+                        if (d2 >= 1f) { falloff = 0f; }
+                        else
+                        {
+                            float d = Mathf.Sqrt(d2);
+                            falloff = 0.5f * (1f + Mathf.Cos(Mathf.PI * d));
+                        }
+                        break;
+                }
+                float push = raise * falloff;
+                if (push < 1e-5f) continue;
+                float cap = heightRest[v] * heightMaxMultiplier;
+                if (cap <= 1e-5f) continue;
+                float nh = heightCurrent[v] + push;
+                if (nh > cap) nh = cap;
+                if (nh > heightCurrent[v])
+                {
+                    heightCurrent[v] = nh;
+                    anyChange = true;
+                }
+            }
+            if (anyChange) dirty = true;
+            return anyChange;
+        }
+
         /// <summary>Sample remaining snow coverage at a mesh-local xy position. Returns
         /// 0 outside the patch xy AABB or when the strip has no data, otherwise the
         /// nearest-vertex ratio clamp01(heightCurrent / heightRest). 0 = bare ground
@@ -248,30 +311,51 @@ namespace SlimeJumping.Platforms.Snow
             return ratio;
         }
 
-        /// <summary>Lerp heightCurrent toward heightRest. Returns true while any vertex
-        /// is still below its rest value (i.e., this strip should keep ticking next
-        /// frame); false once everything is fully recovered.</summary>
-        public bool TickRecovery(float dt, float accumulationRate)
+        /// <summary>Walk heightCurrent toward heightRest from either side. Carved
+        /// (cur &lt; rest) verts walk UP at <paramref name="accumulationRate"/>; raised
+        /// (cur &gt; rest) verts walk DOWN at <paramref name="settleRate"/>. Returns true
+        /// while any vertex is still away from rest (strip should keep ticking next
+        /// frame); false once everything is fully recovered. Pass <paramref name="settleRate"/>
+        /// = 0 to leave raised mounds in place forever.</summary>
+        public bool TickRecovery(float dt, float accumulationRate, float settleRate)
         {
             if (heightCurrent == null || heightRest == null) return false;
-            float step = accumulationRate * dt;
-            if (step <= 0f) return false;
+            float upStep   = accumulationRate * dt;
+            float downStep = settleRate       * dt;
+            if (upStep <= 0f && downStep <= 0f) return false;
 
-            bool anyBelow = false;
+            // anyDifferent 가 true 면 caller (SnowField.FixedUpdate) 가 strip 을 activeStrips 에
+            // 다음 프레임에도 계속 보관. 그래서 "현재 다르고, *나중에* 변할 가능성이 있는"
+            // vertex 만 카운트. 회복 mechanism (upStep / downStep) 이 0 인 방향의 vertex 는
+            // 영원히 못 변하므로 anyDifferent 에 안 더함 — 그렇지 않으면 settleRate=0 + 이미
+            // 카브된 strip 이 매 FixedUpdate 빈 작업으로 영원히 ticked.
+            bool anyDifferent = false;
             bool anyChange = false;
             for (int v = 0; v < heightCurrent.Length; v++)
             {
                 float rest = heightRest[v];
                 float cur = heightCurrent[v];
-                if (cur >= rest) continue;
-                float nc = cur + step;
-                if (nc > rest) nc = rest;
-                heightCurrent[v] = nc;
-                anyChange = true;
-                if (nc < rest) anyBelow = true;
+                if (cur < rest)
+                {
+                    if (upStep <= 0f) continue;
+                    float nc = cur + upStep;
+                    if (nc > rest) nc = rest;
+                    heightCurrent[v] = nc;
+                    anyChange = true;
+                    if (nc < rest) anyDifferent = true;
+                }
+                else if (cur > rest)
+                {
+                    if (downStep <= 0f) continue;
+                    float nc = cur - downStep;
+                    if (nc < rest) nc = rest;
+                    heightCurrent[v] = nc;
+                    anyChange = true;
+                    if (nc > rest) anyDifferent = true;
+                }
             }
             if (anyChange) dirty = true;
-            return anyBelow;
+            return anyDifferent;
         }
 
         /// <summary>Binary "is this point in the snow footprint" probe paired with the

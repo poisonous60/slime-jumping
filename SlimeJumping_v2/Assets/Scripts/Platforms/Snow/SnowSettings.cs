@@ -114,6 +114,13 @@ namespace SlimeJumping.Platforms.Snow
         [Tooltip("Snow re-fill rate while a carve recovers, in metres per second. Per-vertex heightCurrent lerps toward heightRest at this rate.")]
         [Min(0f)] public float accumulationRate = 0.05f;
 
+        [Tooltip("Settle rate for snow piled ABOVE heightRest (m/s). When heightCurrent > heightRest (after a Splash raise), it walks down toward heightRest at this rate. 0 = raise stays permanent — let the field accumulate persistent mounds. >0 = mounds slowly collapse back to natural rest.")]
+        [Min(0f)] public float settleRate = 0f;
+
+        [Header("Raise (impact → mound)")]
+        [Tooltip("Cap multiplier on heightRest for snow piled above rest. heightMax = heightRest × this. Splash / RaiseLocal cannot push heightCurrent past heightMax. 1.0 = no raise allowed (clamps at rest), 1.5 = 50% extra above natural thickness, etc.")]
+        [Min(1f)] public float heightMaxMultiplier = 1.5f;
+
         [Header("Gameplay coupling")]
         [Tooltip("SurfaceMaterial used as the slime's surface tag while standing on a snow-covered region of the host. Binary: any meaningful snow at the contact → this material; otherwise the host's own tag. Typical wiring: Assets/Settings/SurfaceMaterials/Snow.asset.")]
         public SurfaceMaterial snowSurfaceMaterial;

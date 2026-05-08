@@ -3,6 +3,7 @@ using UnityEngine.Serialization;
 using SlimeJumping.Effects;
 using SlimeJumping.Controller;
 using SlimeJumping.Audio;
+using SlimeJumping.Platforms.Snow;
 
 namespace SlimeJumping.Mechanisms
 {
@@ -123,6 +124,43 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("카메라 셰이크 force. impulseEmitter 가 null 이면 무시.")]
         [SerializeField] float cameraShakeForce = 0.5f;
 
+        [Header("Snow Interaction — Continuous (Rolling)")]
+        [Tooltip("표면이 SnowField 일 때 매 FixedUpdate 누적되는 carve depth (m/s). 굴러가면서 매끈한 도랑이 파임. 0 = carve 비활성.")]
+        [SerializeField] float carveDepthPerSec = 0.06f;
+        [Tooltip("Carve 반경 = ball.radius × this multiplier. 1.0 = 공 반경과 동일 폭의 도랑, 0.7 = 약간 좁게, 1.3 = 약간 넓게.")]
+        [SerializeField] float carveRadiusMultiplier = 1.0f;
+        [Tooltip("SnowField.SampleDepthRatio01 이 이 값보다 클 때만 carve / grow / rolling VFX 활성. 자기가 이미 다 파먹은 도랑 위를 다시 굴러갈 때 무한히 자라거나 입자가 솟지 않도록 게이트. 0.05 = 거의 비었으면 끔.")]
+        [Range(0f, 1f)]
+        [SerializeField] float snowActiveRatioThreshold = 0.05f;
+
+        [Header("Snow Interaction — Growth")]
+        [Tooltip("Per-meter rolled 성장량. X = 현재 반경(m), Y = 미터당 자라는 양(m / m). 기본: 작은 공일수록 빠르게 자라고 큰 공이 되면 둔화 → 0 (max 도달 전 자연 감속).")]
+        [SerializeField] AnimationCurve growthPerMeterByRadius = new AnimationCurve(
+            new Keyframe(0.5f, 0.05f),
+            new Keyframe(1.5f, 0.02f),
+            new Keyframe(3.0f, 0f)
+        );
+        [Tooltip("성장 하드 캡 (m). 곡선이 0 으로 안 떨어져도 이 값을 넘지 않음.")]
+        [SerializeField] float maxRadius = 3f;
+
+        [Header("Snow Interaction — Landing Splash")]
+        [Tooltip("절벽에서 떨어져 SnowField 위에 다시 착지할 때 중앙에 파이는 깊이 (m).")]
+        [SerializeField] float splashDipDepth = 0.18f;
+        [Tooltip("중앙 분화구 반경 (m). dipRadius < ringRadius 이어야 둔덕이 보임.")]
+        [SerializeField] float splashDipRadius = 0.6f;
+        [Tooltip("분화구 옆에 솟는 둔덕 높이 (m). heightMax 캡(SnowSettings.heightMaxMultiplier)에 의해 cap 됨.")]
+        [SerializeField] float splashRingRaise = 0.10f;
+        [Tooltip("Raise 가 적용되는 외곽 반경 (m). 이 안쪽 verts 가 둔덕이 됨.")]
+        [SerializeField] float splashRingRadius = 1.2f;
+        [Tooltip("이 속도(m/s) 이하의 부드러운 착지에는 splash 발동 안 함.")]
+        [SerializeField] float splashMinImpactSpeed = 1.5f;
+
+        [Header("Snow Interaction — VFX")]
+        [Tooltip("굴러가는 동안 활성화되는 ParticleSystem (자식). RateOverDistance 로 prefab 에서 속도 자동 스케일. 위 게이트로 emission 만 토글.")]
+        [SerializeField] ParticleSystem rollingSnowParticles;
+        [Tooltip("착지 splash 순간 한 번 burst 하는 ParticleSystem. snowDustParticles(부서짐 burst)와 분리 — 시각 언어 다름.")]
+        [SerializeField] ParticleSystem landingSplashParticles;
+
         // --- Runtime ---
         Rigidbody2D rb;
         SnowballPhase phase = SnowballPhase.Active;
@@ -139,6 +177,7 @@ namespace SlimeJumping.Mechanisms
         // Respawn state
         Vector2 startPosition;
         int startDirection;
+        float startRadius;
         Collider2D[] myColliders;
         bool readyToRespawn;
 
@@ -177,6 +216,7 @@ namespace SlimeJumping.Mechanisms
             // 부활 시 시작 상태 복원용. ProbeInitialSurface 의 surface-snap 전에 캐시.
             startPosition = rb.position;
             startDirection = direction;
+            startRadius = radius;
             currentSpeed = initialSpeed;
 
             if (mode == Mode.Rolling)
@@ -348,6 +388,47 @@ namespace SlimeJumping.Mechanisms
 
             // 시각 회전: 진행 방향에 따라 시계/반시계. 우측 진행 = 시계 (-Z). Update 가 적분.
             spinRateRad = -(direction * currentSpeed) / radius;
+
+            // Snow interaction — carve / grow / rolling VFX. snapHit.collider 가 SnowField host
+            // 로 등록되어 있고 그 지점에 잔여 눈 비율이 임계 위면 활성. forwardHit fallback
+            // 케이스에선 snapHit.collider == null 이라 자연 비활성.
+            SnowField field = null;
+            bool onActiveSnow = false;
+            if (snapHit.collider != null
+                && SnowFieldRegistry.TryGet(snapHit.collider, out field)
+                && field != null)
+            {
+                float ratio = field.SampleDepthRatio01(snapHit.point);
+                onActiveSnow = ratio > snowActiveRatioThreshold;
+            }
+
+            if (onActiveSnow)
+            {
+                // Continuous carve — 매 FixedUpdate 누적, depth 시간 기준, 폭은 ball 크기 비례.
+                if (carveDepthPerSec > 0f)
+                    field.Carve(snapHit.point,
+                                carveDepthPerSec * dt,
+                                radius * carveRadiusMultiplier);
+
+                // Growth — 굴러간 거리 × 현재 반경별 곡선. maxRadius 캡.
+                if (growthPerMeterByRadius != null && radius < maxRadius)
+                {
+                    float growth = growthPerMeterByRadius.Evaluate(radius) * step.magnitude;
+                    if (growth > 0f)
+                    {
+                        radius = Mathf.Min(maxRadius, radius + growth);
+                        ApplySizeFromRadius();
+                    }
+                }
+            }
+
+            // Rolling VFX — emission 만 토글. RateOverDistance 는 prefab 측 설정에 위임.
+            if (rollingSnowParticles != null)
+            {
+                var emission = rollingSnowParticles.emission;
+                if (emission.enabled != onActiveSnow)
+                    emission.enabled = onActiveSnow;
+            }
         }
 
         // 진행 방향 motion 의 horizontal 대비 각도 (deg). +X 진행이든 -X 진행이든
@@ -527,6 +608,25 @@ namespace SlimeJumping.Mechanisms
             currentSpeed = Mathf.Clamp(Vector2.Dot(lastFallVel, motionDir), 0f, maxSpeed);
             phase = SnowballPhase.Active;
             fallVelocity = Vector2.zero;
+
+            // Landing splash — host 가 SnowField 이고 임계 속도 위면 분화구 + 둔덕 + burst VFX.
+            // Soft landing 은 splashMinImpactSpeed 컷오프로 무시.
+            float impactSpeed = lastFallVel.magnitude;
+            if (impactSpeed >= splashMinImpactSpeed
+                && hit.collider != null
+                && SnowFieldRegistry.TryGet(hit.collider, out var landingField)
+                && landingField != null)
+            {
+                landingField.Splash(hit.point,
+                                    splashDipDepth, splashDipRadius,
+                                    splashRingRaise, splashRingRadius);
+
+                if (landingSplashParticles != null)
+                {
+                    landingSplashParticles.transform.position = hit.point;
+                    landingSplashParticles.Play(true);
+                }
+            }
         }
 
         // ---------- Public API for spawner (Phase 6) ----------
@@ -550,6 +650,10 @@ namespace SlimeJumping.Mechanisms
             surfaceNormal = Vector2.up;
             fallVelocity = Vector2.zero;
             currentSpeed = initialSpeed;
+            // SnowField 위에서 자라난 반경을 인스펙터 시작 값으로 되돌림.
+            // ApplySizeFromRadius 가 visualRoot scale + CircleCollider2D radius 동기화.
+            radius = startRadius;
+            ApplySizeFromRadius();
             ResetVisualState();
             readyToRespawn = false;
 
@@ -593,6 +697,13 @@ namespace SlimeJumping.Mechanisms
             StopLoop();
             if (breakClip != null)
                 SoundService.PlayAt(breakClip, rb.position, SoundCategory.SFX_Object, sfxVolume);
+
+            // Rolling trail 즉시 차단 — 부서졌는데 입자가 한 프레임 더 emit 되면 어색.
+            if (rollingSnowParticles != null)
+            {
+                var emission = rollingSnowParticles.emission;
+                if (emission.enabled) emission.enabled = false;
+            }
 
             // Visual / collider off — Crumbling 동안 trigger 재발동 막음
             HideVisualAndCollider();
@@ -666,6 +777,9 @@ namespace SlimeJumping.Mechanisms
             surfaceNormal = Vector2.up;
             fallVelocity = Vector2.zero;
             currentSpeed = initialSpeed;
+            // 자라난 반경 리셋 — Initialize 와 동일 패턴.
+            radius = startRadius;
+            ApplySizeFromRadius();
             ResetVisualState();
             ShowVisualAndCollider();
 

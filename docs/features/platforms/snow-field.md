@@ -235,6 +235,44 @@ State 별 hook:
 | Depth To Snow Blend | (0,0)→(1,1) linear | X = 남은 두께 비율 (0 bare, 1 풀), Y = snow material blend 가중치. 좌측 평탄 = 일정 깊이 이상부터만 효과 (step). |
 | Depth To Launch Scale | flat 1.0 | X = depth, Y = 점프 파워 multiplier. flat = 효과 없음. 우측 0.6 등으로 깎으면 깊이 묻힌 곳에서 점프 약해짐. |
 
+## heightMax / Splash / RaiseLocal (Phase 9)
+
+[Snowball](../mechanisms/snowball.md#snowfield-상호작용-phase-9) 의 착지 splash 연출 (분화구 + 옆 둔덕) 을 위해 도입. `heightCurrent` 가 `heightRest` 위로 일시적으로 솟을 수 있도록 시스템 확장. 기존 `Carve` / `HandleLanded` 호출 사이트 (슬라임 착지, 그라나잇 블래스트 임팩트) 는 영향받지 않음 — `Splash` 는 신규 API.
+
+### 데이터 모델 변화
+
+- **`heightMax = heightRest × SnowSettings.heightMaxMultiplier`** (per-vertex, 메모리 저장 안 함 — 매번 계산). raise 의 절대 천장. `multiplier == 1` 이면 raise 사실상 비활성 (기존 동작과 동일).
+- **`heightCurrent` 의 가능 범위**: 기존 `[0, heightRest]` → 확장 `[0, heightMax]`. 셰이더는 `heightCurrent` 를 raw 값으로 받아 vertex displacement 만 하므로 `> heightRest` 도 자동 렌더 (정규화 비율 사용 안 함). carve mask (`1 - h/heightRest`) 는 ratio > 1 케이스에서 음수가 되어 footprint 효과가 안 보일 수 있는데, raise 영역은 footprint 의도가 없으므로 OK.
+
+### 신규 API
+
+- **`SnowStrip.RaiseLocal(localPos, raise, radius, profile, heightMaxMultiplier) → bool`**: `CarveLocal` 거울. 동일 falloff profile 분기 (Gaussian / RaisedCosine / SphericalCap / Parabola), 동일 AABB pre-filter. 차이는 `heightCurrent[v] = min(heightRest[v] × heightMaxMultiplier, heightCurrent[v] + raise * falloff)`. `heightRest[v] == 0` (taper 가장자리, 바깥쪽) 인 vertex 는 cap=0 이므로 raise 적용 안 됨 — 둔덕은 눈이 있는 곳에만 솟음.
+- **`SnowField.Splash(world, dipDepth, dipRadius, ringRaise, ringRadius)`**: `Carve` 와 동일 명시 인자 패턴. 각 strip 에 대해 `CarveLocal`(중앙 분화구) + `RaiseLocal`(외곽 둔덕) 둘 다 호출. 둘 중 하나라도 변경되면 `activeStrips.Add` 로 recovery 추적. dipRadius < ringRadius 일 때 분화구 + 가장자리 둔덕 형태 — RaiseLocal 의 falloff 가 중심에서 0 이 아니라 dent 를 일부 채우지만 dipDepth 가 ringRaise 보다 크게 잡혀 있으면 분화구가 살아남음.
+
+### 양방향 TickRecovery
+
+`SnowStrip.TickRecovery(dt, accumulationRate, settleRate)` — 시그니처에 `settleRate` 매개변수 추가 (Phase 9). 동작:
+
+| `heightCurrent[v]` 와 `heightRest[v]` 관계 | 동작 |
+|---|---|
+| `cur < rest` (도랑 — 카브됨) | `cur += accumulationRate × dt`, cap rest. 기존 동작. |
+| `cur > rest` (둔덕 — raise 됨) | `cur -= settleRate × dt`, floor rest. 신규. |
+| `cur == rest` | no-op. |
+
+리턴값: 어떤 vertex라도 `heightRest` 와 다르면 true (strip 이 다음 프레임에도 tick 받아야 함). `accumulationRate == 0 && settleRate == 0` 이면 즉시 false 반환 (전 vertex 정지). `settleRate == 0` 이면 둔덕은 영구 유지 — designer 가 stage 위에서 raise 가 누적되어 푹신해지는 emergent 텍스처를 의도할 때 유용.
+
+### Phase 9 SnowSettings 필드
+
+| 필드 | 기본값 | 설명 |
+|------|--------|------|
+| Height Max Multiplier | 1.5 | `heightMax = heightRest × this`. raise 의 절대 천장. 1.0 = raise 비활성, 1.5 = 50% 마진. |
+| Settle Rate | 0 | m/s. `cur > rest` 일 때 rest 까지 가라앉는 속도. 0 = raise 영구 유지, >0 = 천천히 가라앉음. |
+
+### 호출자 (Phase 9 시점)
+
+- **Snowball 착지** ([`ResumeRollingFromLanding`](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Snowball.cs)) — 절벽 낙하 후 SnowField 에 다시 착지하는 순간 `field.Splash(...)` 한 번 호출.
+- 그 외 호출자 없음 (현 시점). 향후 슬라임 hard-landing 이나 그라나잇 블래스트가 `Splash` 로 마이그레이션할 수 있지만, 현재는 기존 `Carve` 채널 그대로 사용 — 비주얼 회귀 회피.
+
 ## 미구현 (Phase 4 이후)
 
 > Phase 4+ 는 Phase 2/3 의 mesh / vertex / fragment 셰이더 contract 를 그대로 두고 heightRest 결정 로직 (Phase 4) · neighbour 시뮬 (Phase 5) 만 갈아끼우는 추가 작업이다. Phase 1 ↔ Phase 2 사이 같은 mesh-format 재설계는 더 일어나지 않을 예정.
