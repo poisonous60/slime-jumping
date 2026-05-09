@@ -27,7 +27,7 @@ Active        — 굴러감 / 날아감
 
 ## 슬라임 상호작용
 
-`OnTriggerEnter2D` / `OnTriggerStay2D` 가 `HandleTrigger` 로 라우팅. `phase != Active` 이면 즉시 return.
+`OnTriggerEnter2D` / `OnTriggerStay2D` 가 `HandleTrigger` 로 라우팅. `phase` 가 Active(Rolling/Flying) 또는 Falling(공중 ballistic) 일 때만 처리, Crumbling/Gone 은 무시. 절벽에서 떨어지는 도중 (Falling) 에도 슬라임/다른 눈덩이와 부딪히면 정상적으로 stomp/knockback/break 발화.
 
 **눈덩이끼리 접촉**: `other.GetComponentInParent<Snowball>()` 로 검출, 자기 자신만 `Break()` 호출 (상대는 자기 trigger 이벤트로 자체 break — Unity 가 양쪽 모두에 OnTriggerEnter 발화).
 
@@ -48,7 +48,7 @@ Active        — 굴러감 / 날아감
 - **`> 0`** → `CrumblingPlatform.UpdateGone` 패턴 ([CrumblingPlatform.cs:137-167](../../../SlimeJumping_v2/Assets/Scripts/Platforms/CrumblingPlatform.cs#L137-L167)) 자체 부활. 시작 위치/방향 캐시 (`startPosition`, `startDirection`) 사용.
 - **`< 0`** → 일회용. `OnDespawn` 이벤트에 구독자 있으면 풀 반환, 없으면 `Destroy(gameObject)`.
 
-`Snowball.Initialize(worldPos, rollDir, flyDir)` 가 풀 매니지드 인스턴스를 재무장하면서 `respawnTime = -1f` 강제. 풀 내 인스턴스가 자체 부활하면 풀에 영영 안 돌아가는 풋건을 방지.
+`Snowball.Initialize(worldPos, launchDir)` 가 풀 매니지드 인스턴스를 재무장하면서 `respawnTime = -1f` 강제. 풀 내 인스턴스가 자체 부활하면 풀에 영영 안 돌아가는 풋건을 방지. Rolling 모드 + 수평 발사 (|launchDir.y| < 0.05) 면 `ProbeInitialSurface` 로 표면 snap, 그 외 (대각선/수직) 는 Falling phase 로 ballistic 발사 → `ResumeRollingFromLanding` 가 표면 닿는 순간 Rolling 으로 전환.
 
 ## SnowballSpawner — `ObjectPool<Snowball>` 기반 cadence
 
@@ -57,8 +57,7 @@ Active        — 굴러감 / 날아감
 | 인스펙터 | 기본값 | 설명 |
 |---------|-------|------|
 | Snowball Prefab | None | 인스턴스화할 Snowball prefab |
-| Direction Override | 1 | Rolling 모드 prefab 의 direction 덮어씀 (±1) |
-| Fly Direction Override | (-1, 0) | Flying 모드 prefab 의 flyDirection 덮어씀 |
+| Initial Angle Degrees | 0 | 발사 각도 (도, -180~180). 0=오른쪽, 90=위, 180=왼쪽, -90=아래. Rolling 은 ballistic 발사 후 표면에 닿으면 굴러감 — 수평 (|y|<0.05) 이면 즉시 surface snap. Flying 은 등속 직진 |
 | Interval | 3 | spawn 간격 (s) |
 | Start Delay | 0 | 첫 spawn 지연 — 여러 스포너 동기화 깨기용 |
 | Interval Jitter | 0.2 | interval 의 ±X 비율로 jitter |
@@ -70,7 +69,7 @@ Active        — 굴러감 / 날아감
 - `createFunc`: `Instantiate(prefab, transform)` 후 `SetActive(false)`, `s.OnDespawn += HandleDespawn` 영구 구독.
 - `actionOnGet/Release`: `SetActive(true/false)`.
 - `actionOnDestroy`: `Destroy(gameObject)` (`pool.Clear()` 시 호출).
-- `Spawn` 후 `s.Initialize(transform.position, directionOverride, flyDirectionOverride)` — Initialize 가 `respawnTime = -1` 강제하므로 자체 부활 안 함 → 부서지면 `EnterGone` 의 `OnDespawn.Invoke(this)` → `HandleDespawn` 이 `pool.Release(s)` 로 반환.
+- `Spawn` 에서 `initialAngleDegrees` 를 `(cos, sin)` 단위 벡터로 변환해 `s.Initialize(transform.position, launchDir)` 호출 — Initialize 가 `respawnTime = -1` 강제하므로 자체 부활 안 함 → 부서지면 `EnterGone` 의 `OnDespawn.Invoke(this)` → `HandleDespawn` 이 `pool.Release(s)` 로 반환.
 
 ## Audio
 

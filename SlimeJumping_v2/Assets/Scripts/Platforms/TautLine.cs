@@ -101,12 +101,18 @@ namespace SlimeJumping.Platforms
         [SerializeField] AnimationCurve launchImpactKickCurve = AnimationCurve.Linear(0f, 0f, 1f, 4f);
         [Tooltip("Minimum upward (worldUp) velocity guaranteed for any launch off this rope (m/s). Constant — does not scale with charge. 0 = disabled. Prevents near-horizontal launches from being immediately recaught by the rope's spring rebound.")]
         [SerializeField, Min(0f)] float minLaunchVerticalSpeed = 3f;
-        [Tooltip("Hard cap on the slime's final launch SPEED (vector magnitude) when jumping off this rope (m/s). " +
-                 "Applied in PostprocessLaunchVelocity, after GetLaunchBonus + drag-zone scaling + " +
-                 "minLaunchVerticalSpeed. Direction is preserved, magnitude is clamped. Mirrors " +
-                 "SpringyBranchPlatform.maxTipSpeed in concept (a designer-facing absolute ceiling on " +
-                 "launch speed). 0 = disabled.")]
-        [SerializeField, Min(0f)] float maxLaunchSpeed = 0f;
+        [Tooltip("Below this pre-bonus launch speed (m/s) the rope grants full jumpBoost. " +
+                 "Pre-bonus speed = slime.Velocity.magnitude at the moment GetLaunchBonus is " +
+                 "called — already includes EnergyConversion power, carrier inheritance, hyperdash, " +
+                 "but NOT the rope bonus itself. Lets the rope reward normal launches without " +
+                 "stacking extra height on top of a high-fall EnergyConversion launch.")]
+        [SerializeField, Min(0f)] float boostFalloffStartSpeed = 12f;
+        [Tooltip("Above this pre-bonus launch speed (m/s) the rope grants zero jumpBoost. " +
+                 "Linear falloff between boostFalloffStartSpeed and boostFalloffEndSpeed. " +
+                 "Set ≤ boostFalloffStartSpeed for hard cutoff. The slime's own (EnergyConversion " +
+                 "+ inheritance) speed passes through unchanged — only the rope's added boost is " +
+                 "removed, so a high-fall landing still launches with its full converted energy.")]
+        [SerializeField, Min(0f)] float boostFalloffEndSpeed = 18f;
         [Tooltip("Multiplier on jumpBoost based on the rope's UPWARD speed at the launch moment. X axis: rope upward speed (m/s, = -dipVelocity, peaks as the rope passes through baseline on its way up). Y axis: multiplier on jumpBoost. Default Linear((0,0)→(5,1)) — zero bonus when rope is still or moving down, full bonus when rising at 5 m/s. Rewards player for syncing jump with the rope's upward swing.")]
         [SerializeField] AnimationCurve jumpTimingCurve = AnimationCurve.Linear(0f, 0f, 5f, 1f);
 
@@ -622,7 +628,19 @@ namespace SlimeJumping.Platforms
             // Designer tunes by jumpBoost (full-charge boost) + maxCap (hard cap) +
             // jumpTimingCurve (timing window shape).
             float bonus = jumpBoost * Mathf.Clamp01(chargeRatio) * upward * Mathf.Max(0f, timing);
-            return Mathf.Clamp(bonus, 0f, maxCap);
+            float clamped = Mathf.Clamp(bonus, 0f, maxCap);
+            // Pre-bonus speed gate: slime.Velocity here is the launch velocity the controller has
+            // built up so far (base power × chargeRatio + carrier inheritance + hyperdash) but
+            // BEFORE the rope adds bonus. A high-fall EnergyConversion launch already has high
+            // pre-bonus speed → falloff multiplier reaches 0 → rope adds nothing → the slime
+            // launches with its full converted energy and goes no higher than it naturally would.
+            // A normal (charge-only) launch has lower pre-bonus speed → full multiplier → full
+            // boost. Linear falloff between boostFalloffStartSpeed and boostFalloffEndSpeed.
+            float preBonusSpeed = slime != null ? slime.Velocity.magnitude : 0f;
+            float speedMul = boostFalloffEndSpeed > boostFalloffStartSpeed
+                ? 1f - Mathf.Clamp01(Mathf.InverseLerp(boostFalloffStartSpeed, boostFalloffEndSpeed, preBonusSpeed))
+                : (preBonusSpeed >= boostFalloffStartSpeed ? 0f : 1f);
+            return clamped * speedMul;
         }
 
         public Vector2 PostprocessLaunchVelocity(Vector2 launchVel)
@@ -636,11 +654,6 @@ namespace SlimeJumping.Platforms
                 if (upSpeed < minLaunchVerticalSpeed)
                     launchVel += worldUp * (minLaunchVerticalSpeed - upSpeed);
             }
-            // Final magnitude cap. Applied AFTER the upward boost so the cap is the genuine
-            // ceiling on what the slime leaves with, not a pre-boost number that minLaunch
-            // can exceed.
-            if (maxLaunchSpeed > 0f && launchVel.sqrMagnitude > maxLaunchSpeed * maxLaunchSpeed)
-                launchVel = launchVel.normalized * maxLaunchSpeed;
             return launchVel;
         }
 

@@ -44,10 +44,14 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] int direction = 1;
         [Tooltip("현재 표면 대비 +X° 이상 가팔라진 오르막 만나면 부서짐.")]
         [SerializeField] float breakSlopeDelta = 30f;
+        [Tooltip("현재 표면 대비 -X° 이상 가팔라진 내리막(볼록 코너) 만나면 표면을 떠나 Falling 진입. 속도는 보존(현재 motionDir × currentSpeed). 절벽 lip 에서 ballistic 하게 떨어지는 효과.")]
+        [SerializeField] float detachSlopeDelta = 45f;
         [Tooltip("Forward-down ray 의 forward 거리 (m).")]
         [SerializeField] float lookahead = 0.3f;
         [Tooltip("Forward-down ray 의 down 깊이 (m). hit 못 하면 Falling 진입.")]
         [SerializeField] float rayDepth = 0.5f;
+        [Tooltip("Rolling 모드의 최대 수명 (s). Active+Rolling 동안 누적, 초과 시 조용히 제거 (no VFX). 0 이하 = 무제한.")]
+        [SerializeField] float rollingMaxLifetime = 0f;
 
         [Header("Falling sub-state")]
         [Tooltip("절벽 진입 후 적용할 중력 (m/s²). Unity 의 전역 중력과 무관 — 자체 적분.")]
@@ -174,6 +178,10 @@ namespace SlimeJumping.Mechanisms
         Vector2 fallVelocity;
         float phaseTimer;
 
+        // Rolling 전용 수명 카운터. phaseTimer 는 Falling 의 maxFallTime 으로 덮어쓰이므로 분리.
+        // EnterActive/Initialize 에서 rollingMaxLifetime 으로 리셋. Falling 중에는 정지.
+        float rollingLifeRemaining;
+
         // Respawn state
         Vector2 startPosition;
         int startDirection;
@@ -220,7 +228,10 @@ namespace SlimeJumping.Mechanisms
             currentSpeed = initialSpeed;
 
             if (mode == Mode.Rolling)
+            {
                 ProbeInitialSurface();
+                rollingLifeRemaining = rollingMaxLifetime;
+            }
             else
                 phaseTimer = maxLifetime;
 
@@ -291,6 +302,12 @@ namespace SlimeJumping.Mechanisms
         {
             float dt = Time.fixedDeltaTime;
 
+            if (rollingMaxLifetime > 0f)
+            {
+                rollingLifeRemaining -= dt;
+                if (rollingLifeRemaining <= 0f) { SilentCleanup(); return; }
+            }
+
             // 표면 tangent 따라 중력 가속. motionDir.y > 0 → 오르막 → 감속, < 0 → 내리막 → 가속.
             // 오르막 정점에서 currentSpeed 가 음수가 되면 direction 을 뒤집어 양의 속력으로 복귀.
             if (gravity > 0f)
@@ -349,6 +366,15 @@ namespace SlimeJumping.Mechanisms
                 if (newSlopeDeg - oldSlopeDeg > breakSlopeDelta)
                 {
                     Break();
+                    return;
+                }
+                // 볼록 코너 (내리막 꺾임) — surface snap 으로 따라 내려가지 않고 ballistic
+                // 으로 이탈. nextPos 까지 진행 후 EnterFalling 이 fallVelocity =
+                // motionDir * currentSpeed 로 속도 보존.
+                if (oldSlopeDeg - newSlopeDeg > detachSlopeDelta)
+                {
+                    rb.MovePosition(nextPos);
+                    EnterFalling();
                     return;
                 }
             }
@@ -445,7 +471,10 @@ namespace SlimeJumping.Mechanisms
 
         void HandleTrigger(Collider2D other)
         {
-            if (phase != SnowballPhase.Active) return;
+            // Active = Rolling/Flying 게임플레이, Falling = 절벽에서 떨어지는 ballistic 구간.
+            // 둘 다 공중/지면에서 슬라임·다른 눈덩이와 부딪힐 수 있어야 함.
+            // Crumbling/Gone 은 콜라이더가 이미 disabled 라 도달하지 않지만 안전상 차단.
+            if (phase != SnowballPhase.Active && phase != SnowballPhase.Falling) return;
 
             // 다른 눈덩이와 부딪히면 양쪽 모두 부서짐 — 상대 눈덩이도 자기 trigger
             // 이벤트로 자체 break 하므로 여기서는 자기 자신만 break.
@@ -632,22 +661,30 @@ namespace SlimeJumping.Mechanisms
         // ---------- Public API for spawner (Phase 6) ----------
 
         /// <summary>
-        /// Pool 매니지드 Snowball 을 시작 위치/방향으로 재무장. Spawner.Get 후 호출.
+        /// Pool 매니지드 Snowball 을 시작 위치/발사 방향으로 재무장. Spawner.Get 후 호출.
+        /// launchDir 은 정규화 안 된 값 OK — 내부에서 정규화. Rolling 모드 + 수평 (|y| < 0.05)
+        /// 이면 ProbeInitialSurface 로 표면 snap, 그 외 (대각선/수직) 는 Falling phase 로
+        /// ballistic 발사 → 표면 닿으면 ResumeRollingFromLanding 가 Rolling 으로 전환.
         /// 자체 respawn 을 비활성화 (respawnTime = -1) 하여 일회용으로 만든다 — 풀에서 cadence 관리.
         /// </summary>
-        public void Initialize(Vector2 worldPos, int rollDir, Vector2 flyDir)
+        public void Initialize(Vector2 worldPos, Vector2 launchDir)
         {
             // 풀 매니지드 인스턴스가 자체 부활하면 풀에 영영 안 돌아감 — 명시적으로 비활성화.
             respawnTime = -1f;
 
-            rb.position = worldPos;
-            direction = rollDir;
-            flyDirection = flyDir;
-            startPosition = worldPos;
-            startDirection = rollDir;
+            Vector2 dirN = launchDir.sqrMagnitude > 1e-6f
+                ? launchDir.normalized
+                : Vector2.right;
 
-            motionDir = (Vector2.right * direction).normalized;
+            rb.position = worldPos;
+            // direction 부호는 ResumeRollingFromLanding 의 fallback (수평 속도 거의 0 일 때) 과
+            // EnterActive 의 motionDir 복원에 사용.
+            direction = dirN.x >= 0f ? 1 : -1;
+            startPosition = worldPos;
+            startDirection = direction;
+
             surfaceNormal = Vector2.up;
+            motionDir = dirN;
             fallVelocity = Vector2.zero;
             currentSpeed = initialSpeed;
             // SnowField 위에서 자라난 반경을 인스펙터 시작 값으로 되돌림.
@@ -656,14 +693,33 @@ namespace SlimeJumping.Mechanisms
             ApplySizeFromRadius();
             ResetVisualState();
             readyToRespawn = false;
-
             ShowVisualAndCollider();
-            phase = SnowballPhase.Active;
 
             if (mode == Mode.Rolling)
-                ProbeInitialSurface();
+            {
+                // Rolling 수명 리셋 — Falling 분기로 발사돼도 착지 후 Rolling 진입 시 사용됨.
+                rollingLifeRemaining = rollingMaxLifetime;
+                // 수평이면 표면 snap (기존 동작 유지), 대각선/수직이면 Falling phase 로 ballistic 발사.
+                bool nearHorizontal = Mathf.Abs(dirN.y) < 0.05f;
+                if (nearHorizontal)
+                {
+                    motionDir = (Vector2.right * direction).normalized;
+                    phase = SnowballPhase.Active;
+                    ProbeInitialSurface();
+                }
+                else
+                {
+                    phase = SnowballPhase.Falling;
+                    fallVelocity = dirN * initialSpeed;
+                    phaseTimer = maxFallTime;
+                }
+            }
             else
+            {
+                flyDirection = launchDir;
+                phase = SnowballPhase.Active;
                 phaseTimer = maxLifetime;
+            }
 
             StartLoop();
         }
@@ -784,7 +840,10 @@ namespace SlimeJumping.Mechanisms
             ShowVisualAndCollider();
 
             if (mode == Mode.Rolling)
+            {
                 ProbeInitialSurface();
+                rollingLifeRemaining = rollingMaxLifetime;
+            }
             else
                 phaseTimer = maxLifetime;
 

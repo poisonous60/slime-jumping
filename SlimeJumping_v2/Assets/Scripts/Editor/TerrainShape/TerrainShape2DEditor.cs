@@ -300,7 +300,7 @@ namespace SlimeJumping.TerrainShape.Editor
                 src.autoMode);
             float newSpacing = EditorGUILayout.Slider(
                 new GUIContent("Spacing", "Grid cell size, or minimum point distance for PoissonDisk/Halton."),
-                src.autoSpacing, 0.05f, 2f);
+                src.autoSpacing, 0.05f, 16f);
             int newSeed = EditorGUILayout.IntField(
                 new GUIContent("Random seed", "Deterministic seed for JitteredGrid and PoissonDisk. Same seed → same layout."),
                 src.autoSeed);

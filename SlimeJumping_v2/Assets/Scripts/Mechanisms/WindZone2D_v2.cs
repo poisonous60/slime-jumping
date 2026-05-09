@@ -273,8 +273,13 @@ namespace SlimeJumping.Mechanisms
                     falloff = Mathf.Clamp01(1f - alongWind / terminalSpeed);
             }
 
+            // AddSustainedFlowImpulse (not AddExternalVelocity) so the push integrates into
+            // slideVelocity/crawlVelocity in Attached/Charging instead of just bumping the
+            // single-frame `velocity` that the state handler overwrites next tick. Without
+            // this, Attached wind only ever contributes ~accel*dt per frame regardless of
+            // attachedMultiplier — same multiplier as Airborne would still feel ~50× weaker.
             Vector2 deltaV = windDir * (mag * multiplier * falloff * dt);
-            trackedSlime.AddExternalVelocity(deltaV);
+            trackedSlime.AddSustainedFlowImpulse(deltaV);
         }
 
         void OnDrawGizmos()

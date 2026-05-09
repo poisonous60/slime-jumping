@@ -14,7 +14,7 @@ Trigger volume에 들어오면 슬라임에 지속적 가속을 적용하는 환
 | `attachedMultiplier` | float | Attached 상태 배율 (기본 0.7) |
 | `chargingMultiplier` | float | Charging 상태 배율 (기본 0.2) |
 
-## 동작
+## 동작 (v1)
 ```
 windDir = normalize(windAcceleration)
 falloff = clamp01(1 - dot(slime.Velocity, windDir) / terminalSpeed)
@@ -22,9 +22,9 @@ deltaV  = windDir * |windAcceleration| * stateMultiplier * falloff * dt
 slime.AddExternalVelocity(deltaV)
 ```
 
-## 상태별 처리
-- **Airborne**: deltaV를 velocity에 직접 가산.
-- **Attached/Charging**: deltaV를 `surfaceTangent`에 투영 후 가산 (법선 성분 제거로 표면 스냅 지터 방지).
+## 상태별 처리 (v1)
+- **Airborne**: deltaV를 velocity에 직접 가산. 매 프레임 누적되어 terminal 까지 가속.
+- **Attached/Charging**: deltaV를 `surfaceTangent`에 투영 후 `velocity`에 가산. **누적 안 됨** — `FixedUpdateAttached`가 다음 프레임에 `velocity = (slideSpeed + crawlVelocity) * tangent`로 덮어쓰므로 wind 기여는 한 프레임만 살아있음. 결과: 같은 multiplier 라도 Attached push가 Airborne보다 ~50× 약하게 체감 (의도된 v1 동작).
 
 외부 힘 파이프라인 상세는 [../infra/external-velocity-two-channel.md](../infra/external-velocity-two-channel.md).
 
@@ -51,6 +51,9 @@ v1 기능 전부 보존 + 자식 `ParticleSystemForceField` 자동 싱크로 글
 1. **Box-only**: ForceField shape = Box, transform.localScale = `BoxCollider2D.size`. PolygonCollider2D 모양은 v2 비주얼 연동에서 지원 안 함 (물리 push 는 v1 처럼 polygon 도 동작).
 2. **Direction**: `directionX/Y = windAcceleration` (월드 기준 가속도, units/s²). 슬라임 물리와 동일 source-of-truth.
 3. **Drag → terminal velocity**: 바람 영역 안에서 눈 속도가 `|windAcceleration| / snowDrag` 로 빠르게 수렴 → 균일한 흐름 비주얼.
+
+### Push 채널 변경 — `AddSustainedFlowImpulse` (v1 대비)
+v2 는 v1 과 달리 슬라임 push 에 [`AddSustainedFlowImpulse`](../infra/external-velocity-two-channel.md)를 호출 (v1 은 `AddExternalVelocity`). Attached/Charging 일 때 wind 기여가 `slideVelocity` (inertial) 또는 `crawlVelocity` (legacy) 영구 채널에 적분되어 frame 간 누적됨 → Airborne 와 동일한 가속 거동. `attachedMultiplier=airborneMultiplier=1` 이면 두 상태에서 평형 속도가 (cos(angle) 사영을 제외하면) 일치. v1 의 "한 프레임 nudge" 동작이 필요하면 v1 컴포넌트를 그대로 사용.
 
 ### Snow 측 셋업
 [Snow.prefab](../../../SlimeJumping_v2/Assets/Prebs/VFX/Snow.prefab) 의 ParticleSystem 에 박힌 설정:

@@ -73,7 +73,7 @@ namespace SlimeJumping.Editor
             // Spawner — 좌측 상단에서 일정 간격으로 Rolling 눈덩이 뱉음
             CreateSpawner("Spawner_LeftRolling", root.transform,
                 pos: new Vector3(-9f, 0.5f, 0f),
-                directionOverride: 1,
+                initialAngleDegrees: 0f,
                 prefab: rollingPrefab);
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
@@ -193,7 +193,7 @@ namespace SlimeJumping.Editor
             return go;
         }
 
-        static GameObject CreateSpawner(string name, Transform parent, Vector3 pos, int directionOverride, Snowball prefab)
+        static GameObject CreateSpawner(string name, Transform parent, Vector3 pos, float initialAngleDegrees, Snowball prefab)
         {
             var go = new GameObject(name);
             go.transform.parent = parent;
@@ -203,7 +203,7 @@ namespace SlimeJumping.Editor
             var so = new SerializedObject(spawner);
             if (prefab != null)
                 so.FindProperty("snowballPrefab").objectReferenceValue = prefab;
-            so.FindProperty("directionOverride").intValue = directionOverride;
+            so.FindProperty("initialAngleDegrees").floatValue = initialAngleDegrees;
             so.FindProperty("interval").floatValue = 3f;
             so.FindProperty("startDelay").floatValue = 0.5f;
             so.FindProperty("intervalJitter").floatValue = 0.2f;

@@ -16,7 +16,7 @@
 | Slime tracking | `ConsumeRiderCarryDelta` (delta 누적, clamp) | `rb.position` 직접 절대 좌표 set |
 | Underside attach | 발생 (Attempt 4 normal-flip 으로 우회) | 구조적으로 불가 (one-way) |
 | Launch 후 진동 | Verlet 노드 잔여 모멘텀, slime 다시 잡음 | Overdamped 모드, baseline 으로 부드럽게 복귀 |
-| 점프 boost | `timingBonusCurve(ropeVel) × chargeMultiplierCurve(charge)` | `jumpBoost × chargeRatio × upwardComponent`, `maxCap` 으로 clamp |
+| 점프 boost | `timingBonusCurve(ropeVel) × chargeMultiplierCurve(charge)` | `jumpBoost × chargeRatio × upwardComponent`, `maxCap` clamp, **pre-bonus speed falloff** 로 EnergyConversion 발사일 땐 boost 0 |
 | Charge 시 줄 깊이 | charge 동안 점진적으로 깊어짐 | charge 동안 baseline 유지, **발사 순간** dipVelocity kick (curve(ratio)) |
 | 옆 점프 안전장치 | 없음 | `minLaunchVerticalSpeed` 로 launch 후 최소 worldUp 속도 보장 |
 
@@ -111,22 +111,28 @@ charge 가 천천히 줄을 누르는 게 아니라, 슬라임이 차고 박차�
 ## 점프 boost (Effect-mode)
 
 ```csharp
-// GetLaunchBonus — launchDir 방향 스칼라 보너스 (timing-gated)
+// GetLaunchBonus — launchDir 방향 스칼라 보너스 (timing + pre-bonus speed gated)
 ropeUpSpeed = max(0, -dipVelocity)                          // 줄 위쪽 속도 (m/s)
 timing      = jumpTimingCurve.Evaluate(ropeUpSpeed)         // multiplier
 upwardComponent = max(0, dot(launchDir.normalized, worldUp))
 bonus = jumpBoost × clamp01(chargeRatio) × upwardComponent × max(0, timing)
-return clamp(bonus, 0, maxCap)
+clamped = clamp(bonus, 0, maxCap)
+
+// pre-bonus speed gate — slime.Velocity.magnitude 에는 EnergyConversion power +
+// carrier inheritance + hyperdash 가 다 들어있고, 여기에 rope bonus 를 더할지 말지 결정
+preBonusSpeed = slime.Velocity.magnitude
+speedMul = 1 - clamp01(invLerp(boostFalloffStartSpeed, boostFalloffEndSpeed, preBonusSpeed))
+return clamped × speedMul
 
 // PostprocessLaunchVelocity — 최종 launch vector 후처리
 upSpeed = dot(launchVel, worldUp)
 if (upSpeed < minLaunchVerticalSpeed)
     launchVel += worldUp × (minLaunchVerticalSpeed - upSpeed)
-if (maxLaunchSpeed > 0 and |launchVel| > maxLaunchSpeed)        // 최종 magnitude 캡
-    launchVel = launchVel.normalized × maxLaunchSpeed
 ```
 
 **타이밍 게이트:** 줄이 위로 빠르게 움직일 때 (= release 후 baseline 통과하는 순간 부근) 점프하면 max boost. 정지 중이거나 아래로 가라앉는 중엔 boost 0. 디자이너는 `jumpTimingCurve` 의 X축 (rope 위쪽 속도, m/s) 과 Y축 (multiplier) 을 자유롭게 조정 — Linear 로 두면 시간 동기화 정확도가 그대로 결과로, EaseIn 이면 정점 근처만 큰 보너스, 평면 (Y=1) 이면 timing 무시.
+
+**pre-bonus speed 게이트 (높이 제한):** "TautLine 으로 더 높이 올라가는 거 막기" 는 최종 magnitude clamp 가 아니라 **rope bonus 만 깎아 없애는 식**. 슬라임이 이미 빠르게 움직이고 있으면 (예: 높은 곳에서 떨어져 EnergyConversion 으로 큰 power 누적) `boostFalloffEndSpeed` 이상에선 rope 가 아무것도 안 더함 → 슬라임은 자기 EnergyConversion power 그대로 발사 (= 그 높이까지 자연스럽게 올라감). 일반 charge 발사는 pre-bonus 가 작아서 full boost 받음. `boostFalloffEndSpeed ≤ boostFalloffStartSpeed` 면 hard cutoff.
 
 디자이너가 다루는 변수:
 
@@ -136,7 +142,8 @@ if (maxLaunchSpeed > 0 and |launchVel| > maxLaunchSpeed)        // 최종 magnit
 | `maxCap` | m/s | jumpBoost (rope bonus) 의 하드 캡 — boost 항만 제한, 최종 launch 속도와 무관 |
 | `jumpTimingCurve` | curve(ropeUpSpeed→mul) | 줄 상승 속도별 boost multiplier. default `Linear((0,0)→(5,1))` |
 | `minLaunchVerticalSpeed` | m/s | 모든 launch 의 최소 worldUp 속도 (chargeRatio 무관 일정). 0 = disable |
-| `maxLaunchSpeed` | m/s | 최종 launch 벡터 magnitude 하드 캡 (`SpringyBranch.maxTipSpeed` 등가). 방향 보존, 길이만 clamp. 0 = 무제한 |
+| `boostFalloffStartSpeed` | m/s | pre-bonus 속도 이하에선 full boost. default 12 |
+| `boostFalloffEndSpeed` | m/s | pre-bonus 속도 이상에선 boost 0. default 18. start↔end 사이 선형 falloff. EnergyConversion (= 슬라임 자체 power) 은 영향 없음 |
 | `launchImpactKickCurve` | curve(ratio→m/s) | 발사 순간 줄이 받는 downward dipVelocity 펄스 (시각 효과) |
 
 `minLaunchVerticalSpeed` 가 필요한 이유: 슬라임이 옆으로 점프 (수평 launchDir) 하면 vy ≈ 0. 줄은 동시에 spring back 으로 위로 튀어오름 → 슬라임과 다시 만나 re-attach. 최소 vy 를 보장하면 슬라임이 줄의 rebound envelope 위로 빠져나감.
@@ -235,8 +242,8 @@ ReattachGuard release 후 슬라임 다시 떨어져 오면, `postDetach=true` �
 | `NotifyLaunchRebound(p)` | `OnRopeEvent(LaunchRebound)`. detach 자체는 FixedUpdate 의 state edge 검출에서 처리 — 이 hook 은 외부 listener 용. |
 | `ApplyRiderImpact(p, vel)` | `vDown = max(0, dot(vel, worldDown))`. ① `dipVelocity += vDown × impactCompressionFromVelocity` (punch). ② trampoline 상태 set (`extraSag = max(prev, sagCurve(vDown))`, `holdTimer = max(prev, holdCurve(vDown))`) — 깊은 bowl. |
 | `SampleVelocityAt(p)` | `worldDown × dipVelocity × Bell(uAtP, riderT)`. SlimeController 의 ropeVel inheritance 에 사용. |
-| `GetLaunchBonus(dir, p, ratio)` | side-effect: `dipVelocity += launchImpactKickCurve.Evaluate(ratio)` (downward punch). 반환: `clamp(jumpBoost × ratio × upwardComponent, 0, maxCap)`. |
-| `PostprocessLaunchVelocity(vel)` | `dot(vel, worldUp) < minLaunchVerticalSpeed` 이면 worldUp 성분만 끌어올림. 수평 성분 보존. |
+| `GetLaunchBonus(dir, p, ratio)` | side-effect: `dipVelocity += launchImpactKickCurve.Evaluate(ratio)` (downward punch). 반환: `clamp(jumpBoost × ratio × upwardComponent, 0, maxCap) × speedFalloffMul(slime.Velocity.magnitude)`. EnergyConversion 으로 pre-bonus 속도가 이미 클 땐 falloff 가 boost 를 깎아 `높이 제한` 역할. |
+| `PostprocessLaunchVelocity(vel)` | `dot(vel, worldUp) < minLaunchVerticalSpeed` 이면 worldUp 성분만 끌어올림. 수평 성분 보존. (이전 `maxLaunchSpeed` 매그니튜드 캡은 폐기 — EnergyConversion 까지 같이 깎이는 부작용 때문, `boostFalloff*Speed` 로 이관.) |
 | `ConsumeRiderCarryDelta(p)` | `Vector2.zero` (no-op). TautLine 이 절대 좌표로 슬라임 직접 위치시킴. |
 
 ## 인스펙터 직렬화 필드
@@ -273,7 +280,8 @@ ReattachGuard release 후 슬라임 다시 떨어져 오면, `postDetach=true` �
   maxCap                    : m/s   (default 6)     — jumpBoost (rope bonus) 의 하드 캡 (boost 항만)
   launchImpactKickCurve     : curve  (default Linear(0,0)→(1,4))  — chargeRatio → 발사 순간 dipVelocity 다운펄스
   minLaunchVerticalSpeed    : m/s   (default 3)     — launch 후 최소 worldUp 속도 (일정, charge 무관). 0 = disable
-  maxLaunchSpeed            : m/s   (default 0)     — 최종 launch 벡터 **magnitude** 하드 캡 (`SpringyBranch.maxTipSpeed` 등가). PostprocessLaunchVelocity 에서 minLaunch 적용 후 마지막에 clamp — 방향 보존, 길이만 축소. 0 = 무제한
+  boostFalloffStartSpeed    : m/s   (default 12)    — pre-bonus 슬라임 launch 속도 (= EnergyConversion + 관성 포함, rope bonus 미포함) 이 이하 → full jumpBoost
+  boostFalloffEndSpeed      : m/s   (default 18)    — pre-bonus 슬라임 launch 속도가 이상 → jumpBoost = 0. start↔end 사이 선형 감쇠. end ≤ start 면 hard cutoff. **이전 `maxLaunchSpeed` (최종 magnitude 캡) 대체** — magnitude 캡은 EnergyConversion 까지 같이 깎아 "높은 곳서 떨어져 줄에 착지 → EnergyConversion 보존" 시나리오를 망가뜨림. boost 만 깎으면 슬라임 자체 power 는 그대로 통과
   jumpTimingCurve           : curve(ropeUpSpeed→mul, default Linear(0,0)→(5,1))  — 줄 상승 속도별 boost multiplier (timing window)
 
 [Pass-through]

@@ -15,11 +15,12 @@ namespace SlimeJumping.Mechanisms
         [Header("Prefab")]
         [SerializeField] Snowball snowballPrefab;
 
-        [Header("Direction Override")]
-        [Tooltip("Rolling 모드 prefab 의 direction 을 덮어씀 (±1).")]
-        [SerializeField] int directionOverride = 1;
-        [Tooltip("Flying 모드 prefab 의 flyDirection 을 덮어씀.")]
-        [SerializeField] Vector2 flyDirectionOverride = Vector2.left;
+        [Header("Initial Direction")]
+        [Range(-180f, 180f)]
+        [Tooltip("발사 각도 (도). 0 = 오른쪽, 90 = 위, 180 = 왼쪽, -90 = 아래. " +
+                 "Rolling 모드는 이 각도로 ballistic 발사 후 표면에 닿으면 굴러감 (대각선/수직 가능). " +
+                 "Flying 모드는 이 각도로 등속 직진.")]
+        [SerializeField] float initialAngleDegrees = 0f;
 
         [Header("Cadence")]
         [SerializeField] float interval = 3f;
@@ -93,7 +94,9 @@ namespace SlimeJumping.Mechanisms
         void Spawn()
         {
             var s = pool.Get();
-            s.Initialize(transform.position, directionOverride, flyDirectionOverride);
+            float rad = initialAngleDegrees * Mathf.Deg2Rad;
+            Vector2 launchDir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
+            s.Initialize(transform.position, launchDir);
             alive.Add(s);
 
             if (spawnClip != null)
@@ -112,9 +115,9 @@ namespace SlimeJumping.Mechanisms
         {
             Gizmos.color = new Color(0.6f, 0.85f, 1f, 0.8f);
             Gizmos.DrawWireSphere(transform.position, 0.4f);
-            // 방향 화살표 (Rolling override 기준 — Flying 은 별도 표시 안 함)
-            float xSign = directionOverride >= 0 ? 1f : -1f;
-            Vector3 tip = transform.position + Vector3.right * (xSign * 1.2f);
+            float rad = initialAngleDegrees * Mathf.Deg2Rad;
+            Vector3 dir = new Vector3(Mathf.Cos(rad), Mathf.Sin(rad), 0f);
+            Vector3 tip = transform.position + dir * 1.2f;
             Gizmos.DrawLine(transform.position, tip);
         }
     }

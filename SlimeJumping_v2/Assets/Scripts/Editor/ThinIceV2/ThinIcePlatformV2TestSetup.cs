@@ -115,26 +115,14 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
             var so = new SerializedObject(plat);
             so.FindProperty("visualRenderer").objectReferenceValue   = mr;
             so.FindProperty("platformCollider").objectReferenceValue = col;
+
+            // Per-instance crackingDuration variation: flip the Behavior override on
+            // and write the local value. Shard launch / Angle filter / Audio /
+            // Particles all flow from ThinIceV2Config defaults — no overrides needed
+            // for the test scene.
+            so.FindProperty("overrideBehavior").boolValue  = true;
             so.FindProperty("crackingDuration").floatValue = crackingDuration;
             so.FindProperty("regenDuration").floatValue    = 0.6f;
-
-            // Shared assets (shardSet, shardRuntimePrefab, debris VFX, frost cloud VFX)
-            // come from ThinIceV2Config auto-loaded at runtime — nothing to wire here.
-
-            so.FindProperty("shardCount").intValue          = 16;
-            so.FindProperty("shardSpeedMin").floatValue     = 2f;
-            so.FindProperty("shardSpeedMax").floatValue     = 4f;
-            so.FindProperty("shardUpwardBias").floatValue   = 1.0f;
-            so.FindProperty("shardSpinDeg").floatValue      = 360f;
-            so.FindProperty("shardLifetimeMin").floatValue  = 1.2f;
-            so.FindProperty("shardLifetimeMax").floatValue  = 1.8f;
-            so.FindProperty("shardFadeWindow").floatValue   = 0.4f;
-            so.FindProperty("jumpVelocityInherit").floatValue = 0.3f;
-            so.FindProperty("shardScaleRange").vector2Value = new Vector2(0.7f, 1.3f);
-            so.FindProperty("debrisPeakRate").floatValue    = 40f;
-            so.FindProperty("soundVolume").floatValue       = 1f;
-            so.FindProperty("useEmissiveFlash").boolValue   = false;
-            so.FindProperty("useCameraShake").boolValue     = false;
 
             so.ApplyModifiedProperties();
         }

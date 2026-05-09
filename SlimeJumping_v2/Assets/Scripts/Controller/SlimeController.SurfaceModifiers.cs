@@ -22,11 +22,6 @@ namespace SlimeJumping.Controller
         private SnowField cachedSnowField;
         private SurfaceModifiers cachedSnowMods;
         private bool hasCachedSnowMods;
-        // cos(MaxSnowSlopeDeg) cached per attach so the per-FU primary gate is a
-        // single dot-product compare. Snow can only deposit on faces with
-        // normal.y ≥ cosMax (matches SnowTopSurfaceExtractor's filter), so a
-        // contact below cosMax is guaranteed bare regardless of footprint.
-        private float cachedSnowSlopeCos;
         // Footprint hit captured by RefreshSnowBlend each FU and read by
         // ApplySnowDrag in the same FU — lets the drag path skip its own
         // nearest-vertex sweep and just index into the strip arrays. Null when
@@ -155,11 +150,9 @@ namespace SlimeJumping.Controller
             // blend doesn't re-walk the registry / re-allocate ToModifiers each tick.
             cachedSnowField = null;
             hasCachedSnowMods = false;
-            cachedSnowSlopeCos = 0f;
             if (col != null && SnowFieldRegistry.TryGet(col, out var sf) && sf != null)
             {
                 cachedSnowField = sf;
-                cachedSnowSlopeCos = Mathf.Cos(sf.MaxSnowSlopeDeg * Mathf.Deg2Rad);
                 var snowSettings = sf.settings;
                 if (snowSettings != null && snowSettings.snowSurfaceMaterial != null)
                 {
@@ -199,15 +192,19 @@ namespace SlimeJumping.Controller
             cachedFootprintStrip = null;
             cachedFootprintVertIdx = -1;
 
-            // Snow blend (when host has snow). Two-stage probe: (1) slope-normal primary gate
-            // — snow only deposits on upward-facing tris (SnowTopSurfaceExtractor filters by
-            // maxSnowSlopeDeg); (2) mesh-local nearest-vertex hit-test against heightRest > 0.
-            // Caches the (strip, vertIdx) so ApplySnowDrag can read heightCurrent[idx] without
-            // re-running the sweep.
+            // Snow blend (when host has snow). Mesh-local nearest-vertex hit-test against
+            // heightRest > 0 is the authoritative check — SnowTopSurfaceExtractor already
+            // applied the maxSnowSlopeDeg filter at build time, so any vert with heightRest
+            // > 0 is by definition snow-eligible. We do NOT pre-gate by surfaceNormal angle:
+            // physics contact normal (collider) and mesh face normal can diverge (simplified
+            // colliders, edge/corner averaging) and that mismatch was causing snow-deposited
+            // regions to misread as host tag. The strip's xy-AABB pre-filter inside
+            // TryFindFootprintHit is the real perf guard. Caches the (strip, vertIdx) so
+            // ApplySnowDrag can read heightCurrent[idx] without re-running the sweep.
             if (hasCachedSnowMods && cachedSnowField != null)
             {
                 bool onSnow = false;
-                if (isTouchingSurface && surfaceNormal.y >= cachedSnowSlopeCos)
+                if (isTouchingSurface)
                 {
                     Vector2 sample = rb.position - surfaceNormal * settings.slimeRadius;
                     onSnow = cachedSnowField.TryFindFootprintHit(

@@ -1,0 +1,14 @@
+{
+    "name": "SlimeJumping.MeshTools",
+    "rootNamespace": "SlimeJumping.MeshTools",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using g3;
+using SlimeJumping.MeshTools;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -200,6 +201,7 @@ namespace SlimeJumping.EditorTools
                 && currentParent.GetComponent<PolygonCollider2D>() != null
                 && Quaternion.Angle(currentParent.rotation, Quaternion.identity) < 0.01f)
             {
+                EnsureSelectionBaseMarker(currentParent.gameObject);
                 return currentParent;
             }
 
@@ -217,7 +219,17 @@ namespace SlimeJumping.EditorTools
 
             Undo.SetTransformParent(meshTr, wrapperTr, "Reparent mesh into wrapper");
 
+            EnsureSelectionBaseMarker(wrapperGO);
+
             return wrapperTr;
+        }
+
+        // Adds the SelectionBase marker so Scene-view clicks on the child mesh select the
+        // wrapper instead of the mesh. Idempotent: safe on existing wrappers from prior runs.
+        private static void EnsureSelectionBaseMarker(GameObject wrapperGO)
+        {
+            if (wrapperGO.GetComponent<MeshCollider2DWrapper>() == null)
+                Undo.AddComponent<MeshCollider2DWrapper>(wrapperGO);
         }
 
         private static Bounds TransformBounds(Transform t, Bounds local)

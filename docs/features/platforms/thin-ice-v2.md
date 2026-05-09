@@ -54,13 +54,26 @@ SlimeJumping.Platforms.ThinIceV2.EditorOnly  (편집기)
 
 ### Config (single source of truth)
 
-`ThinIceV2Config` ScriptableObject가 모든 공유 자산을 한 곳에 모음:
+`ThinIceV2Config` ScriptableObject가 공유 자산 + 모든 튜닝 기본값을 한 곳에 모음:
+
+**공유 자산**
 - `shardSet` — 공유 shard mesh 라이브러리
 - `shardRuntimePrefab` — shard 런타임 prefab (MeshFilter + MeshRenderer + Rigidbody2D + ThinIceShardRuntime)
 - `debrisVFXPrefab` — telegraph debris ParticleSystem prefab (Awake에서 platform 자식으로 instantiate)
 - `frostCloudVFXPrefab` — shatter cloud ParticleSystem prefab (Awake에서 platform 자식으로 instantiate)
 
-**캐논 경로**: `Assets/Resources/ThinIceV2Config.asset`. `ThinIcePlatformV2.Awake()`에서 `Resources.Load<ThinIceV2Config>("ThinIceV2Config")`로 자동 로드 → **per-platform 슬롯 0개**. 다른 톤의 얼음 등 변형이 필요하면 platform의 `configOverride` 슬롯에 다른 Config을 지정.
+**튜닝 기본값 (per-platform 오버라이드 가능)**
+- Behavior — `crackingDuration`, `regenDuration`
+- Angle Filter — `useAngleLimit`, `minSurfaceAngle`, `maxSurfaceAngle`
+- Particles — `debrisPeakRate`
+- Shard launch — `shardCount`, `shardSpeedMin/Max`, `shardUpwardBias`, `shardSpinDeg`, `shardLifetimeMin/Max`, `shardFadeWindow`, `jumpVelocityInherit`, `shardScaleRange`
+- Audio — `crackSounds[]`(랜덤 1개 픽), `shatterSounds[]`(랜덤 1개 픽), `regenSound`, `soundVolume`
+
+**캐논 경로**: `Assets/Resources/ThinIceV2Config.asset`. `ThinIcePlatformV2.Awake()`에서 `Resources.Load<ThinIceV2Config>("ThinIceV2Config")`로 자동 로드. 다른 톤의 얼음 등 변형이 필요하면 platform의 `configOverride` 슬롯에 다른 Config을 지정.
+
+#### Per-platform 오버라이드
+
+각 platform은 섹션별 `override*` 토글(Behavior / Angle Filter / Particles / Shard launch / Audio)을 가짐 — 토글 ON이면 해당 섹션의 platform 로컬 값들이 Config 기본값을 덮어씀. 같은 Config을 공유하는 한두 platform만 변형하고 싶을 때 사용 (예: `ThinIce_Fast`의 `crackingDuration`만 0.8s로 따로 줌).
 
 생성/갱신 메뉴: `SlimeJumping/Thin Ice v2/Generate Default Config and Prefabs` — idempotent. 기존 prefab은 안 건드리고, Config asset만 prefab/shardSet 참조를 갱신.
 
@@ -161,6 +174,8 @@ properties:
 | Shard | **Collider2D 자체를 안 붙임** — Rigidbody2D만 있어도 중력/속도/스핀 동작. 무충돌 보장, 풀/매트릭스 없음 |
 
 ## Optional FX (default OFF)
+
+`ImpulseEmitter`가 씬 컴포넌트 참조라 ScriptableObject로 옮길 수 없어서, 이 섹션은 **per-instance 전용** (Config에 기본값 없음).
 
 | 토글 | 효과 |
 |---|---|

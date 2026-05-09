@@ -16,3 +16,24 @@ MonoBehaviour:
   shardRuntimePrefab: {fileID: 284361039296914280, guid: a89befe33e4774a42afce37088567f85, type: 3}
   debrisVFXPrefab: {fileID: 5215832908166118257, guid: 4472281822e482340a82a629e440ffdb, type: 3}
   frostCloudVFXPrefab: {fileID: 8748570474833807063, guid: 75a00a09cf44f374cb41c74a7d6f591c, type: 3}
+  crackingDuration: 2
+  regenDuration: 0.6
+  useAngleLimit: 0
+  minSurfaceAngle: 0
+  maxSurfaceAngle: 180
+  debrisPeakRate: 40
+  shardCount: 16
+  shardSpeedMin: 2
+  shardSpeedMax: 4
+  shardUpwardBias: 1
+  shardSpinDeg: 360
+  shardLifetimeMin: 1.2
+  shardLifetimeMax: 1.8
+  shardFadeWindow: 0.4
+  jumpVelocityInherit: 0.3
+  shardScaleRange: {x: 1, y: 1}
+  crackSounds: []
+  shatterSounds:
+  - {fileID: 8300000, guid: 75018a733128739488a094abb41e9203, type: 3}
+  regenSound: {fileID: 0}
+  soundVolume: 1

@@ -5,9 +5,15 @@
 ## 가산 채널 — `AddExternalVelocity(Vector2 deltaV)`
 - `externalDeltaV` (Vector2): 매 FixedUpdate 소비/초기화. 호출측이 `acceleration * dt`를 넘김.
 - 적용 시점: state switch 이후, `rb.linearVelocity` 대입 직전.
-- **Airborne/Stunned** → velocity에 직접 가산.
-- **Attached/Charging** → `surfaceTangent`에 투영 후 가산 (법선 성분 제거, 스냅 지터 방지).
-- 사용처: WindZone2D, ConveyorBelt, WaterZone(부력).
+- **Airborne/Stunned** → velocity에 직접 가산. 매 프레임 누적.
+- **Attached/Charging** → `surfaceTangent`에 투영 후 `velocity`에 가산 (법선 성분 제거, 스냅 지터 방지). **누적 안 됨** — 다음 frame state handler가 `velocity = (slideSpeed + crawlVelocity) * tangent` 로 덮어쓰므로 push는 한 프레임만 효과적. 같은 가속도라도 Attached가 Airborne 보다 ~50× 약하게 체감.
+- 사용처: WindZone2D (v1), ConveyorBelt, WaterZone(부력).
+
+## 적분 가산 채널 — `AddSustainedFlowImpulse(Vector2 deltaV)`
+- 가산 채널의 attached-누적-소실 문제를 우회하는 변형.
+- **Airborne/Stunned** → `externalDeltaV += deltaV` (가산 채널과 동일 경로).
+- **Attached/Charging** → `tangentDelta = Vector2.Dot(deltaV, surfaceTangent)` 후 `slideVelocity += tangentDelta` (inertial) 또는 `crawlVelocity += tangentDelta` (legacy)에 직접 적분. 영구 채널에 누적되므로 frame 간 보존되어 Airborne 와 동일한 가속 거동.
+- 사용처: WaterCurrentZone, WindZone2D_v2.
 
 ## Hazard 가산 채널 — `ApplyHazardPush(Vector2 deltaV, Vector2 hitPoint)`
 - `externalDeltaV` 동일 경로 — 가산 + `OnHazardPushed` 이벤트 발화 (SlimeBurnVisual 등 반응).
