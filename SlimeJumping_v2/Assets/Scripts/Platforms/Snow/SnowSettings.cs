@@ -127,5 +127,12 @@ namespace SlimeJumping.Platforms.Snow
 
         [Tooltip("Exponential drag rate (1/s) applied to slime velocity at full snow coverage (depthRatio = 1). Higher = stops faster. Set 0 to disable. With 4: ~63% energy loss per second at full coverage. Drag-only: no continuous carve, no airborne probe — applies while attached/charging on a snow patch.")]
         [Min(0f)] public float plowDragK = 4f;
+
+        [Tooltip("Per-contact plowDragK multiplier as a function of surface angle (degrees from horizontal at the slime's contact normal). X = angle (0° = flat ground, 90° = vertical wall). Y = multiplier on plowDragK (1 = full, 0 = drag disabled). Default fades from full at 60° to zero at 90° so steep walls don't grip the slime — snow on near-vertical surfaces visually exists but stops resisting motion.")]
+        public AnimationCurve slopeToDragScale = new AnimationCurve(
+            new Keyframe(0f, 1f),
+            new Keyframe(60f, 1f),
+            new Keyframe(90f, 0f)
+        );
     }
 }

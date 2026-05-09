@@ -200,7 +200,7 @@ snow 결합의 부산물로 두 helper static 추가. `SurfaceModifiers.Lerp` �
 
 1. **지수 감쇠**: `decay = exp(-plowDragK * depth * dt)` 곱이 `slideVelocity`, `crawlVelocity`, `velocity` (Attached / Charging) 또는 `velocity` (Airborne) 에 적용. 깊이 × 계수가 클수록 빨리 정지.
 2. **연속 carve**: `field.Carve(slimePos, plowCarveDepthPerSecond * dt, plowCarveRadius)` — 슬라임이 지나는 자리에 실시간 자국. 반경은 SnowSettings 의 별도 필드 (슬라임 콜라이더 반지름과 무관, 디자이너가 트렌치 폭을 자유롭게 조정). 시각적으로 "눈을 밀고 가는" 효과 + **자기-제한**: 자기가 판 자리는 depth 떨어져 drag 도 약해지므로 영원히 멈춰 있지 않음 (recovery 가 다시 묻고 → drag 다시 작동).
-3. **Stop snap**: `|v| < plowStopSpeed` 면 0 으로 클램프 → 박힘. asymptote twitch 방지.
+3. **Stop snap**: `|v| < plowStopSpeed` 면 0 으로 클램프 → 박힘. asymptote twitch 방지. **Snap 자체는 `1 - decay >= 0.05` (= K·depth·dt 가 의미 있는 크기) 일 때만 fire** — slope-fade 로 K 가 거의 0 인 경우 (수직 벽) gravity 가 `slideVelocity` 를 계속 펌프하는데도 snap 이 매 프레임 0 으로 죽이는 freeze 버그 방지 (특히 inertial slide 모드에서).
 
 State 별 hook:
 - **Attached / Charging**: `cachedSnowField` 재사용, contact 점 (`rb.position - surfaceNormal * slimeRadius`) 에서 sample.
@@ -211,7 +211,8 @@ State 별 hook:
 
 | 필드 | 기본값 | 설명 |
 |------|--------|------|
-| Plow Drag K | 4 | 풀-burial 에서 1/s 단위 지수 drag rate. 0 = plow 비활성. 4 ≈ 0.75s 안에 95% 감속. |
+| Plow Drag K | 4 | 풀-burial 에서 1/s 단위 지수 drag rate. 0 = plow 비활성. 4 ≈ 0.75s 안에 95% 감속. 실제 K = `plowDragK * slopeToDragScale.Evaluate(surfaceAngleDeg)` (아래 참조). |
+| Slope To Drag Scale | (0,1)→(60,1)→(90,0) | 컨택트 노멀의 수평 대비 각도(0° = 평지, 90° = 수직 벽)에 따른 plowDragK 배율. `slopeToHeightScale` 와 동일 패턴. 기본값은 60° 까지 풀 drag, 90° 에서 0 — 거의 수직인 면에서는 눈이 비주얼로만 남고 슬라임을 잡지 않음. |
 | Plow Carve Depth Per Second | 0.3 | 이동 중 자동 carve 깊이 (m/s). 0 = drag 만, 시각 자국 없음. |
 | Plow Carve Radius | 0.25 | 연속 carve 반경 (m). 슬라임 콜라이더와 독립 — 트렌치 폭을 디자이너가 직접 조정. |
 | Plow Min Depth Ratio | 0.1 | 이 미만 depth 는 drag 0 — 자연 bare 영역 (carve 자국 / patch edge) 에서 자유. |

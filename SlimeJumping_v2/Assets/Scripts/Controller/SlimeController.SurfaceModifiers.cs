@@ -262,6 +262,11 @@ namespace SlimeJumping.Controller
         // to 0 below this floor to prevent the exponential decay from
         // asymptote-twitching forever.
         private const float SnowDragStopSpeed = 0.3f;
+        // Minimum per-frame decay magnitude (1 - decay) required for the stop-speed snap
+        // to engage. 0.05 = drag must remove ≥5%/frame (= K·depth·dt ≥ ~0.05) before snap
+        // is meaningful. Below this, snap is gated off so slope-faded K (near-vertical
+        // walls) doesn't freeze persistent slideVelocity that gravity is still pumping.
+        private const float SnowDragSnapMinDecay = 0.05f;
 
         /// <summary>
         /// Apply exponential velocity decay while the slime is attached/charging
@@ -291,15 +296,31 @@ namespace SlimeJumping.Controller
             float depth = Mathf.Clamp01(s.heightCurrent[idx] / rest);
             if (depth <= SnowSurfaceTagThreshold) return;
 
-            float decay = Mathf.Exp(-snowSettings.plowDragK * depth * dt);
+            float k = snowSettings.plowDragK;
+            if (snowSettings.slopeToDragScale != null)
+            {
+                float angleDeg = SurfaceProbe.GetSurfaceAngle(surfaceNormal, gravityUp);
+                k *= snowSettings.slopeToDragScale.Evaluate(angleDeg);
+            }
+            if (k <= 0f) return;
+
+            float decay = Mathf.Exp(-k * depth * dt);
             if (decay < 0f) decay = 0f;
 
             slideVelocity *= decay;
             crawlVelocity *= decay;
             velocity *= decay;
-            if (Mathf.Abs(slideVelocity) < SnowDragStopSpeed) slideVelocity = 0f;
-            if (Mathf.Abs(crawlVelocity) < SnowDragStopSpeed) crawlVelocity = 0f;
-            if (velocity.sqrMagnitude < SnowDragStopSpeed * SnowDragStopSpeed) velocity = Vector2.zero;
+            // Stop-speed snap only when this frame's drag was strong enough to be in the
+            // exponential-decay asymptote. With slope-faded K (e.g. near-vertical walls)
+            // decay can be ~1.0 per frame — the slime isn't being meaningfully damped, and
+            // gravity is still building velocity up; snapping here would freeze the slime
+            // permanently (especially in inertial slide where slideVelocity is persistent).
+            if (1f - decay >= SnowDragSnapMinDecay)
+            {
+                if (Mathf.Abs(slideVelocity) < SnowDragStopSpeed) slideVelocity = 0f;
+                if (Mathf.Abs(crawlVelocity) < SnowDragStopSpeed) crawlVelocity = 0f;
+                if (velocity.sqrMagnitude < SnowDragStopSpeed * SnowDragStopSpeed) velocity = Vector2.zero;
+            }
         }
     }
 }
