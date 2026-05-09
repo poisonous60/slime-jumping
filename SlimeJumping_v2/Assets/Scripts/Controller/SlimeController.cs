@@ -485,6 +485,20 @@ namespace SlimeJumping.Controller
             }
         }
 
+        public static event System.Action<SlimeController> OnSpawned;
+        public static event System.Action<SlimeController> OnDespawned;
+
+        // Editor domain reload preserves static fields by default. ResetStatics nulls them
+        // before the next play session so a forgotten unsubscribe in some other system can't
+        // accumulate stale subscribers across Play→Stop→Play cycles. Mirrors the project
+        // pattern in SoundService / WorldTrailManager / TrailColliderRegistry.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            OnSpawned = null;
+            OnDespawned = null;
+        }
+
         private void OnEnable()
         {
             inputReader.OnJumpPressed += HandleJumpPressed;
@@ -492,6 +506,7 @@ namespace SlimeJumping.Controller
             inputReader.OnGroundDashRequested += HandleGroundDashRequested;
             inputReader.OnVerticalUpPressed += HandleVerticalUpPressed;
             inputReader.OnInteractPressed += HandleInteractPressed;
+            OnSpawned?.Invoke(this);
         }
 
         private void OnDisable()
@@ -501,6 +516,7 @@ namespace SlimeJumping.Controller
             inputReader.OnGroundDashRequested -= HandleGroundDashRequested;
             inputReader.OnVerticalUpPressed -= HandleVerticalUpPressed;
             inputReader.OnInteractPressed -= HandleInteractPressed;
+            OnDespawned?.Invoke(this);
         }
 
         private void Update()

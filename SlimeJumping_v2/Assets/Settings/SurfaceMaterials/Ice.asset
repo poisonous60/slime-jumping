@@ -77,22 +77,22 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
-  enableLandingTangentSpeedRemap: 0
+  enableLandingTangentSpeedRemap: 1
   landingTangentSpeedRemapCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 0.9442234
-      outSlope: 0.9442234
+      inSlope: 0.9989506
+      outSlope: 0.9989506
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 10.582071
-      value: 9.991839
+      time: 10.07192
+      value: 10.061351
       inSlope: 0.70338744
       outSlope: 0.70338744
       tangentMode: 0
@@ -100,8 +100,8 @@ MonoBehaviour:
       inWeight: 0.33333334
       outWeight: 0.37976235
     - serializedVersion: 3
-      time: 20.338823
-      value: 17.711678
+      time: 20.746954
+      value: 17.920208
       inSlope: 0.6037258
       outSlope: 0.6037258
       tangentMode: 0
@@ -109,17 +109,17 @@ MonoBehaviour:
       inWeight: 0.33333334
       outWeight: 0.39331663
     - serializedVersion: 3
-      time: 32.30621
-      value: 23.475895
-      inSlope: 0.36014438
-      outSlope: 0.36014438
+      time: 32.71434
+      value: 24.58805
+      inSlope: 0.44688773
+      outSlope: 0.44688773
       tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 50.025146
-      value: 27.704134
+      time: 50.025135
+      value: 30.414997
       inSlope: 0.03130484
       outSlope: 0.03130484
       tangentMode: 0

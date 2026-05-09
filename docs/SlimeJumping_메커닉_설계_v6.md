@@ -74,6 +74,10 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Tier 1 Fullscreen Hazards](features/mechanisms/tier1-fullscreen-hazards.md) — Jumpscare, CameraFlash
 - [Memo](features/mechanisms/memo.md) — 월드 스페이스 내레이션
 
+## 최적화
+
+- [OffscreenSleeper](features/optimization/offscreen-sleeper.md) — 화면 밖 idle 시뮬 비용 회수 (마커 + 매니저 + 결정 트리, 13종 후보)
+
 ## 인프라
 
 - [Velocity Field Contract](features/infra/velocity-field-contract.md) — velocity/rb.linearVelocity/slide+crawl 계층

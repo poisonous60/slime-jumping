@@ -77,6 +77,13 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
+  enableLandingTangentSpeedRemap: 0
+  landingTangentSpeedRemapCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   stickDurationMultiplier:
     baseValue: 1
     fullValue: 1
@@ -171,7 +178,10 @@ MonoBehaviour:
   overrideHopMomentum: 0
   hopMomentumBonus: 0
   hopMomentumMaxSpeed: 10
-  useInertialSlide: 1
+  useInertialSlide: 0
+  launchInertiaBlendMode: 0
+  launchInertiaLerpFactor: 0.5
+  launchInertiaPNorm: 2
   landHardClip: {fileID: 0}
   landSoftClip: {fileID: 0}
   launchClip: {fileID: 0}
