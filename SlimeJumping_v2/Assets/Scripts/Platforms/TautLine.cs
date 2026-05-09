@@ -101,6 +101,12 @@ namespace SlimeJumping.Platforms
         [SerializeField] AnimationCurve launchImpactKickCurve = AnimationCurve.Linear(0f, 0f, 1f, 4f);
         [Tooltip("Minimum upward (worldUp) velocity guaranteed for any launch off this rope (m/s). Constant — does not scale with charge. 0 = disabled. Prevents near-horizontal launches from being immediately recaught by the rope's spring rebound.")]
         [SerializeField, Min(0f)] float minLaunchVerticalSpeed = 3f;
+        [Tooltip("Hard cap on the slime's final launch SPEED (vector magnitude) when jumping off this rope (m/s). " +
+                 "Applied in PostprocessLaunchVelocity, after GetLaunchBonus + drag-zone scaling + " +
+                 "minLaunchVerticalSpeed. Direction is preserved, magnitude is clamped. Mirrors " +
+                 "SpringyBranchPlatform.maxTipSpeed in concept (a designer-facing absolute ceiling on " +
+                 "launch speed). 0 = disabled.")]
+        [SerializeField, Min(0f)] float maxLaunchSpeed = 0f;
         [Tooltip("Multiplier on jumpBoost based on the rope's UPWARD speed at the launch moment. X axis: rope upward speed (m/s, = -dipVelocity, peaks as the rope passes through baseline on its way up). Y axis: multiplier on jumpBoost. Default Linear((0,0)→(5,1)) — zero bonus when rope is still or moving down, full bonus when rising at 5 m/s. Rewards player for syncing jump with the rope's upward swing.")]
         [SerializeField] AnimationCurve jumpTimingCurve = AnimationCurve.Linear(0f, 0f, 5f, 1f);
 
@@ -624,10 +630,18 @@ namespace SlimeJumping.Platforms
             // Guarantee the slime leaves with at least minLaunchVerticalSpeed of upward
             // (worldUp) speed. A near-horizontal aim otherwise drops the slime onto the
             // rope's spring rebound, which then catches it and re-attaches.
-            if (minLaunchVerticalSpeed <= 0f) return launchVel;
-            float upSpeed = Vector2.Dot(launchVel, worldUp);
-            if (upSpeed >= minLaunchVerticalSpeed) return launchVel;
-            return launchVel + worldUp * (minLaunchVerticalSpeed - upSpeed);
+            if (minLaunchVerticalSpeed > 0f)
+            {
+                float upSpeed = Vector2.Dot(launchVel, worldUp);
+                if (upSpeed < minLaunchVerticalSpeed)
+                    launchVel += worldUp * (minLaunchVerticalSpeed - upSpeed);
+            }
+            // Final magnitude cap. Applied AFTER the upward boost so the cap is the genuine
+            // ceiling on what the slime leaves with, not a pre-boost number that minLaunch
+            // can exceed.
+            if (maxLaunchSpeed > 0f && launchVel.sqrMagnitude > maxLaunchSpeed * maxLaunchSpeed)
+                launchVel = launchVel.normalized * maxLaunchSpeed;
+            return launchVel;
         }
 
         public Vector2 ConsumeRiderCarryDelta(Vector2 _worldContact)

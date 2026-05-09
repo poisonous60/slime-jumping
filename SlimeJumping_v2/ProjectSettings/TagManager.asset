@@ -37,7 +37,6 @@ TagManager:
   - 
   - 
   - 
-  - 
   m_SortingLayers:
   - name: Background_VFX
     uniqueID: 1001

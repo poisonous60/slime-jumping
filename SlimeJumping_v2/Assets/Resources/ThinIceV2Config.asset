@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a4d5351bae7803242907d5d6889e966f, type: 3}
+  m_Name: ThinIceV2Config
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.ThinIceV2.ThinIceV2Config
+  shardSet: {fileID: 11400000, guid: a3365b447128ed749acbc2b7e330168b, type: 2}
+  shardRuntimePrefab: {fileID: 284361039296914280, guid: a89befe33e4774a42afce37088567f85, type: 3}
+  debrisVFXPrefab: {fileID: 5215832908166118257, guid: 4472281822e482340a82a629e440ffdb, type: 3}
+  frostCloudVFXPrefab: {fileID: 8748570474833807063, guid: 75a00a09cf44f374cb41c74a7d6f591c, type: 3}

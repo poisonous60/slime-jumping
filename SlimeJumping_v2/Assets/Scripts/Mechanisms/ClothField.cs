@@ -25,7 +25,7 @@ namespace SlimeJumping.Mechanisms
     [RequireComponent(typeof(MeshRenderer))]
     public class ClothField : MonoBehaviour
     {
-        public enum PinPreset { TopRow }
+        public enum PinPreset { TopRow, None }
 
         [Header("Topology (Local Frame)")]
         [Tooltip("Number of node columns (local +X axis).")]
@@ -228,11 +228,41 @@ namespace SlimeJumping.Mechanisms
         {
             switch (pinPreset)
             {
+                case PinPreset.None: return false;
                 case PinPreset.TopRow: return r == 0;
                 // Defensive: unrecognized enum value falls back to curtain (top-row) pinning
                 // rather than silently pinning nothing.
                 default: return r == 0;
             }
+        }
+
+        // === External driver API (e.g. ClothWrapAnimator) ===
+        // Sets pin state and target world position for one node. The Verlet pin
+        // enforcement inside StepOnce holds pinned nodes at localRestPos every
+        // iteration, so the driver only needs to call this once per FixedUpdate
+        // (before ClothField's own FixedUpdate — use a lower DefaultExecutionOrder).
+        public void SetNodeTarget(int col, int row, Vector3 worldPos, bool pin)
+        {
+            if (localPos == null) return;
+            if ((uint)col >= (uint)nodeColCount || (uint)row >= (uint)nodeRowCount) return;
+            int i = row * nodeColCount + col;
+            pinned[i] = pin;
+            if (pin) localRestPos[i] = transform.InverseTransformPoint(worldPos);
+        }
+
+        public int GridColumns => nodeColCount;
+        public int GridRows => nodeRowCount;
+        public float CellSize => cellSize;
+
+        // Returns the natural rest position (in this ClothField's local space) for the
+        // node at (col, row), matching what Rebuild() lays out at startup. Useful for
+        // external drivers that want to pin non-authored nodes at their default rest.
+        public Vector3 GetNodeRestLocalPos(int col, int row)
+        {
+            if ((uint)col >= (uint)nodeColCount || (uint)row >= (uint)nodeRowCount) return Vector3.zero;
+            float width = (nodeColCount - 1) * cellSize;
+            float originX = -width * 0.5f;
+            return new Vector3(originX + col * cellSize, -row * cellSize, 0f);
         }
 
         void FixedUpdate()

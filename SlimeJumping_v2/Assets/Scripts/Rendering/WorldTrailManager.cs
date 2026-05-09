@@ -61,6 +61,12 @@ namespace SlimeJumping.Rendering
         [GradientUsage(true)]
         [SerializeField] private Gradient angleGradient;
 
+        [Header("Appearance — Cold Trail (D: split routing while slime is frozen)")]
+        [Tooltip("Second gradient applied to the cold-route RT. Stamps split between warm and cold by SlimeFrostController.FreezeT — " +
+                 "warm receives strength*(1-T), cold receives strength*T. Ground shader composes alpha-over (cold over warm).")]
+        [GradientUsage(true)]
+        [SerializeField] private Gradient trailGradientCold;
+
         [Header("Brush")]
         [Tooltip("Material instantiated from Hidden/SlimeJumping/TrailBrush. Required.")]
         [SerializeField] private Material brushMaterial;
@@ -89,9 +95,15 @@ namespace SlimeJumping.Rendering
         public const int MaxResolutionPerSide = 8192;
 
         private RenderTexture rt;
+        // Cold-route RT — same dim/format as warm. Stamps split here when the
+        // slime's freezeT > 0 so the ground shader can compose a "frozen" tint
+        // over the warm trail. See Stamp() and SetFreezeT().
+        private RenderTexture rtCold;
         private TrailPersistence persistence;
         private Vector2Int resolution;
         private bool dirty;
+        private float currentFreezeT;
+        private ColdTrailTarget coldTarget;
         // Runtime clone of the shared brush material asset. We SetFloat + SetPass every stamp,
         // which on the asset itself would mark it dirty and make Unity re-serialize the .mat
         // file on every Play-exit. Cloning keeps the asset pristine.
@@ -102,6 +114,7 @@ namespace SlimeJumping.Rendering
         private Texture2D bakedTrailGradient;
         private Texture2D bakedPositionGradient;
         private Texture2D bakedAngleGradient;
+        private Texture2D bakedTrailGradientCold;
         private const int GradientResolution = 256;
 
         // -------------------- Inspector-facing accessors (read-only) --------------------
@@ -112,6 +125,12 @@ namespace SlimeJumping.Rendering
         public LayerMask GroundLayers => groundLayers;
         public bool ShowBoundsGizmo => showBoundsGizmo;
         public TrailPersistence Persistence => persistence;
+
+        // Read by trail-stamp consumers (LocalTrailReceiver) so they can split-write
+        // their own RT pair without each one polling SlimeFrostController. Manager
+        // is the single source of truth for stamp-time freezeT (single-slime stage).
+        public float CurrentFreezeT => currentFreezeT;
+        public RenderTexture RtCold => rtCold;
 
         public Vector2Int PlannedResolution
         {
@@ -193,12 +212,33 @@ namespace SlimeJumping.Rendering
             rt.Create();
             Graphics.Blit(Texture2D.blackTexture, rt);
 
+            // Cold-route RT mirrors warm dim/format. Explicit black blit is critical:
+            // a fresh RT contains undefined GPU memory and would otherwise show garbage
+            // tint through the ground shader's cold sampler in stage1 (no ColdZone).
+            rtCold = new RenderTexture(resolution.x, resolution.y, 0, RenderTextureFormat.R8, RenderTextureReadWrite.Linear)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                useMipMap = false,
+                autoGenerateMips = false,
+                name = "WorldTrailCold_" + SaveKey,
+            };
+            rtCold.Create();
+            Graphics.Blit(Texture2D.blackTexture, rtCold);
+
             if (brushMaterial != null)
                 brushInstance = new Material(brushMaterial) { name = brushMaterial.name + " (Instance)", hideFlags = HideFlags.HideAndDontSave };
 
             persistence = new TrailPersistence(autoSaveInterval);
             persistence.Register(this);
             persistence.TryLoad(this);
+
+            // Register cold as a separate ITrailTarget so persistence saves /
+            // loads it alongside warm. Distinct save key means stage1 saves
+            // (warm-only) stay forwards-compatible.
+            coldTarget = new ColdTrailTarget(this);
+            persistence.Register(coldTarget);
+            persistence.TryLoad(coldTarget);
 
             PublishGlobals();
         }
@@ -249,10 +289,12 @@ namespace SlimeJumping.Rendering
             if (Instance == this) Instance = null;
             if (persistence != null) { persistence.Cancel(); persistence = null; }
             if (rt != null) { rt.Release(); Object.Destroy(rt); rt = null; }
+            if (rtCold != null) { rtCold.Release(); Object.Destroy(rtCold); rtCold = null; }
             if (brushInstance != null) { Object.Destroy(brushInstance); brushInstance = null; }
             if (bakedTrailGradient != null) { Object.Destroy(bakedTrailGradient); bakedTrailGradient = null; }
             if (bakedPositionGradient != null) { Object.Destroy(bakedPositionGradient); bakedPositionGradient = null; }
             if (bakedAngleGradient != null) { Object.Destroy(bakedAngleGradient); bakedAngleGradient = null; }
+            if (bakedTrailGradientCold != null) { Object.Destroy(bakedTrailGradientCold); bakedTrailGradientCold = null; }
 
             // Neutralize trail globals so materials in other scenes / material previews
             // don't keep sampling a freed RT (Unity falls back to the default white texture,
@@ -261,6 +303,8 @@ namespace SlimeJumping.Rendering
             Shader.SetGlobalTexture("_TrailGradient",      Texture2D.blackTexture);
             Shader.SetGlobalTexture("_TrailPosGradient",   Texture2D.whiteTexture);
             Shader.SetGlobalTexture("_TrailAngleGradient", Texture2D.whiteTexture);
+            Shader.SetGlobalTexture("_TrailMaskCold",      Texture2D.blackTexture);
+            Shader.SetGlobalTexture("_TrailGradientCold",  Texture2D.whiteTexture);
             Shader.SetGlobalVector ("_TrailWorldMin",      Vector4.zero);
             Shader.SetGlobalVector ("_TrailWorldSize",     Vector4.zero);
             Shader.SetGlobalVector ("_TrailPosGradientParams", Vector4.zero);
@@ -290,13 +334,22 @@ namespace SlimeJumping.Rendering
             Shader.SetGlobalFloat  ("_TrailZCenter",     trailZCenter);
             Shader.SetGlobalFloat  ("_TrailZNear",       Mathf.Max(0f, trailZNear));
             Shader.SetGlobalFloat  ("_TrailZFar",        Mathf.Max(trailZNear + 0.01f, trailZFar));
+
+            // Cold-route globals. Explicit != null ternary (CLAUDE.md: never `??`
+            // on UnityEngine.Object). When the cold gradient isn't authored, we
+            // publish a white texture so the shader's cold-mask×alpha lerp at
+            // mask=0 still evaluates to a no-op.
+            Shader.SetGlobalTexture("_TrailMaskCold", rtCold);
+            Shader.SetGlobalTexture("_TrailGradientCold",
+                bakedTrailGradientCold != null ? (Texture)bakedTrailGradientCold : Texture2D.whiteTexture);
         }
 
         private void BakeGradients()
         {
-            BakeOne(ref bakedTrailGradient,    trailGradient,    "TrailGradient");
-            BakeOne(ref bakedPositionGradient, positionGradient, "TrailPosGradient");
-            BakeOne(ref bakedAngleGradient,    angleGradient,    "TrailAngleGradient");
+            BakeOne(ref bakedTrailGradient,     trailGradient,     "TrailGradient");
+            BakeOne(ref bakedPositionGradient,  positionGradient,  "TrailPosGradient");
+            BakeOne(ref bakedAngleGradient,     angleGradient,     "TrailAngleGradient");
+            BakeOne(ref bakedTrailGradientCold, trailGradientCold, "TrailGradientCold");
         }
 
         private static void BakeOne(ref Texture2D tex, Gradient g, string label)
@@ -370,11 +423,28 @@ namespace SlimeJumping.Rendering
                     new GradientAlphaKey(1f, 0f),
                     new GradientAlphaKey(1f, 1f),
                 });
+            // Cold gradient default: cool icy blue ramp with rising alpha so a
+            // fresh stamp fades in instead of popping. Authors typically tune
+            // this per stage anyway — these defaults just make Reset usable.
+            trailGradientCold = new Gradient();
+            trailGradientCold.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(new Color(0.78f, 0.92f, 1.00f), 0f),
+                    new GradientColorKey(new Color(0.32f, 0.62f, 0.85f), 1f),
+                },
+                new[]
+                {
+                    new GradientAlphaKey(0.50f, 0f),
+                    new GradientAlphaKey(1.00f, 1f),
+                });
         }
 
         // -------------------- Public stamp API --------------------
 
         /// Stamp into the world RT. worldPos is the slime contact point; worldRadius in world units.
+        /// Stamp strength is split between warm (rt) and cold (rtCold) routes by currentFreezeT —
+        /// warm receives strength*(1-T), cold receives strength*T. Ground shader composes alpha-over.
         public void Stamp(Vector2 worldPos, float worldRadius, float strength)
         {
             if (rt == null || brushMaterial == null) return;
@@ -389,9 +459,18 @@ namespace SlimeJumping.Rendering
             if (uv.x + radiusUV.x < 0f || uv.x - radiusUV.x > 1f ||
                 uv.y + radiusUV.y < 0f || uv.y - radiusUV.y > 1f) return;
 
-            BlitToTarget(rt, uv, radiusUV, strength);
+            float warmS = strength * (1f - currentFreezeT);
+            float coldS = strength * currentFreezeT;
+            // Skip near-zero contributions so a fully-frozen slime doesn't waste a
+            // GL draw on the warm RT (and vice versa for stage1 with T=0).
+            if (warmS > 0.001f) BlitToTarget(rt,     uv, radiusUV, warmS);
+            if (coldS > 0.001f && rtCold != null) BlitToTarget(rtCold, uv, radiusUV, coldS);
             dirty = true;
         }
+
+        /// Updates the freezeT used for stamp split-routing. Called once per frame
+        /// by SlimeFrostController. Single-slime stage assumption: last writer wins.
+        public void SetFreezeT(float t) => currentFreezeT = Mathf.Clamp01(t);
 
         /// Shared GL.QUADS brush draw reused by LocalTrailReceiver.
         public void BlitToTarget(RenderTexture target, Vector2 centerUV, Vector2 radiusUV, float strength)
@@ -426,11 +505,12 @@ namespace SlimeJumping.Rendering
 
         // -------------------- Debug ContextMenu --------------------
 
-        /// Clears the world RT immediately. Play-mode only — no-ops otherwise.
+        /// Clears the world RT (warm + cold) immediately. Play-mode only — no-ops otherwise.
         public void ClearWorldTrail()
         {
             if (!Application.isPlaying) return;
             if (rt != null) Graphics.Blit(Texture2D.blackTexture, rt);
+            if (rtCold != null) Graphics.Blit(Texture2D.blackTexture, rtCold);
             dirty = true;
         }
 
@@ -540,5 +620,41 @@ namespace SlimeJumping.Rendering
         private Vector2Int gizmoLabelCachedRes;
         private Vector2 gizmoLabelCachedSize;
 #endif
+
+        // -------------------- Cold trail save adapter --------------------
+        // Wraps the cold RT as a separate ITrailTarget so TrailPersistence
+        // saves / loads it alongside the warm world target. Distinct save
+        // key keeps existing stage1 saves (warm-only) compatible.
+        private sealed class ColdTrailTarget : ITrailTarget
+        {
+            private readonly WorldTrailManager owner;
+            public ColdTrailTarget(WorldTrailManager o) { owner = o; }
+
+            public RenderTexture Rt => owner.rtCold;
+
+            public string SaveKey
+            {
+                get
+                {
+                    string sceneKey = string.IsNullOrEmpty(owner.sceneKeyOverride)
+                        ? UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex.ToString()
+                        : owner.sceneKeyOverride;
+                    return "world_cold_" + sceneKey;
+                }
+            }
+
+            public Vector2Int Resolution => owner.resolution;
+
+            // Share the dirty flag with warm — both RTs save together. Either
+            // diverging would force two readback paths and the gain is nil
+            // (paint usually touches both within the same FixedUpdate).
+            public bool Dirty => owner.dirty;
+            public void MarkDirty() => owner.dirty = true;
+            public void ClearDirty() { /* warm clears for both */ }
+
+            public TrailTargetMeta BuildMeta() => owner.BuildMeta();
+
+            public void OnLoadedInto() { /* no post-load hook needed */ }
+        }
     }
 }

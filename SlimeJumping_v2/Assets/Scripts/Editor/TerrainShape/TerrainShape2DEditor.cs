@@ -105,6 +105,11 @@ namespace SlimeJumping.TerrainShape.Editor
             _heightmapChanged?.Invoke(src);
         }
 
+        // External assemblies subscribe to append a section at the bottom of this inspector
+        // (kept in this domain-neutral hook so callers don't need to subclass the editor or
+        // touch this file again). Mirror of `_heightmapChanged` pattern.
+        public static System.Action<TerrainShape2D, UnityEditor.Editor> OnAdditionalInspectorGUI;
+
         void OnHeightmapChanged(TerrainShape2D src)
         {
             if (src == (TerrainShape2D)target) MarkDirty();
@@ -368,6 +373,9 @@ namespace SlimeJumping.TerrainShape.Editor
 
             EditorGUILayout.Space();
             DrawActiveLayerOutlineList(src);
+
+            EditorGUILayout.Space();
+            OnAdditionalInspectorGUI?.Invoke(src, this);
 
             serializedObject.ApplyModifiedProperties();
         }

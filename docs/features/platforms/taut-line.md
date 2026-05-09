@@ -122,6 +122,8 @@ return clamp(bonus, 0, maxCap)
 upSpeed = dot(launchVel, worldUp)
 if (upSpeed < minLaunchVerticalSpeed)
     launchVel += worldUp × (minLaunchVerticalSpeed - upSpeed)
+if (maxLaunchSpeed > 0 and |launchVel| > maxLaunchSpeed)        // 최종 magnitude 캡
+    launchVel = launchVel.normalized × maxLaunchSpeed
 ```
 
 **타이밍 게이트:** 줄이 위로 빠르게 움직일 때 (= release 후 baseline 통과하는 순간 부근) 점프하면 max boost. 정지 중이거나 아래로 가라앉는 중엔 boost 0. 디자이너는 `jumpTimingCurve` 의 X축 (rope 위쪽 속도, m/s) 과 Y축 (multiplier) 을 자유롭게 조정 — Linear 로 두면 시간 동기화 정확도가 그대로 결과로, EaseIn 이면 정점 근처만 큰 보너스, 평면 (Y=1) 이면 timing 무시.
@@ -131,9 +133,10 @@ if (upSpeed < minLaunchVerticalSpeed)
 | 변수 | 단위 | 의미 |
 |---|---|---|
 | `jumpBoost` | m/s | full charge 시 launchDir 방향으로 더해지는 양 (timing × chargeRatio 가 곱해짐) |
-| `maxCap` | m/s | jumpBoost 의 하드 캡 |
+| `maxCap` | m/s | jumpBoost (rope bonus) 의 하드 캡 — boost 항만 제한, 최종 launch 속도와 무관 |
 | `jumpTimingCurve` | curve(ropeUpSpeed→mul) | 줄 상승 속도별 boost multiplier. default `Linear((0,0)→(5,1))` |
 | `minLaunchVerticalSpeed` | m/s | 모든 launch 의 최소 worldUp 속도 (chargeRatio 무관 일정). 0 = disable |
+| `maxLaunchSpeed` | m/s | 최종 launch 벡터 magnitude 하드 캡 (`SpringyBranch.maxTipSpeed` 등가). 방향 보존, 길이만 clamp. 0 = 무제한 |
 | `launchImpactKickCurve` | curve(ratio→m/s) | 발사 순간 줄이 받는 downward dipVelocity 펄스 (시각 효과) |
 
 `minLaunchVerticalSpeed` 가 필요한 이유: 슬라임이 옆으로 점프 (수평 launchDir) 하면 vy ≈ 0. 줄은 동시에 spring back 으로 위로 튀어오름 → 슬라임과 다시 만나 re-attach. 최소 vy 를 보장하면 슬라임이 줄의 rebound envelope 위로 빠져나감.
@@ -267,9 +270,10 @@ ReattachGuard release 후 슬라임 다시 떨어져 오면, `postDetach=true` �
 
 [Launch boost (effect-mode)]
   jumpBoost                 : m/s   (default 3)     — full charge 시 launch boost (launchDir 방향)
-  maxCap                    : m/s   (default 6)     — jumpBoost 의 하드 캡
+  maxCap                    : m/s   (default 6)     — jumpBoost (rope bonus) 의 하드 캡 (boost 항만)
   launchImpactKickCurve     : curve  (default Linear(0,0)→(1,4))  — chargeRatio → 발사 순간 dipVelocity 다운펄스
   minLaunchVerticalSpeed    : m/s   (default 3)     — launch 후 최소 worldUp 속도 (일정, charge 무관). 0 = disable
+  maxLaunchSpeed            : m/s   (default 0)     — 최종 launch 벡터 **magnitude** 하드 캡 (`SpringyBranch.maxTipSpeed` 등가). PostprocessLaunchVelocity 에서 minLaunch 적용 후 마지막에 clamp — 방향 보존, 길이만 축소. 0 = 무제한
   jumpTimingCurve           : curve(ropeUpSpeed→mul, default Linear(0,0)→(5,1))  — 줄 상승 속도별 boost multiplier (timing window)
 
 [Pass-through]

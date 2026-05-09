@@ -37,13 +37,18 @@ namespace SlimeJumping.Rendering
         [SerializeField] private string overrideId = "";
 
         private RenderTexture rt;
+        // Cold-route RT — same dim/format as warm. Stamps split between warm
+        // and cold here based on WorldTrailManager.CurrentFreezeT.
+        private RenderTexture rtCold;
+        private LocalColdTarget coldTarget;
         private MaterialPropertyBlock mpb;
         private Vector2Int resolution;
         private bool dirty;
-        private static readonly int IdLocalTrailMask = Shader.PropertyToID("_LocalTrailMask");
-        private static readonly int IdLocalTrailMin  = Shader.PropertyToID("_LocalTrailMin");
-        private static readonly int IdLocalTrailSize = Shader.PropertyToID("_LocalTrailSize");
-        private static readonly int IdLocalTrailW2L  = Shader.PropertyToID("_LocalTrailW2L");
+        private static readonly int IdLocalTrailMask     = Shader.PropertyToID("_LocalTrailMask");
+        private static readonly int IdLocalTrailMaskCold = Shader.PropertyToID("_LocalTrailMaskCold");
+        private static readonly int IdLocalTrailMin      = Shader.PropertyToID("_LocalTrailMin");
+        private static readonly int IdLocalTrailSize     = Shader.PropertyToID("_LocalTrailSize");
+        private static readonly int IdLocalTrailW2L      = Shader.PropertyToID("_LocalTrailW2L");
 
         public Collider2D ContactCollider => contactCollider;
         public Renderer TargetRenderer => targetRenderer;
@@ -152,9 +157,24 @@ namespace SlimeJumping.Rendering
             rt.Create();
             Graphics.Blit(Texture2D.blackTexture, rt);
 
+            // Cold-route RT mirrors warm dim/format. Explicit black blit is critical:
+            // a fresh RT contains undefined GPU memory that would otherwise show as
+            // garbage tint through the cold sampler in stage1 (no ColdZone).
+            rtCold = new RenderTexture(resolution.x, resolution.y, 0, RenderTextureFormat.R8, RenderTextureReadWrite.Linear)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                useMipMap = false,
+                autoGenerateMips = false,
+                name = "LocalTrailCold_" + name,
+            };
+            rtCold.Create();
+            Graphics.Blit(Texture2D.blackTexture, rtCold);
+
             mpb = new MaterialPropertyBlock();
             targetRenderer.GetPropertyBlock(mpb);
-            mpb.SetTexture(IdLocalTrailMask, rt);
+            mpb.SetTexture(IdLocalTrailMask,     rt);
+            mpb.SetTexture(IdLocalTrailMaskCold, rtCold);
             mpb.SetVector (IdLocalTrailMin,  new Vector4(localMin.x,  localMin.y,  0f, 0f));
             mpb.SetVector (IdLocalTrailSize, new Vector4(localSize.x, localSize.y, 0f, 0f));
             mpb.SetMatrix (IdLocalTrailW2L,  transform.worldToLocalMatrix);
@@ -170,6 +190,13 @@ namespace SlimeJumping.Rendering
             {
                 mgr.Persistence.Register(this);
                 mgr.Persistence.TryLoad(this);
+
+                // Register cold-route as separate ITrailTarget so persistence
+                // saves / loads alongside warm. Distinct save key keeps existing
+                // platform saves (warm-only) compatible.
+                coldTarget = new LocalColdTarget(this);
+                mgr.Persistence.Register(coldTarget);
+                mgr.Persistence.TryLoad(coldTarget);
             }
         }
 
@@ -184,11 +211,18 @@ namespace SlimeJumping.Rendering
                 if (dirty)
                 {
                     try { mgr.Persistence.SaveSync(this); } catch { /* best-effort */ }
+                    if (coldTarget != null)
+                    {
+                        try { mgr.Persistence.SaveSync(coldTarget); } catch { /* best-effort */ }
+                    }
                 }
                 mgr.Persistence.Unregister(this);
+                if (coldTarget != null) mgr.Persistence.Unregister(coldTarget);
             }
 
             if (rt != null) { rt.Release(); Object.Destroy(rt); rt = null; }
+            if (rtCold != null) { rtCold.Release(); Object.Destroy(rtCold); rtCold = null; }
+            coldTarget = null;
         }
 
         private void LateUpdate()
@@ -238,13 +272,22 @@ namespace SlimeJumping.Rendering
             Vector2 radiusUV = new Vector2(
                 worldRadius / (localSize.x * sx),
                 worldRadius / (localSize.y * sy));
-            mgr.BlitToTarget(rt, uv, radiusUV, strength);
+
+            // Split between warm and cold by the manager's freezeT (single-slime
+            // stage assumption). Sub-threshold halves are skipped so a fully-frozen
+            // slime doesn't waste a draw on the warm RT, and vice versa.
+            float t = mgr.CurrentFreezeT;
+            float warmS = strength * (1f - t);
+            float coldS = strength * t;
+            if (warmS > 0.001f) mgr.BlitToTarget(rt,     uv, radiusUV, warmS);
+            if (coldS > 0.001f && rtCold != null) mgr.BlitToTarget(rtCold, uv, radiusUV, coldS);
             dirty = true;
         }
 
         public void ClearTrail()
         {
             if (rt != null) Graphics.Blit(Texture2D.blackTexture, rt);
+            if (rtCold != null) Graphics.Blit(Texture2D.blackTexture, rtCold);
             dirty = true;
         }
 
@@ -440,6 +483,29 @@ namespace SlimeJumping.Rendering
                 buf.Append(pathScratch[i]);
             }
             return buf.ToString();
+        }
+
+        // -------------------- Cold trail save adapter --------------------
+        // Wraps rtCold as a separate ITrailTarget for TrailPersistence. Save
+        // key derives from the warm key with a "_cold" suffix so existing
+        // platform saves (warm-only) stay forwards-compatible.
+        private sealed class LocalColdTarget : ITrailTarget
+        {
+            private readonly LocalTrailReceiver owner;
+            public LocalColdTarget(LocalTrailReceiver o) { owner = o; }
+
+            public RenderTexture Rt => owner.rtCold;
+            public string SaveKey => owner.SaveKey + "_cold";
+            public Vector2Int Resolution => owner.resolution;
+
+            // Share dirty flag with warm — paint-side StampAt sets it once,
+            // and saving both halves on the same tick is the right batching.
+            public bool Dirty => owner.dirty;
+            public void MarkDirty() => owner.dirty = true;
+            public void ClearDirty() { /* warm clears for both */ }
+
+            public TrailTargetMeta BuildMeta() => owner.BuildMeta();
+            public void OnLoadedInto() { }
         }
     }
 }

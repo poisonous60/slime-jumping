@@ -106,7 +106,7 @@ namespace SlimeJumping.Interaction
                 boundAnimator.RequestWake();
         }
 
-        private static bool AnyButtonPressedThisFrame()
+        internal static bool AnyButtonPressedThisFrame()
         {
             var kb = Keyboard.current;
             if (kb != null && kb.anyKey.wasPressedThisFrame) return true;

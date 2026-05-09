@@ -41,6 +41,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Common (PlatformMotor / Carrier)](features/platforms/common-platform.md)
 - [Crumbling](features/platforms/crumbling.md) — 무너지는 플랫폼
 - [Thin Ice](features/platforms/thin-ice.md) — Crumbling 확장 (SFX + 파티클 + 부드러운 재생성)
+- [Thin Ice v2](features/platforms/thin-ice-v2.md) — Quibli toon lighting + 절차적 Voronoi 크랙 셰이더 + 공유 generic shard 라이브러리 + `ThinIceV2Config` 단일 설정 자산 (Resources auto-load) + 점프-즉시-shatter + 그룹 단위 respawn zone
 - [Rolling Disk](features/platforms/rolling-disk.md) — 360° 회전 원형
 - [Pendulum](features/platforms/pendulum.md) — 매달린 진자
 - [Springy Branch](features/platforms/springy-branch.md) — 탄력 나뭇가지
@@ -56,6 +57,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Drag Zone](features/mechanisms/drag-zone.md) — 감속/모래 + 볼륨 차징
 - [Gravity Field](features/mechanisms/gravity-field.md) — 중력 방향 치환
 - [Water Zone](features/mechanisms/water-zone.md) — 물 v1/v2 + 파도 + Underwater 포스트
+- [Cold Zone](features/mechanisms/cold-zone.md) — Stage2 동결 비주얼 (슬라임 색 lerp + 표면 frost + warm/cold 듀얼 trail RT alpha-over)
 - [Water Current Zone](features/mechanisms/water-current-zone.md) — 벽면 흐르는 물살 (centerline 리본 + 5-vert 반-튜브 단면 + 좌/우 채널 파도 시뮬 + Water_FlowingRefraction 셰이더)
 - [Push Door v1/v2/v3](features/mechanisms/push-door.md) — 밀어서 여는 문 (v2: 살롱 도어 충격량 모델, v3: 표준 FBX 각도 모델)
 - [Jump Pad](features/mechanisms/jump-pad.md)
