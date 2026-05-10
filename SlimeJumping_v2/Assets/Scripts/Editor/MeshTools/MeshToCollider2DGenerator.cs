@@ -141,7 +141,12 @@ namespace SlimeJumping.EditorTools
             // Convert world XY → wrapper-local via InverseTransformPoint so inherited
             // lossyScale / rotation from the wrapper's parent chain is cancelled correctly.
             // (Setting localScale=1 on the wrapper is not enough when its parent has scale.)
+            // After conversion, collinear vertices left over from mesh subdivision are
+            // dropped by RDP at 1mm chord error — geometrically a no-op, but cuts Box2D
+            // broadphase/AABB cost by ~80% on dense terrain. See TerrainColliderOptimizer.
+            const float simplifyEpsilon = 0.001f;
             col.pathCount = worldLoops.Count;
+            int totalRawVerts = 0, totalSimpVerts = 0;
             for (int i = 0; i < worldLoops.Count; i++)
             {
                 var p = worldLoops[i];
@@ -151,6 +156,9 @@ namespace SlimeJumping.EditorTools
                     Vector3 local = wrapper.InverseTransformPoint(new Vector3(p[j].x, p[j].y, 0f));
                     arr[j] = new Vector2(local.x, local.y);
                 }
+                totalRawVerts += arr.Length;
+                arr = TerrainColliderOptimizer.SimplifyClosedPath(arr, simplifyEpsilon);
+                totalSimpVerts += arr.Length;
                 col.SetPath(i, arr);
             }
 
@@ -165,12 +173,12 @@ namespace SlimeJumping.EditorTools
             Selection.activeGameObject = wrapper.gameObject;
 
             var log = new StringBuilder();
-            log.Append($"[MeshToCollider2D] '{wrapper.name}' — {worldLoops.Count} loop(s): ");
+            log.Append($"[MeshToCollider2D] '{wrapper.name}' — {worldLoops.Count} loop(s), verts {totalRawVerts}→{totalSimpVerts} (RDP eps={simplifyEpsilon}m): ");
             for (int i = 0; i < worldLoops.Count; i++)
             {
                 if (i > 0) log.Append(", ");
                 log.Append(isHole[i] ? "hole" : "outer");
-                log.Append($": {worldLoops[i].Count} verts");
+                log.Append($": {worldLoops[i].Count}→{col.GetPath(i).Length} verts");
             }
             Debug.Log(log.ToString());
 

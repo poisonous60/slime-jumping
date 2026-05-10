@@ -1,0 +1,89 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 090a6a2abd16b4c449475ff8301db366, type: 3}
+  m_Name: IcicleHazardV2Preset
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Mechanisms.IcicleHazardV2Preset
+  detectionOffset: {x: 0, y: -4}
+  detectionSize: {x: 1.5, y: 10}
+  slimeLayer:
+    serializedVersion: 2
+    m_Bits: 65
+  shakeDuration: 1.6
+  shakeAmplitude: 0.04
+  shakeFrequency: 20
+  fallSpeedCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1.5
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.5808847
+      value: 9.306805
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1.1808847
+      value: 9.306805
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  breakOnLayers:
+    serializedVersion: 2
+    m_Bits: 128
+  breakImmunityDuration: 0.3
+  shardSet: {fileID: 11400000, guid: a3365b447128ed749acbc2b7e330168b, type: 2}
+  shardRuntimePrefab: {fileID: 284361039296914280, guid: a89befe33e4774a42afce37088567f85, type: 3}
+  shardCount: 16
+  shardSpeedMin: 2
+  shardSpeedMax: 4
+  shardUpwardBias: 0.7
+  shardSpinDeg: 360
+  shardLifetimeMin: 1.2
+  shardLifetimeMax: 1.8
+  shardFadeWindow: 0.4
+  shardScaleRange: {x: 0.7, y: 1.3}
+  impactVelocityInherit: 0.3
+  frostCloudVFXPrefab: {fileID: 8748570474833807063, guid: 75a00a09cf44f374cb41c74a7d6f591c, type: 3}
+  shatterSounds:
+  - {fileID: 8300000, guid: 75018a733128739488a094abb41e9203, type: 3}
+  useEmissiveFlash: 0
+  flashColor: {r: 1, g: 1, b: 1, a: 1}
+  flashDuration: 0.05
+  flashIntensity: 4
+  useCameraShake: 0
+  shakeForce: 0.5
+  respawnTime: 1
+  regenDuration: 1.2
+  regenBlockingLayers:
+    serializedVersion: 2
+    m_Bits: 65
+  shakeStartSound: {fileID: 0}
+  fallingSound: {fileID: 0}
+  impactSound: {fileID: 0}
+  soundVolume: 1

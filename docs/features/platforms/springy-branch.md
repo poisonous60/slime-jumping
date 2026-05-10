@@ -27,10 +27,27 @@
 
 ## 발사 시 에너지 합산
 ```
-velocity = chargeDir × power                                   // 차지 파워
-velocity += carrier.GetEffectiveVelocity() × carrierFriction   // 가지 팁 속도
+velocity = chargeDir × power                                   // 차지 파워 (+ EnergyConversion)
+velocity += hyperdashInherited                                 // 관성 inheritance
+velocity += carrier.GetEffectiveVelocity() × VelocityTransferScale × carrierFriction   // 가지 팁 속도
 ```
 고공 낙하 → 에너지 전환 확장된 차지 반경 + 슬램으로 휜 가지의 업스윙 피크 타이밍 = 최강 런치 벡터. 벡터 합산이라 발사 방향과 팁 속도 방향이 일치할 때만 완전 합산 (기본적으로 수직 점프 퍼즐).
+
+## Boost Falloff — pre-bonus 속도 게이트
+TautLine 의 `boostFalloffStartSpeed` / `boostFalloffEndSpeed` 패턴을 그대로 가지에 적용. `VelocityTransferScale` getter 가 launch 순간 슬라임의 pre-bonus 속도를 읽어 가지의 carrier 기여를 깎음 — pre-bonus = "차지 파워 + EnergyConversion + hyperdash inheritance" (가지 기여는 아직 합산 전).
+
+```
+preBonusSpeed = slime.Velocity.magnitude
+speedMul = 1 - clamp01(invLerp(boostFalloffStartSpeed, boostFalloffEndSpeed, preBonusSpeed))
+return velocityTransferScale × speedMul
+```
+
+| 파라미터 | 단위 | 의미 |
+|---|---|---|
+| `boostFalloffStartSpeed` | m/s | 이하면 full `velocityTransferScale`. default 12 |
+| `boostFalloffEndSpeed` | m/s | 이상이면 가지 기여 0. default 18. start↔end 사이 선형 falloff. end ≤ start 면 hard cutoff |
+
+목적: 고공 낙하 → 거대한 EnergyConversion 으로 슬라임 자체 속도가 이미 충분한 경우 가지의 팁 속도 보너스가 그 위에 더 얹히지 않게 한다. 슬라임 자체 power 는 그대로 통과 — 가지 기여만 깎인다 (TautLine 과 동일 의미). 일반 차지 런치는 pre-bonus 속도가 낮아 multiplier ≈ 1 → full 가지 부스트.
 
 ## 오브젝트 계층 (중요)
 ```

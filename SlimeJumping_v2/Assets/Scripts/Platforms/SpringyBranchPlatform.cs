@@ -1,4 +1,5 @@
 using UnityEngine;
+using SlimeJumping.Controller;
 using SlimeJumping.Physics;
 
 namespace SlimeJumping.Platforms
@@ -47,6 +48,20 @@ namespace SlimeJumping.Platforms
         [Tooltip("Scale applied to the full effective velocity (Velocity + arm×ω) transferred to the slime at launch/hop.")]
         [SerializeField, Range(0f, 2f)] float velocityTransferScale = 1f;
 
+        [Header("Boost Falloff (pre-bonus speed gate)")]
+        [Tooltip("Below this pre-bonus launch speed (m/s) the branch transfers full velocityTransferScale. " +
+                 "Pre-bonus speed = slime.Velocity.magnitude when carrier.GetLaunchVelocity is called — " +
+                 "already includes EnergyConversion power and hyperdash inheritance, but NOT the branch's " +
+                 "own carrier contribution (that's what's being scaled). Lets the branch reward normal " +
+                 "launches without stacking extra tip-speed on top of a high-fall EnergyConversion launch.")]
+        [SerializeField, Min(0f)] float boostFalloffStartSpeed = 12f;
+        [Tooltip("Above this pre-bonus launch speed (m/s) the branch transfers zero carrier velocity. " +
+                 "Linear falloff between boostFalloffStartSpeed and boostFalloffEndSpeed. " +
+                 "Set ≤ boostFalloffStartSpeed for hard cutoff. The slime's own (EnergyConversion + " +
+                 "hyperdash) speed passes through unchanged — only the branch's carrier inheritance is " +
+                 "removed, so a high-fall landing still launches with its full converted energy.")]
+        [SerializeField, Min(0f)] float boostFalloffEndSpeed = 18f;
+
         [Header("Re-entry Guards")]
         [SerializeField, Min(0f)] float slamMinDownSpeed = 3f;
         [SerializeField, Min(0f)] float slamReattachLockout = 0.15f;
@@ -62,6 +77,7 @@ namespace SlimeJumping.Platforms
         bool hasPrevRiderVel;
         float currentRiderMass;
         float currentRiderArmSqr;
+        SlimeController cachedSlime;
 
         protected override void Awake()
         {
@@ -75,7 +91,26 @@ namespace SlimeJumping.Platforms
         }
 
         public float CurrentDeflectionDeg => currentAngle;
-        public override float VelocityTransferScale => velocityTransferScale;
+
+        // Mirrors TautLine.GetLaunchBonus' boost-falloff gate. Queried by
+        // PlatformCarrier.GetLaunchVelocity at the launch moment, when slime.Velocity
+        // already contains aim power × charge ratio + hyperdash inheritance, but the
+        // carrier contribution is what we're about to scale. Falloff multiplier deletes
+        // the branch's tip-speed transfer when the slime is already going fast (e.g.
+        // big EnergyConversion of a high fall) so the branch can't stack extra speed
+        // on top of an already-converted launch.
+        public override float VelocityTransferScale
+        {
+            get
+            {
+                if (cachedSlime == null) cachedSlime = FindFirstObjectByType<SlimeController>();
+                float preBonusSpeed = cachedSlime != null ? cachedSlime.Velocity.magnitude : 0f;
+                float speedMul = boostFalloffEndSpeed > boostFalloffStartSpeed
+                    ? 1f - Mathf.Clamp01(Mathf.InverseLerp(boostFalloffStartSpeed, boostFalloffEndSpeed, preBonusSpeed))
+                    : (preBonusSpeed >= boostFalloffStartSpeed ? 0f : 1f);
+                return velocityTransferScale * speedMul;
+            }
+        }
 
         (float stiffness, float damping, float ITotal) ComputeSpringCoeffs()
         {

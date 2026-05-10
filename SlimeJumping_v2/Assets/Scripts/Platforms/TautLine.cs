@@ -156,6 +156,18 @@ namespace SlimeJumping.Platforms
         SlimeController.SlimeState lastState = SlimeController.SlimeState.Airborne;
         bool postDetach;        // Use detachedDampingRatio while true
 
+        // SyncShapes unchanged-skip cache. polygon.SetPath dirties Box2D
+        // broadphase against all neighboring static colliders — on a stage
+        // with thousands of polygon vertices that's 5–20ms per call. Shape
+        // is fully determined by (dipDepth, riderT) given a fixed baseline,
+        // so we skip when those haven't changed since the last write.
+        // INVARIANT: TautLine.transform must be static at runtime — polygonLocalPoints
+        // are computed via transform.InverseTransformPoint, so a moving parent
+        // would invalidate the cache without the key changing. Rebuild() and
+        // baseline reshape paths invalidate explicitly via syncedAtLeastOnce.
+        Vector2 lastSyncedDipDepth_riderT;
+        bool    syncedAtLeastOnce;
+
         // Trampoline state. Impulse-driven model — target stays at baseEquilibrium
         // throughout. ApplyRiderImpact injects a downward dipVelocity kick (proportional
         // to impact speed via trampolineImpactKickCurve), and trampolineHoldTimer keeps
@@ -249,6 +261,10 @@ namespace SlimeJumping.Platforms
             lastSampleCount = sampleCount;
             lastBaselineSag = baselineSag;
             lastRibbonThickness = ribbonThickness;
+
+            // baselinePoints just changed — invalidate the SyncShapes cache so the
+            // next call writes the new baseline even if (dipDepth, riderT) match.
+            syncedAtLeastOnce = false;
 
             SyncShapes();
         }
@@ -471,6 +487,17 @@ namespace SlimeJumping.Platforms
         {
             if (baselinePoints == null) return;
             int n = baselinePoints.Length;
+
+            // Runtime: skip when (dipDepth, riderT) match the last written shape.
+            // Editor preview falls through so designer changes (sag/thickness via
+            // Rebuild path) and gizmo refreshes always re-render.
+            if (Application.isPlaying)
+            {
+                Vector2 current = new Vector2(dipDepth, riderT);
+                if (syncedAtLeastOnce && current == lastSyncedDipDepth_riderT) return;
+                lastSyncedDipDepth_riderT = current;
+                syncedAtLeastOnce = true;
+            }
 
             // Top edge of ribbon = displaced curve (where slime sits).
             // Bottom edge = top edge + worldDown × ribbonThickness.

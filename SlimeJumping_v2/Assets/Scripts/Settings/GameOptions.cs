@@ -102,6 +102,14 @@ namespace SlimeJumping.Settings
             MouseTeleportDebugEnabled = PlayerPrefs.GetInt(KeyMouseTeleportDebugOn, DefaultMouseTeleportDebugOn ? 1 : 0) != 0;
             ApplyDisplayPacing();
             ApplyDisplay(ResolutionOptions[ResolutionIndex], WindowMode);
+
+            // Cap FixedUpdate catchup. Default 0.333s lets ~16 physics ticks pile
+            // into one frame after a stall (GC, asset load, alt-tab) — each tick
+            // costs 5–20ms in this project, producing a death-spiral of 100ms+
+            // frames. 0.1s caps catchup at ~5 ticks; lost wall-clock past that is
+            // dropped (game effectively skips, not slow-mo, since no Animator/
+            // Timeline systems depend on continuous time).
+            Time.maximumDeltaTime = 0.1f;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
