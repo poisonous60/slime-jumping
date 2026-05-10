@@ -190,17 +190,6 @@ namespace SlimeJumping.Platforms.Snow
                 SnowFieldRegistry.Register(hostCollider, this);
                 registeredCollider = hostCollider;
             }
-
-            // Sleep-cycle compatibility (OffscreenSleeperManager toggles SetActive). OnDisable
-            // clears activeStrips to release strip references; without this rebuild, a wake
-            // would leave FixedUpdate iterating an empty list and HandleLanded carve events
-            // would silently no-op. The Count==0 guard skips the first OnEnable after Awake
-            // (Awake already called RebuildNow), firing only on actual wakes.
-            // Trade-off: snow depth state (heightCurrent[] in each SnowStrip) does NOT survive
-            // a sleep cycle — RebuildNow rebuilds strips from scratch. Authored snow depth
-            // resets on wake. Mark forceAlwaysActive=true on snow regions where depth state
-            // matters between visits (e.g. snowball trail puzzles).
-            if (activeStrips.Count == 0) RebuildNow();
         }
 
         void OnDisable()

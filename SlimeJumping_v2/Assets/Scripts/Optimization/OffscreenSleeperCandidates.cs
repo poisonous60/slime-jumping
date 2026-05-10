@@ -1,7 +1,6 @@
 using System;
 using SlimeJumping.MeshTools;
 using SlimeJumping.Platforms;
-using SlimeJumping.Platforms.Snow;
 using SlimeJumping.Mechanisms;
 
 namespace SlimeJumping.Optimization
@@ -54,14 +53,13 @@ namespace SlimeJumping.Optimization
             // must be marked forceAlwaysActive in the Inspector — see class doc above.
             typeof(MeshCollider2DWrapper),
 
-            // SnowField — added with explicit caveat: sleep DOES rebuild active strips
-            // (SnowField.OnEnable Count==0 path), so visuals & physics resume correctly.
-            // BUT per-strip snow depth state (heightCurrent[]) does NOT survive a sleep
-            // cycle — a region the player exits and returns to will look untouched. For
-            // any snow region whose depth state is gameplay-relevant between visits
-            // (snowball-rolling puzzles, trail-following), mark forceAlwaysActive in the
-            // Inspector.
-            typeof(SnowField),
+            // SnowField is intentionally excluded. Empirically (2026-05-10 capture
+            // analysis), SnowField.OnEnable's RebuildNow path costs ~287ms self-time per
+            // call — when several SnowFields wake simultaneously (which happens whenever
+            // the camera viewport grows, e.g. F10 Fullscreen Editor), the cumulative
+            // wake spike causes a visible 0.5s stutter. Sleep cycles aren't worth that
+            // cost; SnowFields stay always-active and their broadphase contribution is
+            // accepted.
         };
     }
 }

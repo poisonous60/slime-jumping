@@ -274,6 +274,11 @@ namespace SlimeJumping.Optimization
                     var comp = instances[j] as Component;
                     if (comp == null) continue;
                     if (comp.GetComponent<OffscreenSleepable>() != null) continue;
+                    // SetActive toggling a SnowField triggers OnEnable/OnDisable cycles that
+                    // either rebuild strips for ~287ms (wake spike) or leave the strip list
+                    // empty (broken state). Skip any candidate that shares a GameObject with
+                    // SnowField — typically a MeshCollider2DWrapper hosting a snow surface.
+                    if (comp.GetComponent<SlimeJumping.Platforms.Snow.SnowField>() != null) continue;
                     comp.gameObject.AddComponent<OffscreenSleepable>();
                     added++;
                 }
