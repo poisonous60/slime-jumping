@@ -128,9 +128,9 @@ Physics2D.FindNewContacts avgSelf=0.581ms (Phase 1 대비 −84%, Phase 0 대비
 - 처리된 wrapper-marked 콜라이더: 115개 (9,245 verts → 2,519 verts)
 - 안전 차단: 9개 (SnowField host) + 116개 (generator-created가 아닌 sprite-derived 등)
 
-## 5. 남은 의문 — **다음 세션에서 조사할 주제**
+## 5. 남은 의문 — **조사 완료 (2026-05-10 후속 세션)**
 
-> 이 섹션이 다음 세션의 출발점이다.
+> 결론을 §5.6에 정리. §5.1–§5.5는 조사 출발점으로 남겨둠.
 
 ### 5.1 핵심 질문
 
@@ -205,6 +205,85 @@ Unity Profiler 라벨 신뢰 못 한다면 native CPU sampler로 Box2D 함수 �
 - 코드 변경 X
 - 새 도구 작성 X
 - **조사 보고서만 작성** — 가설을 실증으로 결론 지어 이 문서 업데이트
+
+### 5.6 조사 결과 — **결론 (2026-05-10 후속 세션)**
+
+#### 5.6.1 한 줄 요약
+
+**Unity의 PolygonCollider2D는 1개 collider ≠ 1 Box2D shape이다.** Unity는 path를 LibTess로 tessellate해서 **최대 8 vertex의 convex sub-polygon 다수**로 분해한 뒤 각 sub-polygon을 별도 Box2D shape로 등록한다. broadphase의 dynamic AABB tree에서 N = **shape 개수** (≠ collider 개수). 따라서 정점 수가 늘면 N이 비례해서 늘고, broadphase 비용이 정점 수에 비례.
+
+#### 5.6.2 결정적 증거
+
+**(a) Unity 공식 개발자 (MelvMay) 인용**
+> *"They have to be passed through LibTess to tessellate them down to (max) 8-sided convex polygons"*
+([2D Physics in Unity 2021.2](https://discussions.unity.com/t/2d-physics-in-unity-2021-2/859802))
+
+> *"A polygon collider can be slower but primarily because it can produce multiple polygon shapes... Polygon colliders can get out of control though and produce a hell of a lot of shapes... PolygonCollider2D can sometimes be a culprit if you've configured them so they produces LOTS of shapes. They can potentially cause hundreds of contacts on their own."*
+([Profiler Physics2D.FindNewContacts](https://discussions.unity.com/t/profiler-physics2d-findnewcontacts/728231))
+
+> *"FindNewContacts is where Box2D checks new/updated/moved colliders to see if they overlap... this is the Box2D broadphase looking for AABBs overlapping and having to determine what actually overlaps."*
+([Help with FindNewContacts Lag](https://discussions.unity.com/t/help-with-physics2d-findnewcontacts-lag-in-2d-rts-game/1622558))
+
+**(b) Box2D 소스 코드**
+- `b2_polygon_shape.h`: `b2_maxPolygonVertices = 8` (compile-time 상수). Box2D polygon은 최대 8 정점의 convex여야 함. 더 큰 모양은 그대로 못 쓰고 분해 필요.
+- `b2ContactManager::FindNewContacts()` → `m_broadPhase.UpdatePairs(this)` → moved proxy의 AABB로 dynamic tree query → 후보 pair마다 `AddPair` 호출.
+- `b2DynamicTree::InsertLeaf` / `MoveProxy`: 평균 O(log N), N = **proxy 개수** (= shape 개수).
+
+**(c) 현재 씬 실측 (unity-cli `Collider2D.shapeCount`로 카운트)**
+
+```
+colliders=240 (trigger=8) | pathCount=289 | pathVerts=11086 | shapeCount=3216
+ratio shapes/colliders=13.4 | ratio shapes/verts=0.29
+max shapes on one=137 (TerrainShape_TerrainMaker 23_Collider2D, 576 verts → 137 shapes)
+```
+
+- **240 콜라이더가 실제로는 3,216 broadphase proxy**.
+- 평균 1 collider = 13.4 shapes, 1 vertex = 0.29 shape (≈ 1 shape per 3.4 verts — LibTess가 최대 8각형으로 자르되 일부는 더 작게 나옴).
+- TerrainShape 23 한 개가 137 shapes — 멀리 있어도 broadphase tree에 137 노드 점유.
+
+**RDP 적용 전 추정 (verts 23,424)**: shape ratio 0.29 적용 시 ~6,800 shapes. 적용 후 3,216 → **N이 약 53% 감소**.
+
+#### 5.6.3 사용자 직관 vs 실제
+
+| 사용자 직관 | 실제 |
+|---|---|
+| 1 collider = 1 broadphase entity | 1 collider = 평균 13개 broadphase shape |
+| N = collider 수 (멀리 있어도 무방) | N = shape 수 = `Σ ⌈verts_i / 8⌉` |
+| broadphase = O(log N) → vert 수 무관 | broadphase 노드/비용이 vert 수에 비례 |
+| 멀리 있는 collider는 narrowphase 안 들어가니 무료 | broadphase **tree 자체의 N**이 커서 매 step 비용 ↑ |
+
+직관은 *"광역 컬링은 효과적"*이라는 점에서 맞지만, **컬링 대상 N**이 collider가 아니라 **분해된 sub-shape**라는 데서 어긋남.
+
+#### 5.6.4 84% 감소를 일으키는 super-linear 요인들
+
+shape 수가 53%만 줄었는데 `FindNewContacts`는 84% 빨라졌다. tree depth (log2(6800)→log2(3216) ≈ 12.7→11.6)만으론 설명 안 됨. 추가 기여 요인:
+
+1. **Pair lookup 해시 비용**: `AddPair`가 모든 broadphase 후보에 대해 contact key (proxyA, proxyB)로 해시 lookup. shape 수 ↓ → 후보 수 ↓ → 해시 부하 ↓.
+2. **밀집 영역의 query k**: 슬라임의 swept AABB가 여러 sub-shape AABB와 겹칠 때, 한 번 query에서 반환되는 leaf 수 k가 그 영역의 shape 밀도에 비례. 지형 표면을 따라 움직이면 k가 커짐.
+3. **Cache locality**: tree 노드 메모리 footprint 감소로 L1/L2 hit ratio 개선. dynamic tree traversal은 random pointer chase 패턴이라 cache 영향 큼.
+4. **Static collider sleep 갱신 비용**: Box2D는 static 영역도 awake island 인접성에 따라 일부 검사. shape 수 ↓ → 검사 비용 ↓.
+
+(이상은 추가 합성 실험 없이는 정량 분리 불가. 하지만 "정점 수에 비례"라는 메인 의문에는 답이 됨.)
+
+#### 5.6.5 사용자 질문에 대한 직접 답변
+
+> *"멀리 떨어져있는 collider가 성능에 영향을 미친다는 게 이상한데"*
+
+답: **멀리 있어도 broadphase tree에 자기 노드 점유**. 슬라임이 매 FU 위치 변할 때 자기 proxy를 tree에서 move/re-insert하는데, 이 작업의 평균 비용이 O(log N). N은 collider 수가 아니라 **sub-shape 수**이고, 정점 많은 폴리곤 하나가 N을 100+ 늘려버림. 게다가 위 §5.6.4의 super-linear 요인들 때문에 실측 비용은 log N보다 가파르게 정점 수에 비례.
+
+추가로 Unity는 `useDelaunayMesh` 옵션을 통해 분해 알고리즘을 바꿀 수 있지만 (Unity 2022.2+), shape 수가 줄어드는 게 아니라 분해 품질만 달라짐. **정점 수 자체를 줄이는 게 유일한 근본 해결책** — 이번 세션에서 RDP collinear simplify가 그것.
+
+#### 5.6.6 검증 가능한 후속 실험 (선택)
+
+- `Collider2D.shapeCount`를 모니터링해 매번 simplify 후 N 변화 확인 → 이미 가능 (`unity-cli` 한 줄).
+- CompositeCollider2D 합성 실험: 1개 composite는 outline path만 받아 자체 분해하므로 shape 감소 효과를 확인 가능. 단 Composite도 결국 LibTess 통과하므로 정점 수가 같으면 큰 차이 없을 가능성 높음.
+- Native sampler (Superluminal/PIX)로 `b2DynamicTree::InsertLeaf` 시간 측정 → cache locality 가설 (§5.6.4-3) 검증.
+
+#### 5.6.7 메모
+
+- `b2_maxPolygonVertices`는 compile-time 상수라서 Unity에서는 변경 불가.
+- `useDelaunayMesh` (PolygonCollider2D Inspector toggle)은 분해 *방식* 옵션이지 *분해 여부* 옵션 아님.
+- TerrainShape_TerrainMaker 23 (137 shapes) 같은 outlier는 추가 RDP eps 조정 (`0.001m → 0.005m` 등) 또는 [`TerrainColliderOptimizer`](../../../SlimeJumping_v2/Assets/Scripts/Editor/MeshTools/TerrainColliderOptimizer.cs)의 Curve mode (eps≈0.03m)로 더 줄일 여지 있음. 단 시각/충돌 검증 필요. **현 시점에서는 perf 목표 달성, 추가 작업 불요.**
 
 ## 6. 메타 정보
 

@@ -39,6 +39,10 @@ namespace SlimeJumping.Optimization
         [Tooltip("Z plane the slime is assumed to live on, for perspective camera diagonal calc.")]
         [SerializeField] float slimePlaneZ = 0f;
 
+        [Header("Tick scheduling")]
+        [Tooltip("Spread the proximity check across this many FUs. 1 = check every sleeper every FU (simplest, costs ~0.3µs/sleeper). N>1 = check 1/N each FU, taking up to N FUs to react to a hysteresis-boundary crossing. The hysteresis band already provides margin against thrashing, so 5 (~0.1s lag at 50Hz) is safe and cuts the manager's per-FU cost roughly N×.")]
+        [Min(1)] [SerializeField] int tickStride = 5;
+
         [Header("Debug")]
         [SerializeField] bool drawDebugGizmos = true;
         [SerializeField] Color enableRadiusColor = new Color(0.3f, 1f, 0.4f, 0.6f);
@@ -52,6 +56,7 @@ namespace SlimeJumping.Optimization
         SlimeController cachedSlime;
         UnityEngine.Camera cachedCam;
         float cachedCameraDiagonal;
+        int tickPhase;
 
         // Inspector observability — counts updated each FU.
         public int SleeperCount => sleepers.Count;
@@ -114,39 +119,54 @@ namespace SlimeJumping.Optimization
             Vector2 slimePos = cachedSlime.Position;
             int active = 0, sleeping = 0;
 
+            int phase = tickPhase;
+            tickPhase = (tickPhase + 1) % Mathf.Max(1, tickStride);
+            int stride = Mathf.Max(1, tickStride);
+
             // Backward iteration: SetSleeping(true) → SetActive(false) → OnDisable →
             // Unregister → sleepers.Remove(s) mutates the list mid-loop. Forward iteration
             // would shift unvisited elements left and skip one each toggle. Going backward
             // means removed indices are always behind us — already visited.
+            //
+            // Tick striding: each sleeper is owned by one of `stride` phases (i % stride).
+            // We only run the toggle decision for sleepers in this FU's phase, then visit
+            // every other sleeper just to count its current sleep state for stats. The
+            // toggle path is the bulk of the work (bounds query + distance compare); the
+            // counting branch is effectively free.
             for (int i = sleepers.Count - 1; i >= 0; i--)
             {
                 var s = sleepers[i];
                 if (s == null) continue;
 
-                if (s.ForceAlwaysActive)
-                {
-                    if (s.IsSleeping) s.SetSleeping(false);
-                    active++;
-                    continue;
-                }
+                bool ourPhase = (i % stride) == phase;
 
-                float margin = s.MarginMultiplierOverride > 0f
-                    ? s.MarginMultiplierOverride
-                    : defaultMarginMultiplier;
-                float enableR = cachedCameraDiagonal * margin;
-                float disableR = enableR * hysteresisFactor;
-
-                Bounds b = s.GetActiveWorldBounds();
-                Vector2 closest = b.ClosestPoint(slimePos);
-                float sqrDist = (slimePos - closest).sqrMagnitude;
-
-                if (s.IsSleeping)
+                if (ourPhase)
                 {
-                    if (sqrDist < enableR * enableR) s.SetSleeping(false);
-                }
-                else
-                {
-                    if (sqrDist > disableR * disableR) s.SetSleeping(true);
+                    if (s.ForceAlwaysActive)
+                    {
+                        if (s.IsSleeping) s.SetSleeping(false);
+                    }
+                    else
+                    {
+                        float margin = s.MarginMultiplierOverride > 0f
+                            ? s.MarginMultiplierOverride
+                            : defaultMarginMultiplier;
+                        float enableR = cachedCameraDiagonal * margin;
+                        float disableR = enableR * hysteresisFactor;
+
+                        Bounds b = s.GetActiveWorldBounds();
+                        Vector2 closest = b.ClosestPoint(slimePos);
+                        float sqrDist = (slimePos - closest).sqrMagnitude;
+
+                        if (s.IsSleeping)
+                        {
+                            if (sqrDist < enableR * enableR) s.SetSleeping(false);
+                        }
+                        else
+                        {
+                            if (sqrDist > disableR * disableR) s.SetSleeping(true);
+                        }
+                    }
                 }
 
                 if (s.IsSleeping) sleeping++;

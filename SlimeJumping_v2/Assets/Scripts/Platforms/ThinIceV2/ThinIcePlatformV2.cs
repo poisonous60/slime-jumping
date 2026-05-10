@@ -226,10 +226,38 @@ namespace SlimeJumping.Platforms.ThinIceV2
             UnsubscribeSlime();
         }
 
+        // Static slime cache, populated by SlimeController.OnSpawned. Eliminates the
+        // O(scene) FindAnyObjectByType call in TrySubscribeSlime, which would otherwise
+        // fire 64× when all ThinIce-bearing terrain wrappers wake at the same hysteresis
+        // boundary crossing (now that MeshCollider2DWrapper is in OffscreenSleeperCandidates).
+        // FindAnyObjectByType remains as fallback for the very first Awake before the slime
+        // has spawned.
+        static SlimeController s_cachedSlime;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetAndHookSlimeEvents()
+        {
+            // "Enter Play Mode without domain reload" leaves static fields populated across
+            // play sessions. SlimeController.ResetStatics (also SubsystemRegistration) wipes
+            // OnSpawned/OnDespawned at Play entry — without resetting our cache here we'd
+            // hold a stale slime reference from the previous session.
+            // Mirrors the pattern used by SnowFieldRegistry, TrailColliderRegistry, etc.
+            s_cachedSlime = null;
+            SlimeController.OnSpawned += HandleSlimeSpawned;
+            SlimeController.OnDespawned += HandleSlimeDespawned;
+        }
+
+        static void HandleSlimeSpawned(SlimeController s) => s_cachedSlime = s;
+
+        static void HandleSlimeDespawned(SlimeController s)
+        {
+            if (s_cachedSlime == s) s_cachedSlime = null;
+        }
+
         void TrySubscribeSlime()
         {
             if (slime != null) return;
-            slime = FindAnyObjectByType<SlimeController>();
+            slime = s_cachedSlime != null ? s_cachedSlime : FindAnyObjectByType<SlimeController>();
             if (slime == null) return;
             slime.OnLaunch += OnSlimeLaunch;
         }
