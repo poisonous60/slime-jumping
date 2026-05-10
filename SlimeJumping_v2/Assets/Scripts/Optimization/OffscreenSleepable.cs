@@ -35,8 +35,6 @@ namespace SlimeJumping.Optimization
         [Tooltip("World-space AABB used when 'Use Manual Bounds' is on.")]
         [SerializeField] Bounds manualBoundsOverride;
 
-        Renderer[] cachedRenderers;
-        Collider2D[] cachedColliders;
         Bounds cachedActiveBounds;
         bool boundsValid;
         bool isSleeping;
@@ -45,36 +43,36 @@ namespace SlimeJumping.Optimization
         public float MarginMultiplierOverride => marginMultiplierOverride;
         public bool IsSleeping => isSleeping;
 
-        void Awake()
-        {
-            // Union of ALL child renderers/colliders, not just the first. SnowField with N
-            // strip children, or any prefab where the candidate component sits on a parent
-            // and visuals are spread across children, would underestimate bounds with the
-            // single-component lookup and get spuriously deactivated.
-            cachedRenderers = GetComponentsInChildren<Renderer>(true);
-            cachedColliders = GetComponentsInChildren<Collider2D>(true);
-            RecacheBounds();
-        }
+        // Bounds caching is deferred to the first GetActiveWorldBounds() call (not Awake).
+        // Some candidate components (SnowField, TautLine, ClothField...) generate child
+        // renderers/colliders in their OWN Awake — if our Awake reads bounds before theirs
+        // runs, we'd cache an empty 1m cube at the parent transform and the manager would
+        // promptly deactivate the GameObject. Lazy + per-call re-fetch sidesteps the
+        // Awake order race entirely.
 
         void OnEnable()
         {
+            // Idempotent — Register is no-op if already in list. Needed for first-time
+            // registration AND for a wake from sleep (SetActive(true) re-fires OnEnable, but
+            // we never Unregistered so the entry's still there → contains check skips the add).
             if (OffscreenSleeperManager.Instance != null)
                 OffscreenSleeperManager.Instance.Register(this);
         }
 
-        void OnDisable()
+        void OnDestroy()
         {
+            // Critical: Unregister on Destroy, NOT on OnDisable. SetSleeping(true) calls
+            // gameObject.SetActive(false) which fires OnDisable — if we Unregistered there,
+            // the marker would vanish from the manager's list and the GameObject could
+            // never be reactivated (manager has no reference left). Persisting through
+            // sleep cycles is the whole point of this design.
             if (OffscreenSleeperManager.Instance != null)
                 OffscreenSleeperManager.Instance.Unregister(this);
         }
 
         public Bounds GetActiveWorldBounds()
         {
-            // Sleeping = bounds frozen at last active recache. Reading Renderer.bounds on a
-            // disabled Renderer can return zero/stale data; transform.hasChanged also won't
-            // tick while inactive. Frozen cache is correct as long as nobody moves the
-            // transform externally during sleep (rare; if it happens the next active frame
-            // will refresh).
+            // Sleeping = bounds frozen at last active recache.
             if (isSleeping) return cachedActiveBounds;
 
             if (!boundsValid || transform.hasChanged)
@@ -82,6 +80,14 @@ namespace SlimeJumping.Optimization
                 RecacheBounds();
                 transform.hasChanged = false;
             }
+
+            // No renderer/collider visible yet — candidate's Awake/Start may create children
+            // later. Return huge bounds so manager treats as always-near and keeps the
+            // GameObject active until next-frame retry. Avoids spurious deactivation during
+            // the Awake-order race.
+            if (!boundsValid)
+                return new Bounds(transform.position, new Vector3(1e9f, 1e9f, 1e9f));
+
             return cachedActiveBounds;
         }
 
@@ -94,41 +100,41 @@ namespace SlimeJumping.Optimization
                 return;
             }
 
-            // Union of ALL renderers AND colliders — TautLine (thin LineRenderer + wide
-            // PolygonCollider2D), SnowField (N strip children, each its own MeshRenderer),
-            // multi-piece DeformablePlatform-style prefabs all need every child contributing.
+            // Re-fetch each invalidation (not cached in Awake) — candidate components like
+            // SnowField generate child renderers in their OWN Awake/Start. If we cached in
+            // our Awake we'd miss those. Cost: O(child count) per first-FU per sleeper, fine.
+            var renderers = GetComponentsInChildren<Renderer>(true);
+            var colliders = GetComponentsInChildren<Collider2D>(true);
+
             bool haveAny = false;
             Bounds combined = default;
 
-            if (cachedRenderers != null)
+            for (int i = 0; i < renderers.Length; i++)
             {
-                for (int i = 0; i < cachedRenderers.Length; i++)
-                {
-                    var r = cachedRenderers[i];
-                    if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
-                    if (!haveAny) { combined = r.bounds; haveAny = true; }
-                    else combined.Encapsulate(r.bounds);
-                }
+                var r = renderers[i];
+                if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
+                if (!haveAny) { combined = r.bounds; haveAny = true; }
+                else combined.Encapsulate(r.bounds);
             }
-            if (cachedColliders != null)
+            for (int i = 0; i < colliders.Length; i++)
             {
-                for (int i = 0; i < cachedColliders.Length; i++)
-                {
-                    var c = cachedColliders[i];
-                    if (c == null || !c.enabled || !c.gameObject.activeInHierarchy) continue;
-                    if (!haveAny) { combined = c.bounds; haveAny = true; }
-                    else combined.Encapsulate(c.bounds);
-                }
+                var c = colliders[i];
+                if (c == null || !c.enabled || !c.gameObject.activeInHierarchy) continue;
+                if (!haveAny) { combined = c.bounds; haveAny = true; }
+                else combined.Encapsulate(c.bounds);
             }
 
-            if (haveAny) cachedActiveBounds = combined;
+            if (haveAny)
+            {
+                cachedActiveBounds = combined;
+                boundsValid = true;
+            }
             else
             {
-                // No active source. 1m cube around transform fallback — designer should set
-                // useManualBounds + manualBoundsOverride if they hit this path.
-                cachedActiveBounds = new Bounds(transform.position, Vector3.one);
+                // Leave invalid → GetActiveWorldBounds returns huge bounds (always-near).
+                // Next frame retry catches up if children appear later.
+                boundsValid = false;
             }
-            boundsValid = true;
         }
 
         public void SetSleeping(bool sleep)

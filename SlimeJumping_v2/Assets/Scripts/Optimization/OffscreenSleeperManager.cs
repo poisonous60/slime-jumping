@@ -182,16 +182,49 @@ namespace SlimeJumping.Optimization
         void OnDrawGizmos()
         {
             if (!drawDebugGizmos) return;
-            if (!Application.isPlaying || cachedSlime == null) return;
 
-            float diag = ComputeCameraDiagonal();
+            // Center on slime if available (play mode + edit mode auto-find), otherwise on
+            // this manager's transform so the radius is at least previewable in edit mode.
+            // Edit mode: SlimeController.Awake hasn't run so `rb` is null and reading
+            // `Position` (= rb.position) throws — fall back to transform.position.
+            Vector3 center;
+            SlimeController slime = cachedSlime;
+            if (slime == null) slime = FindFirstObjectByType<SlimeController>();
+            if (slime == null) center = transform.position;
+            else center = Application.isPlaying ? (Vector3)slime.Position : slime.transform.position;
+
+            // Camera resolution may be stale in edit mode (cachedCam set during play). Resolve
+            // a fresh camera ref so the diagonal calc uses current ortho size / fov.
+            UnityEngine.Camera cam = cachedCam;
+            if (cam == null)
+            {
+                cam = UnityEngine.Camera.main;
+                if (cam == null)
+                {
+                    var brain = FindAnyObjectByType<CinemachineBrain>();
+                    if (brain != null) cam = brain.GetComponent<UnityEngine.Camera>();
+                }
+            }
+
+            float diag;
+            if (cam == null) diag = fallbackRadius;
+            else
+            {
+                float halfH = cam.orthographic
+                    ? cam.orthographicSize
+                    : Mathf.Abs(cam.transform.position.z - slimePlaneZ)
+                      * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+                float halfW = halfH * cam.aspect;
+                diag = Mathf.Sqrt(halfW * halfW + halfH * halfH);
+            }
+
             float enableR = diag * defaultMarginMultiplier;
             float disableR = enableR * hysteresisFactor;
 
             Gizmos.color = enableRadiusColor;
-            Gizmos.DrawWireSphere(cachedSlime.Position, enableR);
+            Gizmos.DrawWireSphere(center, enableR);
             Gizmos.color = disableRadiusColor;
-            Gizmos.DrawWireSphere(cachedSlime.Position, disableR);
+            Gizmos.DrawWireSphere(center, disableR);
         }
 
         /// <summary>

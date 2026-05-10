@@ -30,7 +30,7 @@ Idle → Cracking → Shattered → (zone) Regenerating → Idle
 
 ### 트리거 규칙
 
-- **Idle → Cracking**: 슬라임이 `Attached` 상태로 이 platform의 collider에 붙음 (선택적 각도 필터)
+- **Idle → Cracking**: 슬라임이 `Attached` 또는 `Charging` 상태로 이 platform의 collider에 붙음 (선택적 각도 필터). Charging도 받는 이유: `chargeBuffer`/`allowChargeAirHold` 경로로 착지 시 Airborne→Charging 직행이 가능해 Attached를 한 프레임도 거치지 않을 수 있음
 - **Cracking → Shattered (점프)**: `SlimeController.OnLaunch` 이벤트 시점에 `slime.SurfaceCollider`가 platform의 collider 중 하나면 즉시 발화. 슬라임의 launch velocity 일부(`jumpVelocityInherit` default 0.3)가 shard에 상속됨
 - **Cracking → Shattered (타이머)**: `crackingDuration` 만료
 - **Cracking → Shattered (비정상 detach)**: `Attached`/`Charging`이 아닌 상태로 떠나면 (외부 force, gravity flip 등) 즉시 발화

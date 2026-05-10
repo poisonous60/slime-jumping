@@ -7,11 +7,15 @@ namespace SlimeJumping.Mechanisms
     // sync that drives snow particles. ForceField direction/size is auto-derived from
     // windAcceleration and the BoxCollider2D bounds. Snow particles must have
     // ExternalForces enabled with influenceMask = WindForceField layer.
+    //
+    // windAcceleration is in the zone's **local space** — rotating the transform on Z
+    // rotates the wind direction together: slime push, stripe particles, snow ForceField,
+    // and side fields all follow the parent rotation.
     [RequireComponent(typeof(Collider2D))]
     public class WindZone2D_v2 : MonoBehaviour
     {
         [Header("Wind")]
-        [Tooltip("Wind direction and strength (units/s²). Magnitude = acceleration.")]
+        [Tooltip("Wind direction and strength in local space (units/s²). Magnitude = acceleration. Rotates with the transform.")]
         [SerializeField] private Vector2 windAcceleration = new Vector2(15f, 0f);
 
         [Tooltip("Max speed along wind direction before falloff kills acceleration. 0 = unlimited.")]
@@ -92,7 +96,9 @@ namespace SlimeJumping.Mechanisms
             var main = windParticles.main;
             main.startLifetime = new ParticleSystem.MinMaxCurve(lifetime * 0.85f, lifetime);
             main.startSpeed = 0f;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            // Local sim space so emitted particles inherit the rotated parent — stripes
+            // visually rotate with the WindZone instead of staying world-aligned.
+            main.simulationSpace = ParticleSystemSimulationSpace.Local;
 
             var shape = windParticles.shape;
             shape.shapeType = ParticleSystemShapeType.Box;
@@ -101,9 +107,11 @@ namespace SlimeJumping.Mechanisms
 
             var vel = windParticles.velocityOverLifetime;
             vel.enabled = true;
-            vel.space = ParticleSystemSimulationSpace.World;
-            vel.x = windDir.x * particleSpeed;
-            vel.y = windDir.y * particleSpeed;
+            // velocity is in windParticles' local frame; windParticles is rotated to align
+            // its +X with windDir, so velocity is just (particleSpeed, 0, 0).
+            vel.space = ParticleSystemSimulationSpace.Local;
+            vel.x = particleSpeed;
+            vel.y = 0f;
             vel.z = 0f;
 
             var emis = windParticles.emission;
@@ -249,10 +257,13 @@ namespace SlimeJumping.Mechanisms
             if (trackedSlime == null) return;
 
             float dt = Time.fixedDeltaTime;
-            float mag = windAcceleration.magnitude;
+            // windAcceleration is local-space; convert to world for slime physics so the
+            // push direction rotates with the transform.
+            Vector2 worldWindAcc = transform.TransformDirection(windAcceleration);
+            float mag = worldWindAcc.magnitude;
             if (mag < 0.0001f) return;
 
-            Vector2 windDir = windAcceleration / mag;
+            Vector2 worldWindDir = worldWindAcc / mag;
 
             float multiplier;
             switch (trackedSlime.CurrentState)
@@ -268,7 +279,7 @@ namespace SlimeJumping.Mechanisms
             float falloff = 1f;
             if (terminalSpeed > 0f)
             {
-                float alongWind = Vector2.Dot(trackedSlime.Velocity, windDir);
+                float alongWind = Vector2.Dot(trackedSlime.Velocity, worldWindDir);
                 if (alongWind > 0f)
                     falloff = Mathf.Clamp01(1f - alongWind / terminalSpeed);
             }
@@ -278,7 +289,7 @@ namespace SlimeJumping.Mechanisms
             // single-frame `velocity` that the state handler overwrites next tick. Without
             // this, Attached wind only ever contributes ~accel*dt per frame regardless of
             // attachedMultiplier — same multiplier as Airborne would still feel ~50× weaker.
-            Vector2 deltaV = windDir * (mag * multiplier * falloff * dt);
+            Vector2 deltaV = worldWindDir * (mag * multiplier * falloff * dt);
             trackedSlime.AddSustainedFlowImpulse(deltaV);
         }
 
@@ -287,7 +298,7 @@ namespace SlimeJumping.Mechanisms
             if (windAcceleration.sqrMagnitude < 0.0001f) return;
 
             Vector3 center = transform.position;
-            Vector3 dir = ((Vector3)(Vector2)windAcceleration).normalized;
+            Vector3 dir = transform.TransformDirection(((Vector3)(Vector2)windAcceleration).normalized);
             float len = Mathf.Clamp(windAcceleration.magnitude * 0.1f, 0.5f, 3f);
 
             Gizmos.color = new Color(0.4f, 0.8f, 1f, 0.7f);
@@ -301,6 +312,14 @@ namespace SlimeJumping.Mechanisms
 
         void OnDrawGizmosSelected()
         {
+            // Editor-time transform rotation doesn't trigger OnValidate; re-sync here so
+            // visuals follow rotation gizmo edits while the zone is selected.
+            if (!Application.isPlaying)
+            {
+                SyncParticles();
+                SyncForceField();
+            }
+
             var col = GetComponent<Collider2D>();
             if (col == null) return;
 
@@ -338,7 +357,7 @@ namespace SlimeJumping.Mechanisms
             if (windAcceleration.sqrMagnitude < 0.0001f) return;
 
             Gizmos.color = new Color(0.5f, 0.85f, 1f, 0.45f);
-            Vector3 dir = ((Vector3)(Vector2)windAcceleration).normalized;
+            Vector3 dir = transform.TransformDirection(((Vector3)(Vector2)windAcceleration).normalized);
             float len = Mathf.Clamp(windAcceleration.magnitude * 0.1f, 0.5f, 3f);
             Vector3 perp = Vector3.Cross(dir, Vector3.forward).normalized;
             for (int i = -2; i <= 2; i++)

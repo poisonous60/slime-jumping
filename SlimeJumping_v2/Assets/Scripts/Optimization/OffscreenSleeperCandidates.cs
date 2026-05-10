@@ -1,6 +1,5 @@
 using System;
 using SlimeJumping.Platforms;
-using SlimeJumping.Platforms.Snow;
 using SlimeJumping.Mechanisms;
 
 namespace SlimeJumping.Optimization
@@ -39,7 +38,9 @@ namespace SlimeJumping.Optimization
             // last-active angle. Player won't see the discontinuity since the object was
             // off-screen during the freeze window.
             typeof(RotatingPlatform),
-            typeof(SnowField),
+            // SnowField intentionally excluded — it IS the ground in snow stages, not just
+            // a visual layer. Off-screen deactivation breaks snowball/projectile physics
+            // because they need the SnowField collider to roll on even when off-camera.
         };
     }
 }

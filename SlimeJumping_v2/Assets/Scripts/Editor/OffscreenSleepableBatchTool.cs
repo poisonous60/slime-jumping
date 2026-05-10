@@ -27,6 +27,7 @@ namespace SlimeJumping.EditorTools.Optimization
     {
         const string kAttachMenu = "Tools/Optimization/Attach OffscreenSleepable to all candidates";
         const string kDryRunMenu = "Tools/Optimization/Dry Run — Report candidates without modifying";
+        const string kCleanupMenu = "Tools/Optimization/Cleanup orphaned OffscreenSleepable markers";
 
         // Skip third-party / plugin paths to avoid LoadAssetAtPath triggering the OnValidate
         // hook on imported assets — some have null-defererencing OnValidate (e.g. DBK
@@ -55,7 +56,8 @@ namespace SlimeJumping.EditorTools.Optimization
                 return;
 
             int wouldAddCount = ScanCandidateCount();
-            if (wouldAddCount == 0)
+            int activeSceneCount = ScanActiveSceneCandidateCount();
+            if (wouldAddCount == 0 && activeSceneCount == 0)
             {
                 EditorUtility.DisplayDialog(
                     "OffscreenSleepable Batch",
@@ -64,18 +66,19 @@ namespace SlimeJumping.EditorTools.Optimization
                 return;
             }
 
+            string activeScenePath = SceneManager.GetActiveScene().path;
             bool proceed = EditorUtility.DisplayDialog(
                 "OffscreenSleepable 일괄 부착",
-                $"이 작업은 모든 prefab/scene을 순회하며 13종 후보를 가진 GameObject에\n" +
-                $"OffscreenSleepable 마커를 추가합니다.\n\n" +
-                $"예상 추가 컴포넌트 수 (prefab 기준): {wouldAddCount}\n" +
-                $"(scene 자산은 실행 중에 추가 스캔 — 실제 합계는 더 클 수 있음)\n\n" +
-                $"prefab/scene meta 대량 변경 — git 커밋 후 실행 권장.\n\n" +
+                $"이 작업은 모든 prefab + 현재 활성 씬을 순회하며 13종 후보를 가진 GameObject에\n" +
+                $"OffscreenSleepable 마커를 추가합니다. (다른 씬은 건드리지 않음)\n\n" +
+                $"활성 씬: {activeScenePath}\n" +
+                $"예상 추가 (prefab): {wouldAddCount}\n" +
+                $"예상 추가 (active scene): {activeSceneCount}\n\n" +
+                $"prefab/scene meta 변경 — git 커밋 후 실행 권장.\n\n" +
                 $"계속하시겠습니까?",
                 "진행", "취소");
             if (!proceed) return;
 
-            string originalScenePath = SceneManager.GetActiveScene().path;
             int prefabsModified = 0;
             int scenesModified = 0;
             int componentsAdded = 0;
@@ -116,47 +119,23 @@ namespace SlimeJumping.EditorTools.Optimization
                     AssetDatabase.StopAssetEditing();
                 }
 
-                // -- 2) Scene assets --
-                var sceneGuids = AssetDatabase.FindAssets("t:Scene");
-                for (int i = 0; i < sceneGuids.Length; i++)
+                // -- 2) Active scene only (no other scenes opened) --
+                var activeScene = SceneManager.GetActiveScene();
+                int sceneAdded = 0;
+                foreach (var root in activeScene.GetRootGameObjects())
+                    sceneAdded += AttachToHierarchy(root);
+
+                if (sceneAdded > 0)
                 {
-                    string path = AssetDatabase.GUIDToAssetPath(sceneGuids[i]);
-                    // Skip Library/, Packages/ (FindAssets only returns Assets/ but defensive)
-                    if (!path.StartsWith("Assets/")) continue;
-                    if (ShouldSkipAssetPath(path)) continue;
-
-                    if (EditorUtility.DisplayCancelableProgressBar(
-                        "Attach OffscreenSleepable — Scenes",
-                        path, (float)i / sceneGuids.Length))
-                    {
-                        return;
-                    }
-
-                    var scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
-                    int addedHere = 0;
-                    foreach (var root in scene.GetRootGameObjects())
-                        addedHere += AttachToHierarchy(root);
-
-                    if (addedHere > 0)
-                    {
-                        EditorSceneManager.SaveScene(scene);
-                        scenesModified++;
-                        componentsAdded += addedHere;
-                    }
+                    EditorSceneManager.MarkSceneDirty(activeScene);
+                    EditorSceneManager.SaveScene(activeScene);
+                    scenesModified = 1;
+                    componentsAdded += sceneAdded;
                 }
-
             }
             finally
             {
                 EditorUtility.ClearProgressBar();
-                // Restore original active scene regardless of cancel/exception path —
-                // cancel during the scene loop would otherwise leave the editor on whatever
-                // scene the tool last opened.
-                if (!string.IsNullOrEmpty(originalScenePath) &&
-                    SceneManager.GetActiveScene().path != originalScenePath)
-                {
-                    EditorSceneManager.OpenScene(originalScenePath, OpenSceneMode.Single);
-                }
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
             }
@@ -337,7 +316,7 @@ namespace SlimeJumping.EditorTools.Optimization
 
         /// <summary>
         /// Quick prefab scan to estimate work before showing the confirmation dialog. Doesn't
-        /// open scenes (would be slow) — actual attach pass handles scenes too.
+        /// open scenes (would be slow). Active-scene scan is in <see cref="ScanActiveSceneCandidateCount"/>.
         /// </summary>
         static int ScanCandidateCount()
         {
@@ -361,6 +340,143 @@ namespace SlimeJumping.EditorTools.Optimization
                 }
             }
             return wouldAdd;
+        }
+
+        /// <summary>
+        /// Counts MISSING markers in the currently active scene only. Cheap — the scene is
+        /// already loaded, just walks root GameObjects.
+        /// </summary>
+        static int ScanActiveSceneCandidateCount()
+        {
+            int wouldAdd = 0;
+            var scene = SceneManager.GetActiveScene();
+            if (!scene.IsValid() || !scene.isLoaded) return 0;
+
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                var seen = new HashSet<GameObject>();
+                foreach (var type in OffscreenSleeperCandidates.CandidateTypes)
+                {
+                    foreach (var c in root.GetComponentsInChildren(type, true))
+                    {
+                        var go = ((Component)c).gameObject;
+                        if (!seen.Add(go)) continue;
+                        if (go.GetComponent<OffscreenSleepable>() == null) wouldAdd++;
+                    }
+                }
+            }
+            return wouldAdd;
+        }
+
+        /// <summary>
+        /// Removes OffscreenSleepable markers from prefabs + active scene where the host
+        /// GameObject no longer hosts any candidate type (i.e. the type was removed from
+        /// CandidateTypes). Useful after deciding a previously-attached type shouldn't be
+        /// sleepable (e.g. SnowField — it's the ground, not a visual layer).
+        /// </summary>
+        [MenuItem(kCleanupMenu)]
+        static void CleanupOrphanedMarkers()
+        {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+
+            bool proceed = EditorUtility.DisplayDialog(
+                "Cleanup orphaned markers",
+                "현재 OffscreenSleeperCandidates.CandidateTypes에 없는 컴포넌트를 가진 GameObject에서\n" +
+                "OffscreenSleepable 마커를 제거합니다.\n\n" +
+                "예: SnowField가 후보 목록에서 빠졌으면 SnowField에 붙은 마커를 모두 제거.\n\n" +
+                "prefab + 활성 씬을 처리. 다른 씬은 건드리지 않음.\n\n" +
+                "git 커밋 후 실행 권장. 계속하시겠습니까?",
+                "진행", "취소");
+            if (!proceed) return;
+
+            int prefabsModified = 0, sceneModified = 0, removed = 0;
+
+            try
+            {
+                // Prefabs
+                AssetDatabase.StartAssetEditing();
+                try
+                {
+                    var prefabGuids = AssetDatabase.FindAssets("t:Prefab");
+                    for (int i = 0; i < prefabGuids.Length; i++)
+                    {
+                        string path = AssetDatabase.GUIDToAssetPath(prefabGuids[i]);
+                        if (ShouldSkipAssetPath(path)) continue;
+                        if (EditorUtility.DisplayCancelableProgressBar(
+                            "Cleanup — Prefabs", path, (float)i / prefabGuids.Length)) return;
+
+                        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                        if (prefab == null) continue;
+
+                        int removedHere = RemoveOrphans(prefab);
+                        if (removedHere > 0)
+                        {
+                            EditorUtility.SetDirty(prefab);
+                            PrefabUtility.SavePrefabAsset(prefab);
+                            prefabsModified++;
+                            removed += removedHere;
+                        }
+                    }
+                }
+                finally { AssetDatabase.StopAssetEditing(); }
+
+                // Active scene only
+                var activeScene = SceneManager.GetActiveScene();
+                int sceneRemoved = 0;
+                foreach (var root in activeScene.GetRootGameObjects())
+                    sceneRemoved += RemoveOrphans(root);
+                if (sceneRemoved > 0)
+                {
+                    EditorSceneManager.MarkSceneDirty(activeScene);
+                    EditorSceneManager.SaveScene(activeScene);
+                    sceneModified = 1;
+                    removed += sceneRemoved;
+                }
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+            }
+
+            Debug.Log($"[OffscreenSleepableBatchTool] Cleanup — Prefabs: {prefabsModified}, Scene: {sceneModified}, Markers removed: {removed}");
+            EditorUtility.DisplayDialog(
+                "Cleanup 완료",
+                $"Prefabs: {prefabsModified}\nActive scene: {sceneModified}\nMarkers removed: {removed}",
+                "OK");
+        }
+
+        /// <summary>
+        /// Find every OffscreenSleepable in <paramref name="root"/>'s hierarchy and remove
+        /// the ones whose host GameObject no longer has any current candidate type.
+        /// Returns count removed.
+        /// </summary>
+        static int RemoveOrphans(GameObject root)
+        {
+            int removed = 0;
+            var markers = root.GetComponentsInChildren<OffscreenSleepable>(true);
+            for (int i = 0; i < markers.Length; i++)
+            {
+                var marker = markers[i];
+                if (marker == null) continue;
+
+                bool stillCandidate = false;
+                for (int t = 0; t < OffscreenSleeperCandidates.CandidateTypes.Length; t++)
+                {
+                    if (marker.GetComponent(OffscreenSleeperCandidates.CandidateTypes[t]) != null)
+                    {
+                        stillCandidate = true;
+                        break;
+                    }
+                }
+                if (!stillCandidate)
+                {
+                    Undo.DestroyObjectImmediate(marker);
+                    removed++;
+                }
+            }
+            return removed;
         }
     }
 }

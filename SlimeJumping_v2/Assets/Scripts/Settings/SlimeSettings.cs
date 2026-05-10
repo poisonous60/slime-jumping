@@ -183,8 +183,11 @@ namespace SlimeJumping.Settings
         [Range(1, 16)] public int surfaceProbeSamples = 8;
         [Tooltip("(Multi) Probe ring radius as fraction of slimeRadius.")]
         [Range(0f, 1f)] public float surfaceProbeRingScale = 0.8f;
-        [Tooltip("(Multi) Dedupe: dot(n1,n2) > 이 값이면 같은 면으로 머지.")]
-        [Range(0.9f, 1f)] public float surfaceProbeDedupeDot = 0.97f;
+        [Tooltip("(Multi) Dedupe: dot(n1,n2) > 이 값이면 같은 면으로 머지.\n" +
+                 "낮출수록 인접 facet contact 가 더 적극적으로 머지됨 → multi-contact churn 감소.\n" +
+                 "곡면 (halfpipe / 둥근 ice) 에서 saw-tooth dPos 줄이려면 0.93 ~ 0.88 권장.\n" +
+                 "너무 낮추면 sharp corner (90°) 에서도 한 contact 로 머지되어 corner 회피가 부정확.")]
+        [Range(0.85f, 1f)] public float surfaceProbeDedupeDot = 0.97f;
         [Tooltip("EffectiveNormal weight ramp: smoothstep ramp covers this fraction of the soft band.\n" +
                  "0 = OFF (legacy step weight). 1 = ramp covers entire soft band. Recommended: 1.0.")]
         [Range(0f, 1f)] public float effectiveNormalWeightRampBand = 1f;
@@ -218,6 +221,38 @@ namespace SlimeJumping.Settings
         [Min(1f)] public float surfaceNormalSmoothRotatingMultiplier = 1f;
         [Tooltip("이 각속도(deg/s) 이상의 플랫폼에 붙어있을 때 surfaceNormalSmoothRotatingMultiplier 적용.")]
         [Min(0f)] public float surfaceNormalSmoothAngularThreshold = 10f;
+
+        [Header("Surface Probe — Curve Slide Anti-Stutter")]
+        [Tooltip("[A] Phase A 디페너트레이션 push 에서 surfaceTangent 평행 성분을 잘라냄.\n" +
+                 "곡면 vertex 통과 시 인접 두 edge 의 outward 가중평균이 bisector 방향 → tangent 성분 잔존 → " +
+                 "위치 saw-tooth 의 직접 원인. 토글 ON 시 push 를 surfaceNormal 축으로만 제한.\n" +
+                 "리스크: 진짜 wedge (V-notch) 에 끼인 경우 tangent 성분이 빠지면 탈출이 약해짐 — " +
+                 "useFrictionBasedDetachment 의 horizon detach 가 따로 처리하므로 일반적으론 문제 없음.")]
+        public bool phaseAStripTangentComponent = false;
+        [Tooltip("[A] Tangent 성분 제거 강도. 1 = 완전 제거 (순수 normal 만), 0 = 미적용 (= OFF 와 동일).\n" +
+                 "0.5 정도로 부분만 빼면 churn 감소 + wedge 안전성 절충.")]
+        [Range(0f, 1f)] public float phaseAStripStrength = 1f;
+
+        [Tooltip("[B] Phase B re-anchor (ClosestPoint 기반) 가 vertex bisector 방향이면 skip.\n" +
+                 "ClosestPoint 가 polygon vertex 에 잡히면 (pos - vertex) 방향이 bisector 가 되어 " +
+                 "다음 edge plane 위치보다 이전 edge 쪽으로 lag — saw-tooth 의 또 다른 원인.\n" +
+                 "Phase B 자체를 건너뛰는 게 아니라, vertex 잡힌 프레임에만 skip — " +
+                 "edge interior closestpoint 일 때는 정상 동작.")]
+        public bool phaseBSkipAtVertexClamp = false;
+        [Tooltip("[B] Vertex 판정 기준. (pos - closest) 방향과 surfaceNormal 의 dot 이 이 값 미만이면 vertex 로 간주.\n" +
+                 "0.9 ≈ 25.8° tolerance (default). 낮출수록 더 관대한 vertex 판정 (skip 빈도 ↑).\n" +
+                 "smoothed surfaceNormal 자체가 LP-filter 라 살짝 lag 하므로 너무 높이면 정상 edge 도 vertex 오판.")]
+        [Range(0.5f, 1f)] public float phaseBVertexClampDotThreshold = 0.9f;
+
+        [Tooltip("[E] Phase B re-anchor 를 ClosestPoint 대신 surfaceNormal 축 raycast 로 대체 (가장 근본적 fix).\n" +
+                 "raycast 는 smoothed surfaceNormal 축으로 발사되므로 vertex 가 어디 있든 anchor 가 surfaceTangent 와 " +
+                 "수직 — tangent 방향 perturbation 이 원리적으로 0.\n" +
+                 "Raycast 가 surfaceCollider 를 못 맞히면 (smoothed normal 이 너무 빗나간 케이스) legacy ClosestPoint 로 fallback.\n" +
+                 "B 토글이 켜져 있으면 fallback 시 B 가 적용됨.")]
+        public bool phaseBUseRaycastAnchor = false;
+        [Tooltip("[E] Raycast 거리 = slimeRadius × 이 값. 2 = 슬라임 지름 (= 충분히 길어 거의 항상 hit), " +
+                 "1.5 = 보수적, 3 이상 = 멀리 떨어진 collider 까지 hit 가능.")]
+        [Min(1f)] public float phaseBRaycastDistanceMultiplier = 2f;
 
         public float postLaunchIgnoreTime = 0.05f;
         public float launchClearanceThreshold = 0.05f;

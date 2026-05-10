@@ -9,9 +9,14 @@
 |------|------|
 | Idle | 매 FixedUpdate `Physics2D.OverlapBox`로 슬라임 탐지. `SlimeController`가 박스 내에 있으면 Shaking 진입. |
 | Shaking | `visualRoot`만 sin/cos 진동 (콜라이더는 정지). `shakeDuration` 후 Falling. 진입 시 `shakeStartSound` 재생. |
-| Falling | 매 FixedUpdate `solidCollider.Cast(Vector2.down, dist, breakOnLayers)`로 스윕 → 충돌 시 거리만큼만 `MovePosition` 후 Broken 전환. 충돌 없으면 `MovePosition(rb.position + down*dist)`. 진입 시 `fallingSound`. Kinematic의 position 텔레포트는 static 지면과 contact를 만들지 않고, 고속 낙하 시 tunneling 위험도 있어 스윕으로 대체. |
+| Falling | 매 FixedUpdate `solidCollider.Cast(Vector2.down, dist, breakOnLayers)`로 스윕 → 충돌 시 거리만큼만 `MovePosition` 후 Broken 전환. 충돌 없으면 `MovePosition(rb.position + down*dist)`. 진입 후 `breakImmunityDuration` 동안은 cast 를 건너뛰어 통과(arming 지연). 진입 시 `fallingSound`. Kinematic의 position 텔레포트는 static 지면과 contact를 만들지 않고, 고속 낙하 시 tunneling 위험도 있어 스윕으로 대체. |
 | Broken | `impactSound` + `breakParticles.Play()`. `solidCollider`/`meshRenderer` 비활성. `respawnTime < 0` (one-shot) 이면 파티클 detach + `enabled = false`. 아니면 `respawnTime` 카운트다운 → 만료 시 `rb.position`을 spawn 위치로 복귀 후 `regenBlockingLayers` 오버랩 체크. 비어있으면 Regenerating, 막혀있으면 매 프레임 재시도. |
 | Regenerating | `rb.position = spawnPosition`, `visualRoot.localScale`을 `0 → originalScale`로 ease-out 애니메이션 (`regenDuration`). 이 동안 `solidCollider`는 꺼져있어 슬라임이 통과 가능. 완료 시 Idle 진입 → 콜라이더/비주얼 복원. |
+
+## Preset (선택)
+[`IcicleHazardPreset`](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Configs/IcicleHazardPreset.cs) ScriptableObject 로 detection / shake / fall / respawn / audio 튜닝을 한 묶음으로 묶어 재사용. `Create → SlimeJumping/Icicle/Hazard Preset` 으로 에셋 생성 후 `IcicleHazard.preset` 슬롯에 할당하면 OnValidate(레퍼런스 변경 시) + Awake(런타임)에서 inline 필드 일괄 덮어씀. `_lastAppliedPreset` 캐시로 같은 preset 유지 시 inline 수정은 보존. 비주얼 에셋(mesh/material)·씬 참조(visualRoot 등)는 컴포넌트에 잔류.
+
+**Audio 와 IcicleAudioManager 관계**: IcicleHazard 가 `[DefaultExecutionOrder(-100)]`, AudioManager 가 `-50` 이라 Awake 순서가 (1) preset → (2) manager 순. 매니저 있으면 매니저가 audio 필드를 마지막에 덮어쓰므로 매니저가 우선. 매니저 없으면 preset audio 가 그대로 남음.
 
 ## 주요 필드
 
@@ -26,6 +31,7 @@
 ### 낙하
 - `fallSpeed` (units/s, 등속).
 - `breakOnLayers`: 이 레이어와 충돌 시 Broken 전환. 슬라임 레이어는 제외해야 슬라임이 올라탈 수 있음.
+- `breakImmunityDuration` (sec, default 0.3): 낙하 시작 직후 이 시간 동안은 break-cast 를 건너뛰어 천장/근처 플랫폼을 자유 통과. 시간 경과 후 정상 break 판정 진입.
 
 ### 재생성
 - `respawnTime` (float): 파괴 후 재생성 대기 시간. **음수면 one-shot** (재생성 안 함, ThinIcePlatform 규칙과 동일).
@@ -57,3 +63,5 @@
 
 ## 관련 파일
 - [IcicleHazard.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/IcicleHazard.cs)
+- [IcicleHazardPreset.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Configs/IcicleHazardPreset.cs)
+- [IcicleAudioManager.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/IcicleAudioManager.cs)

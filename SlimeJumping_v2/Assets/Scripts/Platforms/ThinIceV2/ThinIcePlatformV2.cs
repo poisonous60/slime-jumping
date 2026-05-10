@@ -277,7 +277,12 @@ namespace SlimeJumping.Platforms.ThinIceV2
 
         void UpdateIdle()
         {
-            if (slime.CurrentState != SlimeController.SlimeState.Attached) return;
+            // Accept Charging too: chargeBuffer / allowChargeAirHold lets Airborne→Charging
+            // skip Attached entirely on landing, otherwise the player lands and launches off
+            // ice that never started cracking.
+            var st = slime.CurrentState;
+            if (st != SlimeController.SlimeState.Attached &&
+                st != SlimeController.SlimeState.Charging) return;
             if (System.Array.IndexOf(myColliders, slime.SurfaceCollider) < 0) return;
             if (ResolvedUseAngleLimit)
             {

@@ -104,15 +104,21 @@ MonoBehaviour:
   surfaceProbeMode: 1
   surfaceProbeSamples: 4
   surfaceProbeRingScale: 0.8
-  surfaceProbeDedupeDot: 0.93
+  surfaceProbeDedupeDot: 0.95
   effectiveNormalWeightRampBand: 1
   effectiveNormalSoftBandMultiplier: 5
   depenetrationUseSmoothedAggregation: 1
   useSurfaceTangentArcCompensation: 1
   projectVelocitySameDirectionDot: 0.7
   surfaceNormalSmoothRate: 40
-  surfaceNormalSmoothRotatingMultiplier: 1
-  surfaceNormalSmoothAngularThreshold: 10
+  surfaceNormalSmoothRotatingMultiplier: 2
+  surfaceNormalSmoothAngularThreshold: 20
+  phaseAStripTangentComponent: 0
+  phaseAStripStrength: 1
+  phaseBSkipAtVertexClamp: 0
+  phaseBVertexClampDotThreshold: 0.9
+  phaseBUseRaycastAnchor: 0
+  phaseBRaycastDistanceMultiplier: 2
   postLaunchIgnoreTime: 0.05
   launchClearanceThreshold: 0.05
   maxIgnoreTime: 0.15
