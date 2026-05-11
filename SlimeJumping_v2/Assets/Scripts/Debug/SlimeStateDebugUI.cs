@@ -121,7 +121,9 @@ namespace SlimeJumping.Debugging
                         if (!active) sb.Append('~');
                         sb.Append(' ').Append(a.ToString("F1")).Append("°");
                     }
-                    GUI.Label(new Rect(screenOffset.x, labelY, 520f, 20f), sb.ToString(), labelStyle);
+                    int buried = probe.RejectedBuriedCount;
+                    if (buried > 0) sb.Append("   buried-rej: ").Append(buried);
+                    GUI.Label(new Rect(screenOffset.x, labelY, 560f, 20f), sb.ToString(), labelStyle);
                 }
             }
 

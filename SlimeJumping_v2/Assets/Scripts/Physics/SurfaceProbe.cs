@@ -69,6 +69,10 @@ namespace SlimeJumping.Physics
         public Vector2 GetContactNormal(int i) => contactNormals[i];
         public float GetContactDistance(int i) => contactDistances[i];
         public bool IsContactActive(int i) => contactActive[i];
+        // Count of edge contacts classified as "buried inside another collider" during the
+        // most recent CheckSurface (Multi probe + surfaceProbeRejectBuriedContacts only;
+        // 0 otherwise). Includes any that were later promoted back via the fallback.
+        public virtual int RejectedBuriedCount => 0;
 
         // Finding 1: preserve last valid normal for deep penetration fallback
         protected Vector2 lastGoodNormal = Vector2.up;

@@ -35,11 +35,30 @@ namespace SlimeJumping.Physics
         private readonly List<Vector2> pathBuffer = new List<Vector2>(64);
         private readonly List<Vector2> worldBuffer = new List<Vector2>(64);
 
+        // Side buffer for buried-rejected contacts. PopulateContacts promotes one per
+        // collider when contactCount==0 (every contact got rejected), so a slime fully
+        // wedged inside a single buried collider still has a primary contact and stays
+        // Attached. Without this fallback CheckSurface would return false on Airborne
+        // entry frames (prevCollider==null), reproducing the
+        // "후속 회귀 — 폴리곤에 박혀서 Airborne으로 멈춤" failure mode in
+        // docs/faceted-terrain-jitter-attempts.md.
+        // Stored normals are always the edge's outward perpendicular (never bisector)
+        // so promoted contacts carry a real surface direction into lastGoodNormal /
+        // EffectiveNormal. The clamped flag is implicitly false for promoted entries.
+        private readonly Collider2D[] rejectedColliders = new Collider2D[16];
+        private readonly Vector2[] rejectedNormals = new Vector2[16];
+        private readonly float[] rejectedDistances = new float[16];
+        private int rejectedCount;
+
+        public override int RejectedBuriedCount => rejectedCount;
+
         public MultiContactSurfaceProbe(Rigidbody2D rb, SlimeSettings settings, List<Collider2D> ignoredColliders)
             : base(rb, settings, ignoredColliders) { }
 
         protected override bool PopulateContacts(Vector2 pos, int overlapCount)
         {
+            rejectedCount = 0;
+
             bool hasNearby = false;
             float maxDist = settings.slimeRadius + lastDetectRange;
             float maxDistSq = maxDist * maxDist;
@@ -53,10 +72,17 @@ namespace SlimeJumping.Physics
                 hasNearby = true;
                 int firstNewIdx = contactCount;
 
-                AddContactsForCollider(col, pos, maxDistSq, dedupeDot, firstNewIdx);
+                AddContactsForCollider(col, pos, maxDistSq, dedupeDot, firstNewIdx,
+                    overlapBuffer, overlapCount);
 
                 if (contactCount >= contactColliders.Length) break;
             }
+
+            // Every emitted contact got rejected as buried but at least one collider was
+            // nearby — promote one rejected contact per collider so SelectPrimary has a
+            // primary candidate. See comment on rejectedColliders[] field.
+            if (contactCount == 0 && rejectedCount > 0)
+                PromotePerCollider();
 
             return hasNearby;
         }
@@ -82,7 +108,8 @@ namespace SlimeJumping.Physics
                 Collider2D col = depenetrationBuffer[i];
                 if (ignoredColliders.Contains(col)) continue;
 
-                int pushCount = CollectPushesForCollider(col, pos, radius, dedupeDot);
+                int pushCount = CollectPushesForCollider(col, pos, radius, dedupeDot,
+                    depenetrationBuffer, count);
                 if (pushCount == 0) continue;
 
                 Vector2 perColliderPush;
@@ -164,7 +191,8 @@ namespace SlimeJumping.Physics
         }
 
         private void AddContactsForCollider(Collider2D col, Vector2 pos,
-            float maxDistSq, float dedupeDot, int firstNewIdx)
+            float maxDistSq, float dedupeDot, int firstNewIdx,
+            Collider2D[] otherBuffer, int otherCount)
         {
             if (col is PolygonCollider2D poly)
             {
@@ -188,7 +216,7 @@ namespace SlimeJumping.Physics
                         Vector2 a = worldBuffer[j];
                         Vector2 b = worldBuffer[(j + 1) % n];
                         TryAddPolygonEdgeContact(col, pos, a, b, windingSign,
-                            maxDistSq, dedupeDot, firstNewIdx);
+                            maxDistSq, dedupeDot, firstNewIdx, otherBuffer, otherCount);
                         if (contactCount >= contactColliders.Length) return;
                     }
                 }
@@ -203,7 +231,8 @@ namespace SlimeJumping.Physics
                 {
                     Vector2 a = (Vector2)t.TransformPoint(pathBuffer[j] + offset);
                     Vector2 b = (Vector2)t.TransformPoint(pathBuffer[j + 1] + offset);
-                    TryAddEdgePolylineContact(col, pos, a, b, maxDistSq, dedupeDot, firstNewIdx);
+                    TryAddEdgePolylineContact(col, pos, a, b, maxDistSq, dedupeDot, firstNewIdx,
+                        otherBuffer, otherCount);
                     if (contactCount >= contactColliders.Length) return;
                 }
             }
@@ -223,7 +252,7 @@ namespace SlimeJumping.Physics
                         Vector2 a = worldBuffer[j];
                         Vector2 b = worldBuffer[(j + 1) % n];
                         TryAddPolygonEdgeContact(col, pos, a, b, windingSign,
-                            maxDistSq, dedupeDot, firstNewIdx);
+                            maxDistSq, dedupeDot, firstNewIdx, otherBuffer, otherCount);
                         if (contactCount >= contactColliders.Length) return;
                     }
                 }
@@ -237,12 +266,18 @@ namespace SlimeJumping.Physics
                 if (distSq > maxDistSq) return;
                 float dist = Mathf.Sqrt(distSq);
                 Vector2 normal = toSlime / dist;
+                if (IsContactBuried(col, closest, normal, dist, otherBuffer, otherCount))
+                {
+                    StashRejected(col, normal, dist);
+                    return;
+                }
                 MergeOrAddContact(col, normal, dist, false, dedupeDot, firstNewIdx);
             }
         }
 
         private void TryAddPolygonEdgeContact(Collider2D col, Vector2 pos, Vector2 a, Vector2 b,
-            float windingSign, float maxDistSq, float dedupeDot, int firstNewIdx)
+            float windingSign, float maxDistSq, float dedupeDot, int firstNewIdx,
+            Collider2D[] otherBuffer, int otherCount)
         {
             Vector2 ab = b - a;
             float abSq = ab.sqrMagnitude;
@@ -267,6 +302,16 @@ namespace SlimeJumping.Physics
 
             float dist = Mathf.Sqrt(distSq);
 
+            // Buried check: bias the test point INTO ownerCol along -outward; if that
+            // interior point is also inside another nearby collider, this edge is in the
+            // union's interior. Stash with outward (not bisector) so promotion carries a
+            // real edge perpendicular into lastGoodNormal / EffectiveNormal.
+            if (IsContactBuried(col, closest, outward, dist, otherBuffer, otherCount))
+            {
+                StashRejected(col, outward, dist);
+                return;
+            }
+
             // Vertex-clamped contacts get the bisector (toSlime/dist) so two adjacent
             // edges meeting at a convex corner merge into one contact (lets the slime
             // roll over a small lip without ProjectVel over-clipping). The clamped flag
@@ -278,7 +323,8 @@ namespace SlimeJumping.Physics
         }
 
         private void TryAddEdgePolylineContact(Collider2D col, Vector2 pos, Vector2 a, Vector2 b,
-            float maxDistSq, float dedupeDot, int firstNewIdx)
+            float maxDistSq, float dedupeDot, int firstNewIdx,
+            Collider2D[] otherBuffer, int otherCount)
         {
             Vector2 closest = ClosestPointOnSegment(pos, a, b);
             Vector2 toSlime = pos - closest;
@@ -296,6 +342,11 @@ namespace SlimeJumping.Physics
                 normal = lastGoodNormal;
             else
                 normal = toSlime / dist;
+            if (IsContactBuried(col, closest, normal, dist, otherBuffer, otherCount))
+            {
+                StashRejected(col, normal, dist);
+                return;
+            }
             MergeOrAddContact(col, normal, dist, false, dedupeDot, firstNewIdx);
         }
 
@@ -335,7 +386,8 @@ namespace SlimeJumping.Physics
             contactCount++;
         }
 
-        private int CollectPushesForCollider(Collider2D col, Vector2 pos, float radius, float dedupeDot)
+        private int CollectPushesForCollider(Collider2D col, Vector2 pos, float radius, float dedupeDot,
+            Collider2D[] otherBuffer, int otherCount)
         {
             int pushCount = 0;
             float radiusSq = radius * radius;
@@ -359,8 +411,9 @@ namespace SlimeJumping.Physics
                     {
                         Vector2 a = worldBuffer[j];
                         Vector2 b = worldBuffer[(j + 1) % n];
-                        TryAddPolygonEdgePush(pos, a, b, windingSign,
-                            radius, radiusSq, dedupeDot, ref pushCount);
+                        TryAddPolygonEdgePush(col, pos, a, b, windingSign,
+                            radius, radiusSq, dedupeDot, ref pushCount,
+                            otherBuffer, otherCount);
                         if (pushCount >= pushNormals.Length) return pushCount;
                     }
                 }
@@ -375,7 +428,8 @@ namespace SlimeJumping.Physics
                 {
                     Vector2 a = (Vector2)t.TransformPoint(pathBuffer[j] + offset);
                     Vector2 b = (Vector2)t.TransformPoint(pathBuffer[j + 1] + offset);
-                    TryAddEdgePolylinePush(pos, a, b, radius, radiusSq, dedupeDot, ref pushCount);
+                    TryAddEdgePolylinePush(col, pos, a, b, radius, radiusSq, dedupeDot, ref pushCount,
+                        otherBuffer, otherCount);
                     if (pushCount >= pushNormals.Length) return pushCount;
                 }
             }
@@ -394,8 +448,9 @@ namespace SlimeJumping.Physics
                     {
                         Vector2 a = worldBuffer[j];
                         Vector2 b = worldBuffer[(j + 1) % n];
-                        TryAddPolygonEdgePush(pos, a, b, windingSign,
-                            radius, radiusSq, dedupeDot, ref pushCount);
+                        TryAddPolygonEdgePush(col, pos, a, b, windingSign,
+                            radius, radiusSq, dedupeDot, ref pushCount,
+                            otherBuffer, otherCount);
                         if (pushCount >= pushNormals.Length) return pushCount;
                     }
                 }
@@ -408,7 +463,10 @@ namespace SlimeJumping.Physics
                 if (distSq < 0.0001f) return 0;
                 if (distSq >= radiusSq) return 0;
                 float dist = Mathf.Sqrt(distSq);
-                pushNormals[0] = toSlime / dist;
+                Vector2 normal = toSlime / dist;
+                if (IsContactBuried(col, closest, normal, dist, otherBuffer, otherCount))
+                    return 0;
+                pushNormals[0] = normal;
                 pushDepths[0] = radius - dist;
                 pushCount = 1;
             }
@@ -416,8 +474,9 @@ namespace SlimeJumping.Physics
             return pushCount;
         }
 
-        private void TryAddPolygonEdgePush(Vector2 pos, Vector2 a, Vector2 b,
-            float windingSign, float radius, float radiusSq, float dedupeDot, ref int pushCount)
+        private void TryAddPolygonEdgePush(Collider2D col, Vector2 pos, Vector2 a, Vector2 b,
+            float windingSign, float radius, float radiusSq, float dedupeDot, ref int pushCount,
+            Collider2D[] otherBuffer, int otherCount)
         {
             Vector2 ab = b - a;
             float abSq = ab.sqrMagnitude;
@@ -441,6 +500,12 @@ namespace SlimeJumping.Physics
             if (Vector2.Dot(toSlime, outward) <= 0f) return;
 
             float dist = Mathf.Sqrt(distSq);
+
+            // Buried check: drop pushes from edges that are buried inside another collider.
+            // No fallback on push path — buried colliders shouldn't push the slime; the
+            // outermost surface's pushes do the work.
+            if (IsContactBuried(col, closest, outward, dist, otherBuffer, otherCount)) return;
+
             float depth = radius - dist;
 
             // Same bisector-vs-outward split as the contact path: clamped vertices push
@@ -467,8 +532,9 @@ namespace SlimeJumping.Physics
             pushCount++;
         }
 
-        private void TryAddEdgePolylinePush(Vector2 pos, Vector2 a, Vector2 b,
-            float radius, float radiusSq, float dedupeDot, ref int pushCount)
+        private void TryAddEdgePolylinePush(Collider2D col, Vector2 pos, Vector2 a, Vector2 b,
+            float radius, float radiusSq, float dedupeDot, ref int pushCount,
+            Collider2D[] otherBuffer, int otherCount)
         {
             Vector2 closest = ClosestPointOnSegment(pos, a, b);
             Vector2 toSlime = pos - closest;
@@ -482,10 +548,12 @@ namespace SlimeJumping.Physics
             // exceeds radius, restoring the slime to clearance + radius.
             Vector2 n;
             float depth;
+            float distForBuried;
             if (lastGoodNormal.sqrMagnitude > 0.5f && Vector2.Dot(toSlime, lastGoodNormal) < 0f)
             {
                 n = lastGoodNormal;
                 depth = radius - Vector2.Dot(toSlime, lastGoodNormal);
+                distForBuried = Mathf.Max(0.0001f, distSq > 0.0001f ? Mathf.Sqrt(distSq) : 0.0001f);
             }
             else
             {
@@ -493,7 +561,11 @@ namespace SlimeJumping.Physics
                 float dist = Mathf.Sqrt(distSq);
                 n = toSlime / dist;
                 depth = radius - dist;
+                distForBuried = dist;
             }
+
+            // Buried check: drop pushes from polyline edges buried inside another collider.
+            if (IsContactBuried(col, closest, n, distForBuried, otherBuffer, otherCount)) return;
 
             for (int p = 0; p < pushCount; p++)
             {
@@ -547,6 +619,91 @@ namespace SlimeJumping.Physics
             if (t < 0f) t = 0f;
             else if (t > 1f) t = 1f;
             return a + ab * t;
+        }
+
+        // Buried-collider check. Bias the closest point slightly INTO ownerCol's interior
+        // (along -normal) and ask whether that interior point also lies inside any other
+        // nearby collider. If yes, this edge is in the union's interior, not on the outer
+        // silhouette — reject. The bias disambiguates "shared boundary" (Unity OverlapPoint
+        // is boundary-inclusive) from "actually buried inside another collider's body".
+        // bias = min(setting, dist*0.4) keeps the test point inside ownerCol when the slime
+        // is very close to the surface (dist small).
+        private bool IsContactBuried(Collider2D ownerCol, Vector2 closest, Vector2 normal,
+            float dist, Collider2D[] otherBuffer, int otherCount)
+        {
+            if (!settings.surfaceProbeRejectBuriedContacts) return false;
+            if (otherCount <= 1) return false;
+
+            float bias = Mathf.Min(settings.surfaceProbeBuriedTestBias, dist * 0.4f);
+            Vector2 testPoint = closest - normal * bias;
+
+            for (int oi = 0; oi < otherCount; oi++)
+            {
+                var other = otherBuffer[oi];
+                if (other == ownerCol || other == null) continue;
+                if (other.isTrigger) continue;
+                if (ignoredColliders.Contains(other)) continue;
+
+                // Raw min/max compare instead of bounds.Contains(Vector3) — the latter
+                // boxes a temp Vector3, this is allocation-free and 1 branch cheaper.
+                var b = other.bounds;
+                if (testPoint.x < b.min.x || testPoint.x > b.max.x ||
+                    testPoint.y < b.min.y || testPoint.y > b.max.y) continue;
+
+                if (other.OverlapPoint(testPoint)) return true;
+            }
+            return false;
+        }
+
+        // Stash a rejected (buried) contact for possible promotion later. Always store
+        // the edge's outward perpendicular (not a vertex bisector) so promoted contacts
+        // carry a real surface direction.
+        private void StashRejected(Collider2D col, Vector2 outwardNormal, float dist)
+        {
+            if (rejectedCount >= rejectedColliders.Length) return;
+            rejectedColliders[rejectedCount] = col;
+            rejectedNormals[rejectedCount] = outwardNormal;
+            rejectedDistances[rejectedCount] = dist;
+            rejectedCount++;
+        }
+
+        // Fallback: when contactCount==0 because every contact was rejected as buried,
+        // promote one rejected contact per collider (the closest distance per collider)
+        // into the contact arrays. Promoted contacts always have clamped=false so
+        // EffectiveNormal includes them rather than skipping (clamped contacts are
+        // skipped → would return stale lastGoodNormal). Runs inside PopulateContacts so
+        // the SurfaceProbe.CheckSurface ceiling-threshold resolution loop covers
+        // promoted indices naturally.
+        private void PromotePerCollider()
+        {
+            for (int i = 0; i < rejectedCount; i++)
+            {
+                Collider2D rc = rejectedColliders[i];
+                float rd = rejectedDistances[i];
+
+                bool found = false;
+                for (int j = 0; j < contactCount; j++)
+                {
+                    if (contactColliders[j] == rc)
+                    {
+                        if (rd < contactDistances[j])
+                        {
+                            contactNormals[j] = rejectedNormals[i];
+                            contactDistances[j] = rd;
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) continue;
+
+                if (contactCount >= contactColliders.Length) return;
+                contactColliders[contactCount] = rc;
+                contactNormals[contactCount] = rejectedNormals[i];
+                contactDistances[contactCount] = rd;
+                contactClamped[contactCount] = false;
+                contactCount++;
+            }
         }
     }
 }

@@ -211,6 +211,16 @@ namespace SlimeJumping.Settings
                  "fallbackNormal itself always provides a primary-axis clip — corners with truly opposing walls (dot < threshold) still get multi-clipped.")]
         [Range(0f, 1f)] public float projectVelocitySameDirectionDot = 0.7f;
 
+        [Tooltip("여러 collider 가 겹쳤을 때, 다른 collider 내부에 묻힌 edge contact 를 reject. " +
+                 "한 collider 의 일부 edge 만 묻힌 경우 (slope 에 박힌 spike 의 base 등) 그 일부만 reject. " +
+                 "한 collider 의 모든 edge 가 reject 되면 collider 별 가장 가까운 1개를 fallback 으로 부활 (Airborne 박힘 회귀 방지). " +
+                 "Multi probe mode 전용. opt-in.")]
+        public bool surfaceProbeRejectBuriedContacts = false;
+        [Tooltip("Buried 판정용 test point bias (unit). closest point 에서 collider 안쪽으로 이만큼 밀어보고 " +
+                 "다른 collider 의 OverlapPoint 가 true 면 buried 로 판단. " +
+                 "실제 사용값 = min(이 값, contactDistance × 0.4) — 슬라임이 표면에 매우 가까우면 자동 축소.")]
+        [Range(0.001f, 0.05f)] public float surfaceProbeBuriedTestBias = 0.01f;
+
         [Header("Surface Normal Smoothing")]
         [Tooltip("surfaceNormal 저역통과 필터 컷오프(rad/s). 0 = OFF.\n" +
                  "예: 20 → 매 50Hz 프레임당 ~33% 갱신 (90° 튐이 한 프레임에 ~30°로 감쇠, 약 5프레임에 90% 수렴).\n" +

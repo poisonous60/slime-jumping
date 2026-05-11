@@ -19,6 +19,18 @@
 
 런타임 mode 스왑 시 `TransferStateFrom` 으로 `lastGoodNormal` / gravity context 인계 → 천장/벽 부착 상태 유지.
 
+### Buried-collider Rejection (Multi 전용, opt-in)
+`surfaceProbeRejectBuriedContacts=true` 시 — 두 collider 가 겹쳐있을 때 **다른 collider 내부에 묻힌 edge contact** 를 reject. 의도: 슬라임이 union 의 가장 바깥 silhouette 만 닿게.
+
+**판정**: 각 edge 의 closest point 를 ownerCol 안쪽으로 `bias = min(setting, dist × 0.4)` 만큼 밀고, 그 testPoint 가 다른 nearby collider 의 `OverlapPoint` true 면 buried.
+- bias 가 dist 비례로 자동 축소 → 슬라임이 표면에 밀착했을 때 testPoint 가 ownerCol 을 빠져나가 옆 collider 로 잘못 침범하는 걸 방지.
+- 기존 outward filter (`Dot(slime − closest, outward) > 0`) 와 **함께** 동작 — outward 는 단일 collider 의 vertex-clamp artifact 차단, buried 는 다중 collider overlap 차단.
+- Trigger collider (DragZone, WaterZone 등) 는 OTHER 후보에서 제외.
+
+**Fallback**: 한 collider 의 모든 edge 가 reject 되면 (= 완전 buried) 그 collider 에서 가장 가까운 1개를 부활시켜 contact 으로 promote. 부활된 contact 는 `clamped=false` + outward normal 만 사용 → EffectiveNormal / lastGoodNormal 이 stale 데이터로 새지 않음. Airborne 박힘 회귀 (docs/faceted-terrain-jitter-attempts.md 후속 회귀 섹션) 차단.
+
+**적용 범위**: Contact 수집 (`PopulateContacts`) + Phase A depenetration push (`DepenetratePass`) 둘 다. Push 경로는 fallback 없음 — 묻힌 collider 가 슬라임을 미는 게 의도와 반대.
+
 ## Primary Selection (5-step geometric fallback)
 비천장 active 중 1개 선택:
 1. 단일 active → 그것 (~99% 케이스).

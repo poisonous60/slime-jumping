@@ -753,10 +753,6 @@ namespace SlimeJumping.Controller
                     rb.position += carry;
             }
 
-            Vector2 finalVel = velocity
-                + platformVel * surfaceMod.carrierFriction.Evaluate(frictionAngle)
-                + ropeVel;
-
             // Attached/Charging movement model is per-probe-mode:
             //
             //   Multi  → teleport-then-snap. Letting Unity integrate `linearVelocity * dt`
@@ -776,6 +772,22 @@ namespace SlimeJumping.Controller
             // Unity-native.
             bool useTeleport = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 && currentProbeMode == SurfaceProbeMode.Multi;
+
+            float carrierFrictionScale = surfaceMod.carrierFriction.Evaluate(frictionAngle);
+
+            // Platform carry channel selection:
+            //   useTeleport: SnapToSurface's ClosestPoint anchors to the platform's
+            //     *pre-MovePosition* collider (kinematic MovePosition is deferred to
+            //     Physics.Simulate, so within this FixedUpdate the platform collider is
+            //     still at its old position). Baking platformVel into finalVel here gets
+            //     undone by that snap. Apply carry via ApplyPositionCarry *after* the
+            //     snap instead — the slime's new position is then consistent with the
+            //     platform's new pose once physics simulates.
+            //   non-teleport: Unity's contact solver carries the slime natively when
+            //     linearVelocity includes platformVel.
+            Vector2 finalVel = velocity + ropeVel;
+            if (!useTeleport) finalVel += platformVel * carrierFrictionScale;
+
             if (useTeleport)
             {
                 // CCD against thin moving colliders (SpringyBranch EdgeCollider2D) that
@@ -799,6 +811,10 @@ namespace SlimeJumping.Controller
                     rb.position += (delta / dist) * Mathf.Max(0f, clamped - settings.contactSkin);
                 }
                 surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
+
+                if (carrier != null && carrier.IsOnPlatform)
+                    carrier.ApplyPositionCarry(carrierFrictionScale);
+
                 rb.linearVelocity = Vector2.zero;
             }
             else
