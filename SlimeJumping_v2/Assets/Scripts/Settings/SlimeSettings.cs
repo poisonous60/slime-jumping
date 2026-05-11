@@ -182,6 +182,19 @@ namespace SlimeJumping.Settings
                  "실제 사용값 = min(이 값, contactDistance × 0.4) — 슬라임이 표면에 매우 가까우면 자동 축소.")]
         [Range(0.001f, 0.05f)] public float surfaceProbeBuriedTestBias = 0.01f;
 
+        [Tooltip("작은 턱 부드럽게 넘어가기 (opt-in). 한 contact 가 (1) 폴리곤 vertex 에 clamp 됐고 " +
+                 "(2) 그 vertex 가 슬라임 발(center − gravityUp×slimeRadius)에서 0~smallLedgeStepHeight 사이이고 " +
+                 "(3) vertex 바로 위 지점이 그 콜라이더 밖(= 턱 위가 빈 공간)이면 '작은 턱'으로 분류한다.\n" +
+                 "ProjectVelocityAgainstContacts 가 그 contact 의 속도 클립을 (실제로 막던 경우에 한해) skip → " +
+                 "forward 슬라이드 보존 → Phase A 의 tangent-strip radial push 가 슬라임을 턱 위로 들어올림. " +
+                 "SlimeController 의 teleport CCD 도 그 콜라이더를 제외해서 슬라이드가 턱 안으로 들어가게 둔다.\n" +
+                 "큰 벽: closest point 가 edge interior(non-clamped)라 (1)에서 제외. " +
+                 "tessellate 된 큰 벽: 짧은 edge 의 top vertex 가 stepHeight 안에 들어와도 위에 벽이 계속됨 → (3)에서 제외.")]
+        public bool surfaceProbeSmoothSmallLedges = false;
+        [Tooltip("작은 턱 판정 기준 높이 (unit). clamped vertex 가 슬라임 발에서 이 값 이내여야 작은 턱. " +
+                 "0.05~0.3 권장. 너무 크면 진짜 벽도 넘어가버림 (단 '위가 빈 공간' 조건이 키 큰 벽은 걸러줌).")]
+        [Min(0f)] public float smallLedgeStepHeight = 0.15f;
+
         [Header("Surface Normal Smoothing")]
         [Tooltip("surfaceNormal 저역통과 필터 컷오프(rad/s). 0 = OFF.\n" +
                  "예: 20 → 매 50Hz 프레임당 ~33% 갱신 (90° 튐이 한 프레임에 ~30°로 감쇠, 약 5프레임에 90% 수렴).\n" +

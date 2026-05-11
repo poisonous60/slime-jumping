@@ -506,24 +506,7 @@ namespace SlimeJumping.Controller
                 return;
             }
 
-            // Compute effective gravity direction (LIFO stack: last entered zone wins)
-            // For radial zones, evaluate at midpoint (pos + vel*dt/2) to get second-order
-            // accuracy and prevent systematic energy drift from forward Euler.
-            if (gravityFieldStack.Count > 0)
-            {
-                var topField = gravityFieldStack[gravityFieldStack.Count - 1];
-                Vector2 samplePos = rb.position + velocity * (dt * 0.5f);
-                Vector2 newUp = -topField.GetDownDirection(samplePos);
-                if (newUp.sqrMagnitude < 0.0001f)
-                    gravityUp = Vector2.up; // NaN guard: designer error (pivot reachable)
-                else
-                    gravityUp = newUp.normalized;
-            }
-            else
-            {
-                gravityUp = Vector2.up;
-            }
-            gravityRight = new Vector2(gravityUp.y, -gravityUp.x);
+            UpdateGravityDirection(dt);
 
             ignoredColliderList.Tick(dt, rb.position, settings.slimeRadius, settings.launchClearanceThreshold);
 
@@ -552,6 +535,74 @@ namespace SlimeJumping.Controller
                 && currentRope.Edge != null)
                 LockRopePosition();
 
+            UpdateSurfaceContact(dt);
+
+            switch (currentState)
+            {
+                case SlimeState.Attached:
+                    FixedUpdateAttached(dt);
+                    break;
+                case SlimeState.Charging:
+                    FixedUpdateCharging(dt);
+                    break;
+                case SlimeState.Airborne:
+                    FixedUpdateAirborne(dt);
+                    break;
+                case SlimeState.Stunned:
+                    FixedUpdateStunned(dt);
+                    break;
+            }
+
+            // Snow drag — exponential velocity decay while sliding on snow so the
+            // slime actually stops in deep coverage. Drag-only (no continuous carve,
+            // no airborne probe). Runs after the state handler so it operates on
+            // the velocity / slideVelocity / crawlVelocity values the state just
+            // set, before finalVel is composed in OutputVelocity.
+            ApplySnowDrag(dt);
+
+            // Rope rider contact — fires while attached OR charging so the rope keeps
+            // sagging under slime weight during charge. The stored displacement is
+            // what Launch() reads via GetMaxSagDistance() to add rebound speed.
+            // Rope consumes the buffer on its next FixedUpdate (execution order -100),
+            // giving the designed 1-frame lag.
+            if (currentRope != null
+                && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
+                currentRope.ReportRiderContact(surfaceCollider, rb.position, rb.mass, velocity);
+
+            ApplyExternalDeltaV();
+
+            OutputVelocity(dt);
+        }
+
+        // Computes the effective gravity direction (gravityUp/gravityRight) from the
+        // LIFO gravity-field stack (last entered zone wins). For radial zones, evaluate
+        // at midpoint (pos + vel*dt/2) for second-order accuracy — prevents systematic
+        // energy drift from forward Euler.
+        private void UpdateGravityDirection(float dt)
+        {
+            if (gravityFieldStack.Count > 0)
+            {
+                var topField = gravityFieldStack[gravityFieldStack.Count - 1];
+                Vector2 samplePos = rb.position + velocity * (dt * 0.5f);
+                Vector2 newUp = -topField.GetDownDirection(samplePos);
+                if (newUp.sqrMagnitude < 0.0001f)
+                    gravityUp = Vector2.up; // NaN guard: designer error (pivot reachable)
+                else
+                    gravityUp = newUp.normalized;
+            }
+            else
+            {
+                gravityUp = Vector2.up;
+            }
+            gravityRight = new Vector2(gravityUp.y, -gravityUp.x);
+        }
+
+        // Runs the surface probe, low-pass-filters the contact normal, derives the
+        // tangent (+ arc-compensation snapshot), and refreshes carrier / surfaceMod /
+        // rope binding when the touched collider changes. On exit, surfaceNormal /
+        // surfaceTangent / surfaceCollider / isTouchingSurface are ready for the state handler.
+        private void UpdateSurfaceContact(float dt)
+        {
             float surfaceMultiplier = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 ? settings.attachedCheckMultiplier : settings.airborneCheckMultiplier;
             float inputX = (currentState == SlimeState.Charging) ? 0f : inputReader.LastInputMove.x;
@@ -597,7 +648,7 @@ namespace SlimeJumping.Controller
 
             surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
             prevSmoothedSurfaceTangent = surfaceTangent;
-            // Stash for ComputeArcCompensatedTangent (read by Attached/Charging handlers below)
+            // Stash for ComputeArcCompensatedTangent (read by Attached/Charging handlers)
             arcPrevTangent = lastFrameTangent;
             arcHasPrevTangent = hadPrevTangent;
 
@@ -626,40 +677,13 @@ namespace SlimeJumping.Controller
                 UpdateRopeReference(surfaceCollider);
 
             prevSurfaceCollider = surfaceCollider;
+        }
 
-            switch (currentState)
-            {
-                case SlimeState.Attached:
-                    FixedUpdateAttached(dt);
-                    break;
-                case SlimeState.Charging:
-                    FixedUpdateCharging(dt);
-                    break;
-                case SlimeState.Airborne:
-                    FixedUpdateAirborne(dt);
-                    break;
-                case SlimeState.Stunned:
-                    FixedUpdateStunned(dt);
-                    break;
-            }
-
-            // Snow drag — exponential velocity decay while sliding on snow so the
-            // slime actually stops in deep coverage. Drag-only (no continuous carve,
-            // no airborne probe). Runs after the state handler so it operates on
-            // the velocity / slideVelocity / crawlVelocity values the state just
-            // set, before finalVel is composed below.
-            ApplySnowDrag(dt);
-
-            // Rope rider contact — fires while attached OR charging so the rope keeps
-            // sagging under slime weight during charge. The stored displacement is
-            // what Launch() reads via GetMaxSagDistance() to add rebound speed.
-            // Rope consumes the buffer on its next FixedUpdate (execution order -100),
-            // giving the designed 1-frame lag.
-            if (currentRope != null
-                && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
-                currentRope.ReportRiderContact(surfaceCollider, rb.position, rb.mass, velocity);
-
-            // External forces (wind, conveyor, etc.)
+        // External forces (wind, conveyor, etc.). Additive in Airborne/Stunned;
+        // projected onto surfaceTangent while attached so the state handler's
+        // per-frame `velocity = tangent * speed` overwrite doesn't wipe it.
+        private void ApplyExternalDeltaV()
+        {
             if (externalDeltaV.sqrMagnitude > 0.0001f)
             {
                 if (currentState == SlimeState.Airborne || currentState == SlimeState.Stunned)
@@ -668,7 +692,28 @@ namespace SlimeJumping.Controller
                     velocity += surfaceTangent * Vector2.Dot(externalDeltaV, surfaceTangent);
                 externalDeltaV = Vector2.zero;
             }
+        }
 
+        // Composes the final velocity (state velocity + rope sample + platform carry)
+        // and writes it to the body. Two movement models, selected by probe mode:
+        //
+        //   Multi  → teleport-then-snap. Letting Unity integrate `linearVelocity * dt`
+        //            and run its contact solver applies per-frame position corrections
+        //            at facet boundaries we never see in SnapToSurface (visible as
+        //            crawl jitter on faceted polygon terrain). This is the ice-tremor
+        //            fix. Trade-off: bypasses Unity's CCD + contact solver, so moving
+        //            thin colliders that *are* the slime's surface (rotating SpringyBranch)
+        //            can phase the slime through — hence the manual CCD sweep below.
+        //
+        //   Single → legacy `rb.linearVelocity = finalVel`. Unity-native physics with
+        //            CCD enabled handles moving thin colliders correctly. Used per-platform
+        //            via SurfaceProbeModeOverride. linearVelocity is *not* zeroed in this
+        //            branch — Unity drives movement from it.
+        //
+        // Airborne/Stunned always use the physics-driven path so projectile motion stays
+        // Unity-native.
+        private void OutputVelocity(float dt)
+        {
             Vector2 platformVel = (carrier != null && carrier.IsOnPlatform)
                 ? carrier.GetEffectiveVelocity() : Vector2.zero;
             float frictionAngle = isTouchingSurface ? GetSurfaceAngle() : 0f;
@@ -707,23 +752,6 @@ namespace SlimeJumping.Controller
                     rb.position += carry;
             }
 
-            // Attached/Charging movement model is per-probe-mode:
-            //
-            //   Multi  → teleport-then-snap. Letting Unity integrate `linearVelocity * dt`
-            //            and run its contact solver applies per-frame position corrections
-            //            at facet boundaries we never see in SnapToSurface (visible as
-            //            crawl jitter on faceted polygon terrain). This is the ice-tremor
-            //            fix. Trade-off: bypasses Unity's CCD + contact solver, so moving
-            //            thin colliders that *are* the slime's surface (rotating SpringyBranch)
-            //            can phase the slime through.
-            //
-            //   Single → legacy `rb.linearVelocity = finalVel`. Unity-native physics with
-            //            CCD enabled handles moving thin colliders correctly. Used per-platform
-            //            via SurfaceProbeModeOverride. linearVelocity is *not* zeroed in this
-            //            branch — Unity drives movement from it.
-            //
-            // Airborne/Stunned always use the physics-driven path so projectile motion stays
-            // Unity-native.
             bool useTeleport = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 && currentProbeMode == SurfaceProbeMode.Multi;
 
@@ -748,6 +776,7 @@ namespace SlimeJumping.Controller
                 // teleport-by-rb.position would otherwise skip past. Cast only when the
                 // step is non-trivial and clamp to the first non-ignored hit.
                 Vector2 delta = finalVel * dt;
+                Vector2 posBeforeTeleport = rb.position;
                 float dist = delta.magnitude;
                 if (dist > 1e-5f)
                 {
@@ -760,11 +789,32 @@ namespace SlimeJumping.Controller
                         if (h.collider == null) continue;
                         if (ignoredColliderList.Colliders.Contains(h.collider)) continue;
                         if (h.collider == surfaceCollider) continue;
+                        // Small-ledge lip: don't let the CCD pin the slime against the lip
+                        // face — the forward slide needs to carry it in so Phase A's
+                        // tangent-stripped radial push can lift it over (matches the clip
+                        // skipped in ProjectVelocityAgainstContacts). Without this exemption
+                        // the slime stalls flush against the lip with net displacement ~0.
+                        if (surfaceProbe.IsLowLedgeCollider(h.collider)) continue;
                         if (h.distance < clamped) clamped = h.distance;
                     }
                     rb.position += (delta / dist) * Mathf.Max(0f, clamped - settings.contactSkin);
                 }
                 surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
+
+                // Position-based wedge drain for the small-ledge passthrough: when the
+                // passthrough kept the forward slide alive (clip skipped) but SnapToSurface's
+                // Phase A pushed the slime almost straight back, net displacement is ~0 even
+                // though `velocity` is large — so the velocity-magnitude wedge drain in
+                // FixedUpdateAttached never fires and slideVelocity keeps integrating, then
+                // erupts as a phantom launch on the next charge. Detect the stall by net
+                // displacement vs intended and drain here. Gated on a passthrough actually
+                // having happened this frame so normal sliding/curve chords are untouched.
+                if (surfaceMod.useInertialSlide && surfaceProbe.LowLedgePassthroughCount > 0)
+                {
+                    Vector2 netDelta = rb.position - posBeforeTeleport;
+                    if (delta.sqrMagnitude > 1e-4f && netDelta.sqrMagnitude < delta.sqrMagnitude * 0.16f)
+                        slideVelocity = 0f;
+                }
 
                 if (carrier != null && carrier.IsOnPlatform)
                     carrier.ApplyPositionCarry(carrierFrictionScale);

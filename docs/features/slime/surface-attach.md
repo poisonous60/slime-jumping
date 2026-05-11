@@ -63,6 +63,30 @@ band 안 contact 0개 → `lastGoodNormal` fallback.
 
 2-pass Gauss-Seidel. 코너 러버밴딩 보존하면서 곡면 multi-sample 떨림 제거.
 
+### Small-ledge Passthrough (opt-in)
+`surfaceProbeSmoothSmallLedges=true` 시 — **작은 턱(lip)을 부드럽게 타고 넘어감**.
+
+**판정 (`MultiContactSurfaceProbe.IsSmallLedgeVertex`, edge-enumeration 시점에 per-contact `contactLowLedge[]` 플래그로 저장).** 한 contact 가 작은 턱으로 분류되려면 ALL of:
+1. edge 의 closest point 가 폴리곤 **vertex 에 clamp** 됨 (`uRaw < 0 || uRaw > 1`) — 큰 벽은 슬라임 중심이 벽 정면 면의 interior 높이에 걸려 clamp 안 됨 → 제외.
+2. 그 vertex 가 슬라임 발(`rb.position − gravityUp × slimeRadius`)에서 `0 ~ smallLedgeStepHeight` 사이 — stepHeight 보다 높은 턱 / 아래로 내려가는 edge 제외.
+3. **vertex 바로 위(`vertex + gravityUp × max(2·contactSkin, 0.5·stepHeight)`)가 그 콜라이더 밖** — `OverlapPoint` 단일 호출(raycast 아님 → `QueriesStartInColliders` 영향 없음). 턱 위가 빈 공간이어야 함. tessellate 된 큰 벽(짧은 edge 여러 개로 쪼개진)은 짧은 edge 의 top vertex 가 stepHeight 안에 들어와도 위에 벽이 계속됨 → `OverlapPoint = inside` → 제외. 솔리드 폴리곤 벽도 동일.
+
+(`ProjectVelocityAgainstContacts` 에서는 추가로 그 contact 가 **실제로 속도를 막던 경우**(`Dot(v, n) < 0`)에만 작동 — 곡면 facet 처럼 막지도 않는 contact 는 ledge-pass 로 집계 안 됨.)
+
+**처리 (세 군데):**
+1. **`ProjectVelocityAgainstContacts`**: `contactLowLedge[i]` 이고 그 clip 이 실제로 막던(`vn < 0`) 경우 그 contact 의 속도 클립을 **skip** → forward 슬라이드 속도 보존. `LowLedgePassthroughCount` 는 이렇게 **실제로 skip 된 clip 수**만 셈.
+2. **`TryAddPolygonEdgePush` (Phase A depenetration)**: 작은 턱 vertex 의 bisector push 에서 base surface(`lastGoodNormal` = 슬라임이 붙어있는 표면)의 **tangent 성분을 잘라냄** → push 가 "뒤로 밀어내기" 가 아니라 "base 표면 따라 위로 들어올리기" 가 됨. plain bisector push 는 슬라임이 접근 중일 때 위+뒤를 가리켜서 그 "뒤" 성분이 forward 슬라이드를 상쇄 → 슬라임이 lip 앞에서 정지함. tangent 제거 후엔 매 프레임 위로 살짝 올라가고, 보존된 forward 슬라이드가 옆으로 옮겨줘서 lip 을 넘어감.
+3. **`SlimeController.OutputVelocity` teleport CCD 제외**: teleport CircleCast sweep 이 `surfaceProbe.IsLowLedgeCollider(hit)` 인 콜라이더는 무시 (`surfaceCollider` 무시와 나란히). 안 그러면 CCD 가 슬라임을 lip 정면 면에 flush 하게 박아서 net 변위 ≈ 0 → 제자리에서 멈춤. 제외하면 슬라이드가 슬라임을 lip 안으로 밀어넣고 Phase A 가 위로 들어올림 (대각선 climb).
+
+**유지(이미 있던 것, 이제야 발동 기회 생김):**
+- **`SnapToSurface` Phase B re-anchor tolerance**: `LowLedgePassthroughCount > 0` 인 프레임에는 re-anchor 허용 거리를 `radius + contactSkin` → `radius + contactSkin + smallLedgeStepHeight` 로 늘림. 평소 tolerance 면 슬라임이 base 표면 위로 `contactSkin`(~0.02) 밖에 못 올라감 → 작은 턱도 못 넘음. loosen 하면 `stepHeight` 까지 올라가고, 턱 위로 올라가면 base contact 가 inactive → primary 가 턱으로 전환 → Phase B 가 턱에 anchor → 안착. passthrough 끝나면 tight tolerance 복귀.
+- **position-based wedge drain (`SlimeController.OutputVelocity`)**: passthrough 가 발생한 프레임에 net 변위가 의도 변위의 40% 미만이면 = 사실상 끼임(진짜 못 넘는 obstacle) → `slideVelocity = 0` (clip 을 skip 해서 `velocity` 가 크게 남아 `FixedUpdateAttached` 의 `velocity²<0.01` wedge drain 이 발화 못 하니, phantom launch 방지용 backstop). 정상적으로 턱을 넘으면 net ≈ 의도 라 안 터짐.
+
+- 부수 효과: faceted 볼록 곡면도 각 facet vertex 가 (위가 빈 공간이면) 작은 턱처럼 잡혀서 매끈하게 통과 — 단 곡면 facet 은 forward 속도를 거의 안 막으므로 ledge-pass 로는 거의 안 집계됨.
+- EffectiveNormal / SelectPrimary 는 안 건드림 — clamped contact 는 이미 EffectiveNormal 에서 제외됨.
+- 분석형 콜라이더(Box/Circle/Capsule)의 작은 step 은 아직 미지원 (polygon / composite 만).
+- 디버그: `SlimeStateDebugUI` per-contact 줄 끝에 `ledge-pass: N` (= 실제로 clip skip 된 작은 턱 contact 수).
+
 ## SurfaceNormal Low-Pass Filter
 `SlimeController.FixedUpdate` 에서 `EffectiveNormal` 을 `surfaceNormal` 에 쓰기 전 1차 IIR 필터:
 ```

@@ -98,7 +98,17 @@ namespace SlimeJumping.Optimization
 
         public void Register(OffscreenSleepable s)
         {
-            if (s != null && !sleepers.Contains(s)) sleepers.Add(s);
+            if (s == null) return;
+            // A marker can outlive the condition that made it valid — e.g. a SnowField gets
+            // added under a MeshCollider2DWrapper that already had a marker from an earlier
+            // Attach-All run. RuntimeFallbackScan only ADDS markers, never removes them, so
+            // the stale marker survives. If we let it into the active list, the manager would
+            // SetActive(false) the wrapper when the slime moves away, cascading into the child
+            // SnowField (whose OnDisable wipes its strips) → the snow vanishes until the slime
+            // returns. Reject gated GameObjects here so the marker stays physically present
+            // but completely inert. Clean it up properly via Tools/Optimization/Cleanup.
+            if (OffscreenSleeperCandidates.ShouldSkipAttach(s.gameObject)) return;
+            if (!sleepers.Contains(s)) sleepers.Add(s);
         }
 
         public void Unregister(OffscreenSleepable s)

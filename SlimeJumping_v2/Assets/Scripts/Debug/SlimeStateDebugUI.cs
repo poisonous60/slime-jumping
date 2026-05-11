@@ -96,6 +96,12 @@ namespace SlimeJumping.Debugging
                 GUI.Label(new Rect(screenOffset.x, labelY, 280f, 20f), $"Surface (eff): {angle:F1}°", labelStyle);
                 labelY += 18f;
 
+                // rb.linearVelocity is zeroed while Attached (Multi-probe teleport movement),
+                // so read the controller's internal velocity for the true tangent slide speed.
+                float slideSpeed = Vector2.Dot(slimeController.Velocity, slimeController.SurfaceTangent);
+                GUI.Label(new Rect(screenOffset.x, labelY, 280f, 20f), $"Slide: {slideSpeed:F2}", labelStyle);
+                labelY += 18f;
+
                 var activeMat = slimeController.ActiveSurfaceMaterial;
                 string tagName = activeMat != null ? activeMat.name : "-";
                 GUI.Label(new Rect(screenOffset.x, labelY, 280f, 20f), $"Surface tag: {tagName}", labelStyle);
@@ -123,7 +129,9 @@ namespace SlimeJumping.Debugging
                     }
                     int buried = probe.RejectedBuriedCount;
                     if (buried > 0) sb.Append("   buried-rej: ").Append(buried);
-                    GUI.Label(new Rect(screenOffset.x, labelY, 560f, 20f), sb.ToString(), labelStyle);
+                    int lowLedge = probe.LowLedgePassthroughCount;
+                    if (lowLedge > 0) sb.Append("   ledge-pass: ").Append(lowLedge);
+                    GUI.Label(new Rect(screenOffset.x, labelY, 600f, 20f), sb.ToString(), labelStyle);
                 }
             }
 

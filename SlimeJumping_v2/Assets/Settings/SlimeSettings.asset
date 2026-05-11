@@ -88,6 +88,8 @@ MonoBehaviour:
   projectVelocitySameDirectionDot: 0.7
   surfaceProbeRejectBuriedContacts: 1
   surfaceProbeBuriedTestBias: 0.01
+  surfaceProbeSmoothSmallLedges: 1
+  smallLedgeStepHeight: 0.15
   surfaceNormalSmoothRate: 40
   surfaceNormalSmoothRotatingMultiplier: 2
   surfaceNormalSmoothAngularThreshold: 20

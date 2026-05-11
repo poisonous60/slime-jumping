@@ -30,6 +30,15 @@ namespace SlimeJumping.Physics
         // contact is a corner-bisector, not a real edge-perpendicular). Excluded from
         // EffectiveNormal so corner artefacts don't fake a 20–45° slope on flat ground.
         protected readonly bool[] contactClamped = new bool[16];
+        // Strict subset of contactClamped: the clamped vertex sits within
+        // smallLedgeStepHeight above the slime's foot AND has open space directly above
+        // it — i.e. it's a low lip / step the slime should ride over, not the base of a
+        // tall wall or a tessellated wall segment (where a short edge's top vertex can
+        // fall within stepHeight but more wall continues above). Set by edge-enumerating
+        // probes when surfaceProbeSmoothSmallLedges is on; always false otherwise.
+        // Used to skip the velocity clip (ProjectVelocityAgainstContacts) and to exempt
+        // the ledge collider from the teleport CCD sweep so the slide carries the slime in.
+        protected readonly bool[] contactLowLedge = new bool[16];
         // Per-contact ceiling threshold (cos of ceilingAngle). Resolved from each contact's
         // SurfaceTag in CheckSurface so different materials at a multi-contact corner each
         // get their own attachable arc — Step 1.5 ceiling filter and EffectiveNormal use
@@ -69,10 +78,25 @@ namespace SlimeJumping.Physics
         public Vector2 GetContactNormal(int i) => contactNormals[i];
         public float GetContactDistance(int i) => contactDistances[i];
         public bool IsContactActive(int i) => contactActive[i];
+        public bool IsContactLowLedge(int i) => contactLowLedge[i];
+        // True if any contact this frame is a small-ledge lip on the given collider.
+        // SlimeController exempts that collider from the teleport CCD so the forward
+        // slide can carry the slime into the lip for Phase A's radial push to lift over.
+        public bool IsLowLedgeCollider(Collider2D c)
+        {
+            if (c == null) return false;
+            for (int i = 0; i < contactCount; i++)
+                if (contactLowLedge[i] && contactColliders[i] == c) return true;
+            return false;
+        }
         // Count of edge contacts classified as "buried inside another collider" during the
         // most recent CheckSurface (Multi probe + surfaceProbeRejectBuriedContacts only;
         // 0 otherwise). Includes any that were later promoted back via the fallback.
         public virtual int RejectedBuriedCount => 0;
+        // Count of clamped contacts whose velocity clip was skipped this frame by the
+        // small-ledge passthrough (surfaceProbeSmoothSmallLedges only; 0 otherwise).
+        public int LowLedgePassthroughCount => lowLedgePassthroughCount;
+        protected int lowLedgePassthroughCount;
 
         // Finding 1: preserve last valid normal for deep penetration fallback
         protected Vector2 lastGoodNormal = Vector2.up;
@@ -418,6 +442,13 @@ namespace SlimeJumping.Physics
         ///   surface — clipping against them produces step changes in vel as the
         ///   active set toggles (the Ice judder). Different-direction contacts
         ///   (true corners, opposing walls) still get multi-clipped, soft-banded.
+        ///   Exception: a contact the probe classified as a small-ledge lip
+        ///   (contactLowLedge) has its clip skipped when surfaceProbeSmoothSmallLedges
+        ///   is on, so the forward slide is preserved and Phase A's tangent-stripped
+        ///   radial push (TryAddPolygonEdgePush) lifts the slime over the lip.
+        ///   lowLedgePassthroughCount counts only the clips actually skipped this way —
+        ///   so the ledge-pass diagnostic doesn't fire on curve facets or non-opposing
+        ///   contacts.
         ///
         /// Two Gauss-Seidel passes converge for typical 2-3 contact corners.
         /// </summary>
@@ -433,6 +464,8 @@ namespace SlimeJumping.Physics
             float fullBand = contactSkin * Mathf.Max(1f, settings.effectiveNormalSoftBandMultiplier);
             float rampWidth = fullBand * Mathf.Clamp01(settings.effectiveNormalWeightRampBand);
             float sameDirDot = Mathf.Clamp01(settings.projectVelocitySameDirectionDot);
+            bool smoothLedges = settings.surfaceProbeSmoothSmallLedges;
+            lowLedgePassthroughCount = 0;
 
             for (int pass = 0; pass < passes; pass++)
             {
@@ -442,8 +475,11 @@ namespace SlimeJumping.Physics
                     // Skip same-surface samples — fallbackNormal already constrained that axis.
                     if (Vector2.Dot(n, fallbackNormal) > sameDirDot) continue;
 
+                    float vn = Vector2.Dot(v, n);
+                    if (vn >= 0f) continue; // contact doesn't oppose this velocity — nothing to clip.
+
                     float w = radius + fullBand - contactDistances[i];
-                    if (w <= 0f) continue;
+                    if (w <= 0f) continue; // outside the soft band — wouldn't clip anyway.
                     float weight;
                     if (rampWidth > 1e-6f)
                     {
@@ -456,8 +492,20 @@ namespace SlimeJumping.Physics
                     }
                     if (weight < 1e-4f) continue;
 
-                    float vn = Vector2.Dot(v, n);
-                    if (vn < 0f) v -= n * (vn * weight);
+                    // Small-ledge passthrough: this contact is a low lip the slime should ride
+                    // over (probe-classified — vertex within stepHeight of the foot, open space
+                    // above it). Skip the clip so the forward slide survives; Phase A's
+                    // tangent-stripped radial push lifts the slime over the lip and the teleport
+                    // CCD exempts the ledge collider so the slide actually carries it in.
+                    // Counted only here — once per real skipped clip — so the diagnostic stays
+                    // quiet on curve facets and non-opposing contacts.
+                    if (smoothLedges && contactLowLedge[i])
+                    {
+                        if (pass == 0) lowLedgePassthroughCount++;
+                        continue;
+                    }
+
+                    v -= n * (vn * weight);
                 }
             }
         }
@@ -511,7 +559,16 @@ namespace SlimeJumping.Physics
                 Vector2 closest = surfaceCollider.ClosestPoint(pos);
                 Vector2 toSlime = pos - closest;
                 float dist = toSlime.magnitude;
-                if (dist > radius + contactSkin && dist > 0.0001f)
+                // Small-ledge climb: while a passthrough is active, loosen the re-anchor
+                // tolerance by stepHeight so Phase A's "up the slope" push can raise the
+                // slime onto the ledge before Phase B yanks it back to the primary. Without
+                // this the slime can only rise ~contactSkin above the slope — far too little
+                // to climb even a tiny lip. Reverts to the tight tolerance once the slime is
+                // on the ledge top and the primary has switched to it (no more passthrough).
+                float anchorTolerance = radius + contactSkin;
+                if (lowLedgePassthroughCount > 0)
+                    anchorTolerance += settings.smallLedgeStepHeight;
+                if (dist > anchorTolerance && dist > 0.0001f)
                     pos = closest + (toSlime / dist) * radius;
             }
 

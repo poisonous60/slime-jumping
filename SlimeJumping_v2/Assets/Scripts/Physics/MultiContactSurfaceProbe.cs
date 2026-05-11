@@ -259,7 +259,7 @@ namespace SlimeJumping.Physics
                     StashRejected(col, normal, dist);
                     return;
                 }
-                MergeOrAddContact(col, normal, dist, false, dedupeDot, firstNewIdx);
+                MergeOrAddContact(col, normal, dist, false, false, dedupeDot, firstNewIdx);
             }
         }
 
@@ -307,7 +307,30 @@ namespace SlimeJumping.Physics
             // contaminate the slope reading and produce phantom slide on flat tops.
             // Interior contacts use outward (the real edge perpendicular).
             Vector2 normal = clamped ? toSlime / dist : outward;
-            MergeOrAddContact(col, normal, dist, clamped, dedupeDot, firstNewIdx);
+            // Classify a clamped vertex as a small-ledge lip (low + open above) so
+            // ProjectVelocityAgainstContacts skips its clip and the controller exempts
+            // this collider from the teleport CCD. closest == the clamped vertex.
+            bool lowLedge = clamped && settings.surfaceProbeSmoothSmallLedges
+                && IsSmallLedgeVertex(col, closest, settings.slimeRadius);
+            MergeOrAddContact(col, normal, dist, clamped, lowLedge, dedupeDot, firstNewIdx);
+        }
+
+        // A vertex-clamped contact/push is a "small ledge" the slime should climb iff the
+        // vertex sits within smallLedgeStepHeight above the slime's foot (an upward step,
+        // not a tall wall or a downward edge) AND a point a short distance above the vertex
+        // lies outside ownerCol — i.e. the obstruction has a low top. The "open above"
+        // test (a single OverlapPoint, no raycast — so unaffected by QueriesStartInColliders)
+        // is what rules out tessellated/solid walls whose lowest segment's top vertex falls
+        // within stepHeight but more collider continues above it. Caller has already
+        // established the contact clamped to vertex.
+        private bool IsSmallLedgeVertex(Collider2D ownerCol, Vector2 vertex, float radius)
+        {
+            Vector2 foot = rb.position - lastGravityUp * radius;
+            float heightAboveFoot = Vector2.Dot(vertex - foot, lastGravityUp);
+            if (heightAboveFoot < -settings.contactSkin || heightAboveFoot > settings.smallLedgeStepHeight)
+                return false;
+            float aboveEps = Mathf.Max(2f * settings.contactSkin, 0.5f * settings.smallLedgeStepHeight);
+            return !ownerCol.OverlapPoint(vertex + lastGravityUp * aboveEps);
         }
 
         private void TryAddEdgePolylineContact(Collider2D col, Vector2 pos, Vector2 a, Vector2 b,
@@ -335,10 +358,10 @@ namespace SlimeJumping.Physics
                 StashRejected(col, normal, dist);
                 return;
             }
-            MergeOrAddContact(col, normal, dist, false, dedupeDot, firstNewIdx);
+            MergeOrAddContact(col, normal, dist, false, false, dedupeDot, firstNewIdx);
         }
 
-        private void MergeOrAddContact(Collider2D col, Vector2 n, float dist, bool clamped,
+        private void MergeOrAddContact(Collider2D col, Vector2 n, float dist, bool clamped, bool lowLedge,
             float dedupeDot, int firstNewIdx)
         {
             for (int c = firstNewIdx; c < contactCount; c++)
@@ -351,6 +374,7 @@ namespace SlimeJumping.Physics
                         contactNormals[c] = n;
                         contactDistances[c] = dist;
                         contactClamped[c] = clamped;
+                        contactLowLedge[c] = lowLedge;
                     }
                     // A non-clamped contact "wins" the slot regardless of distance —
                     // an interior edge reading is always more authoritative than a
@@ -362,6 +386,7 @@ namespace SlimeJumping.Physics
                     {
                         contactClamped[c] = false;
                         contactNormals[c] = n;
+                        contactLowLedge[c] = false; // an interior edge isn't a vertex lip
                     }
                     return;
                 }
@@ -371,6 +396,7 @@ namespace SlimeJumping.Physics
             contactNormals[contactCount] = n;
             contactDistances[contactCount] = dist;
             contactClamped[contactCount] = clamped;
+            contactLowLedge[contactCount] = lowLedge;
             contactCount++;
         }
 
@@ -501,6 +527,30 @@ namespace SlimeJumping.Physics
             // depenetrated AWAY from the corner rather than along the edge perpendicular,
             // letting it roll over the lip; interior contacts use outward (= bisector).
             Vector2 normal = clamped ? toSlime / dist : outward;
+
+            // Small-ledge lift: a clamped-vertex push whose vertex is a low lip (within
+            // stepHeight of the slime's foot, open space above — same classification as the
+            // contact path's contactLowLedge). The plain bisector push points up-AND-BACK
+            // while the slime approaches (vertex behind the slime center horizontally), and
+            // that "back" component cancels the forward slide → slime stalls at the lip.
+            // Strip the along-surface (tangent) component so the push becomes purely "up the
+            // base surface" (lastGoodNormal = the surface the slime is on): the slime then
+            // rises past the lip while the preserved forward slide (clip skipped in
+            // ProjectVelocityAgainstContacts) carries it over.
+            if (clamped && settings.surfaceProbeSmoothSmallLedges
+                && IsSmallLedgeVertex(col, closest, radius)) // closest == the vertex
+            {
+                float along = Vector2.Dot(normal * depth, lastGoodNormal);
+                if (along > 1e-5f)
+                {
+                    normal = lastGoodNormal;
+                    depth = along;
+                }
+                else
+                {
+                    return; // push had no useful up-component (vertex above slime) — skip
+                }
+            }
 
             for (int p = 0; p < pushCount; p++)
             {
@@ -690,6 +740,7 @@ namespace SlimeJumping.Physics
                 contactNormals[contactCount] = rejectedNormals[i];
                 contactDistances[contactCount] = rd;
                 contactClamped[contactCount] = false;
+                contactLowLedge[contactCount] = false;
                 contactCount++;
             }
         }
