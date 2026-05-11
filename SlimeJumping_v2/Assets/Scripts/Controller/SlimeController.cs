@@ -105,18 +105,19 @@ namespace SlimeJumping.Controller
         public float ChargeFullAimProgress => settings.chargeFullAimTime > 0.0001f
             ? Mathf.Clamp01(chargeFullAimTimer / settings.chargeFullAimTime)
             : (chargeFullAimTimer > 0f ? 1f : 0f);
-        public float ChargingLaunchSpeed
+        public float ChargingLaunchSpeed => LaunchPowerForRatio(
+            activeChargeRadius > 0.0001f ? aimOffset.magnitude / settings.chargeRadius : 0f,
+            activeChargeRadius > settings.chargeRadius);
+
+        // Maps a normalized aim radius (aimOffset.magnitude / chargeRadius) to launch power.
+        // Energy-conversion launches (activeChargeRadius expanded past chargeRadius) start the
+        // curve from zero; regular launches start at minLaunchPower so a 0%-aim launch still moves.
+        private float LaunchPowerForRatio(float ratio, bool isEnergyConversion)
         {
-            get
-            {
-                float ratio = activeChargeRadius > 0.0001f
-                    ? aimOffset.magnitude / settings.chargeRadius
-                    : 0f;
-                float curved = Mathf.Pow(ratio, settings.chargeCurveExponent);
-                return activeChargeRadius > settings.chargeRadius
-                    ? curved * settings.baseLaunchPower
-                    : settings.minLaunchPower + curved * (settings.baseLaunchPower - settings.minLaunchPower);
-            }
+            float curved = Mathf.Pow(ratio, settings.chargeCurveExponent);
+            return isEnergyConversion
+                ? curved * settings.baseLaunchPower
+                : settings.minLaunchPower + curved * (settings.baseLaunchPower - settings.minLaunchPower);
         }
 
         // Judgment circle charge state (aimOffset = relative to slime center)
@@ -126,14 +127,11 @@ namespace SlimeJumping.Controller
         // Post-launch input ignore
         private float postLaunchTimer;
 
-        // Post-charged-launch air control lockout (not set by Hop/ForceAirborneWithVelocity)
+        // Post-charged-launch air control lockout (not set by ForceAirborneWithVelocity)
         private float postLaunchAirControlLockTimer;
 
         // Launch surface ignore
         private IgnoredColliderList ignoredColliderList;
-
-        // Volume charging flag (sand: Airborne → Charging without surface)
-        private bool isVolumeCharging;
 
         // --- Gravity Field ---
         // LIFO stack of active gravity zones. Empty = world gravity.
@@ -197,25 +195,6 @@ namespace SlimeJumping.Controller
         // Stick timer (delay before slide starts)
         private float stickTimer;
         private bool wasStuck;
-        private bool preserveLandingVelocity;
-
-        // Ground Dash (A/D double-tap impulse boost)
-        private float dashCooldownTimer;
-        private float dashBufferTimer;
-        // Latched at event-fire time so a quick double-tap doesn't fail when the second
-        // press is already released by the time FixedUpdate samples LastInputMove.
-        // Keyboard sign: -1 = A (left), +1 = D (right). Crawl-direction sign is the negation.
-        private int dashPendingKeyboardSign;
-
-        // Air Dash (Shift, driven by external SlimeAirDash component).
-        // Non-zero = FixedUpdateAirborne suspends gravity + air control for the remainder.
-        private float airDashActiveTimer;
-        public bool IsAirDashing => airDashActiveTimer > 0f;
-
-        // Hop cooldown
-        private float hopCooldownTimer;
-        private float hopBufferTimer;
-        private bool hopRequested;
 
         // Charge input buffer (press-just-before-landing grace)
         private float chargeBufferTimer;
@@ -230,9 +209,6 @@ namespace SlimeJumping.Controller
         // Energy-based conversion normalization (stored at launch)
         private float launchSpeed;
         private Vector2 launchPosition;
-        // True when the current airborne flight was started by Hop (not Launch / walk-off / ForceAirborne).
-        // Consumed by the landing energy-conversion formula to apply hopConversionBonus / hopConversionEnergyBonus.
-        private bool launchedByHop;
 
         // Pre-launch slide+crawl tangent speed captured at Launch(). Consumed by ComputeLandingCrawlVelocity
         // as the "free zone" baseline for landingExcessGain on charged-launch returns. launchOriginValid is
@@ -332,11 +308,6 @@ namespace SlimeJumping.Controller
         // (JumpPad, Catapult) go through ForceAirborneWithVelocity and should raise their own cue.
         public event System.Action<Vector2, Vector2, bool> OnLaunch; // (position, velocity, wasHop)
 
-        // --- Air Dash event ---
-        // Payload = velocity written into the slime at dash start (direction × speed).
-        // Consumers: SlimeAirDashVisual (trail/particles), audio, analytics.
-        public event System.Action<Vector2> OnAirDashStarted;
-
         // --- Friction-based detach event ---
         // Fires when the slime is detached by centrifugal/inertial limit (NOT by ceiling
         // angle / contact loss). Payload: (detachVelocity, surfaceNormal at detach,
@@ -377,8 +348,6 @@ namespace SlimeJumping.Controller
             public readonly float rawRatio;
             public readonly bool convex;
             public readonly int sameSignFrames;
-            public readonly bool bigSpike;
-            public readonly bool curveSustained;
             public readonly bool detachFiredThisFrame;
 
             public FrictionDetachDebug(
@@ -386,8 +355,7 @@ namespace SlimeJumping.Controller
                 bool tNoPrev, bool tColliderChanged, bool tStick, bool tBelowMinSpeed,
                 float tangentSignedSpeed, float dThetaDeg, float omega,
                 float required, float gravityHelp, float available, float rawRatio,
-                bool convex, int sameSignFrames,
-                bool bigSpike, bool curveSustained, bool detachFiredThisFrame)
+                bool convex, int sameSignFrames, bool detachFiredThisFrame)
             {
                 this.toggleOn = toggleOn;
                 this.inAttached = inAttached;
@@ -405,8 +373,6 @@ namespace SlimeJumping.Controller
                 this.rawRatio = rawRatio;
                 this.convex = convex;
                 this.sameSignFrames = sameSignFrames;
-                this.bigSpike = bigSpike;
-                this.curveSustained = curveSustained;
                 this.detachFiredThisFrame = detachFiredThisFrame;
             }
         }
@@ -503,8 +469,6 @@ namespace SlimeJumping.Controller
         {
             inputReader.OnJumpPressed += HandleJumpPressed;
             inputReader.OnJumpReleased += HandleJumpReleased;
-            inputReader.OnGroundDashRequested += HandleGroundDashRequested;
-            inputReader.OnVerticalUpPressed += HandleVerticalUpPressed;
             inputReader.OnInteractPressed += HandleInteractPressed;
             OnSpawned?.Invoke(this);
         }
@@ -513,8 +477,6 @@ namespace SlimeJumping.Controller
         {
             inputReader.OnJumpPressed -= HandleJumpPressed;
             inputReader.OnJumpReleased -= HandleJumpReleased;
-            inputReader.OnGroundDashRequested -= HandleGroundDashRequested;
-            inputReader.OnVerticalUpPressed -= HandleVerticalUpPressed;
             inputReader.OnInteractPressed -= HandleInteractPressed;
             OnDespawned?.Invoke(this);
         }
@@ -527,18 +489,10 @@ namespace SlimeJumping.Controller
                 return;
             }
 
-            if (hopCooldownTimer > 0f) hopCooldownTimer -= Time.deltaTime;
-            if (hopBufferTimer > 0f) hopBufferTimer -= Time.deltaTime;
-            if (dashCooldownTimer > 0f) dashCooldownTimer -= Time.deltaTime;
-            if (dashBufferTimer > 0f) dashBufferTimer -= Time.deltaTime;
             if (chargeBufferTimer > 0f) chargeBufferTimer -= Time.deltaTime;
 
             if (postLaunchTimer > 0f)
-            {
                 postLaunchTimer -= Time.deltaTime;
-                return;
-            }
-
         }
 
         private void FixedUpdate()
@@ -897,6 +851,76 @@ namespace SlimeJumping.Controller
                 : surfaceMod.slideUphillBrake.Evaluate(angle);
         }
 
+        // Per-FixedUpdate gravity-driven slide speed along surfaceTangent. Shared by the
+        // Attached and Charging state handlers (Charging passes gravityScale =
+        // chargingSlideGravityScale; Attached passes 1).
+        //   useInertialSlide ON  → gravity-along-tangent integrates into slideVelocity as
+        //     acceleration; slideResistance is kinetic friction (m/s²); slideLinearDrag is
+        //     an exponential drag; ResolveSlopeGain shapes descent/ascent asymmetry.
+        //   useInertialSlide OFF → legacy steady-state: slideSpeed recomputed each frame from
+        //     current tangent gravity, minus resistance, ramped up by slideRampUp after landing.
+        // Always ticks slideRampTimer for state consistency.
+        private float ComputeSlideSpeed(float angle, float dt, float gravityScale)
+        {
+            float gravAlongTangent = Vector2.Dot(GravityVector, surfaceTangent) * gravityScale;
+
+            if (surfaceMod.useInertialSlide)
+            {
+                float slideAccel = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
+                slideAccel *= ResolveSlopeGain(slideAccel, slideVelocity, angle);
+                slideVelocity += slideAccel * dt;
+                float linearDrag = surfaceMod.slideLinearDrag.Evaluate(angle);
+                if (linearDrag > 0f)
+                    slideVelocity *= Mathf.Max(0f, 1f - linearDrag * dt);
+                float frictionDecel = settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
+                if (frictionDecel > 0f)
+                    slideVelocity = Mathf.MoveTowards(slideVelocity, 0f, frictionDecel * dt);
+                slideRampTimer += dt;
+                return slideVelocity;
+            }
+
+            if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
+                gravAlongTangent = 0f;
+            float slideSpeed = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
+            // Resistance applies to slideSpeed only (not gravAlongTangent — crawl still fights full gravity)
+            if (Mathf.Abs(slideSpeed) > 0.001f)
+            {
+                float sign = Mathf.Sign(slideSpeed);
+                slideSpeed -= sign * settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
+                if (Mathf.Sign(slideSpeed) != sign)
+                    slideSpeed = 0f;
+            }
+            slideRampTimer += dt;
+            float surfaceRamp = surfaceMod.slideRampUp.Evaluate(angle);
+            float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.stickSlideTransitionRampTime;
+            float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
+            return slideSpeed * rampT;
+        }
+
+        // Stick→slide handoff, run at the top of the Attached / Charging surface handler:
+        // when the stick timer just expired, reset the slide ramp and seed the active
+        // tangent channel from the velocity the stick decel left behind; then re-arm
+        // wasStuck while stick is still active.
+        private void UpdateStickTransition()
+        {
+            if (wasStuck && stickTimer <= 0f)
+            {
+                slideRampTimer = 0f;
+                wasStuck = false;
+                float postStickTangent = Vector2.Dot(velocity, surfaceTangent);
+                if (surfaceMod.useInertialSlide)
+                {
+                    slideVelocity = postStickTangent;
+                    crawlVelocity = 0f;
+                }
+                else
+                {
+                    crawlVelocity = postStickTangent;
+                }
+            }
+            if (stickTimer > 0f) wasStuck = true;
+        }
+
         private Vector2 GetSurfaceVelocity(Collider2D col)
         {
             var motor = col != null ? col.GetComponentInParent<PlatformMotor>() : null;
@@ -952,11 +976,6 @@ namespace SlimeJumping.Controller
             else
                 RegisterAttachToggle();
 
-            // Leaving Airborne ends any in-flight air dash (timer only ticks in
-            // FixedUpdateAirborne, so a stale value would fire on re-entry).
-            if (currentState == SlimeState.Airborne && newState != SlimeState.Airborne)
-                airDashActiveTimer = 0f;
-
             // Friction-detach state must reset on entry to Attached or Charging.
             // Attached: new attach starts with sameSignFrames=0; the Attached check's
             //   transientFrame guard covers the first frame anyway, but keeping these
@@ -1010,44 +1029,8 @@ namespace SlimeJumping.Controller
         {
             launchSpeed = velocity.magnitude;
             launchPosition = rb.position;
-            launchedByHop = false;
             conversionCount = 0;
             ClearPendingEnergyConversion(executeDeferredReset: false);
-        }
-
-        /// <summary>
-        /// Writes the given velocity and suspends gravity + air control for `activeDuration`
-        /// seconds. Called by the optional SlimeAirDash component.
-        /// Works from Attached (flings off the surface into Airborne) and Airborne.
-        /// Blocked from Charging (would violate "charge must end in launch") and Stunned.
-        /// Dash velocity flows through the standard landing path, so subsequent tangent
-        /// inheritance at Charging entry (hyper dash) preserves the boost into the next
-        /// Launch automatically.
-        /// </summary>
-        public bool ApplyAirDash(Vector2 dashVelocity, float activeDuration)
-        {
-            if (_override != null) return false;
-            if (activeDuration <= 0f) return false;
-            if (currentState == SlimeState.Charging) return false;
-            if (currentState == SlimeState.Stunned) return false;
-
-            if (currentState == SlimeState.Attached)
-            {
-                // Reuse the external-force path: detaches carrier, clears stick/crawl/rope
-                // state, registers launch-clearance ignore, transitions to Airborne via
-                // FinalizeAirborneExit (which resets the launch-reference for energy conversion).
-                ForceAirborneWithVelocity(dashVelocity);
-            }
-            else // Airborne
-            {
-                velocity = dashVelocity;
-                ResetLaunchReference();
-            }
-
-            airDashActiveTimer = activeDuration;
-            postLaunchAirControlLockTimer = 0f;
-            OnAirDashStarted?.Invoke(dashVelocity);
-            return true;
         }
 
         // --- Platform Effect ---

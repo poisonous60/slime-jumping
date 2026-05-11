@@ -77,13 +77,6 @@ namespace SlimeJumping.Physics
         // Finding 1: preserve last valid normal for deep penetration fallback
         protected Vector2 lastGoodNormal = Vector2.up;
 
-        // Cached at the top of SnapToSurface so subclass DepenetratePass can read the
-        // smoothed primary surfaceNormal of the current frame. Used by the Phase A
-        // tangent-strip toggle (curve-slide anti-stutter): push direction is projected
-        // onto this normal so any tangent component of the per-collider weighted push
-        // (bisector-direction kick at polygon vertex transitions) is dropped.
-        protected Vector2 currentSnapNormal;
-
         protected SurfaceProbe(Rigidbody2D rb, SlimeSettings settings, List<Collider2D> ignoredColliders)
         {
             this.rb = rb;
@@ -477,9 +470,6 @@ namespace SlimeJumping.Physics
             float contactSkin = settings.contactSkin;
             Vector2 pos = rb.position;
 
-            // Stash for subclass DepenetratePass — Phase A tangent-strip toggle reads this.
-            currentSnapNormal = surfaceNormal;
-
             // Phase A: Depenetrate against all nearby colliders (push only).
             // Implementation delegates to DepenetratePass for single- vs multi-probe style.
             lastDepenPushDir = Vector2.zero;
@@ -517,55 +507,12 @@ namespace SlimeJumping.Physics
             // "barely penetrating (Phase A pushes)" and "just outside (no push)".
             // Without this, smoothed Phase A leaves a 50 Hz magnitude oscillation
             // because some frames have penetration to fix and some don't.
-            //
-            // Two anchor strategies, gated by toggles in SlimeSettings:
-            //  (E) phaseBUseRaycastAnchor: cast along -surfaceNormal and anchor at
-            //      hit + surfaceNormal*radius. The cast axis is the smoothed primary
-            //      normal, so anchor is exactly perpendicular to surfaceTangent —
-            //      tangent-direction perturbation is structurally zero. Used to
-            //      eliminate vertex-bisector saw-tooth on faceted curve slides.
-            //      Falls back to legacy ClosestPoint anchor if the cast misses
-            //      surfaceCollider (e.g. smoothed normal too far off the actual face).
-            //  (legacy) ClosestPoint(pos) + radial*radius. Continuous across interior
-            //      edges, but at vertex-clamped frames the bisector direction lags
-            //      the next edge's plane → small backward kick (saw-tooth).
-            //  (B) phaseBSkipAtVertexClamp: when on the legacy path, skip re-anchor
-            //      if (pos-closest) direction differs from surfaceNormal by more
-            //      than acos(threshold) — interpreted as "ClosestPoint hit a vertex,
-            //      bisector direction would mis-anchor".
             {
-                bool ePathTaken = false;
-                if (settings.phaseBUseRaycastAnchor)
-                {
-                    float rayDist = radius * settings.phaseBRaycastDistanceMultiplier;
-                    RaycastHit2D hit = Physics2D.Raycast(pos, -surfaceNormal, rayDist, settings.groundLayer);
-                    if (hit.collider == surfaceCollider)
-                    {
-                        pos = hit.point + surfaceNormal * radius;
-                        ePathTaken = true;
-                    }
-                    // else: cast missed surfaceCollider (different collider hit, or no hit)
-                    // — fall through to legacy ClosestPoint anchor.
-                }
-
-                if (!ePathTaken)
-                {
-                    Vector2 closest = surfaceCollider.ClosestPoint(pos);
-                    Vector2 toSlime = pos - closest;
-                    float dist = toSlime.magnitude;
-
-                    if (dist > radius + contactSkin && dist > 0.0001f)
-                    {
-                        bool skip = false;
-                        if (settings.phaseBSkipAtVertexClamp)
-                        {
-                            float alignment = Vector2.Dot(toSlime / dist, surfaceNormal);
-                            if (alignment < settings.phaseBVertexClampDotThreshold) skip = true;
-                        }
-                        if (!skip)
-                            pos = closest + (toSlime / dist) * radius;
-                    }
-                }
+                Vector2 closest = surfaceCollider.ClosestPoint(pos);
+                Vector2 toSlime = pos - closest;
+                float dist = toSlime.magnitude;
+                if (dist > radius + contactSkin && dist > 0.0001f)
+                    pos = closest + (toSlime / dist) * radius;
             }
 
             rb.position = pos;

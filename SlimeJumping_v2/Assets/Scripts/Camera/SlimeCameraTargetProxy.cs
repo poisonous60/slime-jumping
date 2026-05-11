@@ -5,22 +5,22 @@ namespace SlimeJumping.Camera
 {
     /// <summary>
     /// Follow-target proxy for Cinemachine. Position = low-pass filtered slime position
-    /// during normal motion, but snaps instantly on intentional bursts (Launch / Hop /
-    /// AirDash). Set the CinemachineCamera's Follow target to this object's transform
-    /// instead of the slime directly.
+    /// during normal motion, but snaps instantly on intentional bursts (Launch). Set the
+    /// CinemachineCamera's Follow target to this object's transform instead of the slime
+    /// directly.
     ///
     /// Why: with the camera following slime directly and Cinemachine Damping=0, frame-
     /// to-frame multi-probe normal jitter on Ice curves transfers into visible camera
     /// shake. Adding Cinemachine Damping smooths it but the slime feels "left behind"
-    /// when hopping (intentional bursts get the same lag as jitter).
+    /// when launching (intentional bursts get the same lag as jitter).
     ///
     /// This proxy decouples the two:
     ///   - Continuous motion (slide / walk / fall): low-pass at smoothRateHz, slime
     ///     micro-jitter is averaged out, lag ≈ 1 / (2π × rate). At 30 Hz that's ~5 ms,
     ///     well under one fixed step — visually imperceptible.
-    ///   - Launch / Hop / AirDash: SlimeController fires OnLaunch / OnAirDashStarted,
-    ///     proxy snaps to slime in the next LateUpdate. Camera follows the burst with
-    ///     zero lag, exactly as if Cinemachine Damping = 0.
+    ///   - Launch: SlimeController fires OnLaunch, proxy snaps to slime in the next
+    ///     LateUpdate. Camera follows the burst with zero lag, exactly as if
+    ///     Cinemachine Damping = 0.
     ///
     /// Setup:
     ///   1. Create empty GameObject "SlimeCameraTarget" in the scene (anywhere).
@@ -38,10 +38,8 @@ namespace SlimeJumping.Camera
         [SerializeField] [Min(0f)] private float smoothRateHz = 30f;
         public float SmoothRateHz { get => smoothRateHz; set => smoothRateHz = Mathf.Max(0f, value); }
 
-        [Tooltip("Snap instantly on Launch / Hop events (player-intentional bursts). Recommended ON.")]
+        [Tooltip("Snap instantly on Launch (player-intentional burst). Recommended ON.")]
         [SerializeField] private bool snapOnLaunch = true;
-        [Tooltip("Snap instantly on AirDash. Recommended ON.")]
-        [SerializeField] private bool snapOnAirDash = true;
         [Tooltip("Snap if slime moves more than this in one LateUpdate (catches teleports / external forces / stun knockback that don't fire OnLaunch). 0 = disabled.")]
         [SerializeField] [Min(0f)] private float snapDistanceThreshold = 2f;
 
@@ -52,29 +50,18 @@ namespace SlimeJumping.Camera
         private void OnEnable()
         {
             if (slime != null)
-            {
                 slime.OnLaunch += HandleLaunch;
-                slime.OnAirDashStarted += HandleAirDash;
-            }
         }
 
         private void OnDisable()
         {
             if (slime != null)
-            {
                 slime.OnLaunch -= HandleLaunch;
-                slime.OnAirDashStarted -= HandleAirDash;
-            }
         }
 
         private void HandleLaunch(Vector2 pos, Vector2 vel, bool wasHop)
         {
             if (snapOnLaunch) snapPending = true;
-        }
-
-        private void HandleAirDash(Vector2 v)
-        {
-            if (snapOnAirDash) snapPending = true;
         }
 
         public void RequestSnap() { snapPending = true; }

@@ -158,18 +158,6 @@ namespace SlimeJumping.Physics
 
                 if (perColliderPush.sqrMagnitude > 0f)
                 {
-                    // [A] Optional: strip surfaceTangent component from the per-collider
-                    // weighted push. On polygon-vertex transitions the smoothed-aggregation
-                    // bisector has a small tangent component (saw-tooth dPos source on
-                    // curve slides). currentSnapNormal is the smoothed primary normal
-                    // cached by SurfaceProbe.SnapToSurface. Guard on |normal|>0.5 so
-                    // pre-Snap calls (currentSnapNormal still default) don't NaN.
-                    if (settings.phaseAStripTangentComponent && currentSnapNormal.sqrMagnitude > 0.5f)
-                    {
-                        Vector2 t = new Vector2(-currentSnapNormal.y, currentSnapNormal.x);
-                        float tangentDot = Vector2.Dot(perColliderPush, t);
-                        perColliderPush -= t * (tangentDot * settings.phaseAStripStrength);
-                    }
                     pos += perColliderPush;
                     totalPush += perColliderPush;
                     anyPenetration = true;

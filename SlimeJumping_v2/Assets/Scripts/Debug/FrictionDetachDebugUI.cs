@@ -77,14 +77,14 @@ namespace SlimeJumping.Debugging
                 "[FrictionDetach] t={0:F2}s pos=({1:F2},{2:F2}) vel=({3:F2},{4:F2}) " +
                 "|v|={5:F2} ratio={6:F2} overshoot={7:F2} req={8:F2} avail={9:F2} " +
                 "ω={10:F2}rad/s Δθ={11:F1}° tangentSpd={12:F2} sameSign={13} " +
-                "convex={14} bigSpike={15} curveSust={16} normal=({17:F2},{18:F2})",
+                "convex={14} normal=({15:F2},{16:F2})",
                 Time.time,
                 pos.x, pos.y,
                 detachVel.x, detachVel.y, detachVel.magnitude,
                 d.rawRatio, overshoot,
                 d.required, d.available,
                 d.omega, d.dThetaDeg, d.tangentSignedSpeed, d.sameSignFrames,
-                d.convex, d.bigSpike, d.curveSustained,
+                d.convex,
                 sNormal.x, sNormal.y),
                 this);
         }
@@ -108,7 +108,7 @@ namespace SlimeJumping.Debugging
             // Background panel.
             float lineH = fontSize + 6f;
             float pad = 8f;
-            int rowCount = 17;
+            int rowCount = 15;
             float panelH = pad * 2 + lineH * (rowCount + 1);
 
             Rect panelRect = new Rect(screenOffset.x, screenOffset.y, panelWidth, panelH);
@@ -153,8 +153,6 @@ namespace SlimeJumping.Debugging
             DrawRow(ref y, xLabel, xValue, labelW, valueW, "ratio", d.rawRatio.ToString("F3"), d.rawRatio > 1f);
             DrawRow(ref y, xLabel, xValue, labelW, valueW, "convex (info)", d.convex ? "TRUE" : "false", null);
             DrawRow(ref y, xLabel, xValue, labelW, valueW, "sameSignFrames", d.sameSignFrames.ToString(), null);
-            DrawRow(ref y, xLabel, xValue, labelW, valueW, "bigSpike (info)", d.bigSpike ? "TRUE" : "false", null);
-            DrawRow(ref y, xLabel, xValue, labelW, valueW, "curveSustained (info)", d.curveSustained ? "TRUE" : "false", null);
 
             // Centrifugal pre-condition only — geometric horizon test runs after this
             // and is not snapshot-able without re-querying physics. The detach-fired

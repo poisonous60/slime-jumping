@@ -51,10 +51,6 @@ namespace SlimeJumping.Controller
             }
 
             // Clean up current state
-            if (currentState == SlimeState.Charging)
-            {
-                isVolumeCharging = false;
-            }
             if (carrier != null) carrier.Detach();
             ClearPlatformEffect();
             surfaceMod = settings.BuildDefaultModifiers();
@@ -99,7 +95,6 @@ namespace SlimeJumping.Controller
             // Resume as Airborne
             launchSpeed = 0f;
             launchPosition = rb.position;
-            launchedByHop = false;
             conversionCount = 0;
             stunTimer = 0f;
             ChangeState(SlimeState.Airborne, intentional: true);

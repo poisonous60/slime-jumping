@@ -2,6 +2,8 @@
 
 > **문서 분할 (2026-04-24):** 기능별로 세분화하여 [features/](features/) 아래로 재구성. 이 파일은 목차 + 링크 허브 역할.
 > 설계와 구현 현황이 각 기능 파일에 통합됨.
+>
+> **메커닉 정리 (2026-05-11):** "조작감 실험" 잔재 제거 리팩토링. 다음 기능을 코드에서 **완전 삭제**: Ground Dash (A/D 더블탭), Shift Air Dash (`SlimeAirDash`/`SlimeAirDashVisual` 컴포넌트 포함), Hop (W 표면 점프 + 모멘텀 + hop 표면 머티리얼 필드 7종 + `launchedByHop`/`hopConversionBonus`/`hopConversionEnergyBonus`), Volume Charging (모래 위 표면-없는 차징), WASD 표면 좌우 이동(crawl input — `crawlVelocity` 채널은 착지 관성 운반·감쇠 용도로만 유지). 또한 dormant 설정 정리: `cornerBigSpikeAngle`/`cornerDetachSustainFrames` (옛 friction-detach 공식 잔재), SurfaceProbe Phase A/B anti-stutter 토글 6종 (전부 OFF였음). `frictionDetachFormula` enum 4종 + switch, surfaceProbe Single/Multi 자동 스위칭, Energy-Conversion Coyote, GravityField, Rope 시스템, `hyperDashInertiaSource` enum, arc-compensation, surfaceNormal 평활화는 **유지**. 표면 이동 수단은 이제 "중력 슬라이드" + "차지 슬링샷" 둘뿐. 이어서 동작-무변경 dedup 추출: `ComputeSlideSpeed`/`UpdateStickTransition`(Attached↔Charging 공유), `CaptureLandingImpact`/`RouteLandedTangent`/`ComputeEnergyConversionSpawnDistance` + `EnterChargingFromLanding`/`AttachFromLanding`(Airborne 착지 두 분기 중복 제거), `RegisterLaunchClearance`/`LaunchPowerForRatio`.
 
 ## 컨셉
 
@@ -21,11 +23,11 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 
 - [State Machine](features/slime/state-machine.md) — 4상태 + ChangeState + IExternalController override
 - [Surface Attach & Detection](features/slime/surface-attach.md) — Primary + Constraints, 2-Phase Depenetration
-- [Crawling & Slide](features/slime/crawling.md) — 접선 이동 + 중력 분해
-- [Ground Dash](features/slime/ground-dash.md) — A/D 더블탭 순간 부스트
-- [Shift Dash](features/slime/air-dash.md) — Shift 8방향 대시, Attached/Airborne (Celeste-style, 독립 컴포넌트)
-- [Hop](features/slime/hop.md) — W 표면 점프 + 모멘텀 (`SlimeSettings.enableHop` 으로 끌 수 있음)
-- [Hyper Dash](features/slime/hyper-dash.md) — Dash → Charge → Launch 콤보
+- [Crawling & Slide](features/slime/crawling.md) — 접선 이동 + 중력 분해 *(2026-05-11: WASD crawl 입력 제거 — `crawlVelocity` 채널은 착지 관성 운반·감쇠 전용)*
+- ~~Ground Dash~~ *(2026-05-11 제거 — A/D 더블탭 순간 부스트, 코드 전체 삭제)*
+- ~~Shift Dash~~ *(2026-05-11 제거 — `SlimeAirDash`/`SlimeAirDashVisual` 컴포넌트 포함 삭제)*
+- ~~Hop~~ *(2026-05-11 제거 — W 표면 점프 + 모멘텀, hop 표면 머티리얼 필드 포함 삭제)*
+- [Hyper Dash](features/slime/hyper-dash.md) — Charge → Launch 시 접선 관성 상속 (`hyperDashInertiaSource` enum 유지)
 - [Stick Timer](features/slime/stick-timer.md) — 착지 고정 + Charge Entry Grace
 - [Attach Debounce](features/slime/attach-debounce.md) — 코너 오실레이션 방지
 - [Charge & Launch](features/slime/charge-launch.md) — 판정원 모델, 발사 공식

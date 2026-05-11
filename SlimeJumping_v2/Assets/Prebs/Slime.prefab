@@ -24,8 +24,6 @@ GameObject:
   - component: {fileID: 8411979575088587100}
   - component: {fileID: 9086750496525282109}
   - component: {fileID: 5587718173598793022}
-  - component: {fileID: 8566562513425741331}
-  - component: {fileID: 8207669427477266424}
   m_Layer: 0
   m_Name: Slime
   m_TagString: Untagged
@@ -78,7 +76,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Controller.SlimeController
   inputReader: {fileID: 162960166411356156}
   settings: {fileID: 11400000, guid: 4b7a3b7018847154e984f9c08fe823ff, type: 2}
-  chargeVisual: {fileID: 2617616816733819021}
   carrier: {fileID: 2155797461271396883}
   interactionDetector: {fileID: 142750800868410712}
 --- !u!50 &1204110088620426322
@@ -156,15 +153,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9baddbdc3c1e6d64697290d0a4d4e7aa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Debugging.SlimeChargeVisual
-  canvas: {fileID: 0}
-  circleImage: {fileID: 0}
-  aimDotImage: {fileID: 0}
-  aimLineImage: {fileID: 0}
-  showCircle: 0
-  showAimDot: 0
+  controller: {fileID: 0}
+  chargeRing: {fileID: 0}
+  chargeRingRenderer: {fileID: 0}
+  aimLine: {fileID: 0}
   unchargedColor: {r: 0, g: 1, b: 0, a: 1}
   fullChargeColor: {r: 1, g: 0, b: 0, a: 1}
-  circleScreenRadius: 150
+  aimLineWidth: 0.025
 --- !u!114 &2155797461271396883
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -404,56 +399,6 @@ MonoBehaviour:
     m_RotationOrder: 4
   teleportCutoff: 3
   logLandings: 0
---- !u!114 &8566562513425741331
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2150085247480545756}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e1c3ebc44adc0144688d6abee011e2d2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Controller.SlimeAirDash
-  slimeController: {fileID: 175102409996259547}
-  inputReader: {fileID: 162960166411356156}
-  dashSpeed: 22
-  dashActiveDuration: 0.15
-  dashCooldown: 0.2
-  dashInputBuffer: 0.12
-  dashKey: 51
---- !u!114 &8207669427477266424
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2150085247480545756}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 48a1f6c705c55594ca45a122a366c003, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Visual.SlimeAirDashVisual
-  airDash: {fileID: 8566562513425741331}
-  dashVfxPrefab: {fileID: 6267631876896600541, guid: 648324083add8834f952662b878cc2aa, type: 3}
-  parentToSlime: 1
-  vfxLifetime: 0.6
-  freezeDuration: 0.05
-  freezeScale: 0
-  cameraImpulse: {fileID: 0}
-  impulseForce: 0.4
-  colorTargets:
-  - {fileID: 7268077469108902785}
-  colorProperty: _BaseColor
-  availableColor: {r: 1, g: 1, b: 1, a: 1}
-  exhaustedColor: {r: 0.55, g: 0.55, b: 0.65, a: 1}
-  flashColor: {r: 1, g: 1, b: 1, a: 1}
-  flashDuration: 0.12
-  dashSfx: {fileID: 8300000, guid: 454665be0db395045a893383f7c8237e, type: 3}
-  sfxCategory: 1
-  sfxVolume: 0.9
-  sfxPitchJitter: 0.06
 --- !u!1 &3217969592835310414
 GameObject:
   m_ObjectHideFlags: 0

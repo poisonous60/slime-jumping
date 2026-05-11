@@ -12,31 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 60f3adbcd38b21a4ca86bdc61ae75dba, type: 3}
   m_Name: SlimeSettings
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSettings
-  crawlSpeed: 0
-  crawlAcceleration: 8
-  crawlDeceleration: 8
   crawlOverspeedDeceleration: 15
   slideGravityScale: 0.5
   slideThreshold: 2
   slideResistance: 1
-  groundDashImpulse: 3
-  groundDashCooldown: 0.34
-  groundDashInputBuffer: 0.1
-  groundDashAngleMin: 40
-  groundDashAngleMax: 60
-  dashFalloffStart: 3
-  dashFalloffEnd: 6
-  enableHop: 0
-  hopAlongSurfaceNormal: 1
-  hopPower: 3
-  hopPowerMin: 1
-  hopMinAngle: 70
-  hopMaxAngle: 90
-  hopCooldown: 0.1
-  hopBufferDuration: 0.06
-  hopLandingRetention: 1
-  hopMomentumBonus: 0.6
-  hopMomentumMaxSpeed: 10
   hyperDashInertiaSource: 1
   tangentInheritanceFactor: 1
   hyperDashDeduction: 1
@@ -62,8 +41,6 @@ MonoBehaviour:
   initialConversionRate: 1.05
   subsequentConversionRate: 0.95
   notJumpConversionBonus: 1
-  hopConversionBonus: 1.1
-  hopConversionEnergyBonus: 0.3
   aimDriftRadiusScale: 0.5
   energyConversionCoyoteTime: 0.12
   minStickDuration: 0.03
@@ -71,7 +48,6 @@ MonoBehaviour:
   stickSpeedScale: 0.1
   stickDecelerationTime: 0.2
   stickSlopeThreshold: 0.7
-  stickCrawlMultiplier: 0.2
   stickSlideTransitionRampTime: 0.6
   chargeEntryStickBonus: 0
   chargingSlideGravityScale: 1
@@ -110,15 +86,11 @@ MonoBehaviour:
   depenetrationUseSmoothedAggregation: 1
   useSurfaceTangentArcCompensation: 1
   projectVelocitySameDirectionDot: 0.7
+  surfaceProbeRejectBuriedContacts: 1
+  surfaceProbeBuriedTestBias: 0.01
   surfaceNormalSmoothRate: 40
   surfaceNormalSmoothRotatingMultiplier: 2
   surfaceNormalSmoothAngularThreshold: 20
-  phaseAStripTangentComponent: 0
-  phaseAStripStrength: 1
-  phaseBSkipAtVertexClamp: 0
-  phaseBVertexClampDotThreshold: 0.9
-  phaseBUseRaycastAnchor: 0
-  phaseBRaycastDistanceMultiplier: 2
   postLaunchIgnoreTime: 0.05
   launchClearanceThreshold: 0.05
   maxIgnoreTime: 0.15
@@ -126,9 +98,7 @@ MonoBehaviour:
   defaultKnockbackForce: 8
   useFrictionBasedDetachment: 1
   cornerAdhesionAccel: 60
-  cornerDetachSustainFrames: 2
   cornerDetachMinSpeed: 1.5
-  cornerBigSpikeAngle: 0.4
   cornerStressRatioSmoothRate: 25
   cornerDetachHorizonLookaheadCurve:
     serializedVersion: 2
@@ -178,21 +148,6 @@ MonoBehaviour:
   cornerMinAngleDeg: 5
   cornerOmegaThreshold: 5
   carrierFriction:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  crawlSpeedMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  crawlAccelerationMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  crawlDecelerationMultiplier:
     baseValue: 1
     fullValue: 1
     angleMin: 0
@@ -259,79 +214,9 @@ MonoBehaviour:
     fullValue: 0
     angleMin: 0
     angleMax: 90
-  groundDashScale:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
   wallAttachSpeedDampen:
     baseValue: 1
     fullValue: 1
     angleMin: 0
     angleMax: 90
-  hopPowerMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  hopVelocityRetention:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  hopNormalToTangentRatio:
-    baseValue: 0
-    fullValue: 0
-    angleMin: 0
-    angleMax: 90
-  hopInstantFlip: 1
   useInertialSlide: 0
-  groundDashAngleFalloffCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 1
-      inSlope: 0
-      outSlope: -1
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 0
-      inSlope: -1
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  dashSpeedFalloffCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 1
-      inSlope: 0
-      outSlope: -1
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 0
-      inSlope: -1
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  disableDashFalloff: 0

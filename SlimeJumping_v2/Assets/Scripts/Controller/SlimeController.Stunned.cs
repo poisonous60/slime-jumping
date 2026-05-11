@@ -32,7 +32,6 @@ namespace SlimeJumping.Controller
                 stunTimer = 0f;
                 launchSpeed = 0f;
                 launchPosition = rb.position;
-                launchedByHop = false;
                 conversionCount = 0;
                 ChangeState(SlimeState.Airborne, intentional: true);
             }

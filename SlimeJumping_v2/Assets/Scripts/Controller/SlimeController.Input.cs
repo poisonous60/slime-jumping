@@ -16,22 +16,15 @@ namespace SlimeJumping.Controller
             {
                 HandleSurfaceChargeEntry();
             }
-            else if (currentState == SlimeState.Airborne && IsInChargeVolume)
-            {
-                EnterVolumeCharging();
-            }
             else if (currentState == SlimeState.Airborne)
             {
-                // Buffer a charge request: lets a press just before landing still
-                // trigger charging, matching hop/ground-dash input buffering.
+                // Buffer a charge request: lets a press just before landing still trigger charging.
                 chargeBufferTimer = settings.chargeInputBuffer;
             }
         }
 
         private void HandleSurfaceChargeEntry()
         {
-            hopRequested = false;
-
             ChangeState(SlimeState.Charging);
             // Hyper-dash seed: capture full tangent speed at charge entry. On inertial
             // surfaces the half-pipe momentum lives in slideVelocity, so include it.
@@ -82,59 +75,11 @@ namespace SlimeJumping.Controller
             UpdateSurfaceModifiers(surfaceCollider);
         }
 
-        private void EnterVolumeCharging()
-        {
-            isVolumeCharging = true;
-
-            surfaceNormal = gravityUp;
-            surfaceTangent = gravityRight;
-            lastSurfaceNormal = gravityUp;
-            lastSurfaceTangent = gravityRight;
-            prevSurfaceNormal = gravityUp;
-
-            aimOffset = Vector2.zero;
-            driftDirection = -gravityUp;
-            activeChargeRadius = settings.chargeRadius;
-            chargeFullAimTimer = 0f;
-            chargeEntryCrawl = 0f;
-            crawlVelocity = 0f;
-            slideVelocity = 0f;
-
-            ChangeState(SlimeState.Charging, intentional: true);
-        }
-
         private void HandleJumpReleased()
         {
             if (_override != null) return;
             if (currentState != SlimeState.Charging) return;
             Launch();
-        }
-
-        private void HandleGroundDashRequested(int keyboardSign)
-        {
-            if (_override != null || currentState == SlimeState.Stunned) return;
-            if (currentState == SlimeState.Attached || currentState == SlimeState.Airborne)
-            {
-                dashBufferTimer = settings.groundDashInputBuffer;
-                dashPendingKeyboardSign = keyboardSign;
-            }
-        }
-
-        private void HandleVerticalUpPressed()
-        {
-            if (_override != null || currentState == SlimeState.Stunned) return;
-            if (!settings.enableHop) return;
-
-            if (currentState == SlimeState.Attached)
-            {
-                if (postLaunchTimer > 0f) return;
-                if (hopCooldownTimer > 0f) return;
-                hopRequested = true;
-            }
-            else if (currentState == SlimeState.Airborne)
-            {
-                hopBufferTimer = settings.hopBufferDuration;
-            }
         }
 
         private void HandleInteractPressed()

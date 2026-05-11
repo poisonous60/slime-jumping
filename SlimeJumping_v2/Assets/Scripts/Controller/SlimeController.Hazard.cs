@@ -79,12 +79,6 @@ namespace SlimeJumping.Controller
             // so stun expiry can be immediately followed by a new hazard hit.
             if (currentState == SlimeState.Stunned) return;
 
-            // Clean up charging state
-            if (currentState == SlimeState.Charging)
-            {
-                isVolumeCharging = false;
-            }
-
             // Detach
             if (carrier != null) carrier.Detach();
             ClearPlatformEffect();
@@ -109,14 +103,10 @@ namespace SlimeJumping.Controller
             stickTimer = 0f;
             stickDeccelTimer = 0f;
             slideRampTimer = 0f;
-            hopRequested = false;
-            hopBufferTimer = 0f;
-            dashBufferTimer = 0f;
             chargeBufferTimer = 0f;
             postLaunchTimer = 0f;
             postLaunchAirControlLockTimer = 0f;
             wasStuck = false;
-            preserveLandingVelocity = false;
             blockAttachCount = 0;
             inFluidCount = 0;
             surfaceMaterialOverrideStack.Clear();
@@ -127,12 +117,8 @@ namespace SlimeJumping.Controller
             lastDamageType = effect.damageType;
             launchSpeed = 0f;
             launchPosition = rb.position;
-            launchedByHop = false;
             conversionCount = 0;
-            ignoredColliderList.RegisterOverlapping(
-                rb.position,
-                settings.slimeRadius + settings.launchClearanceThreshold,
-                settings.groundLayer);
+            RegisterLaunchClearance();
 
             ChangeState(SlimeState.Stunned, intentional: true);
         }

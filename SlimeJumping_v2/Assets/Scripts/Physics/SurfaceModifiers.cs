@@ -5,9 +5,6 @@ namespace SlimeJumping.Physics
 {
     public struct SurfaceModifiers
     {
-        public AngleScaledValue crawlSpeed;
-        public AngleScaledValue crawlAccel;
-        public AngleScaledValue crawlDecel;
         public AngleScaledValue crawlOverspeedDecel;
         public AngleScaledValue slideResistance;
         public AngleScaledValue slideGravity;
@@ -23,23 +20,6 @@ namespace SlimeJumping.Physics
         public AngleScaledValue stickDuration;
         public AngleScaledValue impactRedirect;
         public AngleScaledValue wallAttachDampen;
-        public AngleScaledValue groundDashScale;
-        public AngleScaledValue hopPowerMultiplier;
-        public AngleScaledValue hopVelocityRetention;
-        public AngleScaledValue hopNormalToTangentRatio;
-        public bool hopInstantFlip;
-        public bool overrideHopMomentum;
-        public float hopMomentumBonus;
-        public float hopMomentumMaxSpeed;
-        public bool overrideGroundDash;
-        public float groundDashImpulse;
-        public float groundDashAngleMin;
-        public float groundDashAngleMax;
-        public AnimationCurve groundDashAngleFalloffCurve;
-        public float dashFalloffStart;
-        public float dashFalloffEnd;
-        public AnimationCurve dashSpeedFalloffCurve;
-        public bool disableDashFalloff;
         public bool useInertialSlide;
         public LaunchInertiaBlendMode launchInertiaBlendMode;
         public float launchInertiaLerpFactor;
@@ -59,9 +39,6 @@ namespace SlimeJumping.Physics
 
         public static readonly SurfaceModifiers Default = new()
         {
-            crawlSpeed = AngleScaledValue.Constant(1f),
-            crawlAccel = AngleScaledValue.Constant(1f),
-            crawlDecel = AngleScaledValue.Constant(1f),
             crawlOverspeedDecel = AngleScaledValue.Constant(1f),
             slideResistance = AngleScaledValue.Constant(1f),
             slideGravity = AngleScaledValue.Constant(1f),
@@ -77,23 +54,6 @@ namespace SlimeJumping.Physics
             stickDuration = AngleScaledValue.Constant(1f),
             impactRedirect = AngleScaledValue.Constant(0f),
             wallAttachDampen = AngleScaledValue.Constant(1f),
-            groundDashScale = AngleScaledValue.Constant(1f),
-            hopPowerMultiplier = AngleScaledValue.Constant(1f),
-            hopVelocityRetention = AngleScaledValue.Constant(1f),
-            hopNormalToTangentRatio = AngleScaledValue.Constant(0f),
-            hopInstantFlip = true,
-            overrideHopMomentum = false,
-            hopMomentumBonus = 0f,
-            hopMomentumMaxSpeed = 0f,
-            overrideGroundDash = false,
-            groundDashImpulse = 0f,
-            groundDashAngleMin = 0f,
-            groundDashAngleMax = 0f,
-            groundDashAngleFalloffCurve = null,
-            dashFalloffStart = 0f,
-            dashFalloffEnd = 0f,
-            dashSpeedFalloffCurve = null,
-            disableDashFalloff = false,
             useInertialSlide = false,
             launchInertiaBlendMode = LaunchInertiaBlendMode.Sum,
             launchInertiaLerpFactor = 1f,
@@ -119,9 +79,6 @@ namespace SlimeJumping.Physics
             bool snapToB = t >= 0.5f;
             return new SurfaceModifiers
             {
-                crawlSpeed                = AngleScaledValue.Lerp(a.crawlSpeed,                b.crawlSpeed,                t),
-                crawlAccel                = AngleScaledValue.Lerp(a.crawlAccel,                b.crawlAccel,                t),
-                crawlDecel                = AngleScaledValue.Lerp(a.crawlDecel,                b.crawlDecel,                t),
                 crawlOverspeedDecel       = AngleScaledValue.Lerp(a.crawlOverspeedDecel,       b.crawlOverspeedDecel,       t),
                 slideResistance           = AngleScaledValue.Lerp(a.slideResistance,           b.slideResistance,           t),
                 slideGravity              = AngleScaledValue.Lerp(a.slideGravity,              b.slideGravity,              t),
@@ -139,28 +96,6 @@ namespace SlimeJumping.Physics
                 stickDuration             = AngleScaledValue.Lerp(a.stickDuration,             b.stickDuration,             t),
                 impactRedirect            = AngleScaledValue.Lerp(a.impactRedirect,            b.impactRedirect,            t),
                 wallAttachDampen          = AngleScaledValue.Lerp(a.wallAttachDampen,          b.wallAttachDampen,          t),
-                groundDashScale           = AngleScaledValue.Lerp(a.groundDashScale,           b.groundDashScale,           t),
-                hopPowerMultiplier        = AngleScaledValue.Lerp(a.hopPowerMultiplier,        b.hopPowerMultiplier,        t),
-                hopVelocityRetention      = AngleScaledValue.Lerp(a.hopVelocityRetention,      b.hopVelocityRetention,      t),
-                hopNormalToTangentRatio   = AngleScaledValue.Lerp(a.hopNormalToTangentRatio,   b.hopNormalToTangentRatio,   t),
-
-                hopInstantFlip          = snapToB ? b.hopInstantFlip          : a.hopInstantFlip,
-                overrideHopMomentum     = snapToB ? b.overrideHopMomentum     : a.overrideHopMomentum,
-                hopMomentumBonus        = Mathf.Lerp(a.hopMomentumBonus,        b.hopMomentumBonus,        t),
-                hopMomentumMaxSpeed     = Mathf.Lerp(a.hopMomentumMaxSpeed,     b.hopMomentumMaxSpeed,     t),
-                overrideGroundDash      = snapToB ? b.overrideGroundDash      : a.overrideGroundDash,
-                groundDashImpulse       = Mathf.Lerp(a.groundDashImpulse,       b.groundDashImpulse,       t),
-                groundDashAngleMin      = Mathf.Lerp(a.groundDashAngleMin,      b.groundDashAngleMin,      t),
-                groundDashAngleMax      = Mathf.Lerp(a.groundDashAngleMax,      b.groundDashAngleMax,      t),
-                groundDashAngleFalloffCurve = snapToB && b.groundDashAngleFalloffCurve != null
-                    ? b.groundDashAngleFalloffCurve
-                    : a.groundDashAngleFalloffCurve ?? b.groundDashAngleFalloffCurve,
-                dashFalloffStart        = Mathf.Lerp(a.dashFalloffStart,        b.dashFalloffStart,        t),
-                dashFalloffEnd          = Mathf.Lerp(a.dashFalloffEnd,          b.dashFalloffEnd,          t),
-                dashSpeedFalloffCurve = snapToB && b.dashSpeedFalloffCurve != null
-                    ? b.dashSpeedFalloffCurve
-                    : a.dashSpeedFalloffCurve ?? b.dashSpeedFalloffCurve,
-                disableDashFalloff      = snapToB ? b.disableDashFalloff      : a.disableDashFalloff,
                 useInertialSlide        = snapToB ? b.useInertialSlide        : a.useInertialSlide,
                 launchInertiaBlendMode  = snapToB ? b.launchInertiaBlendMode  : a.launchInertiaBlendMode,
                 launchInertiaLerpFactor = Mathf.Lerp(a.launchInertiaLerpFactor, b.launchInertiaLerpFactor, t),

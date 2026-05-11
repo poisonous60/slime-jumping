@@ -52,19 +52,6 @@ namespace SlimeJumping.Controller
                 }
             }
 
-            // Volume charging: gravity only, fall cap applied by DragZone.FixedUpdate via ClampFallSpeed()
-            if (isVolumeCharging)
-            {
-                velocity += GravityVector * dt;
-
-                if (!IsInChargeVolume)
-                {
-                    isVolumeCharging = false;
-                    CancelChargingToAirborne();
-                }
-                return;
-            }
-
             // BlockAttach (e.g. water zone): cancel charging to airborne
             if (blockAttachCount > 0)
             {
@@ -127,25 +114,9 @@ namespace SlimeJumping.Controller
                 lastSurfaceNormal = surfaceNormal;
                 lastSurfaceTangent = surfaceTangent;
 
-                // Reset slide ramp when stick expires (smooth transition)
-                if (wasStuck && stickTimer <= 0f)
-                {
-                    slideRampTimer = 0f;
-                    wasStuck = false;
-                    float postStickTangent = Vector2.Dot(velocity, surfaceTangent);
-                    if (surfaceMod.useInertialSlide)
-                    {
-                        slideVelocity = postStickTangent;
-                        crawlVelocity = 0f;
-                    }
-                    else
-                    {
-                        crawlVelocity = postStickTangent;
-                    }
-                }
-                if (stickTimer > 0f) wasStuck = true;
+                UpdateStickTransition();
 
-                // Stick: delay before slide starts (aiming still runs via UpdateCharging)
+                // Stick: delay before slide starts (aiming still runs)
                 if (stickTimer > 0f)
                 {
                     stickTimer -= dt;
@@ -163,63 +134,17 @@ namespace SlimeJumping.Controller
                 }
                 else
                 {
-                    // Slime still slides on walls during charging (same physics as Attached, no crawl input)
+                    // Slime still slides on walls during charging (same physics as Attached, no
+                    // crawl input; charging slide gravity is scaled by chargingSlideGravityScale).
                     float angle = GetSurfaceAngle();
-                    Vector2 gravityVec = GravityVector;
-                    float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
-                    gravAlongTangent *= settings.chargingSlideGravityScale;
-                    float slideSpeed;
-
-                    if (surfaceMod.useInertialSlide)
-                    {
-                        // Inertial: see SlimeController.Attached.cs slide block for rationale.
-                        float slideAccel = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
-                        slideAccel *= ResolveSlopeGain(slideAccel, slideVelocity, angle);
-                        slideVelocity += slideAccel * dt;
-                        float linearDrag = surfaceMod.slideLinearDrag.Evaluate(angle);
-                        if (linearDrag > 0f)
-                            slideVelocity *= Mathf.Max(0f, 1f - linearDrag * dt);
-                        float frictionDecel = settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
-                        if (frictionDecel > 0f)
-                            slideVelocity = Mathf.MoveTowards(slideVelocity, 0f, frictionDecel * dt);
-                        slideSpeed = slideVelocity;
-                        slideRampTimer += dt;
-                    }
-                    else
-                    {
-                        if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
-                            gravAlongTangent = 0f;
-                        slideSpeed = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
-
-                        if (Mathf.Abs(slideSpeed) > 0.001f)
-                        {
-                            float sign = Mathf.Sign(slideSpeed);
-                            slideSpeed -= sign * settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
-                            if (Mathf.Sign(slideSpeed) != sign)
-                                slideSpeed = 0f;
-                        }
-
-                        // Slide ramp-up: gradual acceleration after landing
-                        slideRampTimer += dt;
-                        float surfaceRamp = surfaceMod.slideRampUp.Evaluate(angle);
-                        float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.stickSlideTransitionRampTime;
-                        float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
-                        slideSpeed *= rampT;
-                    }
-
-                    float maxCrawl = settings.crawlSpeed * surfaceMod.crawlSpeed.Evaluate(angle);
-                    float chargingDecel = Mathf.Abs(crawlVelocity) > maxCrawl
-                        ? settings.crawlOverspeedDeceleration * surfaceMod.crawlOverspeedDecel.Evaluate(angle)
-                        : settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle);
+                    float slideSpeed = ComputeSlideSpeed(angle, dt, settings.chargingSlideGravityScale);
+                    float chargingDecel = settings.crawlOverspeedDeceleration * surfaceMod.crawlOverspeedDecel.Evaluate(angle);
                     crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, chargingDecel * dt);
 
                     float finalTangent = slideSpeed + crawlVelocity;
                     velocity = ComputeArcCompensatedTangent(surfaceTangent) * finalTangent;
-
                     surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
-
                     SnapToSurface();
-
                     if (IsPlatformEffectAlive) activePlatformEffect.OnSlimeStay(this, dt);
                 }
             }
@@ -250,7 +175,6 @@ namespace SlimeJumping.Controller
             chargeFullAimTimer = 0f;
             launchSpeed = 0f;
             launchPosition = rb.position;
-            launchedByHop = false;
             slideRampTimer = 0f;
             conversionCount = 0;
             if (carrier != null) carrier.Detach();

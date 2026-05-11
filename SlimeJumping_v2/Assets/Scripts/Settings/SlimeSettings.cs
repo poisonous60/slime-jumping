@@ -32,44 +32,11 @@ namespace SlimeJumping.Settings
     public class SlimeSettings : ScriptableObject
     {
         [Header("Surface Movement")]
-        public float crawlSpeed = 5f;
-        public float crawlAcceleration = 50f;
-        public float crawlDeceleration = 30f;
-        [Tooltip("Deceleration applied when crawl speed exceeds max crawl speed (e.g. from landing momentum)")]
+        [Tooltip("Decay rate of residual landing-tangent momentum on the crawl channel (slime has no self-powered surface movement; slide gravity + the charge slingshot are the only movers).")]
         public float crawlOverspeedDeceleration = 15f;
         public float slideGravityScale = 1f;
         public float slideThreshold = 1f;
         public float slideResistance = 2f;
-
-        [Header("Ground Dash")]
-        public float groundDashImpulse = 8f;
-        public float groundDashCooldown = 0.3f;
-        public float groundDashInputBuffer = 0.1f;
-        public float groundDashAngleMin = 30f;
-        public float groundDashAngleMax = 60f;
-        public float dashFalloffStart = 5f;
-        public float dashFalloffEnd = 13f;
-
-        [Header("Hop")]
-        [Tooltip("Master toggle for the W-key hop. False disables both the immediate Attached hop and the air-buffered hop on landing.")]
-        public bool enableHop = true;
-        [Tooltip("If true, hop along the surface normal (tangent-based). If false, hop in world-up (gravity-up) direction.")]
-        public bool hopAlongSurfaceNormal = true;
-        public float hopPower = 2.25f;
-        [Tooltip("Minimum hop power at hopMaxAngle.")]
-        public float hopPowerMin = 1.125f;
-        [Tooltip("Surface angle (degrees) below which full hopPower applies.")]
-        public float hopMinAngle = 70f;
-        [Tooltip("Surface angle (degrees) at which hopPowerMin applies. Lerp between.")]
-        public float hopMaxAngle = 90f;
-        public float hopCooldown = 0.1f;
-        public float hopBufferDuration = 0.1f;
-        [Range(0f, 1f)]
-        public float hopLandingRetention = 1f;
-        [Tooltip("Tangent speed bonus added per hop in movement direction. 0 = no momentum gain.")]
-        [Min(0f)] public float hopMomentumBonus = 1.5f;
-        [Tooltip("Maximum tangent speed achievable via hop momentum accumulation.")]
-        [Min(0f)] public float hopMomentumMaxSpeed = 20f;
 
         [Header("Hyper Dash")]
         [Tooltip("ChargeStart: capture tangent speed at the moment charging begins (legacy). LaunchMoment: read tangent speed at the launch frame so any deceleration during the charge actually reduces the inherited momentum.")]
@@ -110,10 +77,6 @@ namespace SlimeJumping.Settings
         [Min(0f)] public float initialConversionRate = 2.25f;
         [Min(0f)] public float subsequentConversionRate = 0.9f;
         public float notJumpConversionBonus = 1.3f;
-        [Tooltip("Multiplicative bonus on spawnDistance when the flight originated from a hop. 1 = no bonus.")]
-        [Min(0f)] public float hopConversionBonus = 1f;
-        [Tooltip("Additive bonus on landing shadow v², expressed as a fraction of a full charge jump's v² (baseLaunchPower²). Applied only when the flight originated from a hop.")]
-        [Min(0f)] public float hopConversionEnergyBonus = 0f;
         public float aimDriftRadiusScale = 0.7f;
         [Tooltip("Grace window (seconds) after a no-Space landing during which pressing Space still grants energy conversion, as if Space had been held on the landing frame. 0 disables.")]
         [Min(0f)] public float energyConversionCoyoteTime = 0.12f;
@@ -124,8 +87,6 @@ namespace SlimeJumping.Settings
         public float stickSpeedScale = 0.1f;
         public float stickDecelerationTime = 0.05f;
         public float stickSlopeThreshold = 0.7f; // surfaceUp above this = floor-like, no stick
-        [Range(0f, 1f)]
-        public float stickCrawlMultiplier = 0.2f; // 0 = blocked, 1 = full crawl
         public float stickSlideTransitionRampTime = 0.2f;
 
         [Header("Charge Entry Grace")]
@@ -155,7 +116,7 @@ namespace SlimeJumping.Settings
         public float risingGravityScale = 1f;
         public float fallingGravityScale = 1f;
         public float apexThreshold = 0f;
-        [Tooltip("Seconds after a charged launch (not hop) during which air control is disabled.")]
+        [Tooltip("Seconds after a charged launch during which air control is disabled.")]
         public float postLaunchAirControlLockTime = 0.15f;
 
         [Header("Air Control — In Fluid")]
@@ -232,38 +193,6 @@ namespace SlimeJumping.Settings
         [Tooltip("이 각속도(deg/s) 이상의 플랫폼에 붙어있을 때 surfaceNormalSmoothRotatingMultiplier 적용.")]
         [Min(0f)] public float surfaceNormalSmoothAngularThreshold = 10f;
 
-        [Header("Surface Probe — Curve Slide Anti-Stutter")]
-        [Tooltip("[A] Phase A 디페너트레이션 push 에서 surfaceTangent 평행 성분을 잘라냄.\n" +
-                 "곡면 vertex 통과 시 인접 두 edge 의 outward 가중평균이 bisector 방향 → tangent 성분 잔존 → " +
-                 "위치 saw-tooth 의 직접 원인. 토글 ON 시 push 를 surfaceNormal 축으로만 제한.\n" +
-                 "리스크: 진짜 wedge (V-notch) 에 끼인 경우 tangent 성분이 빠지면 탈출이 약해짐 — " +
-                 "useFrictionBasedDetachment 의 horizon detach 가 따로 처리하므로 일반적으론 문제 없음.")]
-        public bool phaseAStripTangentComponent = false;
-        [Tooltip("[A] Tangent 성분 제거 강도. 1 = 완전 제거 (순수 normal 만), 0 = 미적용 (= OFF 와 동일).\n" +
-                 "0.5 정도로 부분만 빼면 churn 감소 + wedge 안전성 절충.")]
-        [Range(0f, 1f)] public float phaseAStripStrength = 1f;
-
-        [Tooltip("[B] Phase B re-anchor (ClosestPoint 기반) 가 vertex bisector 방향이면 skip.\n" +
-                 "ClosestPoint 가 polygon vertex 에 잡히면 (pos - vertex) 방향이 bisector 가 되어 " +
-                 "다음 edge plane 위치보다 이전 edge 쪽으로 lag — saw-tooth 의 또 다른 원인.\n" +
-                 "Phase B 자체를 건너뛰는 게 아니라, vertex 잡힌 프레임에만 skip — " +
-                 "edge interior closestpoint 일 때는 정상 동작.")]
-        public bool phaseBSkipAtVertexClamp = false;
-        [Tooltip("[B] Vertex 판정 기준. (pos - closest) 방향과 surfaceNormal 의 dot 이 이 값 미만이면 vertex 로 간주.\n" +
-                 "0.9 ≈ 25.8° tolerance (default). 낮출수록 더 관대한 vertex 판정 (skip 빈도 ↑).\n" +
-                 "smoothed surfaceNormal 자체가 LP-filter 라 살짝 lag 하므로 너무 높이면 정상 edge 도 vertex 오판.")]
-        [Range(0.5f, 1f)] public float phaseBVertexClampDotThreshold = 0.9f;
-
-        [Tooltip("[E] Phase B re-anchor 를 ClosestPoint 대신 surfaceNormal 축 raycast 로 대체 (가장 근본적 fix).\n" +
-                 "raycast 는 smoothed surfaceNormal 축으로 발사되므로 vertex 가 어디 있든 anchor 가 surfaceTangent 와 " +
-                 "수직 — tangent 방향 perturbation 이 원리적으로 0.\n" +
-                 "Raycast 가 surfaceCollider 를 못 맞히면 (smoothed normal 이 너무 빗나간 케이스) legacy ClosestPoint 로 fallback.\n" +
-                 "B 토글이 켜져 있으면 fallback 시 B 가 적용됨.")]
-        public bool phaseBUseRaycastAnchor = false;
-        [Tooltip("[E] Raycast 거리 = slimeRadius × 이 값. 2 = 슬라임 지름 (= 충분히 길어 거의 항상 hit), " +
-                 "1.5 = 보수적, 3 이상 = 멀리 떨어진 collider 까지 hit 가능.")]
-        [Min(1f)] public float phaseBRaycastDistanceMultiplier = 2f;
-
         public float postLaunchIgnoreTime = 0.05f;
         public float launchClearanceThreshold = 0.05f;
         public float maxIgnoreTime = 0.15f;
@@ -281,12 +210,8 @@ namespace SlimeJumping.Settings
         public bool useFrictionBasedDetachment = true;
         [Tooltip("점착 가속도 한계 (m/s²). v·ω 가 (gravityHelp + 이 값) 을 넘으면 detach.")]
         [Min(0f)] public float cornerAdhesionAccel = 60f;
-        [Tooltip("곡면 detach 의 누적 frame 수. ω 부호가 N frame 연속 일치해야 발동. 기본 2.")]
-        [Min(1)] public int cornerDetachSustainFrames = 2;
         [Tooltip("|v_tangent| 이 이 값 미만이면 검사 skip. 정지 false-positive 방지.")]
         [Min(0f)] public float cornerDetachMinSpeed = 1.5f;
-        [Tooltip("|Δθ| ≥ 이 값(rad) 이면 한 frame 만으로 detach (90° 코너용). 기본 0.4 ≈ 23°.")]
-        [Min(0f)] public float cornerBigSpikeAngle = 0.4f;
         [Tooltip("CornerStressRatio LP filter rate (1/s). visual SmoothDamp 앞단 한 단계.")]
         [Min(0.001f)] public float cornerStressRatioSmoothRate = 25f;
         [Tooltip("Horizon lookahead 곡선. X = |v| (m/s), Y = lookahead 거리 (m).\n" +
@@ -307,9 +232,7 @@ namespace SlimeJumping.Settings
 
         [Header("Default Surface Modifiers (used when no SurfaceTag is present, or as the override-off fallback for tagged surfaces)")]
         public AngleScaledValue carrierFriction = AngleScaledValue.Constant(1f);
-        public AngleScaledValue crawlSpeedMultiplier = AngleScaledValue.Constant(1f);
-        public AngleScaledValue crawlAccelerationMultiplier = AngleScaledValue.Constant(1f);
-        public AngleScaledValue crawlDecelerationMultiplier = AngleScaledValue.Constant(1f);
+        [Tooltip("Multiplier on residual landing-tangent momentum decay rate.")]
         public AngleScaledValue crawlOverspeedDecelerationMultiplier = AngleScaledValue.Constant(1f);
         public AngleScaledValue slideResistanceMultiplier = AngleScaledValue.Constant(1f);
         public AngleScaledValue slideGravityMultiplier = AngleScaledValue.Constant(1f);
@@ -326,25 +249,11 @@ namespace SlimeJumping.Settings
         public AnimationCurve landingTangentSpeedRemapCurve = new AnimationCurve();
         public AngleScaledValue stickDurationMultiplier = AngleScaledValue.Constant(1f);
         public AngleScaledValue impactRedirectRatio = AngleScaledValue.Constant(0f);
-        public AngleScaledValue groundDashScale = AngleScaledValue.Constant(1f);
         public AngleScaledValue wallAttachSpeedDampen = AngleScaledValue.Constant(1f);
-        public AngleScaledValue hopPowerMultiplier = AngleScaledValue.Constant(1f);
-        public AngleScaledValue hopVelocityRetention = AngleScaledValue.Constant(1f);
-        public AngleScaledValue hopNormalToTangentRatio = AngleScaledValue.Constant(0f);
-        public bool hopInstantFlip = true;
         public bool useInertialSlide = false;
-        [Tooltip("Default angle falloff curve for ground dash on untagged surfaces / when overrideGroundDash is off. Domain is [groundDashAngleMin, groundDashAngleMax] normalized to [0,1]. Empty curve = legacy linear.")]
-        public AnimationCurve groundDashAngleFalloffCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
-        [Tooltip("Default speed falloff curve for ground dash on untagged surfaces / when overrideGroundDash is off. Domain is [dashFalloffStart, dashFalloffEnd] normalized to [0,1]. Empty curve = legacy linear.")]
-        public AnimationCurve dashSpeedFalloffCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
-        [Tooltip("Skip dash speed falloff entirely (every dash applies full impulse). Global default — surface tags with overrideGroundDash override this.")]
-        public bool disableDashFalloff = false;
 
         public SurfaceModifiers BuildDefaultModifiers() => new SurfaceModifiers
         {
-            crawlSpeed = crawlSpeedMultiplier,
-            crawlAccel = crawlAccelerationMultiplier,
-            crawlDecel = crawlDecelerationMultiplier,
             crawlOverspeedDecel = crawlOverspeedDecelerationMultiplier,
             slideResistance = slideResistanceMultiplier,
             slideGravity = slideGravityMultiplier,
@@ -360,23 +269,6 @@ namespace SlimeJumping.Settings
             stickDuration = stickDurationMultiplier,
             impactRedirect = impactRedirectRatio,
             wallAttachDampen = wallAttachSpeedDampen,
-            groundDashScale = groundDashScale,
-            overrideGroundDash = false,
-            groundDashImpulse = 0f,
-            groundDashAngleMin = 0f,
-            groundDashAngleMax = 0f,
-            groundDashAngleFalloffCurve = null,
-            dashFalloffStart = 0f,
-            dashFalloffEnd = 0f,
-            dashSpeedFalloffCurve = null,
-            disableDashFalloff = false,
-            hopPowerMultiplier = hopPowerMultiplier,
-            hopVelocityRetention = hopVelocityRetention,
-            hopNormalToTangentRatio = hopNormalToTangentRatio,
-            hopInstantFlip = hopInstantFlip,
-            overrideHopMomentum = false,
-            hopMomentumBonus = 0f,
-            hopMomentumMaxSpeed = 0f,
             useInertialSlide = useInertialSlide,
             overrideCeilingAngle = false,
             ceilingThresholdOverride = 0f,

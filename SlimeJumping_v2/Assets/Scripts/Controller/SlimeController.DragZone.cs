@@ -7,7 +7,6 @@ namespace SlimeJumping.Controller
     {
         // Current drag zone (set by DragZone.OnTriggerEnter/Exit, single zone only)
         public DragZone CurrentDragZone { get; private set; }
-        public bool IsInChargeVolume => CurrentDragZone != null && CurrentDragZone.allowCharging;
 
         // --- Drag Zone API (called by DragZone.cs) ---
 
@@ -15,12 +14,6 @@ namespace SlimeJumping.Controller
         {
             velocity *= zone.entryMultiplier;
             CurrentDragZone = zone;
-
-            if (currentState == SlimeState.Airborne && zone.allowCharging
-                && inputReader.IsJumpHeld && postLaunchTimer <= 0f)
-            {
-                EnterVolumeCharging();
-            }
         }
 
         public void OnDragZoneExit(DragZone zone)

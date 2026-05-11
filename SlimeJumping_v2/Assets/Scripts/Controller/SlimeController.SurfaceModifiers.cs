@@ -215,13 +215,7 @@ namespace SlimeJumping.Controller
                 {
                     var snow = cachedSnowMods;
                     snow.useInertialSlide        = hostSurfaceMod.useInertialSlide;
-                    snow.overrideHopMomentum     = hostSurfaceMod.overrideHopMomentum;
-                    snow.hopInstantFlip          = hostSurfaceMod.hopInstantFlip;
-                    snow.overrideGroundDash      = hostSurfaceMod.overrideGroundDash;
-                    snow.disableDashFalloff      = hostSurfaceMod.disableDashFalloff;
                     snow.overrideCeilingAngle    = hostSurfaceMod.overrideCeilingAngle;
-                    snow.groundDashAngleFalloffCurve = hostSurfaceMod.groundDashAngleFalloffCurve;
-                    snow.dashSpeedFalloffCurve   = hostSurfaceMod.dashSpeedFalloffCurve;
                     snow.enableLandingTangentSpeedRemap = hostSurfaceMod.enableLandingTangentSpeedRemap;
                     snow.landingTangentSpeedRemapCurve = hostSurfaceMod.landingTangentSpeedRemapCurve;
                     surfaceMod = snow;

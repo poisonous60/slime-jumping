@@ -16,16 +16,6 @@ namespace SlimeJumping.Controller
             if (postLaunchAirControlLockTimer > 0f)
                 postLaunchAirControlLockTimer -= dt;
 
-            // Air Dash: suspend gravity + air control for the remainder of the dash window.
-            // Landing logic below still runs, so touching a surface mid-dash lands normally
-            // and ChangeState zeroes the timer.
-            bool airDashSuppressesPhysics = airDashActiveTimer > 0f;
-            if (airDashSuppressesPhysics)
-            {
-                airDashActiveTimer -= dt;
-                if (airDashActiveTimer < 0f) airDashActiveTimer = 0f;
-            }
-
             // Apex threshold locks air control while rising hard. In a fluid medium
             // (water etc.) the upward velocity comes from buoyancy, not a launch —
             // the player should still be able to steer. Bypass the apex gate while submerged.
@@ -33,35 +23,32 @@ namespace SlimeJumping.Controller
                 || (postLaunchAirControlLockTimer <= 0f
                     && Vector2.Dot(velocity, gravityUp) <= settings.apexThreshold);
 
-            if (!airDashSuppressesPhysics)
+            // Gravity
+            // W/S scale picks rising vs falling variant by actual velocity direction —
+            // independent of airControlActive, so steering still works while above apex.
+            // In fluid: intentionally ignore velocity sign and use the dedicated in-fluid
+            // values instead. Water movement is buoyancy-driven and has no clean apex, so
+            // a rising/falling split would make submerged steering feel inconsistent.
+            float gravityScale = 1f;
+            float inputYRaw = inputReader.LastInputMove.y;
+            if (InFluid)
             {
-                // Gravity
-                // W/S scale picks rising vs falling variant by actual velocity direction —
-                // independent of airControlActive, so steering still works while above apex.
-                // In fluid: intentionally ignore velocity sign and use the dedicated in-fluid
-                // values instead. Water movement is buoyancy-driven and has no clean apex, so
-                // a rising/falling split would make submerged steering feel inconsistent.
-                float gravityScale = 1f;
-                float inputYRaw = inputReader.LastInputMove.y;
-                if (InFluid)
-                {
-                    if (inputYRaw > 0.1f) gravityScale = settings.floatGravityScaleInFluid;
-                    else if (inputYRaw < -0.1f) gravityScale = settings.diveGravityScaleInFluid;
-                }
-                else
-                {
-                    bool isRisingByVelocity = Vector2.Dot(velocity, gravityUp) > 0f;
-                    if (inputYRaw > 0.1f)
-                        gravityScale = isRisingByVelocity ? settings.floatGravityScaleRising : settings.floatGravityScaleFalling;
-                    else if (inputYRaw < -0.1f)
-                        gravityScale = isRisingByVelocity ? settings.diveGravityScaleRising : settings.diveGravityScaleFalling;
-                }
-
-                // Asymmetric gravity uses the existing airControlActive split (apex-gated),
-                // unchanged from before so rising/falling multipliers behave identically.
-                float asymScale = airControlActive ? settings.fallingGravityScale : settings.risingGravityScale;
-                velocity += -gravityUp * Mathf.Abs(settings.gravity) * gravityScale * asymScale * dt;
+                if (inputYRaw > 0.1f) gravityScale = settings.floatGravityScaleInFluid;
+                else if (inputYRaw < -0.1f) gravityScale = settings.diveGravityScaleInFluid;
             }
+            else
+            {
+                bool isRisingByVelocity = Vector2.Dot(velocity, gravityUp) > 0f;
+                if (inputYRaw > 0.1f)
+                    gravityScale = isRisingByVelocity ? settings.floatGravityScaleRising : settings.floatGravityScaleFalling;
+                else if (inputYRaw < -0.1f)
+                    gravityScale = isRisingByVelocity ? settings.diveGravityScaleRising : settings.diveGravityScaleFalling;
+            }
+
+            // Asymmetric gravity uses the existing airControlActive split (apex-gated),
+            // unchanged from before so rising/falling multipliers behave identically.
+            float asymScale = airControlActive ? settings.fallingGravityScale : settings.risingGravityScale;
+            velocity += -gravityUp * Mathf.Abs(settings.gravity) * gravityScale * asymScale * dt;
 
             // Land on any surface
             if (isTouchingSurface)
@@ -121,214 +108,16 @@ namespace SlimeJumping.Controller
                 bool chargeRequested = chargeBufferTimer > 0f
                     || (settings.allowChargeAirHold && inputReader.IsJumpHeld);
                 if (chargeRequested)
-                {
-                    // Energy conversion: invert the launch curve so rate=1 preserves height.
-                    // Launch: power = (aim/chargeRadius)^chargeCurveExponent * baseLaunchPower
-                    // Inverse: aim = chargeRadius * (impactSpeed/baseLaunchPower)^(1/exponent)
-                    float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
-                    float shadowSpeedSq = launchSpeed * launchSpeed
-                        + 2f * Mathf.Abs(settings.gravity) * heightDelta;
-                    if (launchedByHop)
-                        shadowSpeedSq += settings.hopConversionEnergyBonus * settings.baseLaunchPower * settings.baseLaunchPower;
-                    float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
-                    float rate = (conversionCount == 0) ? settings.initialConversionRate : settings.subsequentConversionRate;
-                    float speedRatio = impactSpeed / settings.baseLaunchPower;
-                    float spawnDistance = settings.chargeRadius
-                        * Mathf.Pow(speedRatio, 1f / settings.chargeCurveExponent)
-                        * rate;
-                    if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
-                    if (launchedByHop) spawnDistance *= settings.hopConversionBonus;
-                    conversionCount++;
-
-                    Vector2 relativeVel = velocity - landingPlatformVel;
-                    float tangentSpeed = Vector2.Dot(relativeVel, surfaceTangent);
-                    float normalSpeed = Mathf.Abs(Vector2.Dot(relativeVel, surfaceNormal));
-                    impactTangentSpeed = tangentSpeed;
-                    impactNormalSpeed = normalSpeed;
-                    stickDeccelTimer = 0f;
-                    // Rope impact: currentRope was already set this frame by
-                    // UpdateRopeReference (line ~603), so we can hand it the
-                    // pre-attach velocity here BEFORE the attach zeroes it.
-                    if (currentRope != null)
-                        currentRope.ApplyRiderImpact(rb.position, relativeVel);
-
-                    if (carrier != null) carrier.Attach(surfaceCollider);
-                    UpdateSurfaceModifiers(surfaceCollider);
-
-                    float landingAngle = GetSurfaceAngle();
-                    tangentSpeed *= surfaceMod.wallAttachDampen.Evaluate(landingAngle);
-                    float redirectSign = Mathf.Sign(Vector2.Dot(gravityUp, surfaceTangent));
-                    float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, gravityUp));
-                    float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect.Evaluate(landingAngle) * redirectSign * redirectScale;
-                    hopBufferTimer = 0f;
-                    dashBufferTimer = 0f;
-                    chargeBufferTimer = 0f;
-                    float landedTangent = ComputeLandingCrawlVelocity(effectiveTangent, landingAngle);
-                    if (surfaceMod.useInertialSlide)
-                    {
-                        slideVelocity = landedTangent;
-                        crawlVelocity = 0f;
-                    }
-                    else
-                    {
-                        crawlVelocity = landedTangent;
-                        slideVelocity = 0f;
-                    }
-                    velocity = Vector2.zero;
-
-                    if (surfaceUp >= settings.stickSlopeThreshold)
-                        stickTimer = 0f;
-                    else
-                        stickTimer = CalculateStickDuration(impactSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
-
-                    activeChargeRadius = Mathf.Max(spawnDistance, settings.chargeRadius);
-                    aimOffset = Vector2.zero;
-                    chargeFullAimTimer = 0f;
-
-                    slideRampTimer = 0f;
-                    driftDirection = -surfaceNormal;
-                    prevSurfaceNormal = surfaceNormal;
-                    float conversionRatio = activeChargeRadius / settings.chargeRadius;
-                    float hyperDashRetention = 1f - Mathf.InverseLerp(settings.hyperDashConversionDampingMin, settings.hyperDashConversionDampingMax, conversionRatio);
-                    chargeEntryCrawl *= hyperDashRetention;
-                    ChangeState(SlimeState.Charging);
-                    lastSurfaceNormal = surfaceNormal;
-                    lastSurfaceTangent = surfaceTangent;
-                    surfaceProbeMissFrames = 0;
-                    cachedSurfaceCollider = surfaceCollider;
-                    SnapToSurface();
-                    // Intentionally before CheckPlatformEffect: dust puff on JumpPad contact is natural.
-                    OnLanded?.Invoke(surfaceCollider.ClosestPoint(rb.position), surfaceNormal);
-
-                    // Platform effect check (after state is finalized).
-                    // JumpPad etc. may call ForceAirborneWithVelocity here,
-                    // which changes state from Charging back to Airborne.
-                    CheckPlatformEffect(surfaceCollider);
-                }
+                    EnterChargingFromLanding(landingPlatformVel, surfaceUp);
                 else
-                {
-                    // Landing without Space: sticky landing, energy lost
-                    Vector2 relativeVel = velocity - landingPlatformVel;
-                    float landingSpeed = relativeVel.magnitude;
-                    float tangentSpeed = Vector2.Dot(relativeVel, surfaceTangent);
-                    float normalSpeed = Mathf.Abs(Vector2.Dot(relativeVel, surfaceNormal));
-                    impactTangentSpeed = tangentSpeed;
-                    impactNormalSpeed = normalSpeed;
-                    stickDeccelTimer = 0f;
-                    // Rope impact: see Space-held branch above for ordering rationale.
-                    if (currentRope != null)
-                        currentRope.ApplyRiderImpact(rb.position, relativeVel);
-
-                    if (carrier != null) carrier.Attach(surfaceCollider);
-                    UpdateSurfaceModifiers(surfaceCollider);
-
-                    float landingAngle = GetSurfaceAngle();
-                    tangentSpeed *= surfaceMod.wallAttachDampen.Evaluate(landingAngle);
-                    float redirectSign = Mathf.Sign(Vector2.Dot(gravityUp, surfaceTangent));
-                    float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, gravityUp));
-                    float effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect.Evaluate(landingAngle) * redirectSign * redirectScale;
-
-                    if (hopBufferTimer > 0f)
-                        preserveLandingVelocity = true;
-
-                    float landedTangent = ComputeLandingCrawlVelocity(effectiveTangent, landingAngle);
-                    if (surfaceMod.useInertialSlide)
-                    {
-                        slideVelocity = landedTangent;
-                        crawlVelocity = 0f;
-                    }
-                    else
-                    {
-                        crawlVelocity = landedTangent;
-                        slideVelocity = 0f;
-                    }
-                    velocity = Vector2.zero;
-
-                    // Energy-conversion coyote: compute the spawn distance a Space-held
-                    // landing would have granted and stash it. If the player presses
-                    // Space within energyConversionCoyoteTime, HandleSurfaceChargeEntry
-                    // consumes this to grant the same expanded charge radius.
-                    // Per-surface override: SurfaceMaterial.overrideEnergyConversionCoyoteTime
-                    // extends/shortens the window (e.g. SpringyBranch grants a longer
-                    // grace period because riders rebound off it).
-                    bool isFloorLanding = surfaceUp >= settings.stickSlopeThreshold;
-                    bool coyoteArmed = false;
-                    float coyoteWindow = surfaceMod.GetEnergyConversionCoyoteTime(settings);
-                    if (coyoteWindow > 0f)
-                    {
-                        float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
-                        float shadowSpeedSq = launchSpeed * launchSpeed
-                            + 2f * Mathf.Abs(settings.gravity) * heightDelta;
-                        if (launchedByHop)
-                            shadowSpeedSq += settings.hopConversionEnergyBonus * settings.baseLaunchPower * settings.baseLaunchPower;
-                        float impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
-                        float rate = (conversionCount == 0) ? settings.initialConversionRate : settings.subsequentConversionRate;
-                        float speedRatio = impactSpeed / settings.baseLaunchPower;
-                        float spawnDistance = settings.chargeRadius
-                            * Mathf.Pow(speedRatio, 1f / settings.chargeCurveExponent)
-                            * rate;
-                        if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
-                        if (launchedByHop) spawnDistance *= settings.hopConversionBonus;
-
-                        float candidate = Mathf.Max(spawnDistance, settings.chargeRadius);
-                        if (candidate > settings.chargeRadius)
-                        {
-                            pendingEnergyChargeRadius = candidate;
-                            energyCoyoteTimer = coyoteWindow;
-                            energyCoyoteDuration = coyoteWindow;
-                            pendingFloorReset = isFloorLanding;
-                            coyoteArmed = true;
-                        }
-                    }
-
-                    // conversionCount resets on floor landing only. Wall chains keep subsequentConversionRate — intentional.
-                    // When coyote is armed on a floor landing, the reset is deferred to pending expiry
-                    // so a coyote-consumed conversion continues the chain (matches Space-held branch).
-                    if (isFloorLanding)
-                    {
-                        stickTimer = 0f;
-                        if (!coyoteArmed)
-                            conversionCount = 0;
-                    }
-                    else
-                        stickTimer = CalculateStickDuration(landingSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
-
-                    slideRampTimer = 0f;
-                    ChangeState(SlimeState.Attached);
-                    SnapToSurface();
-                    OnLanded?.Invoke(surfaceCollider.ClosestPoint(rb.position), surfaceNormal);
-
-                    // Platform effect check (after state is finalized).
-                    // JumpPad etc. may call ForceAirborneWithVelocity here,
-                    // which changes state from Attached back to Airborne.
-                    CheckPlatformEffect(surfaceCollider);
-                    if (currentState != SlimeState.Attached) return;
-
-                    if (hopBufferTimer > 0f)
-                    {
-                        hopBufferTimer = 0f;
-                        dashBufferTimer = 0f;
-                        // On inertial surfaces landedTangent went into slideVelocity, so include it.
-                        velocity = surfaceTangent * (crawlVelocity + slideVelocity);
-                        stickTimer = 0f;
-                        Hop();
-                        return;
-                    }
-
-                    if (dashBufferTimer > 0f && dashPendingKeyboardSign != 0 && dashCooldownTimer <= 0f)
-                    {
-                        ApplyGroundDash(-dashPendingKeyboardSign);
-                        dashBufferTimer = 0f;
-                        dashPendingKeyboardSign = 0;
-                    }
-                }
+                    AttachFromLanding(landingPlatformVel, surfaceUp);
                 return;
                 } // end else (blockAttach)
             }
 
             // Air control: horizontal acceleration with speed cap (last-input-wins)
             // "Horizontal" = perpendicular to effective gravity, not necessarily world-X.
-            if (airControlActive && !airDashSuppressesPhysics)
+            if (airControlActive)
             {
                 float inputX = inputReader.LastInputMove.x;
                 if (Mathf.Abs(inputX) > 0.01f)
@@ -361,18 +150,152 @@ namespace SlimeJumping.Controller
 
         }
 
-        private float ComputeLandingCrawlVelocity(float effectiveTangent, float landingAngle)
+        // Common impact capture for the landing→Charging and landing→Attached transitions.
+        // Records platform-relative impact velocity, attaches the carrier, resolves the new
+        // surface material, then applies wall-attach dampening + impact-redirect. Returns the
+        // landing surface angle; outputs the impact magnitude (for stick scaling) and the
+        // post-redirect tangent speed.
+        private float CaptureLandingImpact(Vector2 landingPlatformVel, out float impactMagnitude, out float effectiveTangent)
         {
-            float landed;
-            if (preserveLandingVelocity)
+            Vector2 relativeVel = velocity - landingPlatformVel;
+            impactMagnitude = relativeVel.magnitude;
+            float tangentSpeed = Vector2.Dot(relativeVel, surfaceTangent);
+            float normalSpeed = Mathf.Abs(Vector2.Dot(relativeVel, surfaceNormal));
+            impactTangentSpeed = tangentSpeed;
+            impactNormalSpeed = normalSpeed;
+            stickDeccelTimer = 0f;
+            // currentRope was already set this frame by UpdateRopeReference — hand it the
+            // pre-attach velocity here BEFORE the attach zeroes it.
+            if (currentRope != null)
+                currentRope.ApplyRiderImpact(rb.position, relativeVel);
+
+            if (carrier != null) carrier.Attach(surfaceCollider);
+            UpdateSurfaceModifiers(surfaceCollider);
+
+            float landingAngle = GetSurfaceAngle();
+            tangentSpeed *= surfaceMod.wallAttachDampen.Evaluate(landingAngle);
+            float redirectSign = Mathf.Sign(Vector2.Dot(gravityUp, surfaceTangent));
+            float redirectScale = 1f - Mathf.Abs(Vector2.Dot(surfaceNormal, gravityUp));
+            effectiveTangent = tangentSpeed + normalSpeed * surfaceMod.impactRedirect.Evaluate(landingAngle) * redirectSign * redirectScale;
+            return landingAngle;
+        }
+
+        // Routes the post-retention landed tangent speed into whichever channel the surface uses
+        // (inertial → slideVelocity, legacy → crawlVelocity) and zeroes the airborne velocity.
+        private void RouteLandedTangent(float landedTangent)
+        {
+            if (surfaceMod.useInertialSlide)
             {
-                preserveLandingVelocity = false;
-                landed = effectiveTangent * settings.hopLandingRetention;
+                slideVelocity = landedTangent;
+                crawlVelocity = 0f;
             }
             else
             {
-                landed = effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
+                crawlVelocity = landedTangent;
+                slideVelocity = 0f;
             }
+            velocity = Vector2.zero;
+        }
+
+        // Shadow-velocity → energy-conversion spawn distance: inverts the launch power curve so
+        // a rate=1 conversion preserves launch height. impactSpeed is the velocity the launch
+        // energy would have if flown back down to the current height (a launch-rise-land returns
+        // less than a launch-fall-land). Reads conversionCount for the rate; does NOT increment.
+        private float ComputeEnergyConversionSpawnDistance(out float impactSpeed)
+        {
+            float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
+            float shadowSpeedSq = launchSpeed * launchSpeed + 2f * Mathf.Abs(settings.gravity) * heightDelta;
+            impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
+            float rate = (conversionCount == 0) ? settings.initialConversionRate : settings.subsequentConversionRate;
+            float speedRatio = impactSpeed / settings.baseLaunchPower;
+            float spawnDistance = settings.chargeRadius
+                * Mathf.Pow(speedRatio, 1f / settings.chargeCurveExponent)
+                * rate;
+            if (launchSpeed == 0f) spawnDistance *= settings.notJumpConversionBonus;
+            return spawnDistance;
+        }
+
+        // Space held (buffered) at landing → enter Charging with an energy-conversion-expanded radius.
+        private void EnterChargingFromLanding(Vector2 landingPlatformVel, float surfaceUp)
+        {
+            chargeBufferTimer = 0f;
+            float spawnDistance = ComputeEnergyConversionSpawnDistance(out float impactSpeed);
+            conversionCount++;
+
+            float landingAngle = CaptureLandingImpact(landingPlatformVel, out _, out float effectiveTangent);
+            RouteLandedTangent(ComputeLandingCrawlVelocity(effectiveTangent, landingAngle));
+
+            stickTimer = (surfaceUp >= settings.stickSlopeThreshold)
+                ? 0f
+                : CalculateStickDuration(impactSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
+
+            activeChargeRadius = Mathf.Max(spawnDistance, settings.chargeRadius);
+            aimOffset = Vector2.zero;
+            chargeFullAimTimer = 0f;
+            slideRampTimer = 0f;
+            driftDirection = -surfaceNormal;
+            prevSurfaceNormal = surfaceNormal;
+            float conversionRatio = activeChargeRadius / settings.chargeRadius;
+            chargeEntryCrawl *= 1f - Mathf.InverseLerp(settings.hyperDashConversionDampingMin, settings.hyperDashConversionDampingMax, conversionRatio);
+            ChangeState(SlimeState.Charging);
+            lastSurfaceNormal = surfaceNormal;
+            lastSurfaceTangent = surfaceTangent;
+            surfaceProbeMissFrames = 0;
+            cachedSurfaceCollider = surfaceCollider;
+            SnapToSurface();
+            // Intentionally before CheckPlatformEffect: dust puff on JumpPad contact is natural.
+            OnLanded?.Invoke(surfaceCollider.ClosestPoint(rb.position), surfaceNormal);
+            // JumpPad etc. may call ForceAirborneWithVelocity here, flipping state back to Airborne.
+            CheckPlatformEffect(surfaceCollider);
+        }
+
+        // No Space at landing → sticky landing (energy lost), and arm the energy-conversion coyote
+        // so a Space press within the grace window still grants the would-have-been expanded radius.
+        private void AttachFromLanding(Vector2 landingPlatformVel, float surfaceUp)
+        {
+            float landingAngle = CaptureLandingImpact(landingPlatformVel, out float landingSpeed, out float effectiveTangent);
+            RouteLandedTangent(ComputeLandingCrawlVelocity(effectiveTangent, landingAngle));
+
+            // Per-surface override (SurfaceMaterial.overrideEnergyConversionCoyoteTime) lets springy
+            // surfaces extend the post-landing window for late-Space energy conversion.
+            bool isFloorLanding = surfaceUp >= settings.stickSlopeThreshold;
+            bool coyoteArmed = false;
+            float coyoteWindow = surfaceMod.GetEnergyConversionCoyoteTime(settings);
+            if (coyoteWindow > 0f)
+            {
+                float candidate = Mathf.Max(ComputeEnergyConversionSpawnDistance(out _), settings.chargeRadius);
+                if (candidate > settings.chargeRadius)
+                {
+                    pendingEnergyChargeRadius = candidate;
+                    energyCoyoteTimer = coyoteWindow;
+                    energyCoyoteDuration = coyoteWindow;
+                    pendingFloorReset = isFloorLanding;
+                    coyoteArmed = true;
+                }
+            }
+
+            // conversionCount resets on floor landing only. Wall chains keep subsequentConversionRate.
+            // When coyote is armed on a floor landing, the reset is deferred to pending expiry so a
+            // coyote-consumed conversion continues the chain (matches the Space-held branch).
+            if (isFloorLanding)
+            {
+                stickTimer = 0f;
+                if (!coyoteArmed) conversionCount = 0;
+            }
+            else
+                stickTimer = CalculateStickDuration(landingSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
+
+            slideRampTimer = 0f;
+            ChangeState(SlimeState.Attached);
+            SnapToSurface();
+            OnLanded?.Invoke(surfaceCollider.ClosestPoint(rb.position), surfaceNormal);
+            // JumpPad etc. may call ForceAirborneWithVelocity here, flipping state back to Airborne.
+            CheckPlatformEffect(surfaceCollider);
+        }
+
+        private float ComputeLandingCrawlVelocity(float effectiveTangent, float landingAngle)
+        {
+            float landed = effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
 
             // Charged-launch return: cap the EXCESS over the player's "explicit speed budget" by
             // landingExcessGain. Baseline = max(|preLaunchSlideV|, aimPower) so BOTH pre-launch slide
@@ -381,8 +304,8 @@ namespace SlimeJumping.Controller
             // Only the residual gain — projection efficiency on curved surfaces, frictionless airtime,
             // gravity-from-height — is dialed.
             //
-            // Hop-originated and external-arrival flights leave launchOriginValid=false so this is a
-            // no-op for them, preserving Inertial Slide / impact-redirect "ride up the curve" intact.
+            // External-arrival flights leave launchOriginValid=false so this is a no-op for them,
+            // preserving Inertial Slide / impact-redirect "ride up the curve" intact.
             if (launchOriginValid)
             {
                 float baseline = Mathf.Max(Mathf.Abs(launchOriginSlideV), launchOriginAimPower);
@@ -398,7 +321,7 @@ namespace SlimeJumping.Controller
 
             // Optional non-linear remap of final tangent speed (saturating curve for ice etc.).
             // Toggle gates the feature so authored curves can be temporarily disabled without
-            // losing keys. Applied last so it covers hop, regular, and charged-launch landings.
+            // losing keys. Applied last so it covers regular and charged-launch landings.
             if (surfaceMod.enableLandingTangentSpeedRemap)
             {
                 var remap = surfaceMod.landingTangentSpeedRemapCurve;

@@ -13,12 +13,10 @@ namespace SlimeJumping.Controller
             if (!isTouchingSurface || Vector2.Dot(surfaceNormal, gravityUp) < surfaceMod.GetCeilingThreshold(settings)
                 || blockAttachCount > 0)
             {
-                hopRequested = false;
                 crawlVelocity = 0f;
                 slideVelocity = 0f;
                 launchSpeed = 0f;
                 launchPosition = rb.position;
-                launchedByHop = false;
                 slideRampTimer = 0f;
                 conversionCount = 0;
                 ClearPendingEnergyConversion(executeDeferredReset: false);
@@ -36,23 +34,7 @@ namespace SlimeJumping.Controller
                     ClearPendingEnergyConversion(executeDeferredReset: true);
             }
 
-            // Reset slide ramp when stick expires (smooth transition)
-            if (wasStuck && stickTimer <= 0f)
-            {
-                slideRampTimer = 0f;
-                wasStuck = false;
-                float postStickTangent = Vector2.Dot(velocity, surfaceTangent);
-                if (surfaceMod.useInertialSlide)
-                {
-                    slideVelocity = postStickTangent;
-                    crawlVelocity = 0f;
-                }
-                else
-                {
-                    crawlVelocity = postStickTangent;
-                }
-            }
-            if (stickTimer > 0f) wasStuck = true;
+            UpdateStickTransition();
 
             // Stick: delay before slide starts, with optional deceleration.
             // Decel target is crawlVelocity (landingVelocityRetention * effectiveTangent), not 0.
@@ -72,95 +54,16 @@ namespace SlimeJumping.Controller
                 }
             }
 
-            // 1. Slide: legacy = fresh each frame; inertial = integrated (skip during stick)
+            // 1. Slide (legacy steady-state or inertial integration; skipped while sticking)
             float angle = GetSurfaceAngle();
-            float slideSpeed = 0f;
-            if (stickTimer <= 0f)
-            {
-                Vector2 gravityVec = GravityVector;
-                float gravAlongTangent = Vector2.Dot(gravityVec, surfaceTangent);
+            float slideSpeed = stickTimer <= 0f ? ComputeSlideSpeed(angle, dt, 1f) : 0f;
 
-                if (surfaceMod.useInertialSlide)
-                {
-                    // Inertial: gravity is acceleration, slideResistance is kinetic friction (m/s²).
-                    // No threshold deadzone — every bit of tangent gravity matters for KE↔height
-                    // exchange on a halfpipe; friction handles drift on near-flat ground.
-                    float slideAccel = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
-                    slideAccel *= ResolveSlopeGain(slideAccel, slideVelocity, angle);
-                    slideVelocity += slideAccel * dt;
-                    float linearDrag = surfaceMod.slideLinearDrag.Evaluate(angle);
-                    if (linearDrag > 0f)
-                        slideVelocity *= Mathf.Max(0f, 1f - linearDrag * dt);
-                    float frictionDecel = settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
-                    if (frictionDecel > 0f)
-                        slideVelocity = Mathf.MoveTowards(slideVelocity, 0f, frictionDecel * dt);
-                    slideSpeed = slideVelocity;
-                    slideRampTimer += dt; // kept ticking for state consistency (used by debug readouts)
-                }
-                else
-                {
-                    if (Mathf.Abs(gravAlongTangent) < settings.slideThreshold)
-                        gravAlongTangent = 0f;
-                    slideSpeed = gravAlongTangent * settings.slideGravityScale * surfaceMod.slideGravity.Evaluate(angle);
+            // 2. Crawl channel: residual landing-tangent momentum decays to 0. WASD surface
+            //    movement is gone — slide gravity + the charge slingshot are the only mover now.
+            float crawlDecel = settings.crawlOverspeedDeceleration * surfaceMod.crawlOverspeedDecel.Evaluate(angle);
+            crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, crawlDecel * dt);
 
-                    // Apply resistance to slideSpeed (not gravAlongTangent — crawl still fights full gravity)
-                    if (Mathf.Abs(slideSpeed) > 0.001f)
-                    {
-                        float sign = Mathf.Sign(slideSpeed);
-                        slideSpeed -= sign * settings.slideResistance * surfaceMod.slideResistance.Evaluate(angle);
-                        if (Mathf.Sign(slideSpeed) != sign)
-                            slideSpeed = 0f;
-                    }
-
-                    // Slide ramp-up: gradual acceleration after landing
-                    slideRampTimer += dt;
-                    float surfaceRamp = surfaceMod.slideRampUp.Evaluate(angle);
-                    float rampUpTime = (surfaceRamp > 0f) ? surfaceRamp : settings.stickSlideTransitionRampTime;
-                    float rampT = (rampUpTime > 0f) ? Mathf.Clamp01(slideRampTimer / rampUpTime) : 1f;
-                    slideSpeed *= rampT;
-                }
-            }
-
-            // 2. Crawl: accel/decel model (weakened during stick)
-            float crawlScale = (stickTimer > 0f) ? settings.stickCrawlMultiplier : 1f;
-            float inputX = inputReader.LastInputMove.x;
-            float maxCrawlSpeed = settings.crawlSpeed * surfaceMod.crawlSpeed.Evaluate(angle);
-            float targetSpeed = -inputX * maxCrawlSpeed * crawlScale;
-            bool overspeed = Mathf.Abs(crawlVelocity) > maxCrawlSpeed;
-            float decelValue = overspeed
-                ? settings.crawlOverspeedDeceleration * surfaceMod.crawlOverspeedDecel.Evaluate(angle)
-                : settings.crawlDeceleration * surfaceMod.crawlDecel.Evaluate(angle);
-            if (crawlVelocity != 0f && targetSpeed != 0f && Mathf.Sign(targetSpeed) != Mathf.Sign(crawlVelocity))
-            {
-                // Opposite direction: decel to 0, then accel toward new direction
-                float absBefore = Mathf.Abs(crawlVelocity);
-                crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, decelValue * dt);
-                if (crawlVelocity == 0f)
-                {
-                    float dtLeft = dt - absBefore / decelValue;
-                    if (dtLeft > 0f)
-                    {
-                        float accelRate = settings.crawlAcceleration * surfaceMod.crawlAccel.Evaluate(angle);
-                        crawlVelocity = Mathf.MoveTowards(0f, targetSpeed, accelRate * dtLeft);
-                    }
-                }
-            }
-            else if (Mathf.Abs(targetSpeed) > Mathf.Abs(crawlVelocity))
-                crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, settings.crawlAcceleration * surfaceMod.crawlAccel.Evaluate(angle) * dt);
-            else
-                crawlVelocity = Mathf.MoveTowards(crawlVelocity, targetSpeed, decelValue * dt);
-
-            // 3. Ground Dash: A/D double-tap impulse with input buffer.
-            // Direction is latched on the event from the keyboard sign — we don't read
-            // live inputX here so a quick double-tap (release before next FixedUpdate) still fires.
-            if (dashBufferTimer > 0f && dashPendingKeyboardSign != 0 && dashCooldownTimer <= 0f)
-            {
-                ApplyGroundDash(-dashPendingKeyboardSign);
-                dashBufferTimer = 0f;
-                dashPendingKeyboardSign = 0;
-            }
-
-            // 4. Final tangent velocity. Use arc-midpoint-compensated tangent so the
+            // 3. Final tangent velocity. Use arc-midpoint-compensated tangent so the
             // chord drawn between this frame and next by Rigidbody2D.Interpolate lands
             // on the predicted arc midpoint instead of the leading-edge tangent. Without
             // compensation, fast tangent rotation (5–8°/frame at U-bottom of Ice curves)
@@ -203,7 +106,7 @@ namespace SlimeJumping.Controller
                 bool gateOn = false;
                 float dbgDThetaDeg = 0f, dbgOmega = 0f, dbgRequired = 0f;
                 float dbgGravityHelp = 0f, dbgAvailable = 0f;
-                bool dbgConvex = false, dbgBigSpike = false, dbgCurveSustained = false;
+                bool dbgConvex = false;
 
                 if (!transientFrame)
                 {
@@ -259,14 +162,10 @@ namespace SlimeJumping.Controller
                     if (convex) sameSignFrames++;
                     else sameSignFrames = 0;
 
-                    bool bigSpike = absDTheta > settings.cornerBigSpikeAngle;
-                    bool curveSustained = sameSignFrames >= settings.cornerDetachSustainFrames;
                     dbgRequired = required;
                     dbgGravityHelp = gravityHelp;
                     dbgAvailable = available;
                     dbgConvex = convex;
-                    dbgBigSpike = bigSpike;
-                    dbgCurveSustained = curveSustained;
 
                     bool horizonClear = false;
                     if (centrifugalAdmissible && tangentSpeedAbs > 0.001f)
@@ -310,8 +209,7 @@ namespace SlimeJumping.Controller
                             tNoPrev, tColliderChanged, tStick, tBelowMinSpeed,
                             tangentSignedSpeed, dbgDThetaDeg, dbgOmega,
                             dbgRequired, dbgGravityHelp, dbgAvailable, rawRatio,
-                            dbgConvex, sameSignFrames,
-                            dbgBigSpike, dbgCurveSustained, true));
+                            dbgConvex, sameSignFrames, true));
                         OnFrictionDetach?.Invoke(detachVel, surfaceNormal, overshoot);
                         ForceAirborneWithVelocity(detachVel);
                         return;
@@ -338,8 +236,7 @@ namespace SlimeJumping.Controller
                     tNoPrev, tColliderChanged, tStick, tBelowMinSpeed,
                     tangentSignedSpeed, dbgDThetaDeg, dbgOmega,
                     dbgRequired, dbgGravityHelp, dbgAvailable, rawRatio,
-                    dbgConvex, sameSignFrames,
-                    dbgBigSpike, dbgCurveSustained, false));
+                    dbgConvex, sameSignFrames, false));
             }
             else
             {
@@ -348,7 +245,7 @@ namespace SlimeJumping.Controller
                 SetFrictionDebug(new FrictionDetachDebug(
                     false, true, false, false, false, false, false,
                     0f, 0f, 0f, 0f, 0f, 0f, 0f,
-                    false, 0, false, false, false));
+                    false, 0, false));
             }
 
             // Drain inertial slideVelocity when the slime is *wedged* — actual motion
@@ -370,12 +267,6 @@ namespace SlimeJumping.Controller
             SnapToSurface();
 
             if (IsPlatformEffectAlive) activePlatformEffect.OnSlimeStay(this, dt);
-
-            if (hopRequested)
-            {
-                hopRequested = false;
-                Hop();
-            }
         }
     }
 }
