@@ -36,7 +36,7 @@ Active        — 굴러감 / 날아감
 | 접촉 | 응답 | API |
 |------|------|-----|
 | 위 | `slime.ForceAirborneWithVelocity(jumpDir * jumpSpeed + horizontalPreserve)` — JumpBall.cs 패턴. `jumpSpeed = max(fixedJumpSpeed, incomingSpeed * incomingSpeedPercent + bonusSpeed)`. `jumpDir` 은 슬라임 attached 면 `SurfaceNormal`, airborne 이면 `Vector2.up` (눈덩이가 회전 중이라 `transform.up` 은 흔들려서 슬라임 기준이 안전). | `SlimeController.ForceAirborneWithVelocity` ([SlimeController.Launch.cs:39](../../../SlimeJumping_v2/Assets/Scripts/Controller/SlimeController.Launch.cs#L39)) |
-| 옆/아래 | `slime.ForceAirborneWithVelocity(((toSlime + Vector2.up * knockbackUpBias).normalized) * knockbackSpeed)`. 슬라임 기존 속도는 덮어씀, stun/lockout 없음. | 동일 API. |
+| 옆/아래 | `slime.ForceAirborneWithVelocity(((toSlime + Vector2.up * knockbackUpBias).normalized) * knockbackSpeed)`. 슬라임 기존 속도는 덮어씀, stun/lockout 없음. `sideHitFreezeBump > 0` 이면 슬라임의 [`SlimeFrostController.AddFreezeT`](../../../SlimeJumping_v2/Assets/Scripts/Visual/SlimeFrostController.cs) 로 freezeT 즉시 가산 (ColdZone 과 무관, clamp01). Top stomp 는 영향 없음. | 동일 API + `SlimeFrostController.AddFreezeT`. |
 
 `ForceAirborneWithVelocity` 가 Charging 상태에서도 `aimOffset = Vector2.zero`, `isVolumeCharging = false` 로 깔끔하게 charge 취소 → Airborne 전환을 보장 ([SlimeController.Launch.cs:50-54](../../../SlimeJumping_v2/Assets/Scripts/Controller/SlimeController.Launch.cs#L50-L54)).
 
@@ -124,6 +124,7 @@ Active        — 굴러감 / 날아감
 | | Preserve Horizontal On Stomp | true | 입사 수평 운동량 보존 |
 | Slime — Side | Knockback Speed | 12 | 옆 충돌 시 속도 magnitude (덮어씀) |
 | | Knockback Up Bias | 0.3 | 밀림 방향에 위쪽 섞을 비율 |
+| | Side Hit Freeze Bump | 0.2 | 옆 충돌 1회당 슬라임 freezeT 가산량 (0~1, clamp). 0=비활성. Top stomp 는 영향 없음 |
 | Lifecycle | Respawn Time | 3 | 초. 음수 = 일회용 |
 | | Blocking Layers | Everything | 부활 시점 overlap 검사 레이어 |
 | | Crumble Duration | 0.2 | 부서짐 visual 지속 시간 (s) |

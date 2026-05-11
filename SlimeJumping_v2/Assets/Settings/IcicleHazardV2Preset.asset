@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 090a6a2abd16b4c449475ff8301db366, type: 3}
   m_Name: IcicleHazardV2Preset
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Mechanisms.IcicleHazardV2Preset
-  detectionOffset: {x: 0, y: -4}
-  detectionSize: {x: 1.5, y: 10}
+  detectionOffset: {x: 0, y: -10}
+  detectionSize: {x: 5, y: 24}
   slimeLayer:
     serializedVersion: 2
     m_Bits: 65

@@ -1,6 +1,8 @@
 using System;
+using UnityEngine;
 using SlimeJumping.MeshTools;
 using SlimeJumping.Platforms;
+using SlimeJumping.Platforms.Snow;
 using SlimeJumping.Mechanisms;
 
 namespace SlimeJumping.Optimization
@@ -61,5 +63,25 @@ namespace SlimeJumping.Optimization
             // cost; SnowFields stay always-active and their broadphase contribution is
             // accepted.
         };
+
+        /// <summary>
+        /// Returns true if <paramref name="go"/> hosts a candidate type but should NOT receive
+        /// an OffscreenSleepable marker because its hierarchy contains a component that breaks
+        /// under SetActive cycles. Currently the only such gate is SnowField — present anywhere
+        /// in the GameObject's hierarchy (self or any descendant) — because:
+        ///   - Sleeping the host SetActive(false)s the SnowField, whose OnDisable clears
+        ///     activeStrips. Without strips, the field renders nothing on wake.
+        ///   - Re-rebuilding strips on wake would cost ~287ms self-time per SnowField (mesh-
+        ///     derived strip regeneration), and Fullscreen Editor's larger viewport routinely
+        ///     triggers multi-SnowField simultaneous wakes → cumulative 0.5s stutter.
+        ///
+        /// Used by both <see cref="OffscreenSleeperManager.RuntimeFallbackScan"/> and the
+        /// editor batch tool (Tools/Optimization/Attach...) so attach decisions stay consistent
+        /// across runtime and authoring time.
+        /// </summary>
+        public static bool ShouldSkipAttach(GameObject go)
+        {
+            return go.GetComponentInChildren<SnowField>(true) != null;
+        }
     }
 }

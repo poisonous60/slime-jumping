@@ -59,6 +59,14 @@ namespace SlimeJumping.Visual
         public void PushColdZone() => coldZoneRefCount++;
         public void PopColdZone() => coldZoneRefCount = Mathf.Max(0, coldZoneRefCount - 1);
 
+        /// <summary>
+        /// One-shot bump to freezeT, independent of ColdZone refcount. Used by
+        /// hazards (e.g. Snowball side impact) to spike progress without
+        /// leaving the slime "inside a zone" — the natural ramp/thaw resumes
+        /// from the new value on the next Update.
+        /// </summary>
+        public void AddFreezeT(float amount) => freezeT = Mathf.Clamp01(freezeT + amount);
+
         private void Awake()
         {
             ResolveWiring();

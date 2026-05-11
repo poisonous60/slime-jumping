@@ -14,6 +14,8 @@ freezeT == 1 시점  → 슬라임 _BaseColor가 _FreezeTint로 완전 lerp + fr
 - `colorCurve(freezeT)` → `_FreezeColorAmount` (default linear 0→1)
 - `frostCurve(freezeT)` → `_FrostStrength` (default 0~0.3 평탄, 0.3~1 ramp — 색이 먼저, 성애가 나중)
 
+`freezeT`는 ColdZone refcount 외에 **외부 hazard one-shot bump** 도 받음 — `SlimeFrostController.AddFreezeT(amount)` 가 ramp 와 무관하게 즉시 가산 (clamp01). 현재 사용처: [Snowball](snowball.md) 옆 충돌 (`sideHitFreezeBump`, default 0.2). bump 후에도 ColdZone refcount 로 결정되는 자연 ramp/thaw 가 새 값에서 그대로 이어짐.
+
 ## 컴포넌트 구조
 
 | 컴포넌트 | 위치 | 책임 |

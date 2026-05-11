@@ -4,6 +4,7 @@ using SlimeJumping.Effects;
 using SlimeJumping.Controller;
 using SlimeJumping.Audio;
 using SlimeJumping.Platforms.Snow;
+using SlimeJumping.Visual;
 
 namespace SlimeJumping.Mechanisms
 {
@@ -90,6 +91,9 @@ namespace SlimeJumping.Mechanisms
         [Range(0f, 1f)]
         [Tooltip("Knockback 방향에 위쪽으로 섞을 비율. 0 = 순수 수평, 1 = 위쪽만.")]
         [SerializeField] float knockbackUpBias = 0.3f;
+        [Range(0f, 1f)]
+        [Tooltip("옆 충돌 1회당 SlimeFrostController.freezeT 에 더해질 양 (0~1, clamp). 0 = 비활성. Top stomp 는 영향 없음.")]
+        [SerializeField] float sideHitFreezeBump = 0.2f;
 
         [Header("Visuals")]
         [Tooltip("회전 적용 대상 자식 transform. Collider 와 분리되어야 한다 (CLAUDE.md 규약).")]
@@ -529,6 +533,12 @@ namespace SlimeJumping.Mechanisms
             // 방향: 눈덩이 → 슬라임 + 위쪽 bias 섞어 정규화.
             Vector2 dir = (toSlime + Vector2.up * knockbackUpBias).normalized;
             slime.ForceAirborneWithVelocity(dir * knockbackSpeed);
+
+            if (sideHitFreezeBump > 0f)
+            {
+                var frost = slime.GetComponentInChildren<SlimeFrostController>();
+                if (frost != null) frost.AddFreezeT(sideHitFreezeBump);
+            }
         }
 
         // ---------- Falling sub-state (Phase 3) ----------

@@ -281,6 +281,7 @@ namespace SlimeJumping.EditorTools.Optimization
                 {
                     var go = ((Component)c).gameObject;
                     if (go.GetComponent<OffscreenSleepable>() != null) { attachedAccum++; continue; }
+                    if (OffscreenSleeperCandidates.ShouldSkipAttach(go)) { attachedAccum++; continue; }
                     missing++;
                     perTypeMissing.TryGetValue(type, out int m);
                     perTypeMissing[type] = m + 1;
@@ -307,6 +308,7 @@ namespace SlimeJumping.EditorTools.Optimization
                     var go = ((Component)comps[i]).gameObject;
                     if (!seen.Add(go)) continue;
                     if (go.GetComponent<OffscreenSleepable>() != null) continue;
+                    if (OffscreenSleeperCandidates.ShouldSkipAttach(go)) continue;
                     Undo.AddComponent<OffscreenSleepable>(go);
                     added++;
                 }
@@ -335,7 +337,9 @@ namespace SlimeJumping.EditorTools.Optimization
                     {
                         var go = ((Component)c).gameObject;
                         if (!seen.Add(go)) continue;
-                        if (go.GetComponent<OffscreenSleepable>() == null) wouldAdd++;
+                        if (go.GetComponent<OffscreenSleepable>() != null) continue;
+                        if (OffscreenSleeperCandidates.ShouldSkipAttach(go)) continue;
+                        wouldAdd++;
                     }
                 }
             }
@@ -361,7 +365,9 @@ namespace SlimeJumping.EditorTools.Optimization
                     {
                         var go = ((Component)c).gameObject;
                         if (!seen.Add(go)) continue;
-                        if (go.GetComponent<OffscreenSleepable>() == null) wouldAdd++;
+                        if (go.GetComponent<OffscreenSleepable>() != null) continue;
+                        if (OffscreenSleeperCandidates.ShouldSkipAttach(go)) continue;
+                        wouldAdd++;
                     }
                 }
             }
@@ -470,7 +476,14 @@ namespace SlimeJumping.EditorTools.Optimization
                         break;
                     }
                 }
-                if (!stillCandidate)
+                // Two reasons to remove a marker:
+                //   1) Host no longer has any candidate type (the type was removed from the
+                //      list, e.g. SnowField after the wake-cost decision).
+                //   2) Host is gated by ShouldSkipAttach (e.g. wrapper that hosts a SnowField
+                //      in its hierarchy — sleeping the wrapper would cascade SetActive into
+                //      the SnowField, breaking it).
+                bool gated = stillCandidate && OffscreenSleeperCandidates.ShouldSkipAttach(marker.gameObject);
+                if (!stillCandidate || gated)
                 {
                     Undo.DestroyObjectImmediate(marker);
                     removed++;
