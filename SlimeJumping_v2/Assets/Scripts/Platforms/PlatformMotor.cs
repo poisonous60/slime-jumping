@@ -46,9 +46,15 @@ namespace SlimeJumping.Platforms
 
             prevPosition = targetPos;
             prevRotation = targetRot;
+
+            OnAfterMotion(Time.fixedDeltaTime);
         }
 
         protected abstract (Vector2 position, float rotation) ComputeMotion(float dt);
+
+        // Hook for subclasses that drive child transforms (e.g. multi-segment chains)
+        // after the base rigidbody has been moved. Default no-op.
+        protected virtual void OnAfterMotion(float dt) { }
 
         public virtual float VelocityTransferScale => 1f;
 

@@ -40,6 +40,15 @@ namespace SlimeJumping.Debugging
                 slimeController = GetComponent<SlimeController>();
         }
 
+        private void Start()
+        {
+            if (!hasSavedPosition && slimeController != null)
+            {
+                savedPosition = slimeController.Position;
+                hasSavedPosition = true;
+            }
+        }
+
         private void Update()
         {
             var keyboard = Keyboard.current;
