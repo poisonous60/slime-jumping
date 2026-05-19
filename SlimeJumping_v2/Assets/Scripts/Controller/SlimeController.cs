@@ -535,7 +535,18 @@ namespace SlimeJumping.Controller
                 && currentRope.Edge != null)
                 LockRopePosition();
 
+            // Bamboo tip-grab position lock — mirror of LockRopePosition. Must run pre-probe
+            // so UpdateSurfaceContact's CheckSurface finds the tip segment as primary
+            // contact even after the bamboo has bent away from where the slime was last frame.
+            if (currentBambooGrab != null
+                && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
+                LockBambooGrabPosition();
+
             UpdateSurfaceContact(dt);
+
+            // Refresh grab handle after surface info is current. Sticky after entry — the
+            // handle is only cleared in ChangeState when exiting Attached/Charging.
+            UpdateBambooGrabReference();
 
             switch (currentState)
             {
@@ -605,7 +616,15 @@ namespace SlimeJumping.Controller
         {
             float surfaceMultiplier = (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
                 ? settings.attachedCheckMultiplier : settings.airborneCheckMultiplier;
-            float inputX = (currentState == SlimeState.Charging) ? 0f : inputReader.LastInputMove.x;
+            // While tip-grabbed, A/D is rerouted to bamboo tilt torque and zeroed for the
+            // surface probe (otherwise the probe would steer toward a phantom climb direction
+            // along the cap). Aim during Charging is unaffected — it reads inputReader.AimInput,
+            // a separate channel.
+            float rawInputX = inputReader.LastInputMove.x;
+            if (currentBambooGrab != null)
+                TryRouteBambooTiltInput(rawInputX);
+            float inputX = (currentBambooGrab != null || currentState == SlimeState.Charging)
+                ? 0f : rawInputX;
             Vector2 primaryNormal;
             isTouchingSurface = surfaceProbe.CheckSurface(out primaryNormal, out surfaceCollider, surfaceMultiplier, inputX, surfaceCollider, gravityUp, gravityRight);
 
@@ -684,6 +703,16 @@ namespace SlimeJumping.Controller
         // per-frame `velocity = tangent * speed` overwrite doesn't wipe it.
         private void ApplyExternalDeltaV()
         {
+            // Tip-grabbed: drain the accumulator without applying it. Otherwise the
+            // residual writes to `velocity` are read by PlatformCarrier next FU (carrier
+            // pre-tick reads slime.Velocity) and fed into the bamboo's impact-pump dv
+            // even though OutputVelocity zeros rb.linearVelocity for grab anchoring.
+            if (currentBambooGrab != null)
+            {
+                externalDeltaV = Vector2.zero;
+                return;
+            }
+
             if (externalDeltaV.sqrMagnitude > 0.0001f)
             {
                 if (currentState == SlimeState.Airborne || currentState == SlimeState.Stunned)
@@ -714,6 +743,18 @@ namespace SlimeJumping.Controller
         // Unity-native.
         private void OutputVelocity(float dt)
         {
+            // Tip-grab owns rb.position via LockBambooGrabPosition (pre-probe). Bypass the
+            // velocity-driven motion path entirely so external deltaV (ApplyExternalDeltaV)
+            // and rope/carrier velocity contributions can't drift the slime off the tip
+            // between LockBambooGrabPosition refreshes. The bamboo itself isn't a translating
+            // platform (kinematic base pivot is fixed), so ApplyPositionCarry would be a
+            // no-op anyway; skipping it is safe.
+            if (currentBambooGrab != null)
+            {
+                rb.linearVelocity = Vector2.zero;
+                return;
+            }
+
             Vector2 platformVel = (carrier != null && carrier.IsOnPlatform)
                 ? carrier.GetEffectiveVelocity() : Vector2.zero;
             float frictionAngle = isTouchingSurface ? GetSurfaceAngle() : 0f;
@@ -799,7 +840,10 @@ namespace SlimeJumping.Controller
                     }
                     rb.position += (delta / dist) * Mathf.Max(0f, clamped - settings.contactSkin);
                 }
-                surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
+                // Tip-grab owns rb.position via LockBambooGrabPosition — skip the probe's
+                // snap so it doesn't tug the slime onto a non-tip segment mid-bend.
+                if (currentBambooGrab == null)
+                    surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
 
                 // Position-based wedge drain for the small-ledge passthrough: when the
                 // passthrough kept the forward slide alive (clip skipped) but SnapToSurface's
@@ -999,6 +1043,10 @@ namespace SlimeJumping.Controller
 
         private void SnapToSurface()
         {
+            // Tip-grab makes the cached tip position the source of truth — letting the
+            // probe re-snap can pull the slime onto a different segment as the bamboo
+            // bends, undoing LockBambooGrabPosition.
+            if (currentBambooGrab != null) return;
             surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
         }
 
@@ -1042,6 +1090,17 @@ namespace SlimeJumping.Controller
                 sameSignFrames = 0;
                 cornerStressRatio = 0f;
                 smoothedCornerStressRatio = 0f;
+            }
+
+            // Tip-grab is bound to {Attached, Charging}. Any transition out of that pair
+            // (Launch, charging cancel, stun, ...) drops the grab handle so the carrier
+            // boost doesn't leak past the launching frame and so re-attach on a different
+            // surface starts fresh. Carrier inheritance has already read VelocityTransferScale
+            // by the time FinalizeAirborneExit invokes ChangeState, so the boost is preserved.
+            if ((currentState == SlimeState.Attached || currentState == SlimeState.Charging)
+                && newState != SlimeState.Attached && newState != SlimeState.Charging)
+            {
+                currentBambooGrab = null;
             }
 
             currentState = newState;

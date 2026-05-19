@@ -59,9 +59,12 @@ namespace SlimeJumping.Controller
                 return;
             }
 
-            // Surface/coyote physics — with probe hysteresis (absorb 1-frame misses)
-            bool probeValid = isTouchingSurface
-                && Vector2.Dot(surfaceNormal, gravityUp) >= surfaceMod.GetCeilingThreshold(settings);
+            // Surface/coyote physics — with probe hysteresis (absorb 1-frame misses).
+            // Tip-grab keeps the slime on a valid surface even when the bamboo bends past
+            // the ceiling-threshold dot (mirrors the sticky behavior in FixedUpdateAttached).
+            bool probeValid = (currentBambooGrab != null)
+                || (isTouchingSurface
+                    && Vector2.Dot(surfaceNormal, gravityUp) >= surfaceMod.GetCeilingThreshold(settings));
 
             bool onValidSurface;
             if (probeValid)
@@ -86,26 +89,32 @@ namespace SlimeJumping.Controller
 
             if (onValidSurface)
             {
-                // Rotate aim offset to follow surface normal change on curved surfaces
-                float prevAngleRad = Mathf.Atan2(prevSurfaceNormal.y, prevSurfaceNormal.x);
-                float currAngleRad = Mathf.Atan2(surfaceNormal.y, surfaceNormal.x);
-                float deltaAngle = currAngleRad - prevAngleRad;
-                if (deltaAngle > Mathf.PI) deltaAngle -= 2f * Mathf.PI;
-                else if (deltaAngle < -Mathf.PI) deltaAngle += 2f * Mathf.PI;
-                float maxRotation = settings.chargeNormalFollowSpeed * dt;
-                deltaAngle = Mathf.Clamp(deltaAngle, -maxRotation, maxRotation);
-                if (Mathf.Abs(deltaAngle) > 0.0001f)
+                // Rotate aim offset to follow surface normal change on curved surfaces.
+                // Skipped while tip-grabbed: bamboo bend rotates surfaceNormal in a way that
+                // is unrelated to player aim intent, so coupling aimOffset to it would let
+                // A/D tilt input silently steer the launch direction.
+                if (currentBambooGrab == null)
                 {
-                    float cos = Mathf.Cos(deltaAngle);
-                    float sin = Mathf.Sin(deltaAngle);
-                    aimOffset = new Vector2(
-                        aimOffset.x * cos - aimOffset.y * sin,
-                        aimOffset.x * sin + aimOffset.y * cos
-                    );
-                    driftDirection = new Vector2(
-                        driftDirection.x * cos - driftDirection.y * sin,
-                        driftDirection.x * sin + driftDirection.y * cos
-                    );
+                    float prevAngleRad = Mathf.Atan2(prevSurfaceNormal.y, prevSurfaceNormal.x);
+                    float currAngleRad = Mathf.Atan2(surfaceNormal.y, surfaceNormal.x);
+                    float deltaAngle = currAngleRad - prevAngleRad;
+                    if (deltaAngle > Mathf.PI) deltaAngle -= 2f * Mathf.PI;
+                    else if (deltaAngle < -Mathf.PI) deltaAngle += 2f * Mathf.PI;
+                    float maxRotation = settings.chargeNormalFollowSpeed * dt;
+                    deltaAngle = Mathf.Clamp(deltaAngle, -maxRotation, maxRotation);
+                    if (Mathf.Abs(deltaAngle) > 0.0001f)
+                    {
+                        float cos = Mathf.Cos(deltaAngle);
+                        float sin = Mathf.Sin(deltaAngle);
+                        aimOffset = new Vector2(
+                            aimOffset.x * cos - aimOffset.y * sin,
+                            aimOffset.x * sin + aimOffset.y * cos
+                        );
+                        driftDirection = new Vector2(
+                            driftDirection.x * cos - driftDirection.y * sin,
+                            driftDirection.x * sin + driftDirection.y * cos
+                        );
+                    }
                 }
                 prevSurfaceNormal = surfaceNormal;
 
@@ -113,6 +122,21 @@ namespace SlimeJumping.Controller
                 coyoteTimer = settings.chargingCoyoteTime;
                 lastSurfaceNormal = surfaceNormal;
                 lastSurfaceTangent = surfaceTangent;
+
+                // Tip-grabbed: rb.position is owned by LockBambooGrabPosition, so the
+                // stick/slide/crawl block below would only fight the anchor. Zero motion
+                // channels and bail out — aim drift + auto-launch already updated above.
+                if (currentBambooGrab != null)
+                {
+                    crawlVelocity = 0f;
+                    slideVelocity = 0f;
+                    velocity = Vector2.zero;
+                    stickTimer = 0f;
+                    stickDeccelTimer = 0f;
+                    slideRampTimer = 0f;
+                    if (IsPlatformEffectAlive) activePlatformEffect.OnSlimeStay(this, dt);
+                    return;
+                }
 
                 UpdateStickTransition();
 

@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 using SlimeJumping.Audio;
 using SlimeJumping.Interaction;
+using SlimeJumping.UI.Animation;
 using SlimeJumping.UI.Framework;
 
 namespace SlimeJumping.UI.Panels
@@ -24,6 +25,9 @@ namespace SlimeJumping.UI.Panels
         [Header("Actions")]
         [SerializeField] private Button stopButton;
         [SerializeField] private Button cancelButton;
+
+        [Header("Row Animation")]
+        [SerializeField] private UIContainerStagger rowStagger;
 
         private MediaInteractable_PhonographV2 source;
         private readonly List<GameObject> spawnedRows = new List<GameObject>();
@@ -169,6 +173,11 @@ namespace SlimeJumping.UI.Panels
                 var tmp = spawnedRows[i].GetComponentInChildren<TextMeshProUGUI>(includeInactive: true);
                 if (tmp != null) tmp.ForceMeshUpdate();
             }
+
+            // Stagger the freshly spawned rows. The Box-level stagger fired by
+            // UIPanel.Open() ran before these rows existed, so we trigger a
+            // list-targeted pass here against the row spawns instead.
+            if (rowStagger != null) rowStagger.PlayForList(spawnedRows);
         }
 
         private void HandlePick(int index)

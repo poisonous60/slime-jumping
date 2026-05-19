@@ -135,6 +135,9 @@ BambooPlatform   (Rigidbody2D kinematic + BambooPlatform)
 
 ## Inspector 필드 (요약)
 
+### Mode
+- `backgroundOnly` (default false) — true면 collider segment 생성 스킵, Visual mesh만 빌드 (순수 배경 장식용). 토글 후 `Rebuild Segments` 호출 필요. rider physics·carrier·OverrideSurfaceMaterial 모두 무효 (충돌 없으므로 attach 자체 불가). RB는 PlatformMotor 요구상 유지되나 currentAngle=0 고정으로 직선 cylinder.
+
 ### Geometry / Spring
 - `bambooLength`, `segmentCount` (2~32), `segmentRadius`, `colliderShape` (Capsule/Box)
 - `naturalFreqHz` (0.3~3 Hz), `dampingRatio` (0~1), `maxDeflectionDeg`, `clampRestitution` (0 = 캡 absorb, no ringing)
@@ -185,6 +188,85 @@ BambooPlatform   (Rigidbody2D kinematic + BambooPlatform)
 - bambooLength/segmentCount 런타임 변경 시 mesh/collider 재생성 안 됨 (Rebuild Segments 필요).
 - 수직 정렬 가정 — 비스듬한 base rotation 미지원 (필요 시 baseRotation 응용).
 - Shadow side render에서 light 받는 방향에 따라 stalk 명암 split 위치가 바뀜 — `lightDirWS` 인스펙터 조정 필요.
+
+## Tip-Grab 모드 (그랩 / 매달림) — 설계 (미구현)
+
+기존 측면 attach (벽 용도) 위에 **tip-grab 서브모드** 추가. 슬라임이 bamboo 위에 올라탔을 때 자동 진입, A/D 입력이 crawl 대신 bamboo tilt 토크로 라우팅. 풀면 스프링 복원 + 진동, 그 와중 charge-and-launch 하면 carrier inheritance가 lateral **Reaction Boost** 제공.
+
+용어/모델 = [/CONTEXT.md](../../../CONTEXT.md), 구조 선택 근거 = [/docs/adr/0001-bamboo-tip-grab-as-rope-pattern-flag.md](../../adr/0001-bamboo-tip-grab-as-rope-pattern-flag.md).
+
+### 설계 결정 흐름 (grill-with-docs 산출)
+
+| # | 질문 | 선택 | 이유 |
+|---|------|------|------|
+| Q1 | 그랩 기하 | **A. tip 끝점 잡고 매달림 (깃대-깃발)** | "매달림" 직역, swing-jump 시나리오 자연 |
+| Q2 | 그랩 진입 trigger | **T2-변형. on-top 자동 감지** (`dot(surfaceNormal, gravityUp) > grabEnterDot`, bamboo 소속 collider 일 때) | 별도 키 불필요, 측면→tip 슬라이드도 자연 transition |
+| Q3 | A/D 입력 매핑 | **M1. 토크 추가** (`pendingRiderTorque += -input.x * tiltTorque`) | 그네 펌핑 자연, ODE 수정 0, swing-back boost 식 자명 |
+| Q4 | Tilt 중 슬라임 위치 | **P1. tip 고정 anchor** (`rb.position = tipWorldPos` 매 FU 강제) | 매달림 그림 일치, 어떤 각도에서도 그랩 유지, 코드 단순 |
+| Q5 | Launch 모델 | **J1. 기존 Charging→Launch 재사용** + `grabModeCarrierScale` knob 추가 | Carrier inheritance가 그대로 boost, 신규 launch 식 0 |
+| Q6 | State 모델 | **S1. Rope 패턴** (Attached 유지, `currentBambooGrab` 핸들, partial 파일) | 신규 state 도입 시 transition matrix 재검토 비용 회피 |
+| Q7 | Tilt knob set | **K2. 2-knob** (`tiltTorque` + `chargingTiltScale`) | 기존 `chargePumpScale`와 짝 |
+| Q8 | 위험 처리 | **R2-a / R3-a** (snap skip + intentional toggle bypass) | 1줄 가드, 본의 아닌 lockout 방지 |
+
+### Anchor & 입력 라우팅 (Rope 패턴)
+
+- `SlimeController.BambooGrab.cs` (신규 partial).
+- 필드: `BambooPlatform currentBambooGrab`.
+- **진입 감지** — `UpdateSurfaceContact` 직후 `surfaceCollider.GetComponentInParent<BambooPlatform>()` + dot 조건 검사. 충족 → `currentBambooGrab` set. 미충족 → unset.
+- **Pre-probe lock** — `SlimeController.cs:533-536` rope 블록 옆에 `LockBambooGrabPosition()` 추가. 매 FU `rb.position = currentBambooGrab.GetTipWorldPos()` (BambooPlatform가 `ApplySegmentTransforms` 직후 캐시한 tip world pos getter 제공).
+- **입력 게이트** — `SlimeController.cs:608` inputX 가공부에서 `currentBambooGrab != null` 이면 `inputX = 0` (crawl 차단) + `currentBambooGrab.ApplyTiltTorque(rawInputX)` 호출. `inputReader.AimInput` 은 별도 필드라 charging aim 영향 0.
+- **Snap skip** — surfaceProbe.SnapToSurface 호출부 (`Attached.cs`, `Charging.cs`, `OutputVelocity` Multi-probe 분기) 에 `currentBambooGrab != null` 가드. Tip-lock이 진실의 원천.
+- **Launch 해제** — `Launch()` 끝부분에서 `currentBambooGrab = null`. Carrier inheritance는 같은 프레임 `PlatformCarrier.GetEffectiveVelocity()` 호출이 BambooPlatform의 `AngularVelocity` × arm 으로 계산 (arm = tip - pivot ≈ (0, L), 최대치 자동).
+- **Grab 손실 시 토글 카운트 우회** — grab 해제로 인한 Attached→Airborne 전이는 `ChangeState(Airborne, intentional: true)` (또는 동등 flag) 로 호출해서 `RegisterAttachToggle()` skip. bamboo 진동 큰 디자인에서 lockout 트립 방지.
+
+### BambooPlatform 측 신규 API
+
+```csharp
+// 매 ApplySegmentTransforms 직후 갱신되는 tip world pos 캐시.
+public Vector2 GetTipWorldPos() => cachedTipWorldPos;
+
+// 외부 (SlimeController.BambooGrab) 가 부르는 입력 토크 라우터.
+// inputX ∈ [-1, 1]. 부호 변환은 BendAngle 부호 컨벤션 (positive = CCW, tip→-X) 에 맞춰
+// 토크 부호 결정: A(input.x = -1) 누르면 tip이 +X 로 이동 (BendAngle 감소, CW) →
+// 토크는 negative. 즉 `pendingRiderTorque += -inputX * tiltTorque * scale`.
+public void ApplyTiltTorque(float inputX, bool isCharging)
+{
+    float scale = isCharging ? chargingTiltScale : 1f;
+    pendingRiderTorque += -inputX * tiltTorque * scale;
+}
+```
+
+### 신규 Inspector 필드
+
+| 필드 | 기본 | 의미 |
+|---|---|---|
+| `grabEnterDot` | 0.9 | `dot(surfaceNormal, gravityUp)` 임계. 이상이면 tip-grab 진입 |
+| `tiltTorque` | (튜닝) | A/D 입력당 추가 토크 크기 (N·m 동등 단위, ODE I_total과 같은 단위계) |
+| `chargingTiltScale` | 1.0 | Charging 상태일 때 tiltTorque 곱셈. 기존 `chargePumpScale`과 의미 짝 |
+| `grabModeCarrierScale` | 1.0 | Tip-grab 상태에서 Launch 할 때 `VelocityTransferScale` 추가 곱셈. 0 = 그랩 boost 없음 (디자인 디버깅용), >1 = grab 모드 전용 강화 boost |
+
+기존 carrier 식과의 합성:
+```
+finalCarrierVel = ω × arm * VelocityTransferScale * (currentBambooGrab == this ? grabModeCarrierScale : 1f)
+```
+구현 위치 = `BambooPlatform.VelocityTransferScale` getter (기존 식에 `grabModeCarrierScale` 곱 한 줄).
+
+### 의도 동작 시나리오
+
+1. 슬라임 측면에서 bamboo로 점프, 측면 attach → 기존 그대로 (벽-비슷)
+2. 측면 slide 또는 위에서 떨어져 tip cap에 도달 → `grabEnterDot` 충족 → `currentBambooGrab` set
+3. A/D 누름 → bamboo가 좌/우로 휨. 슬라임은 tip 고정이라 같이 호 그림
+4. 입력 떼면 스프링 복원 + 댐핑 진동. 그네 펌핑 가능 (반대 방향 입력으로 진폭 증가)
+5. Charge 입력 → Charging 진입. Grab anchor 유지. A/D는 계속 tilt, aim은 별도 입력으로 회전
+6. 스윙이 BendAngle ≈ 0 (max |ω|) 지나는 순간 release → Launch. `aimDir * launchPower + ω × arm * scales` 합성 발사 → 큰 lateral 부스트
+7. Airborne 진입 시 `currentBambooGrab = null`. 다음 attach까지 일반
+
+### 알려진 한계 / 미해결
+
+- 단일 라이더 가정 (기존 BambooPlatform 한계 그대로)
+- bamboo가 비-수직(`baseRotation ≠ 0`) 일 때 `gravityUp` dot 임계가 의도와 어긋날 수 있음 — bamboo local up 기준으로 비교하도록 일반화 필요 (현재 수직 정렬 가정으로 충분)
+- "tilt 가 maxDeflectionDeg 캡에 닿은 뒤 추가 입력은 무의미" — 디자인상 정상 (캡에서 추가 펌핑 차단 = 그네 펌핑 기교 강제)
+- Multi-bamboo 클러스터 — 인접 bamboo로 점프하면 자연스레 그랩 핸들 갱신 (별도 처리 불필요로 평가, 첫 구현 후 검증)
 
 ## Pre-existing 프로젝트 이슈 해결 (작업 중 발견)
 

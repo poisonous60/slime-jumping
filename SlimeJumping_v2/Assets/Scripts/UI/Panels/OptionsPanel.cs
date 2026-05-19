@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 using SlimeJumping.Rendering;
 using SlimeJumping.Settings;
+using SlimeJumping.UI.Animation;
 using SlimeJumping.UI.Framework;
 
 namespace SlimeJumping.UI.Panels
@@ -18,39 +19,39 @@ namespace SlimeJumping.UI.Panels
         [Header("Frame Limit")]
         [SerializeField] private Button frameLimitPrevButton;
         [SerializeField] private Button frameLimitNextButton;
-        [SerializeField] private TextMeshProUGUI frameLimitValueLabel;
+        [SerializeField] private BumpableLabel frameLimitValueLabel;
 
         [Header("VSync")]
         [SerializeField] private Button vsyncPrevButton;
         [SerializeField] private Button vsyncNextButton;
-        [SerializeField] private TextMeshProUGUI vsyncValueLabel;
+        [SerializeField] private BumpableLabel vsyncValueLabel;
 
         [Header("Audio")]
         [SerializeField] private Slider playerSfxVolumeSlider;
-        [SerializeField] private TextMeshProUGUI playerSfxVolumeValueLabel;
+        [SerializeField] private BumpableLabel playerSfxVolumeValueLabel;
         [SerializeField] private Slider worldSfxVolumeSlider;
-        [SerializeField] private TextMeshProUGUI worldSfxVolumeValueLabel;
+        [SerializeField] private BumpableLabel worldSfxVolumeValueLabel;
         [SerializeField] private Slider bgmVolumeSlider;
-        [SerializeField] private TextMeshProUGUI bgmVolumeValueLabel;
+        [SerializeField] private BumpableLabel bgmVolumeValueLabel;
         [SerializeField] private Slider uiVolumeSlider;
-        [SerializeField] private TextMeshProUGUI uiVolumeValueLabel;
+        [SerializeField] private BumpableLabel uiVolumeValueLabel;
 
         [Header("Display")]
         [SerializeField] private Button windowModePrevButton;
         [SerializeField] private Button windowModeNextButton;
-        [SerializeField] private TextMeshProUGUI windowModeValueLabel;
+        [SerializeField] private BumpableLabel windowModeValueLabel;
         [SerializeField] private TMP_Dropdown resolutionDropdown;
         [SerializeField] private Button backgroundCameraPrevButton;
         [SerializeField] private Button backgroundCameraNextButton;
-        [SerializeField] private TextMeshProUGUI backgroundCameraValueLabel;
+        [SerializeField] private BumpableLabel backgroundCameraValueLabel;
 
         [Header("Debug")]
         [SerializeField] private Button chargeVisualPrevButton;
         [SerializeField] private Button chargeVisualNextButton;
-        [SerializeField] private TextMeshProUGUI chargeVisualValueLabel;
+        [SerializeField] private BumpableLabel chargeVisualValueLabel;
         [SerializeField] private Button mouseTeleportDebugPrevButton;
         [SerializeField] private Button mouseTeleportDebugNextButton;
-        [SerializeField] private TextMeshProUGUI mouseTeleportDebugValueLabel;
+        [SerializeField] private BumpableLabel mouseTeleportDebugValueLabel;
         [SerializeField] private Button clearTrailButton;
 
         [Header("Tabs")]
@@ -303,48 +304,50 @@ namespace SlimeJumping.UI.Panels
         {
             if (frameLimitValueLabel == null) return;
             int fps = GameOptions.FrameLimitOptions[frameLimitIndex];
-            frameLimitValueLabel.text = fps <= 0 ? "Unlimited" : fps + " FPS";
+            frameLimitValueLabel.Set(fps <= 0 ? "Unlimited" : fps + " FPS");
         }
 
-        private static void UpdatePercentLabel(TextMeshProUGUI label, float v)
+        private static void UpdatePercentLabel(BumpableLabel label, float v)
         {
             if (label == null) return;
-            label.text = Mathf.RoundToInt(v * 100f) + "%";
+            label.Set(Mathf.RoundToInt(v * 100f) + "%");
         }
 
         private void UpdateWindowModeLabel()
         {
             if (windowModeValueLabel == null) return;
+            string text;
             switch (WindowModes[windowModeIndex])
             {
-                case WindowMode.Windowed: windowModeValueLabel.text = "Windowed"; break;
-                case WindowMode.Borderless: windowModeValueLabel.text = "Borderless"; break;
-                default: windowModeValueLabel.text = "Fullscreen"; break;
+                case WindowMode.Windowed: text = "Windowed"; break;
+                case WindowMode.Borderless: text = "Borderless"; break;
+                default: text = "Fullscreen"; break;
             }
+            windowModeValueLabel.Set(text);
         }
 
         private void UpdateBackgroundCameraLabel()
         {
             if (backgroundCameraValueLabel == null) return;
-            backgroundCameraValueLabel.text = BackgroundCameraStates[backgroundCameraIndex] ? "On" : "Off";
+            backgroundCameraValueLabel.Set(BackgroundCameraStates[backgroundCameraIndex] ? "On" : "Off");
         }
 
         private void UpdateVSyncLabel()
         {
             if (vsyncValueLabel == null) return;
-            vsyncValueLabel.text = VSyncStates[vsyncIndex] ? "On" : "Off";
+            vsyncValueLabel.Set(VSyncStates[vsyncIndex] ? "On" : "Off");
         }
 
         private void UpdateChargeVisualLabel()
         {
             if (chargeVisualValueLabel == null) return;
-            chargeVisualValueLabel.text = ChargeVisualStates[chargeVisualIndex] ? "On" : "Off";
+            chargeVisualValueLabel.Set(ChargeVisualStates[chargeVisualIndex] ? "On" : "Off");
         }
 
         private void UpdateMouseTeleportDebugLabel()
         {
             if (mouseTeleportDebugValueLabel == null) return;
-            mouseTeleportDebugValueLabel.text = MouseTeleportDebugStates[mouseTeleportDebugIndex] ? "On" : "Off";
+            mouseTeleportDebugValueLabel.Set(MouseTeleportDebugStates[mouseTeleportDebugIndex] ? "On" : "Off");
         }
 
         private static int IndexOfFrameLimit(int fps)

@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using SlimeJumping.UI.Animation;
 using SlimeJumping.UI.Framework;
 
 namespace SlimeJumping.EditorTools.UI
@@ -14,6 +15,8 @@ namespace SlimeJumping.EditorTools.UI
     {
         public const string PrefabRoot = "Assets/Prefabs/UI";
         public const string PanelPrefabRoot = "Assets/Prefabs/UI/Panels";
+        public const string SettingsRoot = "Assets/Settings/UI";
+        public const string DefaultJuiceProfilePath = SettingsRoot + "/DefaultJuiceProfile.asset";
 
         public const float CanvasRefWidth = 1920f;
         public const float CanvasRefHeight = 1080f;
@@ -63,6 +66,17 @@ namespace SlimeJumping.EditorTools.UI
         public static TMP_FontAsset LoadSharedFont()
         {
             return LoadByGuid<TMP_FontAsset>(TMPFontGuid);
+        }
+
+        public static JuiceProfile LoadOrCreateDefaultJuiceProfile()
+        {
+            EnsureFolder(SettingsRoot);
+            var existing = AssetDatabase.LoadAssetAtPath<JuiceProfile>(DefaultJuiceProfilePath);
+            if (existing != null) return existing;
+            var asset = ScriptableObject.CreateInstance<JuiceProfile>();
+            AssetDatabase.CreateAsset(asset, DefaultJuiceProfilePath);
+            AssetDatabase.SaveAssets();
+            return asset;
         }
 
         public static GameObject CreateChild(Transform parent, string name, params System.Type[] components)
@@ -139,11 +153,14 @@ namespace SlimeJumping.EditorTools.UI
             img.type = Image.Type.Sliced;
             img.color = ColorButtonBG;
             var button = go.AddComponent<Button>();
+            // ColorBlock neutralised — UIButtonJuice owns visual feedback.
             var colors = button.colors;
             colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(1.08f, 1.08f, 1.08f, 1f);
-            colors.pressedColor = new Color(0.80f, 0.92f, 0.86f, 1f);
-            colors.selectedColor = new Color(1.05f, 1.05f, 1.05f, 1f);
+            colors.highlightedColor = Color.white;
+            colors.pressedColor = Color.white;
+            colors.selectedColor = Color.white;
+            colors.colorMultiplier = 1f;
+            colors.fadeDuration = 0f;
             button.colors = colors;
 
             var le = go.AddComponent<LayoutElement>();
@@ -153,13 +170,46 @@ namespace SlimeJumping.EditorTools.UI
             var labelTmp = CreateText(go.transform, "Label", label, fontSize, TextAlignmentOptions.Center);
             labelTmp.color = ColorButtonText;
             labelTmp.fontStyle = FontStyles.Bold;
+            labelTmp.raycastTarget = false;
             var lrt = labelTmp.rectTransform;
             lrt.anchorMin = Vector2.zero;
             lrt.anchorMax = Vector2.one;
             lrt.offsetMin = new Vector2(12f, 4f);
             lrt.offsetMax = new Vector2(-12f, -4f);
 
+            // Attach juice. Profile ref is resolved lazily so the asset is
+            // created on first build instead of crashing the menu.
+            var juice = go.AddComponent<UIButtonJuice>();
+            juice.SetProfile(LoadOrCreateDefaultJuiceProfile());
+
             return button;
+        }
+
+        public static UIContainerStagger AddContainerStagger(GameObject go,
+            UIContainerStagger.StaggerEffect effect = UIContainerStagger.StaggerEffect.ScalePop,
+            bool manualTriggerOnly = false)
+        {
+            var stagger = go.AddComponent<UIContainerStagger>();
+            stagger.SetProfile(LoadOrCreateDefaultJuiceProfile());
+            var so = new SerializedObject(stagger);
+            so.FindProperty("effect").enumValueIndex = (int)effect;
+            // Panels trigger the stagger explicitly in UIPanel.Open() so the
+            // children's positions are settled and SelectTab-style Awake logic
+            // has had a chance to flip child active state before we capture.
+            so.FindProperty("playOnEnable").boolValue = false;
+            so.FindProperty("manualTriggerOnly").boolValue = manualTriggerOnly;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return stagger;
+        }
+
+        public static BumpableLabel MakeBumpable(TextMeshProUGUI tmp)
+        {
+            if (tmp == null) return null;
+            var existing = tmp.GetComponent<BumpableLabel>();
+            if (existing != null) return existing;
+            var b = tmp.gameObject.AddComponent<BumpableLabel>();
+            b.SetProfile(LoadOrCreateDefaultJuiceProfile());
+            return b;
         }
 
         public static GameObject CreatePanelRoot(string name, Vector2 preferredSize)

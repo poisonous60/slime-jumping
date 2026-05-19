@@ -2,6 +2,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using SlimeJumping.UI.Animation;
 using SlimeJumping.UI.Framework;
 using SlimeJumping.UI.Panels;
 
@@ -48,6 +49,14 @@ namespace SlimeJumping.EditorTools.UI
             var box = UISetupCommon.CreateCenteredBox(root.transform, "Box", new Vector2(BoxWidth, BoxHeight));
             UISetupCommon.AddVerticalLayout(box, padding: 28, spacing: 12, childAlign: TextAnchor.UpperCenter);
             UISetupCommon.TagSlot(box, UISlotType.ContentRoot);
+            UISetupCommon.AddContainerStagger(box);
+
+            // Second stagger lives on the panel root and is used by
+            // GramophonePanel.RebuildList to animate dynamically spawned track
+            // rows via PlayForList(). manualTriggerOnly so UIPanel.Open() does
+            // not also fire it against the panel root's structural children.
+            var rowStagger = UISetupCommon.AddContainerStagger(root,
+                UIContainerStagger.StaggerEffect.ScalePop, manualTriggerOnly: true);
 
             // Title
             var title = UISetupCommon.CreateText(box.transform, "Title", "Phonograph",
@@ -178,12 +187,14 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("isModal").boolValue = true;
             so.FindProperty("openOnStart").boolValue = false;
             so.FindProperty("openOnEscape").boolValue = false;
+            so.FindProperty("juiceProfile").objectReferenceValue = UISetupCommon.LoadOrCreateDefaultJuiceProfile();
             so.FindProperty("trackListContent").objectReferenceValue = contentRT;
             so.FindProperty("trackRowTemplate").objectReferenceValue = rowTemplate.gameObject;
             so.FindProperty("titleLabel").objectReferenceValue = title;
             so.FindProperty("subtitleLabel").objectReferenceValue = subtitle;
             so.FindProperty("stopButton").objectReferenceValue = stopBtn;
             so.FindProperty("cancelButton").objectReferenceValue = cancelBtn;
+            so.FindProperty("rowStagger").objectReferenceValue = rowStagger;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             return UISetupCommon.SavePanelPrefab(root, "GramophonePanel");

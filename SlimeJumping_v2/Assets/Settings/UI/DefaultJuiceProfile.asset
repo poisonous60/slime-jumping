@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b37151f701709354bbd1ab7b7a180785, type: 3}
+  m_Name: DefaultJuiceProfile
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.UI.Animation.JuiceProfile
+  hoverUseSlimeBoing: 1
+  hoverSquashX: 1.18
+  hoverSquashY: 0.82
+  hoverSquashDuration: 0.08
+  hoverSettleDuration: 0.55
+  hoverSettleEase: 24
+  hoverScaleX: 1.08
+  hoverScaleY: 1.14
+  hoverDuration: 0.22
+  hoverEase: 27
+  hoverReturnDuration: 0.18
+  hoverReturnEase: 6
+  hoverRotationMaxDeg: 0
+  hoverRotationMinDeg: 0
+  hoverRotationRefWidth: 240
+  hoverPowerFloor: 0.25
+  pressScale: 0.94
+  pressDuration: 0.08
+  pressReleaseDuration: 0.16
+  panelOpenScaleFrom: 0.92
+  panelOpenDuration: 0.22
+  panelOpenEase: 27
+  panelCloseScaleTo: 0.96
+  panelCloseDuration: 0.14
+  panelCloseEase: 7
+  staggerStartDelay: 0.05
+  staggerPerChild: 0.04
+  staggerChildDuration: 0.32
+  staggerChildEase: 27
+  staggerSlideOffset: {x: 0, y: 32}
+  bumpScale: 1.18
+  bumpRotationDeg: 6
+  bumpDuration: 0.22
+  bumpEase: 27

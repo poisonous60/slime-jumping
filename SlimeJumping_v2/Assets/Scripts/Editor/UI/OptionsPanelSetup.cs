@@ -48,6 +48,7 @@ namespace SlimeJumping.EditorTools.UI
             var box = UISetupCommon.CreateCenteredBox(root.transform, "Box", new Vector2(BoxWidth, BoxHeight));
             UISetupCommon.AddVerticalLayout(box, padding: 32, spacing: 10, childAlign: TextAnchor.UpperCenter);
             UISetupCommon.TagSlot(box, UISlotType.ContentRoot);
+            UISetupCommon.AddContainerStagger(box);
 
             // Title
             var title = UISetupCommon.CreateText(box.transform, "Title", "Options",
@@ -169,39 +170,40 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("isModal").boolValue = true;
             so.FindProperty("openOnStart").boolValue = false;
             so.FindProperty("openOnEscape").boolValue = true;
+            so.FindProperty("juiceProfile").objectReferenceValue = UISetupCommon.LoadOrCreateDefaultJuiceProfile();
 
             so.FindProperty("frameLimitPrevButton").objectReferenceValue = frameLimitPrev;
             so.FindProperty("frameLimitNextButton").objectReferenceValue = frameLimitNext;
-            so.FindProperty("frameLimitValueLabel").objectReferenceValue = frameLimitValue;
+            so.FindProperty("frameLimitValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(frameLimitValue);
 
             so.FindProperty("vsyncPrevButton").objectReferenceValue = vsyncPrev;
             so.FindProperty("vsyncNextButton").objectReferenceValue = vsyncNext;
-            so.FindProperty("vsyncValueLabel").objectReferenceValue = vsyncValue;
+            so.FindProperty("vsyncValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(vsyncValue);
 
             so.FindProperty("playerSfxVolumeSlider").objectReferenceValue = playerSfxSlider;
-            so.FindProperty("playerSfxVolumeValueLabel").objectReferenceValue = playerSfxValue;
+            so.FindProperty("playerSfxVolumeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(playerSfxValue);
             so.FindProperty("worldSfxVolumeSlider").objectReferenceValue = worldSfxSlider;
-            so.FindProperty("worldSfxVolumeValueLabel").objectReferenceValue = worldSfxValue;
+            so.FindProperty("worldSfxVolumeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(worldSfxValue);
             so.FindProperty("bgmVolumeSlider").objectReferenceValue = bgmSlider;
-            so.FindProperty("bgmVolumeValueLabel").objectReferenceValue = bgmValue;
+            so.FindProperty("bgmVolumeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(bgmValue);
             so.FindProperty("uiVolumeSlider").objectReferenceValue = uiSlider;
-            so.FindProperty("uiVolumeValueLabel").objectReferenceValue = uiValue;
+            so.FindProperty("uiVolumeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(uiValue);
 
             so.FindProperty("windowModePrevButton").objectReferenceValue = windowModePrev;
             so.FindProperty("windowModeNextButton").objectReferenceValue = windowModeNext;
-            so.FindProperty("windowModeValueLabel").objectReferenceValue = windowModeValue;
+            so.FindProperty("windowModeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(windowModeValue);
             so.FindProperty("resolutionDropdown").objectReferenceValue = resolutionDropdown;
             so.FindProperty("backgroundCameraPrevButton").objectReferenceValue = bgCameraPrev;
             so.FindProperty("backgroundCameraNextButton").objectReferenceValue = bgCameraNext;
-            so.FindProperty("backgroundCameraValueLabel").objectReferenceValue = bgCameraValue;
+            so.FindProperty("backgroundCameraValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(bgCameraValue);
 
             so.FindProperty("chargeVisualPrevButton").objectReferenceValue = chargeVisualPrev;
             so.FindProperty("chargeVisualNextButton").objectReferenceValue = chargeVisualNext;
-            so.FindProperty("chargeVisualValueLabel").objectReferenceValue = chargeVisualValue;
+            so.FindProperty("chargeVisualValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(chargeVisualValue);
 
             so.FindProperty("mouseTeleportDebugPrevButton").objectReferenceValue = mouseTeleportPrev;
             so.FindProperty("mouseTeleportDebugNextButton").objectReferenceValue = mouseTeleportNext;
-            so.FindProperty("mouseTeleportDebugValueLabel").objectReferenceValue = mouseTeleportValue;
+            so.FindProperty("mouseTeleportDebugValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(mouseTeleportValue);
 
             so.FindProperty("clearTrailButton").objectReferenceValue = clearTrailBtn;
 

@@ -10,8 +10,15 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateAttached(float dt)
         {
-            if (!isTouchingSurface || Vector2.Dot(surfaceNormal, gravityUp) < surfaceMod.GetCeilingThreshold(settings)
-                || blockAttachCount > 0)
+            // Tip-grab is sticky — the slime stays Attached even when the bamboo bends past
+            // the ceiling-threshold dot. The grab's tip-lock keeps the slime physically on
+            // the bamboo; the ordinary "surface lost" detach is suppressed until Launch (or
+            // any other Attached/Charging exit, which ChangeState clears the grab from).
+            // blockAttach (water etc.) still wins and forces detach to keep zone semantics.
+            bool grabKeepsAttached = currentBambooGrab != null;
+            bool surfaceLost = !isTouchingSurface
+                || Vector2.Dot(surfaceNormal, gravityUp) < surfaceMod.GetCeilingThreshold(settings);
+            if ((!grabKeepsAttached && surfaceLost) || blockAttachCount > 0)
             {
                 crawlVelocity = 0f;
                 slideVelocity = 0f;
@@ -32,6 +39,22 @@ namespace SlimeJumping.Controller
                 energyCoyoteTimer -= dt;
                 if (energyCoyoteTimer <= 0f)
                     ClearPendingEnergyConversion(executeDeferredReset: true);
+            }
+
+            // Tip-grabbed: rb.position is owned by LockBambooGrabPosition, slide/crawl/
+            // friction-detach are irrelevant. Zero motion channels and bail out before
+            // the surface physics writes a tangent velocity that would tug the slime off
+            // the tip between LockBambooGrabPosition refreshes.
+            if (currentBambooGrab != null)
+            {
+                crawlVelocity = 0f;
+                slideVelocity = 0f;
+                velocity = Vector2.zero;
+                stickTimer = 0f;
+                stickDeccelTimer = 0f;
+                slideRampTimer = 0f;
+                if (IsPlatformEffectAlive) activePlatformEffect.OnSlimeStay(this, dt);
+                return;
             }
 
             UpdateStickTransition();

@@ -68,8 +68,7 @@ MonoBehaviour:
   isModal: 0
   openOnStart: 1
   openOnEscape: 0
-  fadeInDuration: 0.15
-  fadeOutDuration: 0.12
+  juiceProfile: {fileID: 11400000, guid: 689935e687dabb74499c72f400d53085, type: 2}
   inputDelay: 1
 --- !u!1 &3076006416004876626
 GameObject:
@@ -205,7 +204,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TextMeshProUGUI
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_RaycastTarget: 1
+  m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
@@ -296,6 +295,7 @@ GameObject:
   - component: {fileID: 4483400306734375463}
   - component: {fileID: 5334943819470410457}
   - component: {fileID: 2815422293333064695}
+  - component: {fileID: 907606011184700373}
   - component: {fileID: 3486774099823754142}
   m_Layer: 0
   m_Name: ReturnButton
@@ -384,12 +384,12 @@ MonoBehaviour:
   m_Transition: 1
   m_Colors:
     m_NormalColor: {r: 1, g: 1, b: 1, a: 1}
-    m_HighlightedColor: {r: 1.08, g: 1.08, b: 1.08, a: 1}
-    m_PressedColor: {r: 0.8, g: 0.92, b: 0.86, a: 1}
-    m_SelectedColor: {r: 1.05, g: 1.05, b: 1.05, a: 1}
+    m_HighlightedColor: {r: 1, g: 1, b: 1, a: 1}
+    m_PressedColor: {r: 1, g: 1, b: 1, a: 1}
+    m_SelectedColor: {r: 1, g: 1, b: 1, a: 1}
     m_DisabledColor: {r: 0.78431374, g: 0.78431374, b: 0.78431374, a: 0.5019608}
     m_ColorMultiplier: 1
-    m_FadeDuration: 0.1
+    m_FadeDuration: 0
   m_SpriteState:
     m_HighlightedSprite: {fileID: 0}
     m_PressedSprite: {fileID: 0}
@@ -426,6 +426,19 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: -1
   m_LayoutPriority: 1
+--- !u!114 &907606011184700373
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7260358003479386965}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cd415e345195aa2429a6b7ffe54d047b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.UI.Animation.UIButtonJuice
+  profile: {fileID: 11400000, guid: 689935e687dabb74499c72f400d53085, type: 2}
 --- !u!114 &3486774099823754142
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -794,6 +807,7 @@ GameObject:
   - component: {fileID: 2033813128461942970}
   - component: {fileID: 6479126638028588826}
   - component: {fileID: 2516619944048498102}
+  - component: {fileID: 2159240797459008592}
   m_Layer: 0
   m_Name: Content
   m_TagString: Untagged
@@ -862,3 +876,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.UI.Framework.UISlot
   slotType: 1
+--- !u!114 &2159240797459008592
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9033135936560376111}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0089a3bd956ed8b4bbcbaf79dd9c2d64, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.UI.Animation.UIContainerStagger
+  profile: {fileID: 11400000, guid: 689935e687dabb74499c72f400d53085, type: 2}
+  effect: 1
+  playOnEnable: 0
+  skipInactive: 1
+  manualTriggerOnly: 0

@@ -1,6 +1,7 @@
 using UnityEngine;
 using SlimeJumping.Controller;
 using SlimeJumping.Physics;
+using SlimeJumping.Settings;
 
 namespace SlimeJumping.Platforms
 {
@@ -19,9 +20,17 @@ namespace SlimeJumping.Platforms
     {
         public enum SegmentColliderShape { Capsule, Box }
 
+        [Header("Settings")]
+        [Tooltip("Shared gameplay tuning asset. All spring/pumping/decay/carrier/re-entry/tip-grab knobs live here so multiple bamboos can share one tuning file. If null, a runtime instance with class-default values is auto-created in Awake — old scenes keep working with the pre-refactor defaults.")]
+        [SerializeField] BambooSettings settings;
+
         [Header("Surface Override")]
         [SerializeField] SurfaceMaterial bambooSurfaceMaterial;
         public override SurfaceMaterial OverrideSurfaceMaterial => bambooSurfaceMaterial;
+
+        [Header("Mode")]
+        [Tooltip("If true, bamboo spawns as visual-only decoration (no collider segments, no rider physics). Rebuild Segments after toggling.")]
+        [SerializeField] bool backgroundOnly = false;
 
         [Header("Geometry")]
         [SerializeField, Min(0.5f)] float bambooLength = 4f;
@@ -80,38 +89,13 @@ namespace SlimeJumping.Platforms
         [Tooltip("Height segments along the cylinder (more = smoother curve in shader bend).")]
         [SerializeField, Range(4, 64)] int visualHeightSegments = 24;
 
-        [Header("Spring Shape")]
-        [SerializeField, Range(0.3f, 3f)] float naturalFreqHz = 1.2f;
-        [SerializeField, Range(0f, 1f)] float dampingRatio = 0.45f;
-        [SerializeField, Range(5f, 90f)] float maxDeflectionDeg = 30f;
-        [Tooltip("Bounce factor when |currentAngle| hits maxDeflectionDeg. 0 = full absorb (no cap bounce, no ringing). >0 = elastic rebound off the cap.")]
-        [SerializeField, Range(0f, 0.9f)] float clampRestitution = 0f;
-
-        [Header("Pumping")]
-        [Tooltip("Multiplier on angular impulse from rider Δp. Lowering this makes the bamboo less sensitive to hit position (high impulses won't snap the cap).")]
-        [SerializeField, Range(0f, 5f)] float riderPumpGain = 0.4f;
-        [SerializeField, Range(0f, 2f)] float chargePumpScale = 1f;
-        [SerializeField, Range(0f, 2f)] float riderTorqueScale = 1f;
-
-        [Header("Decay")]
-        [Tooltip("Extra exponential decay (1/s) applied to angularVel when no rider attached. Higher = faster return to rest after rider hops off.")]
-        [SerializeField, Range(0f, 5f)] float passiveDecayRate = 1.2f;
-        [SerializeField, Range(0f, 5f)] float riderDecayRate = 0f;
-
-        [Header("Ceiling")]
-        [SerializeField, Min(0f)] float maxTipSpeed = 18f;
-
-        [Header("Carrier (launch inheritance)")]
-        [Tooltip("Overall scale on inherited platform velocity at launch. 0 = pure visual, no boost.")]
-        [SerializeField, Range(0f, 2f)] float velocityTransferScale = 0.2f;
-        [Tooltip("Minimum inheritance fraction even at the base (t=0). Slime attached at base inherits this fraction of tip speed.")]
-        [SerializeField, Range(0f, 1f)] float carrierMinContribution = 0.3f;
-        [Tooltip("Scales the height-dependent inheritance term (carrierMin + carrierDistanceScale * t).")]
-        [SerializeField, Range(0f, 2f)] float carrierDistanceScale = 1f;
-
-        [Header("Re-entry Guards")]
-        [SerializeField, Min(0f)] float slamMinHorizontalSpeed = 3f;
-        [SerializeField, Min(0f)] float slamReattachLockout = 0.15f;
+        // Gameplay knobs — naturalFreqHz, dampingRatio, maxDeflectionDeg, clampRestitution,
+        // riderPumpGain, chargePumpScale, riderTorqueScale, passiveDecayRate, riderDecayRate,
+        // maxTipSpeed, velocityTransferScale, carrierMinContribution, carrierDistanceScale,
+        // slamMinHorizontalSpeed, slamReattachLockout, grabEnterDot, tiltTorque,
+        // chargingTiltScale, grabModeCarrierScale — all moved into the BambooSettings asset
+        // referenced at the top of this component. Per-stalk inspector fields below stay
+        // local (geometry, visual, surface override, mode toggle).
 
         Vector2 pivotWorldPos;
         float baseRotation;
@@ -129,6 +113,11 @@ namespace SlimeJumping.Platforms
         Transform[] segmentTransforms;
         MeshRenderer visualRenderer;
         MaterialPropertyBlock propertyBlock;
+
+        // World-space tip position cache, refreshed each FU in OnAfterMotion after the
+        // segment polyline has been recomputed. Read by SlimeController.BambooGrab to
+        // lock rb.position pre-probe.
+        Vector2 cachedTipWorldPos;
 
         static readonly int BendAngleId = Shader.PropertyToID("_BendAngleDeg");
         static readonly int BambooLengthId = Shader.PropertyToID("_BambooLength");
@@ -155,18 +144,54 @@ namespace SlimeJumping.Platforms
 
         public float CurrentDeflectionDeg => currentAngle;
         public float BambooLength => bambooLength;
+        public float GrabEnterDot => settings.grabEnterDot;
+        public float SegmentRadius => segmentRadius;
+        /// <summary>World-space tip position cached at the end of each FixedUpdate from
+        /// the same centerline math used for collider segment placement and the visual
+        /// shader bend. SlimeController.BambooGrab reads this each FU to anchor the
+        /// grabbed slime.</summary>
+        public Vector2 GetTipWorldPos() => cachedTipWorldPos;
+        /// <summary>World-space direction of the bamboo's local up axis at the tip
+        /// (i.e. the bend tangent at t=1). Used by SlimeController.BambooGrab to offset
+        /// the grabbed slime above the tip cap so its CircleCollider doesn't penetrate
+        /// the topmost capsule (which would cause the physics resolver to fight the
+        /// per-FU position lock and produce visible jitter).</summary>
+        public Vector2 GetTipUpDirection()
+        {
+            float rad = currentAngle * Mathf.Deg2Rad;
+            Vector3 localTangent = new Vector3(-Mathf.Sin(rad), Mathf.Cos(rad), 0f);
+            Vector3 worldTangent = transform.TransformDirection(localTangent);
+            Vector2 v = new Vector2(worldTangent.x, worldTangent.y);
+            return v.sqrMagnitude > 1e-6f ? v.normalized : Vector2.up;
+        }
 
         protected override void Awake()
         {
             base.Awake();
+            EnsureSettings();
             pivotWorldPos = rb.position;
             baseRotation = rb.rotation;
             currentAngle = 0f;
             angularVel = 0f;
-            detachTimer = slamReattachLockout;
+            detachTimer = settings.slamReattachLockout;
             hasPrevRiderVel = false;
 
             CacheChildren();
+            // Seed the tip cache so a grab fired on the very first FU (before
+            // OnAfterMotion has populated it) reads a sensible value.
+            cachedTipWorldPos = transform.TransformPoint(new Vector3(0f, bambooLength, 0f));
+        }
+
+        /// <summary>
+        /// Guarantees `settings` is non-null. If no asset is wired, builds a runtime
+        /// BambooSettings instance whose fields hold the class-default values — keeps
+        /// pre-refactor scenes working without manual migration. Public so OnValidate
+        /// and the editor "Refresh" / "Rebuild" context-menu paths can also rely on it.
+        /// </summary>
+        void EnsureSettings()
+        {
+            if (settings == null)
+                settings = ScriptableObject.CreateInstance<BambooSettings>();
         }
 
         void CacheChildren()
@@ -202,9 +227,15 @@ namespace SlimeJumping.Platforms
 
                 Vector2 arm = (Vector2)cachedSlime.transform.position - pivotWorldPos;
                 float t = Mathf.Clamp01(arm.magnitude / Mathf.Max(bambooLength, 1e-4f));
-                float requested = carrierMinContribution + carrierDistanceScale * t;
+                float requested = settings.carrierMinContribution + settings.carrierDistanceScale * t;
                 float carrierGives = Mathf.Max(t, 1e-3f);
-                return (requested / carrierGives) * velocityTransferScale;
+                // Tip-grab gives the slime an extra carrier multiplier so the swing-back
+                // launch can be tuned independently from side-attach launches. Slime's
+                // CurrentBambooGrab is cleared in ChangeState's exit-to-Airborne hook,
+                // which runs AFTER carrier.GetLaunchVelocity in Launch() — so the boost
+                // applies on the launching frame.
+                float grabBoost = cachedSlime.CurrentBambooGrab == this ? settings.grabModeCarrierScale : 1f;
+                return (requested / carrierGives) * settings.velocityTransferScale * grabBoost;
             }
         }
 
@@ -213,13 +244,35 @@ namespace SlimeJumping.Platforms
         public override Vector2 Velocity { get => Vector2.zero; protected set { } }
         public override float AngularVelocity { get => angularVel; protected set { } }
 
+        /// <summary>True when this bamboo is the slime's active tip-grab target.
+        /// Lazy-resolves the SlimeController reference (same lookup VelocityTransferScale
+        /// uses) so the grab-aware swaps in ComputeSpringCoeffs / ComputeMotion / ApplyTiltTorque
+        /// actually fire — without this lazy init, cachedSlime stayed null in normal play
+        /// (it was only populated inside VelocityTransferScale, which runs at launch), so
+        /// every grab-mode knob (grabSpringFreqHz, grabDampingRatio, grabMaxDeflectionDeg,
+        /// grabHoldBendDeg) silently fell back to the side-attach defaults.</summary>
+        bool IsGrabbedByCachedSlime()
+        {
+            if (cachedSlime == null) cachedSlime = FindFirstObjectByType<SlimeController>();
+            return cachedSlime != null && cachedSlime.CurrentBambooGrab == this;
+        }
+
         (float stiffness, float damping, float ITotal) ComputeSpringCoeffs()
         {
             float IBranch = rb.mass * bambooLength * bambooLength / 3f;
             float ITotal = IBranch + (riderAttached ? currentRiderMass * currentRiderArmSqr : 0f);
-            float omega = 2f * Mathf.PI * naturalFreqHz;
+            // Spring stiffness AND damping ratio both swap to grab-specific values while
+            // this bamboo is the slime's tip-grab target. This lets the side-attach
+            // physics stay stiff/well-damped (slime hopping off shouldn't leave the
+            // bamboo ringing, and side hits shouldn't fling the cap), while the grab
+            // mode can be soft/underdamped — giving the player a wide sideways bend
+            // range and resonance-pumping headroom.
+            bool grabActive = IsGrabbedByCachedSlime();
+            float freqHz = grabActive ? settings.grabSpringFreqHz : settings.naturalFreqHz;
+            float zeta = grabActive ? settings.grabDampingRatio : settings.dampingRatio;
+            float omega = 2f * Mathf.PI * freqHz;
             float stiffness = omega * omega * ITotal;
-            float damping = 2f * dampingRatio * omega * ITotal;
+            float damping = 2f * zeta * omega * ITotal;
             return (stiffness, damping, ITotal);
         }
 
@@ -237,13 +290,13 @@ namespace SlimeJumping.Platforms
             // Re-entry guard mirrors SpringyBranchPlatform's slam-suppress, but for vertical
             // bamboo a "slam" is a fast lateral hit (not a downward fall), so gate on |vx|.
             bool suppress = firstAttach
-                            && (detachTimer < slamReattachLockout)
-                            && (Mathf.Abs(riderVelocity.x) < slamMinHorizontalSpeed);
+                            && (detachTimer < settings.slamReattachLockout)
+                            && (Mathf.Abs(riderVelocity.x) < settings.slamMinHorizontalSpeed);
 
             if (!suppress)
             {
                 Vector2 impulseP = dv * mass;
-                float pumpGain = riderPumpGain * (isCharging ? chargePumpScale : 1f);
+                float pumpGain = settings.riderPumpGain * (isCharging ? settings.chargePumpScale : 1f);
                 var (_, _, ITotal) = ComputeSpringCoeffs();
                 if (ITotal > 1e-6f)
                 {
@@ -257,7 +310,7 @@ namespace SlimeJumping.Platforms
 
             Vector2 gravity = Physics2D.gravity * mass;
             float gravTorque = r.x * gravity.y - r.y * gravity.x;
-            pendingRiderTorque += gravTorque * riderTorqueScale;
+            pendingRiderTorque += gravTorque * settings.riderTorqueScale;
         }
 
         public override void RemoveRider()
@@ -265,6 +318,33 @@ namespace SlimeJumping.Platforms
             riderAttached = false;
             hasPrevRiderVel = false;
             detachTimer = 0f;
+        }
+
+        /// <summary>
+        /// Player A/D input while in tip-grab. Tarzan-style swing model: held input
+        /// applies a constant lean torque whose magnitude is tuned so the steady-state
+        /// bend (= torque / stiffness) equals settings.grabHoldBendDeg — a small offset
+        /// well below grabMaxDeflectionDeg. The bamboo oscillates around that lean
+        /// point with amplitude up to ±grabHoldBendDeg (so peak displacement at one
+        /// extreme is up to 2× grabHoldBendDeg). The pump comes from the player flipping
+        /// the lean direction at the swing extremes: switching A↔D when the tip is at
+        /// peak swing redirects the steady-state target across rest, so the bamboo
+        /// has to traverse a wider distance and overshoots further than the previous
+        /// swing — amplitude grows per well-timed switch until it hits grabMaxDeflectionDeg
+        /// or damping balance. With low grabDampingRatio (~0.05), buildup over multiple
+        /// cycles is visible.
+        ///
+        /// Sign convention: positive currentAngle = CCW (tip toward −X). Pressing D
+        /// (inputX = +1) should push the tip toward +X, which requires a negative
+        /// torque; pressing A is symmetric. Hence the leading minus.
+        /// </summary>
+        public void ApplyTiltTorque(float inputX, bool isCharging)
+        {
+            if (Mathf.Abs(inputX) < 1e-4f) return;
+            float chargeScale = isCharging ? settings.chargingTiltScale : 1f;
+            var (stiffness, _, _) = ComputeSpringCoeffs();
+            float refTorque = stiffness * settings.grabHoldBendDeg * Mathf.Deg2Rad;
+            pendingRiderTorque += -inputX * refTorque * chargeScale;
         }
 
         protected override (Vector2, float) ComputeMotion(float dt)
@@ -284,22 +364,26 @@ namespace SlimeJumping.Platforms
             angularVel += angularAccelDeg * dt;
             currentAngle += angularVel * dt;
 
-            float decayRate = riderAttached ? riderDecayRate : passiveDecayRate;
+            float decayRate = riderAttached ? settings.riderDecayRate : settings.passiveDecayRate;
             if (decayRate > 0f)
                 angularVel *= Mathf.Exp(-decayRate * dt);
 
-            float maxAngularVelDeg = (maxTipSpeed / Mathf.Max(bambooLength, 1e-4f)) * Mathf.Rad2Deg;
+            float maxAngularVelDeg = (settings.maxTipSpeed / Mathf.Max(bambooLength, 1e-4f)) * Mathf.Rad2Deg;
             angularVel = Mathf.Clamp(angularVel, -maxAngularVelDeg, maxAngularVelDeg);
 
-            if (currentAngle > maxDeflectionDeg)
+            // Deflection cap also swaps grab vs side, so grab-mode max bend can be tuned
+            // independently from the side-attach saturation limit.
+            bool grabActive = IsGrabbedByCachedSlime();
+            float maxAngle = grabActive ? settings.grabMaxDeflectionDeg : settings.maxDeflectionDeg;
+            if (currentAngle > maxAngle)
             {
-                currentAngle = maxDeflectionDeg;
-                if (angularVel > 0f) angularVel = -angularVel * clampRestitution;
+                currentAngle = maxAngle;
+                if (angularVel > 0f) angularVel = -angularVel * settings.clampRestitution;
             }
-            else if (currentAngle < -maxDeflectionDeg)
+            else if (currentAngle < -maxAngle)
             {
-                currentAngle = -maxDeflectionDeg;
-                if (angularVel < 0f) angularVel = -angularVel * clampRestitution;
+                currentAngle = -maxAngle;
+                if (angularVel < 0f) angularVel = -angularVel * settings.clampRestitution;
             }
 
             pendingRiderTorque = 0f;
@@ -338,6 +422,12 @@ namespace SlimeJumping.Platforms
         // collider surface and visual surface stay coincident.
         void ApplySegmentTransforms()
         {
+            // Refresh the tip cache every FU regardless of segment availability —
+            // SlimeController.BambooGrab depends on this being current even when the
+            // bamboo is backgroundOnly (no collider segments built).
+            Vector2 localTip = ComputeCenterlinePoint(1f);
+            cachedTipWorldPos = transform.TransformPoint(localTip);
+
             if (segmentTransforms == null || segmentTransforms.Length != segmentCount) CacheChildren();
             if (segmentTransforms == null || segmentTransforms.Length == 0) return;
 
@@ -470,10 +560,15 @@ namespace SlimeJumping.Platforms
 
         void DestroyExistingChildren()
         {
+            // Match Unity's "(N)" duplicate suffix too — when user Ctrl+D's a bamboo,
+            // child "Visual" gets renamed "Visual (1)" and exact-string match leaks it,
+            // producing a duplicate Visual on the next Rebuild.
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
                 var child = transform.GetChild(i);
-                if (child.name.StartsWith("Segment_") || child.name == VisualChildName)
+                if (child.name.StartsWith("Segment_")
+                    || child.name == VisualChildName
+                    || child.name.StartsWith(VisualChildName + " ("))
                     DestroyChild(child.gameObject);
             }
         }
@@ -490,6 +585,8 @@ namespace SlimeJumping.Platforms
 
         void BuildColliderSegments()
         {
+            if (backgroundOnly) return;
+
             float segLen = bambooLength / segmentCount;
 
             for (int i = 0; i < segmentCount; i++)

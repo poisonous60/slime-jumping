@@ -1,12 +1,14 @@
-using System.Collections;
 using System.Collections.Generic;
+using PrimeTween;
 using UnityEngine;
+using SlimeJumping.UI.Animation;
 
 namespace SlimeJumping.UI.Framework
 {
-    /// Base class for every screen-space panel. Handles CanvasGroup fade, raycast
-    /// toggling, and registration with the scene's UIManager. Concrete panels
-    /// override OnAfterAwake/OnAfterOpen/OnAfterClose as needed.
+    /// Base class for every screen-space panel. Handles CanvasGroup fade and a
+    /// PrimeTween scale-in pop, raycast toggling, and registration with the
+    /// scene's UIManager. Concrete panels override OnAfterAwake/OnAfterOpen/
+    /// OnAfterClose as needed.
     [RequireComponent(typeof(CanvasGroup))]
     [RequireComponent(typeof(RectTransform))]
     public abstract class UIPanel : MonoBehaviour
@@ -18,16 +20,17 @@ namespace SlimeJumping.UI.Framework
         [SerializeField] protected bool openOnStart = false;
         [Tooltip("If true, UIManager opens this panel when ESC is pressed with an empty modal stack.")]
         [SerializeField] protected bool openOnEscape = false;
-        [SerializeField, Min(0f)] protected float fadeInDuration = 0.15f;
-        [SerializeField, Min(0f)] protected float fadeOutDuration = 0.12f;
+        [SerializeField] protected JuiceProfile juiceProfile;
 
-        private Coroutine fadeRoutine;
+        private Sequence openSequence;
+        private RectTransform contentRect;
         private readonly Dictionary<UISlotType, UISlot> slotsByType = new Dictionary<UISlotType, UISlot>();
 
         public bool IsOpen { get; private set; }
         public UILayer Layer => layer;
         public bool IsModal => isModal;
         public bool OpenOnEscape => openOnEscape;
+        public JuiceProfile JuiceProfile => juiceProfile;
 
         protected virtual void Awake()
         {
@@ -35,6 +38,8 @@ namespace SlimeJumping.UI.Framework
             canvasGroup.alpha = 0f;
             canvasGroup.interactable = false;
             canvasGroup.blocksRaycasts = false;
+            contentRect = transform as RectTransform;
+            if (contentRect != null) contentRect.localScale = Vector3.one;
             // NOTE: don't SetActive(false) here — Unity skips Start on GameObjects
             // deactivated during their own Awake, so registration would never run.
             // The CanvasGroup above already hides the panel visually.
@@ -51,8 +56,6 @@ namespace SlimeJumping.UI.Framework
 
             if (openOnStart)
             {
-                // Route through UIManager so modal panels that auto-open also
-                // push onto the modal stack and engage the input gate.
                 if (mgr != null) mgr.Open(this);
                 else Open();
             }
@@ -64,6 +67,7 @@ namespace SlimeJumping.UI.Framework
 
         protected virtual void OnDestroy()
         {
+            openSequence.Stop();
             if (UIManager.Instance != null) UIManager.Instance.Unregister(this);
         }
 
@@ -75,19 +79,16 @@ namespace SlimeJumping.UI.Framework
             {
                 var s = slots[i];
                 if (s.slotType == UISlotType.None) continue;
-                // Last one wins if duplicates exist — a warning is noisy during prefab setup.
                 slotsByType[s.slotType] = s;
             }
         }
 
-        /// Resolve a tagged child by slot type. Returns null when absent.
         protected T FindSlot<T>(UISlotType type) where T : Component
         {
             if (!slotsByType.TryGetValue(type, out var slot) || slot == null) return null;
             return slot.GetComponent<T>();
         }
 
-        /// Same as FindSlot but returns the GameObject itself.
         protected GameObject FindSlotGameObject(UISlotType type)
         {
             if (!slotsByType.TryGetValue(type, out var slot) || slot == null) return null;
@@ -100,8 +101,21 @@ namespace SlimeJumping.UI.Framework
             IsOpen = true;
             gameObject.SetActive(true);
             OnBeforeOpen();
-            StartFade(1f, fadeInDuration, setRaycastWhenDone: true);
+            PlayOpenAnimation();
+            TriggerStaggers();
             OnAfterOpen();
+        }
+
+        private void TriggerStaggers()
+        {
+            var staggers = GetComponentsInChildren<UIContainerStagger>(includeInactive: false);
+            for (int i = 0; i < staggers.Length; i++)
+            {
+                var s = staggers[i];
+                if (s == null) continue;
+                if (s.ManualTriggerOnly) continue;
+                s.Play();
+            }
         }
 
         public void Close()
@@ -111,7 +125,7 @@ namespace SlimeJumping.UI.Framework
             OnBeforeClose();
             canvasGroup.interactable = false;
             canvasGroup.blocksRaycasts = false;
-            StartFade(0f, fadeOutDuration, setRaycastWhenDone: false, deactivateWhenDone: true);
+            PlayCloseAnimation();
             OnAfterClose();
         }
 
@@ -121,42 +135,50 @@ namespace SlimeJumping.UI.Framework
             else Open();
         }
 
-        private void StartFade(float target, float duration, bool setRaycastWhenDone, bool deactivateWhenDone = false)
+        private void PlayOpenAnimation()
         {
-            if (fadeRoutine != null) StopCoroutine(fadeRoutine);
-            fadeRoutine = StartCoroutine(FadeRoutine(target, duration, setRaycastWhenDone, deactivateWhenDone));
+            openSequence.Stop();
+            if (contentRect != null)
+            {
+                float from = juiceProfile != null ? juiceProfile.panelOpenScaleFrom : 0.92f;
+                contentRect.localScale = Vector3.one * from;
+            }
+            canvasGroup.alpha = 0f;
+
+            float dur = juiceProfile != null ? juiceProfile.panelOpenDuration : 0.22f;
+            Ease ease = juiceProfile != null ? juiceProfile.panelOpenEase : Ease.OutBack;
+
+            var seq = Sequence.Create();
+            seq.Group(Tween.Alpha(canvasGroup, 0f, 1f, dur));
+            if (contentRect != null)
+                seq.Group(Tween.Scale(contentRect, Vector3.one, dur, ease));
+            seq.OnComplete(this, p =>
+            {
+                if (p == null || !p.IsOpen) return;
+                p.canvasGroup.interactable = true;
+                p.canvasGroup.blocksRaycasts = true;
+            });
+            openSequence = seq;
         }
 
-        private IEnumerator FadeRoutine(float target, float duration, bool setRaycastWhenDone, bool deactivateWhenDone)
+        private void PlayCloseAnimation()
         {
-            float start = canvasGroup.alpha;
-            if (duration <= 0f)
-            {
-                canvasGroup.alpha = target;
-            }
-            else
-            {
-                float t = 0f;
-                while (t < duration)
-                {
-                    t += Time.unscaledDeltaTime;
-                    canvasGroup.alpha = Mathf.Lerp(start, target, Mathf.Clamp01(t / duration));
-                    yield return null;
-                }
-                canvasGroup.alpha = target;
-            }
+            openSequence.Stop();
+            float dur = juiceProfile != null ? juiceProfile.panelCloseDuration : 0.14f;
+            Ease ease = juiceProfile != null ? juiceProfile.panelCloseEase : Ease.InOutQuad;
+            float scaleTo = juiceProfile != null ? juiceProfile.panelCloseScaleTo : 0.96f;
 
-            if (setRaycastWhenDone)
+            var seq = Sequence.Create();
+            seq.Group(Tween.Alpha(canvasGroup, canvasGroup.alpha, 0f, dur));
+            if (contentRect != null)
+                seq.Group(Tween.Scale(contentRect, Vector3.one * scaleTo, dur, ease));
+            seq.OnComplete(this, p =>
             {
-                canvasGroup.interactable = true;
-                canvasGroup.blocksRaycasts = true;
-            }
-            if (deactivateWhenDone && !IsOpen)
-            {
-                gameObject.SetActive(false);
-            }
-
-            fadeRoutine = null;
+                if (p == null || p.IsOpen) return;
+                p.gameObject.SetActive(false);
+                if (p.contentRect != null) p.contentRect.localScale = Vector3.one;
+            });
+            openSequence = seq;
         }
 
         protected virtual void OnAfterAwake() { }
