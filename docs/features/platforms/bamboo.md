@@ -189,11 +189,33 @@ BambooPlatform   (Rigidbody2D kinematic + BambooPlatform)
 - 수직 정렬 가정 — 비스듬한 base rotation 미지원 (필요 시 baseRotation 응용).
 - Shadow side render에서 light 받는 방향에 따라 stalk 명암 split 위치가 바뀜 — `lightDirWS` 인스펙터 조정 필요.
 
-## Tip-Grab 모드 (그랩 / 매달림) — 설계 (미구현)
+## Tip-Grab 모드 (그랩 / 매달림)
 
 기존 측면 attach (벽 용도) 위에 **tip-grab 서브모드** 추가. 슬라임이 bamboo 위에 올라탔을 때 자동 진입, A/D 입력이 crawl 대신 bamboo tilt 토크로 라우팅. 풀면 스프링 복원 + 진동, 그 와중 charge-and-launch 하면 carrier inheritance가 lateral **Reaction Boost** 제공.
 
-용어/모델 = [/CONTEXT.md](../../../CONTEXT.md), 구조 선택 근거 = [/docs/adr/0001-bamboo-tip-grab-as-rope-pattern-flag.md](../../adr/0001-bamboo-tip-grab-as-rope-pattern-flag.md).
+### Pump 모델 (2-channel: Lean + Anti-damping Boost)
+
+A/D 입력은 두 채널에 동시에 들어감. 자세한 식 + 부호 컨벤션은 [BambooPlatform.ApplyTiltTorque](../../../SlimeJumping_v2/Assets/Scripts/Platforms/BambooPlatform.cs) 주석 참조.
+
+1. **Lean** — 상시 적용되는 정적 평형 이동. 잡고만 있어도 `grabHoldBendDeg` 만큼 살짝 휘게 보임.
+2. **Anti-damping Boost (C2)** — 입력 방향이 tip 운동 방향과 같을 때만 추가 토크 `|input|·ω·grabPumpBoostGain·I_total`. 그네 펌핑 패턴(앞으로 갈 때 앞으로 밀기) — 진폭이 매 swing 마다 누적 증가하며, `grabPumpBoostGain` 이 damping 계수 `2ζω`를 초과하면 effective net damping 이 음수가 되어 진폭이 지수 성장하다 soft cap 에서 saturate.
+
+Charging 중에는 두 채널 모두 default 0 (`chargingTiltScale = 0`, `grabPumpChargingScale = 0`) — release timing(차징 끝 발사)이 휨 입력과 같은 키를 공유하므로 의도된 mute. 디자이너가 필요시 0 초과로 켤 수 있음.
+
+### Soft Cap (grab 모드 한정)
+
+기존 hard clamp(`ω=0 + clampRestitution`)는 side-attach 만 사용. Grab 모드에서는 ODE 안에 quartic stiffening 토크를 추가:
+
+```
+normAbs = |currentAngle| / grabMaxDeflectionDeg
+softCapTorque = -sign(currentAngle) * grabCapPenaltyGain * normAbs^4 * stiffness * grabMaxDeflectionDeg(rad)
+```
+
+- normAbs < ~0.6: 거의 0, 선형 스프링이 지배.
+- normAbs ≈ 0.9: penalty ≈ 0.66 × stiffness × maxAngle, 강한 추가 복원.
+- normAbs → 1: penalty 폭증, 자연스럽게 멈춤. 속도 즉시 wipe 없음 → "장대가 끝까지 휘고 다시 튀어오는" 느낌.
+
+용어/모델 = [/CONTEXT.md](../../../CONTEXT.md), 구조 선택 근거 = [/docs/adr/0001-bamboo-tip-grab-as-rope-pattern-flag.md](../../adr/0001-bamboo-tip-grab-as-rope-pattern-flag.md), pump 모델 전환 근거 = [/docs/adr/0002-bamboo-grab-anti-damping-pump.md](../../adr/0002-bamboo-grab-anti-damping-pump.md).
 
 ### 설계 결정 흐름 (grill-with-docs 산출)
 
@@ -205,7 +227,7 @@ BambooPlatform   (Rigidbody2D kinematic + BambooPlatform)
 | Q4 | Tilt 중 슬라임 위치 | **P1. tip 고정 anchor** (`rb.position = tipWorldPos` 매 FU 강제) | 매달림 그림 일치, 어떤 각도에서도 그랩 유지, 코드 단순 |
 | Q5 | Launch 모델 | **J1. 기존 Charging→Launch 재사용** + `grabModeCarrierScale` knob 추가 | Carrier inheritance가 그대로 boost, 신규 launch 식 0 |
 | Q6 | State 모델 | **S1. Rope 패턴** (Attached 유지, `currentBambooGrab` 핸들, partial 파일) | 신규 state 도입 시 transition matrix 재검토 비용 회피 |
-| Q7 | Tilt knob set | **K2. 2-knob** (`tiltTorque` + `chargingTiltScale`) | 기존 `chargePumpScale`와 짝 |
+| Q7 | Tilt knob set | **K2. 2-knob (initial) → 4-knob (after pump rework)** | 초기 `tiltTorque` + `chargingTiltScale`. 후속 ADR-0002 에서 Lean (`grabHoldBendDeg` + `chargingTiltScale`) + Anti-damping Boost (`grabPumpBoostGain` + `grabPumpChargingScale`) 로 분리 |
 | Q8 | 위험 처리 | **R2-a / R3-a** (snap skip + intentional toggle bypass) | 1줄 가드, 본의 아닌 lockout 방지 |
 
 ### Anchor & 입력 라우팅 (Rope 패턴)
@@ -219,31 +241,33 @@ BambooPlatform   (Rigidbody2D kinematic + BambooPlatform)
 - **Launch 해제** — `Launch()` 끝부분에서 `currentBambooGrab = null`. Carrier inheritance는 같은 프레임 `PlatformCarrier.GetEffectiveVelocity()` 호출이 BambooPlatform의 `AngularVelocity` × arm 으로 계산 (arm = tip - pivot ≈ (0, L), 최대치 자동).
 - **Grab 손실 시 토글 카운트 우회** — grab 해제로 인한 Attached→Airborne 전이는 `ChangeState(Airborne, intentional: true)` (또는 동등 flag) 로 호출해서 `RegisterAttachToggle()` skip. bamboo 진동 큰 디자인에서 lockout 트립 방지.
 
-### BambooPlatform 측 신규 API
+### BambooPlatform 측 API
 
 ```csharp
 // 매 ApplySegmentTransforms 직후 갱신되는 tip world pos 캐시.
 public Vector2 GetTipWorldPos() => cachedTipWorldPos;
 
-// 외부 (SlimeController.BambooGrab) 가 부르는 입력 토크 라우터.
-// inputX ∈ [-1, 1]. 부호 변환은 BendAngle 부호 컨벤션 (positive = CCW, tip→-X) 에 맞춰
-// 토크 부호 결정: A(input.x = -1) 누르면 tip이 +X 로 이동 (BendAngle 감소, CW) →
-// 토크는 negative. 즉 `pendingRiderTorque += -inputX * tiltTorque * scale`.
-public void ApplyTiltTorque(float inputX, bool isCharging)
-{
-    float scale = isCharging ? chargingTiltScale : 1f;
-    pendingRiderTorque += -inputX * tiltTorque * scale;
-}
+// 외부 (SlimeController.BambooGrab) 가 부르는 입력 토크 라우터 (2-channel).
+public void ApplyTiltTorque(float inputX, bool isCharging);
 ```
 
-### 신규 Inspector 필드
+### Settings 필드 (Tip-Grab 전용 — BambooSettings asset)
 
 | 필드 | 기본 | 의미 |
 |---|---|---|
 | `grabEnterDot` | 0.9 | `dot(surfaceNormal, gravityUp)` 임계. 이상이면 tip-grab 진입 |
-| `tiltTorque` | (튜닝) | A/D 입력당 추가 토크 크기 (N·m 동등 단위, ODE I_total과 같은 단위계) |
-| `chargingTiltScale` | 1.0 | Charging 상태일 때 tiltTorque 곱셈. 기존 `chargePumpScale`과 의미 짝 |
-| `grabModeCarrierScale` | 1.0 | Tip-grab 상태에서 Launch 할 때 `VelocityTransferScale` 추가 곱셈. 0 = 그랩 boost 없음 (디자인 디버깅용), >1 = grab 모드 전용 강화 boost |
+| `grabHoldBendDeg` | 30 | Lean 채널이 노리는 정적 평형 휨 각도. 잡고만 있어도 이만큼 휨 |
+| `grabSpringFreqHz` | 1.0 | Grab 모드 스프링 주파수 (rest 복원 속도) |
+| `grabDampingRatio` | 0.335 | Grab 모드 damping. Boost gain 이 충분히 크면 사실상 무효화됨 |
+| `grabMaxDeflectionDeg` | 180 | Soft cap. `grabCapPenaltyGain` 와 함께 비선형 stiffening 으로 enforce |
+| `chargingTiltScale` | 0 | Charging 중 lean 채널 multiplier. 기본 0 = 발사 입력과 키 겹침 방지 |
+| `grabPumpBoostGain` | 4 | Anti-damping boost gain (1/s). `2ζω` 초과 시 진폭 지수 성장 |
+| `grabPumpChargingScale` | 0 | Charging 중 boost multiplier. 기본 0 |
+| `grabCapPenaltyGain` | 5 | Soft cap stiffening 강도 (quartic) |
+| `grabModeCarrierScale` | 1.0 | Tip-grab Launch 시 carrier inheritance(`ω × arm`) 추가 곱셈 |
+| `grabLaunchPowerScale` | 1.0 | Tip-Up Launch 시 charge-power 점프 성분(`tipUp * power`) 곱셈. 위쪽 점프 세기. carrier(swing momentum)와 독립 |
+| `grabChargeFillScale` | 2.0 | grab 중 charge auto-drift 속도 배율. A/D가 tilt로 가서 aim 입력 없이 drift로만 충전되므로, 평지보다 빠르게 차게 함. >1 = 길게 안 눌러도 빨리 충전 |
+| `grabChargeFullAimTime` | -1 | grab 중 `chargeFullAimTime`(full charge edge 도달 후 auto-launch 까지 grace/유지시간) override. -1 = slime 기본값. 0 = full 되는 즉시 발사. 크게 = swing timing 맞출 hold 시간 ↑ (surface tag 방식) |
 
 기존 carrier 식과의 합성:
 ```
@@ -255,10 +279,10 @@ finalCarrierVel = ω × arm * VelocityTransferScale * (currentBambooGrab == this
 
 1. 슬라임 측면에서 bamboo로 점프, 측면 attach → 기존 그대로 (벽-비슷)
 2. 측면 slide 또는 위에서 떨어져 tip cap에 도달 → `grabEnterDot` 충족 → `currentBambooGrab` set
-3. A/D 누름 → bamboo가 좌/우로 휨. 슬라임은 tip 고정이라 같이 호 그림
-4. 입력 떼면 스프링 복원 + 댐핑 진동. 그네 펌핑 가능 (반대 방향 입력으로 진폭 증가)
-5. Charge 입력 → Charging 진입. Grab anchor 유지. A/D는 계속 tilt, aim은 별도 입력으로 회전
-6. 스윙이 BendAngle ≈ 0 (max |ω|) 지나는 순간 release → Launch. `aimDir * launchPower + ω × arm * scales` 합성 발사 → 큰 lateral 부스트
+3. A/D 누름 → Lean 채널이 `grabHoldBendDeg` 만큼 정적 휨 만듦. 슬라임은 tip 고정이라 같이 호 그림
+4. 운동 시작되면 Anti-damping Boost 채널이 잠금 — tip 운동 방향대로 입력 유지 시 매 swing 진폭 누적 증가. 입력 떼면 스프링 복원 + damping 으로 자연 감쇠
+5. Charge 입력 → Charging 진입. Grab anchor 유지. Lean/Boost 두 채널 모두 default 0 으로 mute (입력 키 겹침 회피)
+6. release → Launch. **Tip-Up Launch**: grab 중이면 aim 무시, 기본 발사 방향 = tip-up 축(`GetTipUpDirection`, 휜 장대 끝 위쪽) 점프, 세기 = `power * grabLaunchPowerScale`. 거기에 swing momentum(`ω × arm` carrier, `grabModeCarrierScale`)을 가산 → 느린 swing 은 거의 위로, 빠른 swing 은 이동 방향으로 비스듬히 점프
 7. Airborne 진입 시 `currentBambooGrab = null`. 다음 attach까지 일반
 
 ### 알려진 한계 / 미해결

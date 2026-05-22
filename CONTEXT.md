@@ -58,12 +58,25 @@ A bamboo-specific interaction sub-mode in which the slime is anchored to the tip
 _Avoid_: hanging, mount, climb
 
 **Tilt** (기울임):
-Player A/D input while in **Tip-Grab**, applied as additive torque on the bamboo's `pendingRiderTorque` channel. Independent of and additive to the existing impact-driven `ApplyRiderInfluence` pump.
-_Avoid_: lean, sway
+Player A/D input while in **Tip-Grab**, applied as additive torque on the bamboo's `pendingRiderTorque` channel. Independent of and additive to the existing impact-driven `ApplyRiderInfluence` pump. Tilt is composed of two channels — **Lean** (equilibrium-shift torque toward `grabHoldBendDeg`) and **Pump Boost** (anti-damping torque proportional to `|angularVel|` when input direction matches tip motion). See ADR-0002.
+_Avoid_: lean (the word), sway
+
+**Lean** (기댐, Tilt sub-channel):
+The equilibrium-shift component of **Tilt**. While input is held, a constant torque drives the bamboo's steady-state `BendAngle` toward ±`grabHoldBendDeg`. Visible as a static bend even without swinging.
+
+**Pump Boost** (펌프 부스트, Tilt sub-channel):
+The anti-damping component of **Tilt**. When the held input direction matches the tip's current motion direction (matched-pump condition `(−input)·ω > 0`), an additional torque proportional to `|angularVel|` is added in the direction of motion. Causes amplitude to grow over multiple swings — the "kid on a swing" pump pattern — until the **Soft Cap** at `grabMaxDeflectionDeg` saturates it. Disabled during **Charge** by default to avoid input-axis collision with the launch sequence.
+
+**Soft Cap** (소프트 캡):
+A quartic stiffening torque added inside the bamboo ODE while in **Tip-Grab** to keep `|BendAngle| ≤ grabMaxDeflectionDeg` without the hard `ω=0` clamp that the side-attach path uses. Penalty grows as `(|θ|/cap)^4`, asymptoting smoothly so the slime feels the bamboo "fight back" near the cap rather than colliding with an invisible wall. Side-attach saturation is unchanged.
 
 **Reaction Boost** (반동 부스트):
 The lateral component of **Carrier Inheritance** that the slime receives when launched mid-swing from **Tip-Grab**. Maximum when `BendAngle ≈ 0` (peak `AngularVelocity` of the bamboo); zero at maximum deflection. Scaled by `grabModeCarrierScale` on top of the standard carrier formula.
 _Avoid_: jump boost, swing launch
+
+**Tip-Up Launch** (위쪽 발사):
+While in **Tip-Grab**, a **Launch** ignores the **AimOffset** direction. The base launch direction is the **tip-up axis** (`GetTipUpDirection`, the bend tangent at the tip) — a jump "off the top of the bent stalk" — with magnitude `LaunchPower · grabLaunchPowerScale`. The bamboo's swing velocity is then added on top as momentum via **Reaction Boost** (the `ω × arm` carrier term scaled by `grabModeCarrierScale`). So a slow swing still launches mostly upward, while a fast swing skews the up-jump sideways in the direction of motion. The player aims by timing the release within the swing, not by the aim stick.
+_Avoid_: aim launch (non-grab path), swing-directed launch (earlier model where direction WAS the swing tangent — superseded)
 
 ## Relationships
 
@@ -71,6 +84,8 @@ _Avoid_: jump boost, swing launch
 - A **BambooPlatform** owns one continuous bend curve; its segments share one **Rigidbody2D**, so the **Slime** sees one **Platform**, not N
 - **Tip-Grab** is a flag on the **Slime**, not a **SlimeState** — orthogonal to Attached/Charging
 - **Tilt** input and `ApplyRiderInfluence` both feed the same `pendingRiderTorque` channel on **BambooPlatform**
+- **Tilt** decomposes into **Lean** + **Pump Boost** — both gated by `chargingTiltScale` / `grabPumpChargingScale` (default 0) during **Charge**
+- **Soft Cap** replaces the hard `ω=0` clamp during **Tip-Grab**; side-attach saturation keeps the hard clamp
 
 ## Flagged ambiguities
 

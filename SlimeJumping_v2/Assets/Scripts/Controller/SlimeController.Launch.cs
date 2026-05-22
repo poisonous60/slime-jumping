@@ -93,6 +93,17 @@ namespace SlimeJumping.Controller
             float power = LaunchPowerForRatio(ratio, isEnergyConversion);
             launchOriginAimPower = power;
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
+            // Bamboo tip-grab: launch is a JUMP along the tip-up direction (bend tangent
+            // at the tip), NOT along the swing tangent. Aim is ignored; the base launch
+            // points "off the top of the bent stalk". The bamboo's swing velocity is added
+            // separately as momentum via the carrier inheritance below — so a fast swing
+            // skews the jump sideways, but the base direction stays up-the-stalk and a slow
+            // swing still launches mostly upward instead of flinging flat sideways.
+            if (currentBambooGrab != null)
+            {
+                dir = currentBambooGrab.GetTipUpDirection();
+                power *= currentBambooGrab.GrabLaunchPowerScale;
+            }
             velocity = dir * power;
 
             // Hyper dash: inherit pre-launch tangent inertia (above the deadzone), blended per surface.

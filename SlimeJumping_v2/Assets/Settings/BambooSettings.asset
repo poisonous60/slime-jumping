@@ -21,16 +21,22 @@ MonoBehaviour:
   riderTorqueScale: 1
   passiveDecayRate: 1.2
   riderDecayRate: 0
-  maxTipSpeed: 18
+  maxTipSpeed: 40
   velocityTransferScale: 0.2
   carrierMinContribution: 0.3
   carrierDistanceScale: 1
   slamMinHorizontalSpeed: 3
   slamReattachLockout: 0.15
-  grabEnterDot: 0.9
-  grabHoldBendDeg: 30
-  grabSpringFreqHz: 1.2
-  grabDampingRatio: 0.05
-  grabMaxDeflectionDeg: 90
-  chargingTiltScale: 1
-  grabModeCarrierScale: 1
+  grabEnterDot: 0.8
+  grabHoldBendDeg: 5
+  grabSpringFreqHz: 1
+  grabDampingRatio: 0.156
+  grabMaxDeflectionDeg: 180
+  chargingTiltScale: 0
+  grabPumpBoostGain: 2
+  grabPumpChargingScale: 0
+  grabCapPenaltyGain: 5
+  grabModeCarrierScale: 3
+  grabLaunchPowerScale: 1
+  grabChargeFillScale: 2
+  grabChargeFullAimTime: 0.4

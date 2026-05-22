@@ -69,11 +69,25 @@ namespace SlimeJumping.Settings
         [Tooltip("Damping ratio used by the bamboo spring ONLY while a slime is tip-grabbing. Low (0.02–0.10) lets amplitude accumulate over multiple A↔D switches timed at the swing extremes (Tarzan pump). When no slime is grabbed, dampingRatio applies, so a slime that hops off doesn't leave the bamboo ringing.")]
         [Range(0f, 1f)] public float grabDampingRatio = 0.05f;
 
-        [Tooltip("Hard cap on |currentAngle| (degrees, bend-tangent at tip — NOT rigid rotation angle) while a slime is tip-grabbing. The bamboo is a curving cantilever, not a rotating rod: this is the tangent angle at the tip end of the bent curve. Reference: 90° = quarter-arc (tip at ~(-0.64L, 0.64L), looks diagonally up-left); 180° = half-circle (tip at ~(-0.64L, 0), looks horizontally left); 270° = 3/4 arc (tip curls below base). For 'tip looks roughly horizontal', set this around 180°. Set MUCH larger than grabHoldBendDeg (4–6×) so a well-timed pump has visible amplitude headroom. Independent from maxDeflectionDeg which still applies for side attaches.")]
+        [Tooltip("Soft cap on |currentAngle| (degrees, bend-tangent at tip — NOT rigid rotation angle) while a slime is tip-grabbing. The bamboo is a curving cantilever, not a rotating rod: this is the tangent angle at the tip end of the bent curve. Reference: 90° = quarter-arc (tip at ~(-0.64L, 0.64L), looks diagonally up-left); 180° = half-circle (tip at ~(-0.64L, 0), looks horizontally left); 270° = 3/4 arc (tip curls below base). For 'tip looks roughly horizontal', set this around 180°. Set MUCH larger than grabHoldBendDeg (4–6×) so a well-timed pump has visible amplitude headroom. Independent from maxDeflectionDeg which still applies for side attaches. NOTE: in grab mode this is a soft cap enforced by grabCapPenaltyGain stiffening, not the hard ω=0 clamp used for side attaches.")]
         [Range(5f, 360f)] public float grabMaxDeflectionDeg = 90f;
-        [Tooltip("Multiplier on grabHoldBendDeg lean torque while the slime is Charging — pairs with chargePumpScale.")]
-        [Range(0f, 2f)] public float chargingTiltScale = 1f;
+        [Tooltip("Multiplier on grabHoldBendDeg lean torque while the slime is Charging. Default 0 = lean is disabled during Charging so the player's aim+release isn't fighting bamboo tilt input on the same axis. Paired with grabPumpChargingScale for the anti-damping boost channel.")]
+        [Range(0f, 2f)] public float chargingTiltScale = 0f;
+
+        [Tooltip("Anti-damping boost gain (1/s). Fires when held input direction matches current tip motion direction (swing pump). Added on top of the lean torque so the bamboo's amplitude grows over multiple matched swings instead of settling at the lean equilibrium. Effective net damping = 2ζω - grabPumpBoostGain when matched; values above the damping coefficient make amplitude grow exponentially until the soft cap.")]
+        [Range(0f, 30f)] public float grabPumpBoostGain = 4f;
+        [Tooltip("Multiplier on grabPumpBoostGain while the slime is Charging. Default 0 = pump is disabled during Charging so the player's aim+release isn't fighting bamboo tilt input on the same axis.")]
+        [Range(0f, 2f)] public float grabPumpChargingScale = 0f;
+        [Tooltip("Soft-cap stiffening gain. Adds a quartic restoring torque -sign(θ)·gain·(|θ|/grabMaxDeflectionDeg)^4·stiffness·grabMaxDeflectionDeg(rad) so the bamboo asymptotes to grabMaxDeflectionDeg without the ω=0 hard clamp. Higher = stiffer wall near the cap. Grab mode only — side-attach saturation still uses clampRestitution.")]
+        [Range(0f, 30f)] public float grabCapPenaltyGain = 5f;
+
         [Tooltip("Extra multiplier on VelocityTransferScale while a bamboo is the slime's grab target at launch. 1 = same boost as side attach; >1 = grab launches inherit more tip velocity than ordinary launches.")]
         [Min(0f)] public float grabModeCarrierScale = 1f;
+        [Tooltip("Multiplier on the charge-power jump component when launching from tip-grab. The base launch direction is the tip-up axis (jump off the top of the bent stalk); this scales how strong that jump is. The bamboo's swing velocity is added separately as momentum via grabModeCarrierScale, so this and grabModeCarrierScale tune the up-jump vs the sideways swing-throw independently.")]
+        [Min(0f)] public float grabLaunchPowerScale = 1f;
+        [Tooltip("Multiplier on the charge auto-drift speed while tip-grabbed. While grabbed, A/D is routed to bamboo tilt (not aim), so the charge fills only via the auto-outward drift — this scales how fast that fills relative to a flat-ground charge. >1 = the charge reaches full faster on a bamboo than on flat ground, so the player doesn't have to hold charge as long mid-swing.")]
+        [Min(0f)] public float grabChargeFillScale = 1f;
+        [Tooltip("Override for SlimeSettings.chargeFullAimTime while tip-grabbed — the grace/hold window after the charge reaches the edge before it auto-launches. -1 = use the slime's default (same as flat ground). >=0 = use this value instead: 0 launches the instant the charge fills, larger gives more hold time to time the release mid-swing. Surface-tag-style per-bamboo override.")]
+        public float grabChargeFullAimTime = -1f;
     }
 }

@@ -15,6 +15,11 @@ namespace SlimeJumping.Controller
             // Auto-drift outward (compensated for expanded radius)
             float radiusRatio = activeChargeRadius / settings.chargeRadius;
             float activeDriftSpeed = settings.autoDriftSpeed * Mathf.Lerp(1f, radiusRatio, settings.aimDriftRadiusScale);
+            // Tip-grab fills the charge faster: A/D is routed to bamboo tilt (not aim), so
+            // the charge can only build from auto-drift — scale it up so a mid-swing charge
+            // doesn't require holding as long as a flat-ground charge.
+            if (currentBambooGrab != null)
+                activeDriftSpeed *= currentBambooGrab.GrabChargeFillScale;
 
             if (aimOffset.sqrMagnitude > 0.0001f)
                 aimOffset += aimOffset.normalized * activeDriftSpeed * dt;
@@ -40,12 +45,17 @@ namespace SlimeJumping.Controller
                 aimOffset = new Vector2(Mathf.Cos(clampedAngle), Mathf.Sin(clampedAngle)) * radius;
             }
 
-            // Auto-launch when reaching edge (with aim grace period)
+            // Auto-launch when reaching edge (with aim grace period). Tip-grab can override
+            // the grace/hold window (surface-tag-style) so a bamboo charge can hold longer
+            // or fire instantly at full, independent of the flat-ground default.
             if (aimOffset.magnitude >= activeChargeRadius)
             {
                 aimOffset = aimOffset.normalized * activeChargeRadius;
                 chargeFullAimTimer += dt;
-                if (chargeFullAimTimer >= settings.chargeFullAimTime)
+                float fullAimTime = settings.chargeFullAimTime;
+                if (currentBambooGrab != null && currentBambooGrab.GrabChargeFullAimTime >= 0f)
+                    fullAimTime = currentBambooGrab.GrabChargeFullAimTime;
+                if (chargeFullAimTimer >= fullAimTime)
                 {
                     Launch();
                     return;

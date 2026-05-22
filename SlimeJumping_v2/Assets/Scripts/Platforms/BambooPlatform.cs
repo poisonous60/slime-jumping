@@ -145,6 +145,15 @@ namespace SlimeJumping.Platforms
         public float CurrentDeflectionDeg => currentAngle;
         public float BambooLength => bambooLength;
         public float GrabEnterDot => settings.grabEnterDot;
+        /// <summary>Multiplier on the charge-power launch component for a tip-grab launch
+        /// (the up-the-stalk jump). Read by SlimeController.Launch.</summary>
+        public float GrabLaunchPowerScale => settings.grabLaunchPowerScale;
+        /// <summary>Multiplier on the charge auto-drift speed while tip-grabbed (charge fills
+        /// faster than on flat ground). Read by SlimeController.FixedUpdateCharging.</summary>
+        public float GrabChargeFillScale => settings.grabChargeFillScale;
+        /// <summary>Override for chargeFullAimTime (edge grace before auto-launch) while
+        /// tip-grabbed. -1 = use the slime default. Read by SlimeController.FixedUpdateCharging.</summary>
+        public float GrabChargeFullAimTime => settings.grabChargeFullAimTime;
         public float SegmentRadius => segmentRadius;
         /// <summary>World-space tip position cached at the end of each FixedUpdate from
         /// the same centerline math used for collider segment placement and the visual
@@ -321,30 +330,58 @@ namespace SlimeJumping.Platforms
         }
 
         /// <summary>
-        /// Player A/D input while in tip-grab. Tarzan-style swing model: held input
-        /// applies a constant lean torque whose magnitude is tuned so the steady-state
-        /// bend (= torque / stiffness) equals settings.grabHoldBendDeg — a small offset
-        /// well below grabMaxDeflectionDeg. The bamboo oscillates around that lean
-        /// point with amplitude up to ±grabHoldBendDeg (so peak displacement at one
-        /// extreme is up to 2× grabHoldBendDeg). The pump comes from the player flipping
-        /// the lean direction at the swing extremes: switching A↔D when the tip is at
-        /// peak swing redirects the steady-state target across rest, so the bamboo
-        /// has to traverse a wider distance and overshoots further than the previous
-        /// swing — amplitude grows per well-timed switch until it hits grabMaxDeflectionDeg
-        /// or damping balance. With low grabDampingRatio (~0.05), buildup over multiple
-        /// cycles is visible.
+        /// Player A/D input while in tip-grab. Two-channel pump:
         ///
-        /// Sign convention: positive currentAngle = CCW (tip toward −X). Pressing D
-        /// (inputX = +1) should push the tip toward +X, which requires a negative
-        /// torque; pressing A is symmetric. Hence the leading minus.
+        /// 1. Lean channel — held input applies a constant lean torque whose magnitude
+        ///    is tuned so the steady-state bend equals settings.grabHoldBendDeg. This
+        ///    gives a visible static deflection when the player simply holds a direction.
+        ///    Disabled during Charging (chargingTiltScale = 0 by default).
+        ///
+        /// 2. Anti-damping boost channel (C2) — when the held input direction matches
+        ///    the tip's current motion direction (matched-pump condition), an extra torque
+        ///    proportional to |angularVel| is added in the direction of motion. This is
+        ///    the "kid on a swing pushes when going forward" pattern: the player doesn't
+        ///    have to time A↔D flips at the exact swing extremes; merely pushing in the
+        ///    direction of motion injects energy, and the amplitude grows over multiple
+        ///    swings until the soft cap at grabMaxDeflectionDeg. The gain is in 1/s units
+        ///    so above the spring's damping coefficient (2ζω) the effective net damping
+        ///    flips negative while matched. Disabled during Charging by default.
+        ///
+        /// Sign convention: positive currentAngle = CCW (tip toward −X), so dθ/dt > 0
+        /// means the tip is moving toward −X. Pressing A (inputX = −1) pushes the tip
+        /// toward −X, which requires a positive torque; pressing D is symmetric. Hence
+        /// the leading minus in both channels. Matched-pump condition is therefore
+        /// (−inputX) · angularVel &gt; 0 (same sign in the physics-frame).
         /// </summary>
         public void ApplyTiltTorque(float inputX, bool isCharging)
         {
             if (Mathf.Abs(inputX) < 1e-4f) return;
-            float chargeScale = isCharging ? settings.chargingTiltScale : 1f;
-            var (stiffness, _, _) = ComputeSpringCoeffs();
-            float refTorque = stiffness * settings.grabHoldBendDeg * Mathf.Deg2Rad;
-            pendingRiderTorque += -inputX * refTorque * chargeScale;
+
+            var (stiffness, _, ITotal) = ComputeSpringCoeffs();
+
+            // Lean channel — steady-state equilibrium shift.
+            float leanScale = isCharging ? settings.chargingTiltScale : 1f;
+            if (leanScale > 0f)
+            {
+                float refTorque = stiffness * settings.grabHoldBendDeg * Mathf.Deg2Rad;
+                pendingRiderTorque += -inputX * refTorque * leanScale;
+            }
+
+            // Anti-damping boost channel — energy injection in direction of motion.
+            float pumpScale = isCharging ? settings.grabPumpChargingScale : 1f;
+            if (pumpScale > 0f && settings.grabPumpBoostGain > 0f)
+            {
+                float angVelRad = angularVel * Mathf.Deg2Rad;
+                // Threshold avoids fighting numerical noise around ω≈0 where sign(ω)
+                // flips rapidly; below the threshold lean alone drives motion until
+                // the bamboo accumulates enough velocity for the boost to lock onto.
+                const float pumpVelThresholdRad = 0.05f;
+                bool matched = (-inputX) * angVelRad > 0f;
+                if (matched && Mathf.Abs(angVelRad) > pumpVelThresholdRad)
+                {
+                    pendingRiderTorque += Mathf.Abs(inputX) * angVelRad * settings.grabPumpBoostGain * ITotal * pumpScale;
+                }
+            }
         }
 
         protected override (Vector2, float) ComputeMotion(float dt)
@@ -358,7 +395,24 @@ namespace SlimeJumping.Platforms
 
             float springTorque = -stiffness * angleRadFromRest;
             float dampingTorque = -damping * angVelRad;
-            float angularAccelRad = (springTorque + dampingTorque + pendingRiderTorque) / Mathf.Max(ITotal, 1e-6f);
+
+            // Deflection cap swaps grab vs side: side-attach uses the hard ω=0 clamp
+            // below (predictable saturation for slime hopping off a bent stalk); grab
+            // uses a quartic soft-cap restoring torque added INSIDE the ODE so the bend
+            // asymptotes to grabMaxDeflectionDeg without an artificial velocity wipe.
+            bool grabActive = IsGrabbedByCachedSlime();
+            float maxAngle = grabActive ? settings.grabMaxDeflectionDeg : settings.maxDeflectionDeg;
+
+            float softCapTorque = 0f;
+            if (grabActive && settings.grabCapPenaltyGain > 0f && maxAngle > 1e-4f)
+            {
+                float normAbs = Mathf.Abs(currentAngle) / maxAngle;
+                float n2 = normAbs * normAbs;
+                float n4 = n2 * n2;
+                softCapTorque = -Mathf.Sign(currentAngle) * settings.grabCapPenaltyGain * n4 * stiffness * maxAngle * Mathf.Deg2Rad;
+            }
+
+            float angularAccelRad = (springTorque + dampingTorque + softCapTorque + pendingRiderTorque) / Mathf.Max(ITotal, 1e-6f);
             float angularAccelDeg = angularAccelRad * Mathf.Rad2Deg;
 
             angularVel += angularAccelDeg * dt;
@@ -371,19 +425,18 @@ namespace SlimeJumping.Platforms
             float maxAngularVelDeg = (settings.maxTipSpeed / Mathf.Max(bambooLength, 1e-4f)) * Mathf.Rad2Deg;
             angularVel = Mathf.Clamp(angularVel, -maxAngularVelDeg, maxAngularVelDeg);
 
-            // Deflection cap also swaps grab vs side, so grab-mode max bend can be tuned
-            // independently from the side-attach saturation limit.
-            bool grabActive = IsGrabbedByCachedSlime();
-            float maxAngle = grabActive ? settings.grabMaxDeflectionDeg : settings.maxDeflectionDeg;
-            if (currentAngle > maxAngle)
+            if (!grabActive)
             {
-                currentAngle = maxAngle;
-                if (angularVel > 0f) angularVel = -angularVel * settings.clampRestitution;
-            }
-            else if (currentAngle < -maxAngle)
-            {
-                currentAngle = -maxAngle;
-                if (angularVel < 0f) angularVel = -angularVel * settings.clampRestitution;
+                if (currentAngle > maxAngle)
+                {
+                    currentAngle = maxAngle;
+                    if (angularVel > 0f) angularVel = -angularVel * settings.clampRestitution;
+                }
+                else if (currentAngle < -maxAngle)
+                {
+                    currentAngle = -maxAngle;
+                    if (angularVel < 0f) angularVel = -angularVel * settings.clampRestitution;
+                }
             }
 
             pendingRiderTorque = 0f;
