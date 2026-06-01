@@ -36,7 +36,9 @@ centerline.y(t) = (L/bendRad) * sin(bendRad*t)
 
 ## Collider polyline
 
-각 segment = `CapsuleCollider2D` (또는 Box) child. 모든 segment **단일 root Rigidbody2D 공유** → compound body, 슬라임은 단일 rb 본다. Carrier handoff 없음.
+각 segment = `CapsuleCollider2D` (또는 Box) child. 모든 segment **단일 root Rigidbody2D 공유** → compound body, 슬라임은 단일 rb 본다. Neighbor segment에는 `colliderSegmentOverlap`만큼 작은 길이 overlap을 둔다. 물리적으로는 한 줄기라도 capsule/box 끝 경계에서 contact normal/closest point가 튈 수 있어서, 내려올 때의 카메라 떨림을 줄이기 위한 seam 완충이다.
+
+SlimeController 쪽 carrier/surface modifier 갱신도 raw collider가 아니라 `PlatformMotor` host 기준으로 본다. 즉 `Segment_03 → Segment_04`처럼 같은 BambooPlatform 아래 child collider 사이를 이동하는 것은 플랫폼 전환으로 취급하지 않고, 실제 다른 플랫폼으로 옮겨갈 때만 carrier attach / surface modifier refresh를 한다.
 
 매 FixedUpdate `ApplySegmentTransforms()`:
 - 인접 centerline 점 사이 chord
@@ -45,7 +47,7 @@ centerline.y(t) = (L/bendRad) * sin(bendRad*t)
 
 ## Visual mesh — single shader-bent cylinder
 
-절차적 cylinder (`BuildCylinderMesh`): positionOS.y ∈ [0, bambooLength] 그대로 world-equivalent. 인스턴스 GameObject 1개, `localScale = 1`, `localPosition = 0`.
+절차적 cylinder (`BuildCylinderMesh`): positionOS.y ∈ [0, bambooLength] 그대로 world-equivalent. 인스턴스 GameObject 1개, `localScale = 1`, `localPosition = 0`. `visualHeightSegments`는 최소값으로 쓰고, 실제 height segment 수는 `segmentCount`의 배수이면서 segment당 최소 4 row가 되도록 올림 처리한다. vertex-stage node bulge가 모든 collider joint(`t = k/segmentCount`)에 샘플을 갖게 하기 위함.
 
 매 FixedUpdate `PushVisualBendProperties()` 가 `MaterialPropertyBlock`으로 `_BendAngleDeg`, `_BambooLength` 푸시.
 
@@ -70,7 +72,7 @@ Cross-section vertex (px, 0, pz)는 centerline 위에서 `localAng`만큼 CCW �
 
 ### 노드 기하 (마디)
 
-실제 대나무 핵심 특징 = **bulge** (마디에서 직경 부풀음) + **sheath scar** (얇은 갈색 띠/홈).
+실제 대나무 핵심 특징 = **bulge** (마디에서 직경 부풀음) + **sheath scar** (얇은 갈색 띠/홈). shader의 `_NodeFrequency`는 항상 `segmentCount`로 구동된다 (`VisibleNodeFrequency()`). scar는 `t = k/_NodeFrequency`, collider 경계는 `t = k/segmentCount` 이므로 눈에 보이는 마디가 `Segment_00..N` collider 분할과 정확히 같은 위치에 온다. 마디 간격은 `bambooLength`를 따라 자동으로 벌어진다 (마디 world y = k/segmentCount · L). 별도 `nodeFrequency` 필드 없음 — 마디 수를 바꾸려면 `segmentCount`를 바꾼다.
 
 ```hlsl
 v = positionOS.y / L            // UV-V proxy
@@ -86,7 +88,7 @@ R(v) = 1 + _BulgeAmount * bulge - _ScarDepth * scarRaw
 `pos.xz *= R(v)` 으로 radial 변형. 법선 재계산 (barrel-of-revolution):
 `normal = (radialDir, -dR/dy) / sqrt(1 + (dR/dy)²)`.
 
-`scarRaw`는 fragment로 보내 색 mask 로 사용.
+색 scar는 fragment에서 보간된 `tHeight`로 다시 계산한다. vertex-stage에서 scar mask를 샘플하면 `visualHeightSegments`와 `segmentCount`가 서로 나누어떨어지지 않을 때 마디가 aliasing되어 spacing이 랜덤하게 보일 수 있기 때문이다.
 
 ### Stylized lighting
 
@@ -151,7 +153,7 @@ BambooPlatform   (Rigidbody2D kinematic + BambooPlatform)
 - `scarColor` — 마디 scar 색
 
 ### Visual — Node geometry
-- `nodeFrequency` (길이당 마디 수)
+- 마디 수 = `segmentCount` (자동, 필드 없음) — scar 링이 collider 분할과 일치
 - `bulgeAmount`, `bulgeWidth` — bulge 크기/폭
 - `scarHalfWidth` (core), `scarSoftness` (falloff zone), `scarColorCurve` (그라데이션 곡선 exponent), `scarDepth` (안쪽 홈)
 
@@ -162,17 +164,29 @@ BambooPlatform   (Rigidbody2D kinematic + BambooPlatform)
 
 ### Visual — Mesh
 - `visualRadialSegments` (cylinder 둘레 verts)
-- `visualHeightSegments` (cylinder 길이 verts — bend smoothness)
+- `visualHeightSegments` (cylinder 길이 verts 최소값 — 실제 빌드 시 `segmentCount` 배수 + segment당 최소 4 row로 올림, node bulge joint 샘플 보장)
 
 ### Carrier
 - `velocityTransferScale`, `carrierMinContribution`, `carrierDistanceScale`
+
+### Attached carry 보정
+
+Bamboo는 root Rigidbody2D가 회전하지 않고 child segment collider만 `currentAngle/angularVel`로 휘므로, 일반 `PlatformCarrier.ApplyPositionCarry`의 `DeltaRotation` 기반 carry는 0이 된다. 빠른 bamboo motion에서는 이 때문에 collider만 움직이고 슬라임이 공중에 남는 프레임이 생길 수 있다. 해결: `PlatformMotor.GetRiderCarryDelta(riderWorldPos, dt)` virtual을 추가하고, Bamboo는 `angularVel × arm * dt`를 반환한다. Launch velocity와 같은 물리 의미의 carry를 attached teleport 경로에도 적용해, 빠르게 휘는 동안에도 슬라임이 표면을 따라간다.
+
+### Analytic snap
+
+`SurfaceProbe.SnapToSurface`의 기본 Phase B는 active collider의 `ClosestPoint`로 center를 다시 붙인다. Bamboo처럼 여러 child capsule/box가 겹친 polyline에서는 같은 줄기 안에서도 `SelectedIndex`와 `ClosestPoint`가 segment cap/overlap 사이를 갈아타며 `dist`가 0.019 → 0.001 같은 식으로 튈 수 있다. 슬라임이 bamboo에 붙어 있을 때는 `SlimeController.SnapToSurface`가 `BambooPlatform.TryGetAnalyticSurfaceAnchor`를 우선 사용한다.
+
+이 anchor는 collider child가 아니라 shader와 같은 `ComputeCenterlinePoint(t)` 연속 곡선에서 가장 가까운 centerline `t`를 찾고, `segmentRadius + slimeRadius`만큼 outward offset한 위치다. 즉 collision detection은 기존 child collider를 유지하지만, attached/charging frame의 최종 surface snap은 연속 bamboo 곡선을 source of truth로 삼아 segment seam jitter를 줄인다.
+
+Multi probe의 `OutputVelocity` teleport branch도 반드시 `SlimeController.SnapToSurface()` wrapper를 호출해야 한다. `surfaceProbe.SnapToSurface(...)`를 직접 호출하면 Bamboo analytic snap을 우회한다. Bamboo analytic snap은 현재 곡선 pose에 이미 붙이므로, 같은 프레임의 `PlatformCarrier.ApplyPositionCarry`는 bamboo에 한해 생략한다. 그렇지 않으면 analytic snap + `angularVel × arm` carry가 이중 적용되어 빠르게 휘는 bamboo에서 오히려 잔류 위치 보정이 커진다.
 
 ### Re-entry Guards
 - `slamMinHorizontalSpeed`, `slamReattachLockout`
 
 ## Editor convenience
 
-- `[ContextMenu("Rebuild Segments")]` — bambooLength/segmentCount/colliderShape/visual tessellation 변경 시 수동 재생성 (mesh + collider 재생성 필요).
+- `[ContextMenu("Rebuild Segments")]` — bambooLength/segmentCount/colliderShape/colliderSegmentOverlap/visual tessellation 변경 시 수동 재생성 (mesh + collider 재생성 필요).
 - `[ContextMenu("Refresh Visual Material")]` — color/scar/bulge/lighting 값만 변경 시 material 즉시 푸시.
 - `OnValidate` — Inspector 변경 시 `EditorApplication.delayCall`로 `RefreshVisualMaterialFromFields` 자동 호출 (대부분의 visual 필드 live 반영).
 - `BambooPlatformTestSetup` 메뉴: `SlimeJumping → Platform → Setup BambooPlatform Test` — 5개 대나무 + 바닥 + 벽 + LaunchPad 자동 생성. 기존 `BambooPlatformTest` GameObject 있으면 자동 삭제.
@@ -188,6 +202,66 @@ BambooPlatform   (Rigidbody2D kinematic + BambooPlatform)
 - bambooLength/segmentCount 런타임 변경 시 mesh/collider 재생성 안 됨 (Rebuild Segments 필요).
 - 수직 정렬 가정 — 비스듬한 base rotation 미지원 (필요 시 baseRotation 응용).
 - Shadow side render에서 light 받는 방향에 따라 stalk 명암 split 위치가 바뀜 — `lightDirWS` 인스펙터 조정 필요.
+
+## Debugging
+
+`BambooSurfaceJitterDebugger`는 슬라임 루트에 붙이는 대나무 하강 jitter 전용 probe다. 기존 `CurveSlideJitterProbe`/`OnScreenJitterProbe`가 일반 물리 위치와 카메라 상대 움직임을 보는데 비해, 이 컴포넌트는 bamboo segment seam과 deforming-platform carry를 직접 본다.
+
+자동 dump 조건:
+- `Segment_XX` raw collider switch / host switch
+- `SurfaceProbe.SelectedIndex` 변경
+- surface normal 1-frame angle jump
+- slime circle ↔ active surface `Collider2D.Distance` 변화
+- `observed dPos - previous ctrlVel*dt - PlatformMotor.GetRiderCarryDelta(...)` residual spike
+- Phase A depenetration push spike
+
+기본값은 `autoDumpOnlyOnBamboo = true`라서 Floor 착지, 스폰/텔레포트, 일반 발사처럼 대나무 밖에서 나는 큰 위치 변화는 자동 dump하지 않는다. 수동 `F6` dump는 이 필터를 무시하고 현재 ring buffer를 그대로 출력한다. dump 상단의 `Trigger sample` 한 줄이 실제 자동 dump를 발생시킨 프레임이다.
+
+해석:
+- `segment switch + normal/distance jump` — collider seam/contact selection이 실제로 보이는 위치 튐을 만들 가능성이 높다.
+- `residual spike` — `SnapToSurface`, depenetration, Unity solver 보정 중 하나가 slime rb.position을 밀고 있다.
+- `bamboo angular velocity`가 큰데 `carry residual`도 크다 — bamboo child-collider 변형에 대한 carry 모델이 아직 실제 표면 이동과 다르다.
+- `surface`가 같은 `Segment_XX`인데 `probe selected`와 `dist`만 반복적으로 바뀐다 — child collider의 `ClosestPoint` 기준이 흔들리는 케이스이며, analytic snap으로 우회한다.
+- 이 probe는 물리 FixedUpdate 기준이다. 물리 데이터가 깨끗한데 화면만 떨리면 `OnScreenJitterProbe`로 camera/update timing을 이어서 본다.
+
+## Side-Rebound V2 모드
+
+`BambooSettings.interactionMode = SideReboundV2` 인 bamboo는 기존 절차 cylinder visual, N-segment collider polyline, `BambooBend.shader`를 그대로 사용하지만 tip-grab/hanging 진입을 막는다. 슬라임이 측면으로 부딪히면 bamboo가 더 크게 휜다. 자동 발사는 없고, Space를 눌러 기존 Charging 상태로 들어간 뒤 release할 때 플레이어 aim 방향 그대로 bamboo V2 보너스를 더한다.
+
+구현 위치:
+- `BambooPlatform` — V2 여부, side-contact 판정, V2 spring/max deflection, bend pump gain, auto/charged launch 값을 제공.
+- `SlimeController.BambooV2.cs` — landing 순간 side rebound/bonus handle을 arm, charged launch 보너스 적용.
+- `SlimeController.BambooGrab.cs` — `UsesTipGrab` 이 false인 V2 bamboo는 top grab을 만들지 않음.
+- `BambooV2Response` — Additive/SpeedCurve 공통 평가 helper.
+
+튜닝 방식은 두 가지다.
+
+| 필드 | Additive 모드 | SpeedCurve 모드 |
+|---|---|---|
+| `v2BendPumpGain` / `v2BendPumpGainByImpactSpeed` | 측면 충돌 pump gain 고정 배율 | 측면 충돌 속도별 bend pump gain |
+| `v2ChargedLaunchBonus` / `v2ChargedLaunchBonusByChargePower` | Charging release 발사 power에 더할 고정 보너스 | charge launch power별 추가 보너스 |
+
+Charging release는 플레이어가 aim한 방향을 그대로 사용하고, `base charge power + v2ChargedLaunchBonus`만 적용한다. `v2ChargedLaunchBonus`는 “차징 점프 방향을 따라가는 추가 속도”이고, `v2CarrierScale`은 “슬라임이 bamboo에서 받는 스윙 속도 상속 배율”이다. 발사 직후 bamboo 자체도 `v2LaunchReleaseVelocityScale`만큼 반작용 kick을 받는다. `v2LaunchReleaseUseHeightScale`이 켜져 있으면 이 kick에 별도 접촉 높이 보정(`v2LaunchReleaseMinHeightScale`, `v2LaunchReleaseHeightPower`)을 곱한다. 따라서 아래쪽에서 점프하면 같은 launch velocity라도 덜 흔들리고, 위쪽/끝에 가까운 접촉일수록 접선 속도에 가까운 큰 반작용이 난다. 즉 차징을 더 세게 만들고 싶으면 `v2ChargedLaunchBonus`/`v2ChargedLaunchBonusByChargePower`, 슬라임이 스윙에서 받는 보상을 키우고 싶으면 `v2CarrierScale`, 슬라임이 떨어져나간 뒤 bamboo가 더 빠르게 튕기게 만들고 싶으면 `v2LaunchReleaseVelocityScale`을 올린다.
+
+시간/형상 노브:
+- `v2SpringFreqHz` — 낮을수록 더 오래 휘고 늦게 돌아온다.
+- `v2DampingRatio` — 낮을수록 반동 에너지가 덜 죽는다.
+- `v2MaxDeflectionDeg` — 측면 충돌 시 허용되는 최대 휨.
+- `v2ReboundMinContactHeight01` — V2 rebound를 arm할 최소 접촉 높이. 0=바닥, 1=끝. 이보다 낮게 닿으면 큰 반동/차징 보너스를 만들지 않는다.
+- `v2BendMinHeightScale` — base 접촉의 bend pump 최소 배율. 0이면 밑동 접촉은 거의 휨을 만들지 않는다.
+- `v2BendHeightPower` — 접촉 높이에 따른 bend pump 곡률. 높을수록 아래쪽 접촉 영향이 빠르게 작아진다.
+- `v2CarrierScale` — `ω × arm`으로 상속되는 bamboo 속도 추가 배율.
+- `v2LaunchReleaseVelocityScale` — 발사 순간 slime launch velocity의 접선 성분을 bamboo angular velocity로 바꾸는 배율. 1이면 접촉 높이의 bamboo 표면 속도가 slime 발사 속도의 접선 성분과 거의 같아진다.
+- `v2LaunchReleaseUseHeightScale` — release kick에 접촉 높이 보정을 적용할지. 끄면 위/아래 접촉 높이에 따른 release kick 차이를 제거한다.
+- `v2LaunchReleaseMinHeightScale` — base 접촉의 release kick 최소 배율. 0이면 아래쪽 launch는 거의 대나무를 흔들지 않는다.
+- `v2LaunchReleaseHeightPower` — release kick 높이 보정 곡률. 높을수록 아래쪽 launch 영향이 빠르게 작아진다.
+- `v2LaunchReleaseMaxTipSpeed` — release kick 후 bamboo tip speed 상한.
+- `v2SideNormalMaxUpDot` — side hit으로 인정할 normal 범위. `|dot(surfaceNormal, gravityUp)|`가 이 값 이하여야 V2 rebound가 arm된다.
+
+제공 asset:
+- `Assets/Settings/BambooSettings.asset` — 기존 TipGrab 모드 유지.
+- `Assets/Settings/BambooV2Settings.asset` — SideReboundV2 기본 튜닝.
+- 메뉴 `SlimeJumping → Platform → Setup BambooPlatform V2 Test` — 기존 visual 생성 로직으로 V2 bamboo grove 생성.
 
 ## Tip-Grab 모드 (그랩 / 매달림)
 

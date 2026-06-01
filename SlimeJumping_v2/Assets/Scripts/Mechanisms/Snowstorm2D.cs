@@ -17,6 +17,28 @@ namespace SlimeJumping.Mechanisms
     {
         public enum Phase { WindLeft, CalmAfterLeft, WindRight, CalmAfterRight }
 
+        [System.Serializable]
+        public class StormSection
+        {
+            [Tooltip("Optional label for designers. Runtime logic does not read it.")]
+            public string label;
+
+            [Tooltip("Collider that marks this snowstorm section. Usually a child trigger BoxCollider2D. First matching section wins.")]
+            public Collider2D area;
+
+            [Tooltip("When enabled, this section keeps using the global idle/right/idle/left phase cycle.")]
+            public bool usePhaseCycle;
+
+            [Tooltip("Fixed horizontal wind acceleration inside this section when Use Phase Cycle is off. Only X is used. (-6,0)=weak left wind, (0,0)=snow-only calm.")]
+            public Vector2 windAcceleration = Vector2.zero;
+
+            [Tooltip("If off, the section changes visuals/particles but does not push the slime.")]
+            public bool affectsSlime = true;
+
+            [Tooltip("If off, ambient/storm visuals can still fade in, but the ParticleSystemForceField receives zero wind in this section.")]
+            public bool affectsSnowParticles = true;
+        }
+
         [Header("Phase Timing")]
         [Min(0.1f)]
         [SerializeField] private float windDuration = 5f;
@@ -44,6 +66,13 @@ namespace SlimeJumping.Mechanisms
 
         [Tooltip("Max speed along wind direction before falloff kills acceleration. 0 = unlimited.")]
         [SerializeField] private float terminalSpeed = 14f;
+
+        [Header("Wind Sections")]
+        [Tooltip("Optional per-area wind overrides. Empty = original 4-phase storm everywhere. Put child BoxCollider2D triggers here to make areas with weak fixed wind, snow-only calm, etc.")]
+        [SerializeField] private StormSection[] sections;
+
+        [Tooltip("Optional areas where the slime is sheltered from wind push (interiors, behind walls). Visual snowfall and storm audio/post remain driven by the active section.")]
+        [SerializeField] private Collider2D[] windShelterAreas;
 
         [Header("State Multipliers")]
         [SerializeField] private float airborneMultiplier = 1f;
@@ -146,12 +175,18 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float phaseElapsed;
         [SerializeField] private float currentMagnitude;
         [SerializeField] private float currentDirection;
+        [SerializeField] private Vector2 currentWindAcceleration;
+        [SerializeField] private int activeSectionIndex = -1;
+        [SerializeField] private bool activeSectionAffectsSlime = true;
+        [SerializeField] private bool activeSectionAffectsSnowParticles = true;
         [SerializeField] private bool slimeInside;
         [SerializeField] private float slimePresenceWeight;
 
         private SlimeController trackedSlime;
         private SoundHandle ambientHandle;
-        private float prevMagnitudeAtPhaseStart;
+        private Vector2 windTransitionStart;
+        private Vector2 windTransitionTarget;
+        private float windTransitionElapsed;
 
         // Storm PS renderers + shared MPB. Used to fade particle alpha by
         // slimePresenceWeight without touching the prefab's shared material. Emission
@@ -184,7 +219,19 @@ namespace SlimeJumping.Mechanisms
 
         void OnValidate()
         {
+            NormalizeSectionWindInputs();
             SyncForceFieldGeometry();
+        }
+
+        void NormalizeSectionWindInputs()
+        {
+            if (sections == null) return;
+            for (int i = 0; i < sections.Length; i++)
+            {
+                StormSection section = sections[i];
+                if (section == null) continue;
+                section.windAcceleration.y = 0f;
+            }
         }
 
         void Awake()
@@ -204,13 +251,16 @@ namespace SlimeJumping.Mechanisms
                 phaseElapsed -= PhaseDuration(currentPhase);
                 currentPhase = NextPhase(currentPhase);
             }
-            prevMagnitudeAtPhaseStart = SignedTargetMagnitude(currentPhase);
-            float signed = SignedTargetMagnitude(currentPhase);
-            // Keep last non-zero direction if signed=0 (calm) so force field doesn't
+            Vector2 initialWind = ResolveDesiredWind();
+            windTransitionStart = initialWind;
+            windTransitionTarget = initialWind;
+            windTransitionElapsed = transitionDuration;
+            currentWindAcceleration = initialWind;
+            // Keep last non-zero direction if wind=0 (calm) so force field doesn't
             // snap its sign mid-frame.
-            if (Mathf.Abs(signed) > 0.001f) currentDirection = Mathf.Sign(signed);
+            if (Mathf.Abs(initialWind.x) > 0.001f) currentDirection = Mathf.Sign(initialWind.x);
             else if (currentDirection == 0f) currentDirection = 1f;
-            currentMagnitude = Mathf.Abs(signed);
+            currentMagnitude = initialWind.magnitude;
         }
 
         void OnEnable()
@@ -310,6 +360,7 @@ namespace SlimeJumping.Mechanisms
 
         void FixedUpdate()
         {
+            RefreshWindTargetForCurrentPosition();
             PushSlime(Time.fixedDeltaTime);
         }
 
@@ -322,41 +373,57 @@ namespace SlimeJumping.Mechanisms
             if (phaseElapsed >= duration)
             {
                 phaseElapsed -= duration;
-                Phase next = NextPhase(currentPhase);
-                prevMagnitudeAtPhaseStart = SignedCurrent();
-                currentPhase = next;
-                OnPhaseTransitionStart();
+                currentPhase = NextPhase(currentPhase);
             }
 
-            float targetSigned = SignedTargetMagnitude(currentPhase);
-            float signedNow;
-            if (transitionDuration <= 0f || phaseElapsed >= transitionDuration)
+            Vector2 desiredWind = ResolveDesiredWind();
+            if ((desiredWind - windTransitionTarget).sqrMagnitude > 0.0001f)
             {
-                signedNow = targetSigned;
+                Vector2 previousTarget = windTransitionTarget;
+                windTransitionStart = currentWindAcceleration;
+                windTransitionTarget = desiredWind;
+                windTransitionElapsed = 0f;
+                OnWindTransitionStart(previousTarget, desiredWind);
+            }
+
+            if (transitionDuration <= 0f)
+            {
+                currentWindAcceleration = windTransitionTarget;
             }
             else
             {
-                float t = phaseElapsed / transitionDuration;
-                signedNow = Mathf.Lerp(prevMagnitudeAtPhaseStart, targetSigned, t);
+                windTransitionElapsed += dt;
+                float t = Mathf.Clamp01(windTransitionElapsed / transitionDuration);
+                currentWindAcceleration = Vector2.Lerp(windTransitionStart, windTransitionTarget, t);
             }
 
-            currentMagnitude = Mathf.Abs(signedNow);
+            currentMagnitude = currentWindAcceleration.magnitude;
             // Keep last non-zero direction so the ForceField doesn't snap its sign to 0
             // mid-calm — the snow particles would briefly halt their horizontal drift,
             // looking like a stutter instead of a smooth fall-off into vertical fall.
-            if (Mathf.Abs(signedNow) > 0.001f) currentDirection = Mathf.Sign(signedNow);
+            if (Mathf.Abs(currentWindAcceleration.x) > 0.001f)
+                currentDirection = Mathf.Sign(currentWindAcceleration.x);
         }
 
-        float SignedCurrent() => currentDirection * currentMagnitude;
+        void RefreshWindTargetForCurrentPosition()
+        {
+            Vector2 desiredWind = ResolveDesiredWind();
+            if ((desiredWind - windTransitionTarget).sqrMagnitude <= 0.0001f) return;
 
-        void OnPhaseTransitionStart()
+            Vector2 previousTarget = windTransitionTarget;
+            windTransitionStart = currentWindAcceleration;
+            windTransitionTarget = desiredWind;
+            windTransitionElapsed = 0f;
+            OnWindTransitionStart(previousTarget, desiredWind);
+        }
+
+        void OnWindTransitionStart(Vector2 previousWind, Vector2 nextWind)
         {
             if (impulseEmitter != null && shakeForce > 0f)
             {
-                float prevAbs = Mathf.Abs(prevMagnitudeAtPhaseStart);
-                float nextAbs = Mathf.Abs(SignedTargetMagnitude(currentPhase));
-                float deltaNorm = windAccelerationMagnitude > 0.001f
-                    ? Mathf.Abs(nextAbs - prevAbs) / windAccelerationMagnitude
+                float referenceMagnitude = ReferenceWindMagnitude();
+                float deltaNorm = referenceMagnitude > 0.001f
+                    ? Mathf.Abs(nextWind.magnitude - previousWind.magnitude) / referenceMagnitude
                     : 0f;
                 if (deltaNorm > 0.01f) impulseEmitter.Emit(shakeForce * deltaNorm);
             }
@@ -374,14 +441,66 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        float SignedTargetMagnitude(Phase p)
+        Vector2 ResolveDesiredWind()
+        {
+            activeSectionIndex = -1;
+            activeSectionAffectsSlime = true;
+            activeSectionAffectsSnowParticles = true;
+
+            StormSection section = FindActiveSection();
+            if (section != null)
+            {
+                activeSectionAffectsSlime = section.affectsSlime;
+                activeSectionAffectsSnowParticles = section.affectsSnowParticles;
+                if (!section.usePhaseCycle) return HorizontalWind(section.windAcceleration);
+            }
+
+            return PhaseWindAcceleration(currentPhase);
+        }
+
+        static Vector2 HorizontalWind(Vector2 wind)
+        {
+            return new Vector2(wind.x, 0f);
+        }
+
+        StormSection FindActiveSection()
+        {
+            if (trackedSlime == null || sections == null) return null;
+            Vector2 point = trackedSlime.Position;
+            for (int i = 0; i < sections.Length; i++)
+            {
+                StormSection section = sections[i];
+                if (section == null || section.area == null) continue;
+                if (!section.area.OverlapPoint(point)) continue;
+                activeSectionIndex = i;
+                return section;
+            }
+            return null;
+        }
+
+        Vector2 PhaseWindAcceleration(Phase p)
         {
             switch (p)
             {
-                case Phase.WindLeft: return -windAccelerationMagnitude;
-                case Phase.WindRight: return +windAccelerationMagnitude;
-                default: return 0f;
+                case Phase.WindLeft: return new Vector2(-windAccelerationMagnitude, 0f);
+                case Phase.WindRight: return new Vector2(+windAccelerationMagnitude, 0f);
+                default: return Vector2.zero;
             }
+        }
+
+        float ReferenceWindMagnitude()
+        {
+            float max = windAccelerationMagnitude;
+            if (sections != null)
+            {
+                for (int i = 0; i < sections.Length; i++)
+                {
+                    StormSection section = sections[i];
+                    if (section == null || section.usePhaseCycle) continue;
+                    max = Mathf.Max(max, section.windAcceleration.magnitude);
+                }
+            }
+            return max;
         }
 
         static Phase NextPhase(Phase p)
@@ -424,9 +543,11 @@ namespace SlimeJumping.Mechanisms
         void PushSlime(float dt)
         {
             if (trackedSlime == null) return;
+            if (!activeSectionAffectsSlime) return;
+            if (IsInWindShelter(trackedSlime.Position)) return;
             if (currentMagnitude < 0.001f) return;
 
-            Vector2 worldDir = new Vector2(currentDirection, 0f);
+            Vector2 worldDir = currentWindAcceleration / currentMagnitude;
 
             float multiplier;
             switch (trackedSlime.CurrentState)
@@ -454,6 +575,18 @@ namespace SlimeJumping.Mechanisms
             // overwritten next tick by the state handler.
             Vector2 deltaV = worldDir * (currentMagnitude * multiplier * falloff * dt);
             trackedSlime.AddSustainedFlowImpulse(deltaV);
+        }
+
+        bool IsInWindShelter(Vector2 point)
+        {
+            if (windShelterAreas == null) return false;
+            for (int i = 0; i < windShelterAreas.Length; i++)
+            {
+                Collider2D shelter = windShelterAreas[i];
+                if (shelter == null) continue;
+                if (shelter.OverlapPoint(point)) return true;
+            }
+            return false;
         }
 
         // ---- ForceField sync --------------------------------------------------------------
@@ -493,9 +626,9 @@ namespace SlimeJumping.Mechanisms
         void ApplyForceField()
         {
             if (snowForceField == null) return;
-            float signed = SignedCurrent();
-            snowForceField.directionX = new ParticleSystem.MinMaxCurve(signed);
-            snowForceField.directionY = new ParticleSystem.MinMaxCurve(0f);
+            Vector2 wind = activeSectionAffectsSnowParticles ? currentWindAcceleration : Vector2.zero;
+            snowForceField.directionX = new ParticleSystem.MinMaxCurve(wind.x);
+            snowForceField.directionY = new ParticleSystem.MinMaxCurve(wind.y);
             snowForceField.directionZ = new ParticleSystem.MinMaxCurve(0f);
         }
 
@@ -574,8 +707,9 @@ namespace SlimeJumping.Mechanisms
 
         float NormalizedIntensity()
         {
-            return windAccelerationMagnitude > 0.001f
-                ? Mathf.Clamp01(currentMagnitude / windAccelerationMagnitude)
+            float referenceMagnitude = ReferenceWindMagnitude();
+            return referenceMagnitude > 0.001f
+                ? Mathf.Clamp01(currentMagnitude / referenceMagnitude)
                 : 0f;
         }
 

@@ -1,0 +1,24 @@
+# .understandignore — patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+#
+# Scope: "Core gameplay" — keep Controller, Mechanisms, Platforms, Interaction,
+# Physics, Camera, Interfaces, Rendering, Visual. Everything below is excluded.
+
+# --- Tooling output ---
+.understand-anything/
+
+# --- Unity metadata (not source) ---
+*.meta
+
+# --- Out-of-scope subsystems ---
+Editor/
+Debug/
+UI/
+Audio/
+Effects/
+Settings/
+Optimization/
+Background/
+VFX/
+MeshTools/
+Input/

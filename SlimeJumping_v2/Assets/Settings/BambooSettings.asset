@@ -27,6 +27,71 @@ MonoBehaviour:
   carrierDistanceScale: 1
   slamMinHorizontalSpeed: 3
   slamReattachLockout: 0.15
+  interactionMode: 0
+  v2ResponseMode: 0
+  v2BendPumpGain: 1.4
+  v2BendPumpGainByImpactSpeed:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0.6
+      inSlope: 0.08888889
+      outSlope: 0.08888889
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 18
+      value: 2.2
+      inSlope: 0.08888889
+      outSlope: 0.08888889
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  v2SpringFreqHz: 0.75
+  v2DampingRatio: 0.12
+  v2MaxDeflectionDeg: 120
+  v2ReboundMinContactHeight01: 0.25
+  v2BendMinHeightScale: 0
+  v2BendHeightPower: 1.75
+  v2ChargedLaunchBonus: 3
+  v2ChargedLaunchBonusByChargePower:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0.3888889
+      outSlope: 0.3888889
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 18
+      value: 7
+      inSlope: 0.3888889
+      outSlope: 0.3888889
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  v2CarrierScale: 1
+  v2LaunchReleaseVelocityScale: 0.85
+  v2LaunchReleaseUseHeightScale: 1
+  v2LaunchReleaseMinHeightScale: 0
+  v2LaunchReleaseHeightPower: 1.75
+  v2LaunchReleaseMaxTipSpeed: 24
+  v2SideNormalMaxUpDot: 0.45
   grabEnterDot: 0.8
   grabHoldBendDeg: 5
   grabSpringFreqHz: 1

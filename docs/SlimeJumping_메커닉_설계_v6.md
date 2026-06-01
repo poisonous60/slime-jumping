@@ -43,11 +43,11 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Common (PlatformMotor / Carrier)](features/platforms/common-platform.md)
 - [Crumbling](features/platforms/crumbling.md) — 무너지는 플랫폼
 - [Thin Ice](features/platforms/thin-ice.md) — Crumbling 확장 (SFX + 파티클 + 부드러운 재생성)
-- [Thin Ice v2](features/platforms/thin-ice-v2.md) — Quibli toon lighting + 절차적 Voronoi 크랙 셰이더 + 공유 generic shard 라이브러리 + `ThinIceV2Config` 단일 설정 자산 (Resources auto-load) + 점프-즉시-shatter + 그룹 단위 respawn zone
+- [Thin Ice v2](features/platforms/thin-ice-v2.md) — Quibli toon lighting + 절차적 Voronoi 크랙 셰이더 + 공유 generic shard 라이브러리 + `ThinIceV2Config` 단일 설정 자산 (Resources auto-load) + 점프-즉시-shatter + 그룹 단위 respawn zone. U자처럼 여러 ThinIce child collider로 만든 표면도 별도 guide anchor 없이 기존 `SurfaceProbe` snap을 사용한다.
 - [Rolling Disk](features/platforms/rolling-disk.md) — 360° 회전 원형
 - [Pendulum](features/platforms/pendulum.md) — 매달린 진자
 - [Springy Branch](features/platforms/springy-branch.md) — 탄력 나뭇가지
-- [Bamboo](features/platforms/bamboo.md) — 수직 대나무. SpringyBranch 물리 식 + vertical 적용, N-segment collider polyline + single shader-bent cylinder visual (sub-pixel coincident). 마디 bulge + sheath scar 지오메트리, Quibli-style 2-tone + height gradient color
+- [Bamboo](features/platforms/bamboo.md) — 수직 대나무. SpringyBranch 물리 식 + vertical 적용, N-segment collider polyline + single shader-bent cylinder visual (sub-pixel coincident). 기본적으로 visible node frequency를 physics `segmentCount`에 동기화해 보이는 마디/구간 경계가 물리 segment와 일치. 마디 bulge + sheath scar 지오메트리, Quibli-style 2-tone + height gradient color. `BambooSettings.interactionMode`로 기존 TipGrab과 SideReboundV2 전환: V2는 top hanging을 끄고 측면 충돌을 더 크게 휘게 한 뒤, Space charging release 방향을 따라 보너스를 더한다. V2 launch-release 반작용은 전용 접촉 높이 보정 노브를 받아 아래쪽 점프는 덜 흔들리고 위쪽 점프는 더 크게 흔들린다. 대나무 하강 jitter 원인 추적용 `BambooSurfaceJitterDebugger`를 슬라임에 붙여 segment switch / normal jump / carry residual / probe churn을 관측한다.
 - [Deformable Mud](features/platforms/deformable-mud.md) — 진흙/찰흙 소성 변형
 - [Rope](features/platforms/rope.md) — Verlet + 반동 Launch (v1 = sag-based, [v2 = timing-based](features/platforms/rope-v2.md), [v3 = trampoline-coupled](features/platforms/rope-v3.md))
 
@@ -57,7 +57,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Portal](features/mechanisms/portal.md) — 텔레포터 쌍 + PortalSwapper (v2: 소비/재생성, 자동 페어링, 색 지정)
 - [Signal / Button](features/mechanisms/signal-button.md) — SignalSource, WeightDescendPlatform
 - [Wind Zone](features/mechanisms/wind-zone.md) — v1 (slime physics push), v2 (= v1 + Snow ParticleSystemForceField 연동)
-- [Snowstorm](features/mechanisms/snowstorm.md) — 스테이지 전체 눈폭풍 (Jump King 4-페이즈 사이클: WindLeft → CalmAfterLeft → WindRight → CalmAfterRight, 짧은 lerp ramp 전환, WindZone2D_v2 동일 슬라임 push, 카메라 앵커 Local sim PS pair [top-strip + upwind-side-strip] 으로 viewport 전 영역 커버, slimePresenceWeight 통합 fade로 zone in/out 시 모든 비주얼 [particles + URP Volume vignette/cool-tint/WhiteBalance + ambient loop + Snow.prefab boost] 동기 fade in/out, calm 시 emission baseline 유지로 "바람만 멈추고 눈은 계속" 표현)
+- [Snowstorm](features/mechanisms/snowstorm.md) — 스테이지 전체 눈폭풍 (기본 Jump King 4-페이즈 사이클: WindLeft → CalmAfterLeft → WindRight → CalmAfterRight, 구간별 `sections` override로 약한 상시 좌풍/무풍 눈 연출 등 지정 가능, `windShelterAreas`로 실내·벽 뒤처럼 슬라임 push만 차단, 짧은 lerp ramp 전환, WindZone2D_v2 동일 슬라임 push, 카메라 앵커 Local sim PS pair [top-strip + upwind-side-strip] 으로 viewport 전 영역 커버, slimePresenceWeight 통합 fade로 zone in/out 시 모든 비주얼 [particles + URP Volume vignette/cool-tint/WhiteBalance + ambient loop + Snow.prefab boost] 동기 fade in/out, calm 시 emission baseline 유지로 "바람만 멈추고 눈은 계속" 표현)
 - [Drag Zone](features/mechanisms/drag-zone.md) — 감속/모래 + 볼륨 차징
 - [Gravity Field](features/mechanisms/gravity-field.md) — 중력 방향 치환
 - [Water Zone](features/mechanisms/water-zone.md) — 물 v1/v2 + 파도 + Underwater 포스트

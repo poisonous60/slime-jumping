@@ -16,7 +16,7 @@ namespace SlimeJumping.Platforms
     //
     // All segment colliders share the root rigidbody → slime sees one body, no carrier
     // handoff between segments.
-    public class BambooPlatform : PlatformMotor
+    public class BambooPlatform : PlatformMotor, ISurfaceAnchorProvider
     {
         public enum SegmentColliderShape { Capsule, Box }
 
@@ -36,6 +36,8 @@ namespace SlimeJumping.Platforms
         [SerializeField, Min(0.5f)] float bambooLength = 4f;
         [SerializeField, Range(2, 32)] int segmentCount = 12;
         [SerializeField, Min(0.02f)] float segmentRadius = 0.15f;
+        [Tooltip("Small length overlap between neighboring collider segments. This hides capsule/box seam jitter while the visual node rings still stay aligned to segment boundaries. Rebuild Segments after changing.")]
+        [SerializeField, Min(0f)] float colliderSegmentOverlap = 0.03f;
         [SerializeField] SegmentColliderShape colliderShape = SegmentColliderShape.Capsule;
 
         [Header("Visual")]
@@ -54,8 +56,9 @@ namespace SlimeJumping.Platforms
         [SerializeField, Range(0f, 1f)] float shadowDarken = 0.60f;
 
         [Header("Visual — Node Geometry (마디)")]
-        [Tooltip("Number of bamboo nodes along the length. 6 default ≈ one node every ~0.7m on a 4m stalk.")]
-        [SerializeField, Min(0f)] float nodeFrequency = 6f;
+        // Visible node rings always track segmentCount: shader scars sit at t = k/segmentCount,
+        // the same parameter the Segment_XX colliders split on, so rings land on the collider
+        // joints. Spacing follows bambooLength automatically (ring at world y = k/segmentCount * L).
         [Tooltip("Bulge radius multiplier — real bamboo nodes swell outward ~5-10% wider than the internodes. This is the defining 3D feature.")]
         [SerializeField, Range(0f, 0.5f)] float bulgeAmount = 0.10f;
         [Tooltip("Bulge half-width along the UV-V cycle. Controls how broad the swelling is around each node center.")]
@@ -144,6 +147,8 @@ namespace SlimeJumping.Platforms
 
         public float CurrentDeflectionDeg => currentAngle;
         public float BambooLength => bambooLength;
+        public bool UsesTipGrab => settings.interactionMode == BambooInteractionMode.TipGrab;
+        public bool UsesSideReboundV2 => settings.interactionMode == BambooInteractionMode.SideReboundV2;
         public float GrabEnterDot => settings.grabEnterDot;
         /// <summary>Multiplier on the charge-power launch component for a tip-grab launch
         /// (the up-the-stalk jump). Read by SlimeController.Launch.</summary>
@@ -154,7 +159,9 @@ namespace SlimeJumping.Platforms
         /// <summary>Override for chargeFullAimTime (edge grace before auto-launch) while
         /// tip-grabbed. -1 = use the slime default. Read by SlimeController.FixedUpdateCharging.</summary>
         public float GrabChargeFullAimTime => settings.grabChargeFullAimTime;
+        public float V2CarrierScale => settings.v2CarrierScale;
         public float SegmentRadius => segmentRadius;
+        public float TipSwingSpeed => Mathf.Abs(angularVel * Mathf.Deg2Rad) * bambooLength;
         /// <summary>World-space tip position cached at the end of each FixedUpdate from
         /// the same centerline math used for collider segment placement and the visual
         /// shader bend. SlimeController.BambooGrab reads this each FU to anchor the
@@ -244,7 +251,8 @@ namespace SlimeJumping.Platforms
                 // which runs AFTER carrier.GetLaunchVelocity in Launch() — so the boost
                 // applies on the launching frame.
                 float grabBoost = cachedSlime.CurrentBambooGrab == this ? settings.grabModeCarrierScale : 1f;
-                return (requested / carrierGives) * settings.velocityTransferScale * grabBoost;
+                float v2Boost = cachedSlime.CurrentBambooV2Rebound == this ? settings.v2CarrierScale : 1f;
+                return (requested / carrierGives) * settings.velocityTransferScale * grabBoost * v2Boost;
             }
         }
 
@@ -252,6 +260,17 @@ namespace SlimeJumping.Platforms
         // for slime at any height. Position remains fixed (base pivot).
         public override Vector2 Velocity { get => Vector2.zero; protected set { } }
         public override float AngularVelocity { get => angularVel; protected set { } }
+
+        public override Vector2 GetRiderCarryDelta(Vector2 riderWorldPos, float dt)
+        {
+            if (dt <= 0f) return Vector2.zero;
+
+            float radPerSec = angularVel * Mathf.Deg2Rad;
+            if (Mathf.Abs(radPerSec) < 0.0001f) return Vector2.zero;
+
+            Vector2 arm = riderWorldPos - pivotWorldPos;
+            return new Vector2(-arm.y, arm.x) * radPerSec * dt;
+        }
 
         /// <summary>True when this bamboo is the slime's active tip-grab target.
         /// Lazy-resolves the SlimeController reference (same lookup VelocityTransferScale
@@ -266,6 +285,125 @@ namespace SlimeJumping.Platforms
             return cachedSlime != null && cachedSlime.CurrentBambooGrab == this;
         }
 
+        public bool IsV2SideContact(Vector2 surfaceNormal, Vector2 gravityUp)
+        {
+            if (!UsesSideReboundV2) return false;
+            return Mathf.Abs(Vector2.Dot(surfaceNormal, gravityUp)) <= settings.v2SideNormalMaxUpDot;
+        }
+
+        public float GetHeight01(Vector2 worldPos)
+        {
+            Vector3 local = transform.InverseTransformPoint(worldPos);
+            return Mathf.Clamp01(local.y / Mathf.Max(bambooLength, 1e-4f));
+        }
+
+        public bool CanArmV2ReboundAt(Vector2 worldPos)
+        {
+            return GetHeight01(worldPos) >= settings.v2ReboundMinContactHeight01;
+        }
+
+        public bool TryGetAnalyticSurfaceAnchor(Vector2 riderWorldPos, float riderRadius, out Vector2 anchorWorldPos, out Vector2 normalWorld)
+        {
+            anchorWorldPos = riderWorldPos;
+            normalWorld = Vector2.up;
+            if (backgroundOnly) return false;
+
+            Vector2 local = transform.InverseTransformPoint(riderWorldPos);
+            float t = ClosestCenterlineT(local);
+            Vector2 center = ComputeCenterlinePoint(t);
+            Vector2 outward = local - center;
+            if (outward.sqrMagnitude < 1e-8f)
+            {
+                Vector2 tangent = ComputeCenterlineTangent(t);
+                outward = new Vector2(tangent.y, -tangent.x);
+            }
+
+            outward.Normalize();
+            float offset = segmentRadius + Mathf.Max(0f, riderRadius);
+            Vector2 anchorLocal = center + outward * offset;
+
+            anchorWorldPos = transform.TransformPoint(anchorLocal);
+            normalWorld = transform.TransformVector(outward).normalized;
+            return true;
+        }
+
+        public bool TryGetSurfaceAnchor(Collider2D sourceCollider, Vector2 riderWorldPos, float riderRadius,
+            out SurfaceAnchorInfo anchorInfo)
+        {
+            anchorInfo = default;
+            if (sourceCollider == null) return false;
+            if (!sourceCollider.enabled) return false;
+            if (!sourceCollider.gameObject.activeInHierarchy) return false;
+
+            if (!TryGetAnalyticSurfaceAnchor(riderWorldPos, riderRadius,
+                out Vector2 anchorWorldPos, out Vector2 normalWorld))
+            {
+                return false;
+            }
+
+            Vector2 tangentWorld = new Vector2(-normalWorld.y, normalWorld.x);
+            anchorInfo = new SurfaceAnchorInfo(anchorWorldPos, normalWorld, tangentWorld, true, name);
+            return true;
+        }
+
+        public float EvaluateV2ChargedLaunchBonus(float chargePower)
+        {
+            return BambooV2Response.Evaluate(
+                settings.v2ResponseMode,
+                chargePower,
+                settings.v2ChargedLaunchBonusByChargePower,
+                settings.v2ChargedLaunchBonus);
+        }
+
+        public void ApplyV2LaunchReleaseKick(Vector2 riderWorldPos, Vector2 launchVelocity)
+        {
+            if (!UsesSideReboundV2) return;
+            if (settings.v2LaunchReleaseVelocityScale <= 0f) return;
+
+            Vector2 arm = riderWorldPos - pivotWorldPos;
+            float heightScale = EvaluateV2LaunchReleaseHeightScale(GetHeight01(riderWorldPos));
+            float targetAngularVelDeg = BambooV2Response.EvaluateLaunchReleaseAngularVelocityDeg(
+                arm,
+                launchVelocity,
+                settings.v2LaunchReleaseVelocityScale,
+                heightScale);
+            if (Mathf.Abs(targetAngularVelDeg) < 1e-4f) return;
+
+            if (Mathf.Abs(targetAngularVelDeg) > Mathf.Abs(angularVel))
+                angularVel = targetAngularVelDeg;
+            else
+                angularVel += targetAngularVelDeg;
+
+            float maxAngularVelDeg = (settings.v2LaunchReleaseMaxTipSpeed / Mathf.Max(bambooLength, 1e-4f)) * Mathf.Rad2Deg;
+            angularVel = Mathf.Clamp(angularVel, -maxAngularVelDeg, maxAngularVelDeg);
+        }
+
+        float EvaluateV2BendPumpGain(float impactSpeed)
+        {
+            return BambooV2Response.Evaluate(
+                settings.v2ResponseMode,
+                impactSpeed,
+                settings.v2BendPumpGainByImpactSpeed,
+                settings.v2BendPumpGain);
+        }
+
+        float EvaluateV2BendHeightScale(float height01)
+        {
+            return BambooV2Response.EvaluateHeightScale(
+                height01,
+                settings.v2BendMinHeightScale,
+                settings.v2BendHeightPower);
+        }
+
+        float EvaluateV2LaunchReleaseHeightScale(float height01)
+        {
+            return BambooV2Response.EvaluateOptionalHeightScale(
+                settings.v2LaunchReleaseUseHeightScale,
+                height01,
+                settings.v2LaunchReleaseMinHeightScale,
+                settings.v2LaunchReleaseHeightPower);
+        }
+
         (float stiffness, float damping, float ITotal) ComputeSpringCoeffs()
         {
             float IBranch = rb.mass * bambooLength * bambooLength / 3f;
@@ -277,8 +415,19 @@ namespace SlimeJumping.Platforms
             // mode can be soft/underdamped — giving the player a wide sideways bend
             // range and resonance-pumping headroom.
             bool grabActive = IsGrabbedByCachedSlime();
-            float freqHz = grabActive ? settings.grabSpringFreqHz : settings.naturalFreqHz;
-            float zeta = grabActive ? settings.grabDampingRatio : settings.dampingRatio;
+            bool v2Active = UsesSideReboundV2 && riderAttached;
+            float freqHz = settings.naturalFreqHz;
+            float zeta = settings.dampingRatio;
+            if (grabActive)
+            {
+                freqHz = settings.grabSpringFreqHz;
+                zeta = settings.grabDampingRatio;
+            }
+            else if (v2Active)
+            {
+                freqHz = settings.v2SpringFreqHz;
+                zeta = settings.v2DampingRatio;
+            }
             float omega = 2f * Mathf.PI * freqHz;
             float stiffness = omega * omega * ITotal;
             float damping = 2f * zeta * omega * ITotal;
@@ -288,6 +437,7 @@ namespace SlimeJumping.Platforms
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity, bool isCharging)
         {
             Vector2 r = riderWorldPos - pivotWorldPos;
+            float riderHeight01 = GetHeight01(riderWorldPos);
             currentRiderMass = mass;
             currentRiderArmSqr = r.sqrMagnitude;
 
@@ -306,6 +456,8 @@ namespace SlimeJumping.Platforms
             {
                 Vector2 impulseP = dv * mass;
                 float pumpGain = settings.riderPumpGain * (isCharging ? settings.chargePumpScale : 1f);
+                if (UsesSideReboundV2)
+                    pumpGain *= EvaluateV2BendPumpGain(Mathf.Abs(riderVelocity.x)) * EvaluateV2BendHeightScale(riderHeight01);
                 var (_, _, ITotal) = ComputeSpringCoeffs();
                 if (ITotal > 1e-6f)
                 {
@@ -401,7 +553,12 @@ namespace SlimeJumping.Platforms
             // uses a quartic soft-cap restoring torque added INSIDE the ODE so the bend
             // asymptotes to grabMaxDeflectionDeg without an artificial velocity wipe.
             bool grabActive = IsGrabbedByCachedSlime();
-            float maxAngle = grabActive ? settings.grabMaxDeflectionDeg : settings.maxDeflectionDeg;
+            bool v2Active = UsesSideReboundV2 && riderAttached;
+            float maxAngle = settings.maxDeflectionDeg;
+            if (grabActive)
+                maxAngle = settings.grabMaxDeflectionDeg;
+            else if (v2Active)
+                maxAngle = settings.v2MaxDeflectionDeg;
 
             float softCapTorque = 0f;
             if (grabActive && settings.grabCapPenaltyGain > 0f && maxAngle > 1e-4f)
@@ -470,6 +627,46 @@ namespace SlimeJumping.Platforms
             return new Vector2(invK * (Mathf.Cos(u) - 1f), invK * Mathf.Sin(u));
         }
 
+        Vector2 ComputeCenterlineTangent(float t)
+        {
+            float bendRad = currentAngle * Mathf.Deg2Rad;
+            if (Mathf.Abs(bendRad) < 1e-4f)
+                return Vector2.up;
+
+            float u = bendRad * t;
+            return new Vector2(-Mathf.Sin(u), Mathf.Cos(u)).normalized;
+        }
+
+        float ClosestCenterlineT(Vector2 localPoint)
+        {
+            int samples = Mathf.Max(16, segmentCount * 4);
+            float bestT = 0f;
+            float bestSqr = float.PositiveInfinity;
+            Vector2 prev = ComputeCenterlinePoint(0f);
+
+            for (int i = 0; i < samples; i++)
+            {
+                float t0 = (float)i / samples;
+                float t1 = (float)(i + 1) / samples;
+                Vector2 next = ComputeCenterlinePoint(t1);
+                Vector2 seg = next - prev;
+                float segSqr = seg.sqrMagnitude;
+                float u = segSqr > 1e-8f
+                    ? Mathf.Clamp01(Vector2.Dot(localPoint - prev, seg) / segSqr)
+                    : 0f;
+                Vector2 closest = prev + seg * u;
+                float sqr = (localPoint - closest).sqrMagnitude;
+                if (sqr < bestSqr)
+                {
+                    bestSqr = sqr;
+                    bestT = Mathf.Lerp(t0, t1, u);
+                }
+                prev = next;
+            }
+
+            return Mathf.Clamp01(bestT);
+        }
+
         // Place each collider segment as a chord between consecutive centerline samples.
         // The polyline approximates the same smooth curve the shader bends to, so the
         // collider surface and visual surface stay coincident.
@@ -516,6 +713,18 @@ namespace SlimeJumping.Platforms
             propertyBlock.SetFloat(BendAngleId, currentAngle);
             propertyBlock.SetFloat(BambooLengthId, bambooLength);
             visualRenderer.SetPropertyBlock(propertyBlock);
+        }
+
+        // Shader _NodeFrequency = rings per stalk length. Driven straight off segmentCount
+        // so visible scar rings coincide with the Segment_XX collider joints.
+        float VisibleNodeFrequency() => Mathf.Max(1, segmentCount);
+
+        int EffectiveVisualHeightSegments()
+        {
+            int safeSegmentCount = Mathf.Max(1, segmentCount);
+            int targetHeightSegments = Mathf.Max(visualHeightSegments, safeSegmentCount * 4);
+            int rowsPerColliderSegment = Mathf.CeilToInt((float)targetHeightSegments / safeSegmentCount);
+            return safeSegmentCount * Mathf.Max(1, rowsPerColliderSegment);
         }
 
 #if UNITY_EDITOR
@@ -569,7 +778,7 @@ namespace SlimeJumping.Platforms
             mat.SetColor(BambooColorTipId, stalkColorTip);
             mat.SetFloat(ShadowDarkenId, shadowDarken);
             mat.SetColor(ScarColorId, scarColor);
-            mat.SetFloat(NodeFrequencyId, nodeFrequency);
+            mat.SetFloat(NodeFrequencyId, VisibleNodeFrequency());
             mat.SetFloat(BulgeAmountId, bulgeAmount);
             mat.SetFloat(BulgeWidthId, bulgeWidth);
             mat.SetFloat(ScarHalfWidthId, scarHalfWidth);
@@ -641,6 +850,7 @@ namespace SlimeJumping.Platforms
             if (backgroundOnly) return;
 
             float segLen = bambooLength / segmentCount;
+            float colliderLen = segLen + Mathf.Min(colliderSegmentOverlap, segLen * 0.45f);
 
             for (int i = 0; i < segmentCount; i++)
             {
@@ -654,13 +864,13 @@ namespace SlimeJumping.Platforms
                 {
                     var col = seg.AddComponent<CapsuleCollider2D>();
                     col.direction = CapsuleDirection2D.Vertical;
-                    col.size = new Vector2(segmentRadius * 2f, segLen);
+                    col.size = new Vector2(segmentRadius * 2f, colliderLen);
                     col.offset = Vector2.zero;
                 }
                 else
                 {
                     var col = seg.AddComponent<BoxCollider2D>();
-                    col.size = new Vector2(segmentRadius * 2f, segLen);
+                    col.size = new Vector2(segmentRadius * 2f, colliderLen);
                     col.offset = Vector2.zero;
                 }
             }
@@ -676,7 +886,7 @@ namespace SlimeJumping.Platforms
             visual.layer = gameObject.layer;
 
             var mf = visual.AddComponent<MeshFilter>();
-            mf.sharedMesh = BuildCylinderMesh(visualRadialSegments, visualHeightSegments, segmentRadius, bambooLength);
+            mf.sharedMesh = BuildCylinderMesh(visualRadialSegments, EffectiveVisualHeightSegments(), segmentRadius, bambooLength);
 
             var mr = visual.AddComponent<MeshRenderer>();
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -700,7 +910,7 @@ namespace SlimeJumping.Platforms
             mat.SetColor(BambooColorTipId, stalkColorTip);
             mat.SetFloat(ShadowDarkenId, shadowDarken);
             mat.SetColor(ScarColorId, scarColor);
-            mat.SetFloat(NodeFrequencyId, nodeFrequency);
+            mat.SetFloat(NodeFrequencyId, VisibleNodeFrequency());
             mat.SetFloat(BulgeAmountId, bulgeAmount);
             mat.SetFloat(BulgeWidthId, bulgeWidth);
             mat.SetFloat(ScarHalfWidthId, scarHalfWidth);

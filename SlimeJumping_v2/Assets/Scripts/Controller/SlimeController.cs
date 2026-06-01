@@ -93,6 +93,8 @@ namespace SlimeJumping.Controller
         public float CrawlVelocity => crawlVelocity;
         public Vector2 SurfaceTangent => surfaceTangent;
         public SurfaceProbe Probe => surfaceProbe;
+        public SurfaceAnchorInfo LastSurfaceAnchorInfo => lastSurfaceAnchorInfo;
+        public bool LastSurfaceAnchorProviderConsumedCarry => lastSurfaceAnchorProviderConsumedCarry;
         public Vector2 AimDirection => aimOffset.sqrMagnitude > 0.0001f
             ? -aimOffset.normalized
             : surfaceNormal;
@@ -161,6 +163,9 @@ namespace SlimeJumping.Controller
         private float impactNormalSpeed;   // platform-relative perpendicular impact speed, always ≥ 0
         private float stickDeccelTimer;
         private Vector2 prevSurfaceNormal;
+        private SurfaceAnchorInfo lastSurfaceAnchorInfo;
+        private bool lastSurfaceAnchorProviderConsumedCarry;
+        private readonly List<MonoBehaviour> surfaceAnchorProviderScratch = new List<MonoBehaviour>(8);
 
         // Persistent crawl speed (accel/decel model)
         private float crawlVelocity;
@@ -671,7 +676,9 @@ namespace SlimeJumping.Controller
             arcPrevTangent = lastFrameTangent;
             arcHasPrevTangent = hadPrevTangent;
 
-            if (isTouchingSurface && surfaceCollider != prevSurfaceCollider
+            bool surfaceHostChanged = HasSurfaceCarrierHostChanged(surfaceCollider, prevSurfaceCollider);
+
+            if (isTouchingSurface && surfaceHostChanged
                 && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
             {
                 if (carrier != null) carrier.Attach(surfaceCollider);
@@ -743,6 +750,9 @@ namespace SlimeJumping.Controller
         // Unity-native.
         private void OutputVelocity(float dt)
         {
+            lastSurfaceAnchorProviderConsumedCarry = false;
+            lastSurfaceAnchorInfo = default;
+
             // Tip-grab owns rb.position via LockBambooGrabPosition (pre-probe). Bypass the
             // velocity-driven motion path entirely so external deltaV (ApplyExternalDeltaV)
             // and rope/carrier velocity contributions can't drift the slime off the tip
@@ -843,7 +853,7 @@ namespace SlimeJumping.Controller
                 // Tip-grab owns rb.position via LockBambooGrabPosition — skip the probe's
                 // snap so it doesn't tug the slime onto a non-tip segment mid-bend.
                 if (currentBambooGrab == null)
-                    surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
+                    SnapToSurface();
 
                 // Position-based wedge drain for the small-ledge passthrough: when the
                 // passthrough kept the forward slide alive (clip skipped) but SnapToSurface's
@@ -860,7 +870,7 @@ namespace SlimeJumping.Controller
                         slideVelocity = 0f;
                 }
 
-                if (carrier != null && carrier.IsOnPlatform)
+                if (carrier != null && carrier.IsOnPlatform && !lastSurfaceAnchorProviderConsumedCarry)
                     carrier.ApplyPositionCarry(carrierFrictionScale);
 
                 rb.linearVelocity = Vector2.zero;
@@ -1030,6 +1040,24 @@ namespace SlimeJumping.Controller
             return vel;
         }
 
+        private static PlatformMotor GetSurfacePlatformMotor(Collider2D col)
+        {
+            if (col == null) return null;
+            return col.GetComponentInParent<PlatformMotor>();
+        }
+
+        private static bool HasSurfaceCarrierHostChanged(Collider2D current, Collider2D previous)
+        {
+            if (current == previous) return false;
+
+            PlatformMotor currentMotor = GetSurfacePlatformMotor(current);
+            PlatformMotor previousMotor = GetSurfacePlatformMotor(previous);
+            if (currentMotor != null || previousMotor != null)
+                return currentMotor != previousMotor;
+
+            return true;
+        }
+
         // True when the primary surface belongs to a platform rotating faster than the
         // configured threshold. Gate for surfaceNormal smoothing — static/linearly-moving
         // surfaces don't need filtering and would only lose responsiveness.
@@ -1043,11 +1071,47 @@ namespace SlimeJumping.Controller
 
         private void SnapToSurface()
         {
+            lastSurfaceAnchorProviderConsumedCarry = false;
+            lastSurfaceAnchorInfo = default;
+
             // Tip-grab makes the cached tip position the source of truth — letting the
             // probe re-snap can pull the slime onto a different segment as the bamboo
             // bends, undoing LockBambooGrabPosition.
             if (currentBambooGrab != null) return;
+
+            ISurfaceAnchorProvider provider = GetSurfaceAnchorProvider(surfaceCollider);
+            if (provider != null
+                && provider.TryGetSurfaceAnchor(surfaceCollider, rb.position, settings.slimeRadius,
+                    out SurfaceAnchorInfo anchorInfo))
+            {
+                rb.position = anchorInfo.anchorWorldPos;
+                surfaceNormal = anchorInfo.normalWorld;
+                surfaceTangent = anchorInfo.tangentWorld.sqrMagnitude > 1e-8f
+                    ? anchorInfo.tangentWorld.normalized
+                    : new Vector2(-surfaceNormal.y, surfaceNormal.x);
+                lastSurfaceAnchorInfo = anchorInfo;
+                lastSurfaceAnchorProviderConsumedCarry = anchorInfo.consumesPlatformCarry;
+                return;
+            }
             surfaceProbe.SnapToSurface(surfaceCollider, surfaceNormal);
+        }
+
+        private ISurfaceAnchorProvider GetSurfaceAnchorProvider(Collider2D col)
+        {
+            if (col == null) return null;
+            surfaceAnchorProviderScratch.Clear();
+            col.GetComponentsInParent(false, surfaceAnchorProviderScratch);
+            for (int i = 0; i < surfaceAnchorProviderScratch.Count; i++)
+            {
+                ISurfaceAnchorProvider provider = surfaceAnchorProviderScratch[i] as ISurfaceAnchorProvider;
+                if (provider != null)
+                {
+                    surfaceAnchorProviderScratch.Clear();
+                    return provider;
+                }
+            }
+            surfaceAnchorProviderScratch.Clear();
+            return null;
         }
 
         // Clears pending energy-conversion coyote state. Pass executeDeferredReset=true
@@ -1101,6 +1165,7 @@ namespace SlimeJumping.Controller
                 && newState != SlimeState.Attached && newState != SlimeState.Charging)
             {
                 currentBambooGrab = null;
+                ClearBambooV2Rebound();
             }
 
             currentState = newState;

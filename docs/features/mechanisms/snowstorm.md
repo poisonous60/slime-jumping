@@ -1,6 +1,6 @@
 # Snowstorm2D (눈폭풍 구간)
 
-스테이지 폭 단위로 깔리는 BoxCollider2D 트리거. Jump King "Stormwall Pass" 식 4-페이즈 사이클로 좌/우 바람이 번갈아 불며, 슬라임이 zone 내부로 들어오면 화면 전체에 storm 비주얼이 fade-in 되고 나가면 fade-out 됨. WindZone2D_v2와 별개 컴포넌트 — v2는 단일 정적 바람 의미론, Snowstorm2D는 timer-driven + presence-gated.
+스테이지 폭 단위로 깔리는 BoxCollider2D 트리거. 기본값은 Jump King "Stormwall Pass" 식 4-페이즈 사이클로 좌/우 바람이 번갈아 불며, 슬라임이 zone 내부로 들어오면 화면 전체에 storm 비주얼이 fade-in 되고 나가면 fade-out 됨. 필요하면 `sections`로 구간별 고정 바람/무풍을 지정하고, `windShelterAreas`로 실내·벽 뒤처럼 슬라임이 바람 영향을 받지 않는 쉘터를 지정한다. WindZone2D_v2와 별개 컴포넌트 — v2는 단일 정적 바람 의미론, Snowstorm2D는 timer-driven + presence-gated + section override.
 
 관련 파일: [Snowstorm2D.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Snowstorm2D.cs), [SnowstormTestSetup.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/SnowstormTestSetup.cs).
 
@@ -14,6 +14,26 @@ WindLeft  →  CalmAfterLeft  →  WindRight  →  CalmAfterRight  →  loop
 각 페이즈는 `windDuration` (wind) 또는 `calmDuration` (calm) 동안 유지. 페이즈 전환 경계에서 magnitude가 `transitionDuration` 동안 lerp (부호 즉시 flip 시 시각/물리 점프 방지). `currentDirection`은 마지막 non-zero sign을 유지 — calm 통과 시점에 sign이 0으로 떨어지지 않아 입자/strip 위치가 갑자기 반대편으로 점프하는 일 없음.
 
 `startPhase` + `startPhaseOffset`으로 디자이너가 시작 페이즈 사전 설정. offset이 한 페이즈 길이를 넘으면 while 루프로 다음 페이즈로 자동 전진 (multi-phase pre-roll).
+
+## 구간별 바람 override
+
+`sections` 배열에 child `BoxCollider2D` 같은 trigger collider를 넣으면, 슬라임 위치가 해당 collider 안에 있을 때 그 section 설정이 기존 4-페이즈 사이클보다 우선된다. 배열 앞쪽이 우선순위가 높다.
+
+| 필드 | 설명 |
+|------|------|
+| `label` | 디자이너용 이름. 런타임 로직은 읽지 않음 |
+| `area` | 이 section 범위를 표시하는 Collider2D. `OverlapPoint(slime.Position)` 기준 |
+| `usePhaseCycle` | ON이면 이 구간도 기존 4-페이즈 사이클 사용. OFF이면 `windAcceleration` 고정값 사용 |
+| `windAcceleration` | 수평 바람 가속도. X만 사용하고 Y는 OnValidate에서 0으로 정규화. 예: `(-6, 0)` = 약한 왼쪽 상시 바람, `(0, 0)` = 바람 없는 눈 연출 구간 |
+| `affectsSlime` | OFF이면 이 section의 바람은 슬라임을 밀지 않음 |
+| `affectsSnowParticles` | OFF이면 `snowForceField`에는 0을 넣어 ambient Snow.prefab 입자도 바람에 밀리지 않음 |
+
+`windShelterAreas`는 section과 별도. 슬라임이 여기에 들어가면 active section/phase가 어떤 바람을 만들고 있든 **슬라임 push만 차단**한다. 그래서 실내, 뒤에 벽이 있는 오목한 공간, 바람막이 뒤처럼 "눈폭풍은 보이지만 캐릭터는 바람을 안 맞는" 구간을 표현할 수 있다. 비주얼, 오디오, post volume은 active section의 intensity를 그대로 따른다.
+
+Inspector의 `Wind Shelter Areas` 섹션에는 전용 생성 버튼이 있다.
+- `+ Box`: Snowstorm 자식 `WindShelterArea_N` GameObject 생성 + `BoxCollider2D(isTrigger=true)` 추가 + 배열에 자동 등록
+- `+ Polygon`: 같은 방식으로 `PolygonCollider2D(isTrigger=true)` 사각 path를 생성해 배열에 자동 등록
+- 각 row의 `-`: 배열에서 제거. 대상 collider가 Snowstorm 직속 자식이고 이름이 `WindShelterArea_N` 숫자 suffix 형식인 자동 생성 오브젝트면 GameObject까지 같이 삭제한다. 수동으로 넣은 외부 collider는 참조만 제거한다.
 
 ## 핵심 필드
 
@@ -31,6 +51,8 @@ WindLeft  →  CalmAfterLeft  →  WindRight  →  CalmAfterRight  →  loop
 |------|------|------|
 | `windAccelerationMagnitude` | 18 | wind 페이즈 peak 가속도 (units/s²) |
 | `terminalSpeed` | 14 | 바람 방향 max 속도. 도달 시 가속 감쇠 |
+| `sections` | empty | 구간별 phase override. 비어 있으면 기존 동작 그대로 |
+| `windShelterAreas` | empty | 슬라임 물리 push만 막는 쉘터 collider 목록 |
 | `airborneMultiplier` | 1.0 | Airborne/Stunned 상태 배율 |
 | `attachedMultiplier` | 0.7 | Attached 상태 배율 |
 | `chargingMultiplier` | 0.2 | Charging 상태 배율 |
@@ -125,14 +147,14 @@ gravityModifier = 0.6  (configure 시점, 누적 가속)
 
 WindZone2D_v2와 동일한 `AddSustainedFlowImpulse` 컨트랙트. `windAcceleration` vector를 timer state machine이 동적 계산:
 ```
-worldDir = (currentDirection, 0)
+worldDir = normalize(currentWindAcceleration)
 multiplier = state별 (Airborne/Attached/Charging/Stunned)
 falloff   = clamp01(1 - dot(slime.Velocity, worldDir) / terminalSpeed)
-deltaV    = worldDir × currentMagnitude × multiplier × falloff × dt
+deltaV    = worldDir × currentWindAcceleration.magnitude × multiplier × falloff × dt
 slime.AddSustainedFlowImpulse(deltaV)
 ```
 
-Attached/Charging에서 `slideVelocity`/`crawlVelocity` 영구 채널 적분 → frame 누적. v2 동일 의미론. 외부 힘 파이프라인 상세는 [../infra/external-velocity-two-channel.md](../infra/external-velocity-two-channel.md).
+Attached/Charging에서 `slideVelocity`/`crawlVelocity` 영구 채널 적분 → frame 누적. v2 동일 의미론. `activeSectionAffectsSlime=false` 또는 `windShelterAreas` 내부일 때는 이 push 단계만 skip한다. 외부 힘 파이프라인 상세는 [../infra/external-velocity-two-channel.md](../infra/external-velocity-two-channel.md).
 
 `OnTriggerEnter2D`에서 `trackedSlime` 등록 + `slimeInside=true`. `OnTriggerExit2D`에서 해제. timer/visuals는 슬라임 존재와 무관하게 항상 진행 (presence weight만 따로 fade).
 
@@ -143,6 +165,8 @@ Attached/Charging에서 `slideVelocity`/`crawlVelocity` 영구 채널 적분 →
 - `phaseElapsed` (현재 페이즈 안의 경과 초)
 - `currentMagnitude` (현재 가속도 절대값)
 - `currentDirection` (마지막 non-zero sign)
+- `currentWindAcceleration` (현재 실제 바람 벡터)
+- `activeSectionIndex` / `activeSectionAffectsSlime` / `activeSectionAffectsSnowParticles`
 - `slimeInside` (트리거 상태)
 - `slimePresenceWeight` (0~1 fade weight)
 

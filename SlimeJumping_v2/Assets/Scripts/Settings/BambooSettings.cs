@@ -1,8 +1,15 @@
 using UnityEngine;
 using UnityEngine.Serialization;
+using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Settings
 {
+    public enum BambooInteractionMode
+    {
+        TipGrab = 0,
+        SideReboundV2 = 1
+    }
+
     /// <summary>
     /// Single source of truth for bamboo gameplay tuning. BambooPlatform references one of
     /// these assets; every per-stalk tweak that affects feel (spring frequency, damping,
@@ -54,6 +61,49 @@ namespace SlimeJumping.Settings
         [Header("Re-entry Guards")]
         [Min(0f)] public float slamMinHorizontalSpeed = 3f;
         [Min(0f)] public float slamReattachLockout = 0.15f;
+
+        [Header("Interaction Mode")]
+        [Tooltip("TipGrab keeps the original top hanging behavior. SideReboundV2 disables top grab and turns side impacts into delayed rebound jumps.")]
+        public BambooInteractionMode interactionMode = BambooInteractionMode.TipGrab;
+
+        [Header("Side-Rebound V2 - Bend")]
+        [Tooltip("How V2 bend and launch values are resolved. Additive uses the constant fields; SpeedCurve evaluates the curves by impact speed or charge power.")]
+        public BambooV2ResponseMode v2ResponseMode = BambooV2ResponseMode.Additive;
+        [Tooltip("Multiplier on riderPumpGain while SideReboundV2 is active. Higher = side hits bend farther.")]
+        [Min(0f)] public float v2BendPumpGain = 1.4f;
+        [Tooltip("Curve version of v2BendPumpGain, evaluated by side-impact speed.")]
+        public AnimationCurve v2BendPumpGainByImpactSpeed = AnimationCurve.Linear(0f, 0.6f, 18f, 2.2f);
+        [Tooltip("Spring frequency while V2 side rebound is loaded. Lower values make the bend/release take longer.")]
+        [Range(0.1f, 5f)] public float v2SpringFreqHz = 0.75f;
+        [Tooltip("Damping while V2 side rebound is loaded. Lower values preserve more rebound energy.")]
+        [Range(0f, 1f)] public float v2DampingRatio = 0.12f;
+        [Tooltip("Maximum side bend angle while V2 side rebound is loaded.")]
+        [Range(5f, 360f)] public float v2MaxDeflectionDeg = 120f;
+        [Tooltip("Minimum normalized contact height (0 base, 1 tip) that can arm V2 side rebound. Lower contacts still collide, but do not trigger the big bend/rebound behavior.")]
+        [Range(0f, 1f)] public float v2ReboundMinContactHeight01 = 0.25f;
+        [Tooltip("Minimum bend pump scale at the base for V2. 0 means base hits add almost no bend.")]
+        [Range(0f, 1f)] public float v2BendMinHeightScale = 0f;
+        [Tooltip("Contact-height exponent for V2 bend pump. Higher values make low contacts affect the stalk much less.")]
+        [Min(0.1f)] public float v2BendHeightPower = 1.75f;
+        [Header("Side-Rebound V2 - Launch")]
+        [Tooltip("Extra speed added to a charged launch from a V2 bamboo in Additive mode.")]
+        [Min(0f)] public float v2ChargedLaunchBonus = 3f;
+        [Tooltip("Extra speed added to a charged launch in SpeedCurve mode, evaluated by the charge launch power.")]
+        public AnimationCurve v2ChargedLaunchBonusByChargePower = AnimationCurve.Linear(0f, 0f, 18f, 7f);
+        [Tooltip("Extra multiplier on inherited bamboo velocity for V2 rebound launches.")]
+        [Min(0f)] public float v2CarrierScale = 1f;
+        [Tooltip("Launch-time recoil kick for Bamboo V2. Converts the slime's tangential launch speed at the contact height into bamboo angular velocity. 1 = bamboo surface tries to move at the same tangential speed as the slime launch.")]
+        [Min(0f)] public float v2LaunchReleaseVelocityScale = 0.85f;
+        [Tooltip("If true, launch-release recoil is scaled by the slime's contact height. Disable for old behavior where low and high contacts kick the bamboo equally by tangential launch speed.")]
+        public bool v2LaunchReleaseUseHeightScale = true;
+        [Tooltip("Minimum launch-release recoil scale at the base for V2. 0 means base launches add almost no release kick.")]
+        [Range(0f, 1f)] public float v2LaunchReleaseMinHeightScale = 0f;
+        [Tooltip("Contact-height exponent for V2 launch-release recoil. Higher values make low launches shake the stalk much less.")]
+        [Min(0.1f)] public float v2LaunchReleaseHeightPower = 1.75f;
+        [Tooltip("Maximum bamboo tip speed after the V2 launch-release kick.")]
+        [Min(0f)] public float v2LaunchReleaseMaxTipSpeed = 24f;
+        [Tooltip("A contact is considered a V2 side hit when |dot(surfaceNormal, gravityUp)| is at or below this value.")]
+        [Range(0f, 1f)] public float v2SideNormalMaxUpDot = 0.45f;
 
         [Header("Tip-Grab")]
         [Tooltip("dot(surfaceNormal, gravityUp) entry threshold for tip-grab. Slime entering Attached on a bamboo with at least this much upward-facing normal flips into grab mode. Grab is sticky after entry — only Launch (or losing Attached/Charging state) clears it.")]

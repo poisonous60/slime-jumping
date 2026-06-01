@@ -230,6 +230,7 @@ namespace SlimeJumping.Controller
                 : CalculateStickDuration(impactSpeed) * surfaceMod.stickDuration.Evaluate(landingAngle);
 
             activeChargeRadius = Mathf.Max(spawnDistance, settings.chargeRadius);
+            TryArmBambooV2Rebound(impactSpeed);
             aimOffset = Vector2.zero;
             chargeFullAimTimer = 0f;
             slideRampTimer = 0f;
@@ -254,6 +255,7 @@ namespace SlimeJumping.Controller
         private void AttachFromLanding(Vector2 landingPlatformVel, float surfaceUp)
         {
             float landingAngle = CaptureLandingImpact(landingPlatformVel, out float landingSpeed, out float effectiveTangent);
+            TryArmBambooV2Rebound(landingSpeed);
             RouteLandedTangent(ComputeLandingCrawlVelocity(effectiveTangent, landingAngle));
 
             // Per-surface override (SurfaceMaterial.overrideEnergyConversionCoyoteTime) lets springy

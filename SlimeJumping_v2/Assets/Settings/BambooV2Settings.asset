@@ -1,0 +1,107 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 311711e5d9e25c14b94dfacb2af6c9eb, type: 3}
+  m_Name: BambooV2Settings
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.BambooSettings
+  naturalFreqHz: 1.2
+  dampingRatio: 0.45
+  maxDeflectionDeg: 30
+  clampRestitution: 0
+  riderPumpGain: 1
+  chargePumpScale: 1
+  riderTorqueScale: 1
+  passiveDecayRate: 1.2
+  riderDecayRate: 0
+  maxTipSpeed: 40
+  velocityTransferScale: 0.25
+  carrierMinContribution: 0.3
+  carrierDistanceScale: 1
+  slamMinHorizontalSpeed: 3
+  slamReattachLockout: 0.15
+  interactionMode: 1
+  v2ResponseMode: 1
+  v2BendPumpGain: 1.8
+  v2BendPumpGainByImpactSpeed:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0.10673523
+      value: -0.010134876
+      inSlope: 0.1913344
+      outSlope: 0.1913344
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.063670024
+    - serializedVersion: 3
+      time: 14.905823
+      value: 0.0050372696
+      inSlope: -0.16082315
+      outSlope: -0.16082315
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.07993012
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  v2SpringFreqHz: 0.7
+  v2DampingRatio: 0.12
+  v2MaxDeflectionDeg: 130
+  v2ReboundMinContactHeight01: 0.25
+  v2BendMinHeightScale: 0
+  v2BendHeightPower: 1.75
+  v2ChargedLaunchBonus: 3
+  v2ChargedLaunchBonusByChargePower:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0.3888889
+      outSlope: 0.3888889
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 18
+      value: 7
+      inSlope: 0.3888889
+      outSlope: 0.3888889
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  v2CarrierScale: 1.2
+  v2LaunchReleaseVelocityScale: 0.85
+  v2LaunchReleaseUseHeightScale: 1
+  v2LaunchReleaseMinHeightScale: 0
+  v2LaunchReleaseHeightPower: 1.75
+  v2LaunchReleaseMaxTipSpeed: 24
+  v2SideNormalMaxUpDot: 0.45
+  grabEnterDot: 0.8
+  grabHoldBendDeg: 5
+  grabSpringFreqHz: 1
+  grabDampingRatio: 0.156
+  grabMaxDeflectionDeg: 180
+  chargingTiltScale: 0
+  grabPumpBoostGain: 2
+  grabPumpChargingScale: 0
+  grabCapPenaltyGain: 5
+  grabModeCarrierScale: 3
+  grabLaunchPowerScale: 1
+  grabChargeFillScale: 2
+  grabChargeFullAimTime: 0.4

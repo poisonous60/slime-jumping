@@ -49,6 +49,7 @@ namespace SlimeJumping.Controller
 
             var bamboo = surfaceCollider.GetComponentInParent<BambooPlatform>();
             if (bamboo == null) return;
+            if (!bamboo.UsesTipGrab) return;
             if (Vector2.Dot(surfaceNormal, gravityUp) < bamboo.GrabEnterDot) return;
 
             currentBambooGrab = bamboo;

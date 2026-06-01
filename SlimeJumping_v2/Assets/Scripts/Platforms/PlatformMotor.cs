@@ -58,6 +58,22 @@ namespace SlimeJumping.Platforms
 
         public virtual float VelocityTransferScale => 1f;
 
+        public virtual Vector2 GetRiderCarryDelta(Vector2 riderWorldPos, float dt)
+        {
+            Vector2 delta = DeltaPosition;
+
+            if (Mathf.Abs(DeltaRotation) > 0.001f)
+            {
+                float rad = DeltaRotation * Mathf.Deg2Rad;
+                float c = Mathf.Cos(rad), s = Mathf.Sin(rad);
+                Vector2 arm = riderWorldPos - (Vector2)transform.position;
+                Vector2 rotatedArm = new Vector2(arm.x * c - arm.y * s, arm.x * s + arm.y * c);
+                delta += rotatedArm - arm;
+            }
+
+            return delta;
+        }
+
         // SurfaceMaterial pushed onto the slime's override stack while attached to this
         // platform. PlatformCarrier handles the Push/Pop on Attach/Detach — mirrors the
         // WaterCurrentZone trigger pattern but driven by carrier attach state. Null = no

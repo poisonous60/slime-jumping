@@ -115,17 +115,7 @@ namespace SlimeJumping.Platforms
         {
             if (currentPlatform == null || carryScale == 0f) return;
 
-            Vector2 delta = currentPlatform.DeltaPosition;
-
-            if (Mathf.Abs(currentPlatform.DeltaRotation) > 0.001f)
-            {
-                float rad = currentPlatform.DeltaRotation * Mathf.Deg2Rad;
-                float c = Mathf.Cos(rad), s = Mathf.Sin(rad);
-                Vector2 arm = rb.position - (Vector2)currentPlatform.transform.position;
-                Vector2 rotatedArm = new Vector2(arm.x * c - arm.y * s, arm.x * s + arm.y * c);
-                delta += rotatedArm - arm;
-            }
-
+            Vector2 delta = currentPlatform.GetRiderCarryDelta(rb.position, Time.fixedDeltaTime);
             rb.MovePosition(rb.position + delta * carryScale);
         }
     }

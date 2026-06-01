@@ -104,6 +104,7 @@ namespace SlimeJumping.Controller
                 dir = currentBambooGrab.GetTipUpDirection();
                 power *= currentBambooGrab.GrabLaunchPowerScale;
             }
+            TryApplyBambooV2ChargedLaunch(ref dir, ref power);
             velocity = dir * power;
 
             // Hyper dash: inherit pre-launch tangent inertia (above the deadzone), blended per surface.
@@ -137,6 +138,8 @@ namespace SlimeJumping.Controller
             // rope's spring rebound. Other rope variants pass through.
             if (currentRope != null)
                 velocity = currentRope.PostprocessLaunchVelocity(velocity);
+
+            TryApplyBambooV2LaunchReleaseKick(velocity);
 
             // Fire OnLaunch BEFORE FinalizeAirborneExit so listeners can read
             // ActiveSurfaceMaterial (still resolved while attached) — audio reads it

@@ -98,6 +98,9 @@ surfaceNormal = lerp(prevSmoothedNormal, raw, k)
 - 착지 프레임 (`prev !isTouching`) 에는 raw 사용 → 첫 프레임 lag 없음.
 
 ## 표면 스냅 (2-Phase Depenetration)
+- **Analytic anchor 우선**: `SlimeController.SnapToSurface()`는 primary collider의 parent chain에서 `ISurfaceAnchorProvider`를 먼저 찾는다. provider가 성공하면 `rb.position`, `surfaceNormal`, `surfaceTangent`을 provider의 연속 anchor 결과로 교체하고, 실패하면 기존 `SurfaceProbe.SnapToSurface`로 fallback 한다. Bamboo는 기존 centerline anchor를 이 인터페이스로 제공한다. ThinIce U자 child collider guide anchor 실험은 폐기했고, ThinIce는 기본 `SurfaceProbe` 경로를 사용한다.
+  - provider 결과에 `consumesPlatformCarry`가 포함된다. Bamboo처럼 anchor가 현재 deform pose를 이미 반영하는 표면은 teleport branch의 추가 `PlatformCarrier.ApplyPositionCarry`를 생략해 이중 carry를 막는다.
+  - 디버그: `SurfaceAnchorJitterDebugger`를 슬라임에 붙이면 provider anchor residual, surface switch, normal jump, frame-to-frame position delta spike를 ring-buffer로 확인할 수 있다.
 - **Phase A — Depenetration**: OverlapCircle로 콜라이더 모은 뒤 각 콜라이더 ClosestPoint 기반 침투 판단 push (최대 3회). Minkowski boundary로 코너 수렴.
   - **콜라이더당 통합**: Multi-probe 모드는 unique-face contact 들을 dedupe 한 뒤, `depenetrationUseSmoothedAggregation=true` (default) 시 `EffectiveNormal` 과 동일한 soft-band smoothstep weight 로 **단일 push** 산출 — `dir = (Σ n_p × w_p).normalized`, `mag = Σ depth_p × w_p / Σ w_p`. chord junction 에서 push 방향이 매 프레임 ±20° 튀던 패턴 제거. `false` 로 끄면 legacy `Σ n_p × depth_p` (합 벡터).
   - Single-probe 모드는 콜라이더당 contact 1 개 → 통합 무관.

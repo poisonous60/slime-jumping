@@ -162,7 +162,7 @@ namespace SlimeJumping.Controller
             float tangentSpeedAbs = Mathf.Abs(tangentSignedSpeed);
 
             bool tNoPrev = !arcHasPrevTangent;
-            bool tColliderChanged = surfaceCollider != prevSurfaceCollider;
+            bool tColliderChanged = HasSurfaceCarrierHostChanged(surfaceCollider, prevSurfaceCollider);
             bool tStick = stickTimer > 0f;
             bool tBelowMinSpeed = tangentSpeedAbs < settings.cornerDetachMinSpeed;
             bool transientFrame = tNoPrev || tColliderChanged || tStick || tBelowMinSpeed;
