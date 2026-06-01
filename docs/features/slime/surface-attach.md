@@ -5,6 +5,10 @@
 - 착지 시 `velocity = 0` (점성 슬라임 — 모든 운동량 흡수).
 - **천장 히스테리시스**: 탈출 `surfaceUp < ceilingThreshold`(-0.3, ~107°), 진입 `surfaceUp >= ceilingReattachThreshold`(-0.2, ~101°). 사이 구간에서는 현재 상태 유지 → 구체 표면에서 상태 떨림 방지.
   - 두 임계값은 `SurfaceMaterial.overrideCeilingAngle` 로 표면 단위 오버라이드 가능. 컨택트별로 자기 표면의 임계값을 사용 → 끈끈이 표면(180°=오버행 부착) / 미끄러운 표면(예: 95°에서 천장) 등 표현. 기본 표면은 SlimeSettings 글로벌 값.
+- **천장 점프 (charge-only, no sticky attach)**: 천장은 절대 `Attached`(영구 매달림) 진입 안 함. 단 천장에 닿는 프레임에 charge 요청이 있으면(`chargeBufferTimer > 0` = 착지 직전 Space 버퍼, 또는 `allowChargeAirHold && IsJumpHeld`) `EnterChargingFromLanding` 으로 잠깐 charge 진입 → 조준 후 발사. charge 요청 없으면 기존대로 normal 속도만 죽이고 Airborne 유지(천장에서 떨어짐). `attachLockoutTimer`/`blockAttach` 는 천장 charge 도 차단. 진입 위치: [SlimeController.Airborne.cs](../../../SlimeJumping_v2/Assets/Scripts/Controller/SlimeController.Airborne.cs) 천장 분기.
+  - aim 자동 드리프트 방향 = `-surfaceNormal`(천장에선 위쪽) → 발사 방향 `-aimOffset` = **아래(내리꽂기)**. 별도 방향 코드 없음 — 기존 charge/launch 기하가 천장에서 그대로 아래를 가리킴.
+  - `FixedUpdateCharging` 의 `probeValid` 는 천장 각도 게이트를 빼고 `isTouchingSurface` 만 본다 — charge 는 항상 launch 로 끝나(영구 매달림 불가) 천장 hold 가 안전. `isTouchingSurface` 게이트는 유지되어 가장자리 이탈 시 기존 coyote→cancel 경로는 그대로.
+  - 의도: 천장에서 아래로 발사 → 빠르게 바닥 착지 → [energy-conversion.md](energy-conversion.md) 으로 더 높이 점프 (반동 점프). 천장 charge 자체는 보통 확장 안 됨(apex 근처 저속 → impactSpeed 작음); 에너지 이득은 아래 발사 후 바닥 착지에서 발생.
 
 ## 표면 감지 (CheckSurface)
 1. `OverlapCircleNonAlloc(pos, slimeRadius + detectRange, mask)` — 주변 콜라이더 수집 (`ignoredColliders` 필터링).

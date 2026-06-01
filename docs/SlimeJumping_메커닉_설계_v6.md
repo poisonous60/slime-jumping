@@ -22,7 +22,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 ## 슬라임 컨트롤러
 
 - [State Machine](features/slime/state-machine.md) — 4상태 + ChangeState + IExternalController override
-- [Surface Attach & Detection](features/slime/surface-attach.md) — Primary + Constraints, 2-Phase Depenetration
+- [Surface Attach & Detection](features/slime/surface-attach.md) — Primary + Constraints, 2-Phase Depenetration *(2026-06-01: 천장 점프 — 천장은 영구 Attach 안 하지만 charge 버퍼/홀드 시 잠깐 charge 진입 → 아래로 내리꽂기 발사 가능)*
 - [Crawling & Slide](features/slime/crawling.md) — 접선 이동 + 중력 분해 *(2026-05-11: WASD crawl 입력 제거 — `crawlVelocity` 채널은 착지 관성 운반·감쇠 전용)*
 - ~~Ground Dash~~ *(2026-05-11 제거 — A/D 더블탭 순간 부스트, 코드 전체 삭제)*
 - ~~Shift Dash~~ *(2026-05-11 제거 — `SlimeAirDash`/`SlimeAirDashVisual` 컴포넌트 포함 삭제)*
@@ -30,7 +30,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Hyper Dash](features/slime/hyper-dash.md) — Charge → Launch 시 접선 관성 상속 (`hyperDashInertiaSource` enum 유지)
 - [Stick Timer](features/slime/stick-timer.md) — 착지 고정 + Charge Entry Grace
 - [Attach Debounce](features/slime/attach-debounce.md) — 코너 오실레이션 방지
-- [Charge & Launch](features/slime/charge-launch.md) — 판정원 모델, 발사 공식
+- [Charge & Launch](features/slime/charge-launch.md) — 판정원 모델, 발사 공식 *(천장 점프 진입 경로 포함 — 천장에서 charge → 아래 발사)*
 - [Energy Conversion](features/slime/energy-conversion.md) — 확장 판정원, 에너지 보존 공식
 - [Airborne](features/slime/airborne.md) — 중력, 에어컨트롤, 착지 분기
 - [Stunned](features/slime/stunned.md) — 기절 상태, HazardEffect

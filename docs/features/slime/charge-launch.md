@@ -10,6 +10,7 @@
 ## 진입 경로
 1. **일반 차징**: Attached에서 Space → `activeChargeRadius = chargeRadius`. 조준점 중심에서 시작.
 2. **에너지 전환**: Airborne에서 Space 홀드 + 표면 충돌 → 판정원 확장. 상세는 [energy-conversion.md](energy-conversion.md).
+3. **천장 점프**: 천장에 닿는 프레임에 charge 버퍼/홀드 있으면 charge 진입(천장은 `Attached` 진입 안 함). aim 드리프트가 `-surfaceNormal`(위) 이라 발사가 **아래로 내리꽂기**. 상세는 [surface-attach.md](surface-attach.md) 천장 점프 섹션.
 
 ## 조준점 이동 (aimOffset)
 **자동 드리프트**:

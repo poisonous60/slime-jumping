@@ -79,9 +79,22 @@ namespace SlimeJumping.Controller
                 SurfaceTag.ResolveCeilingThresholds(surfaceCollider, settings,
                     out _, out float landingReattachThreshold);
 
-                // Ceiling: don't attach, just cancel normal velocity and stay airborne
+                // Ceiling: never sticky-attach (no permanent hang). But if the player buffered
+                // a charge (or is air-holding), enter a brief charge-and-launch off the ceiling.
+                // The aim auto-drifts along -surfaceNormal (into the ceiling), so a released or
+                // auto-fired launch points downward — a plunge that sets up an energy-conversion
+                // floor landing. No charge request → cancel normal velocity and stay airborne so
+                // the slime simply falls back off the ceiling.
                 if (surfaceUp < landingReattachThreshold)
                 {
+                    bool ceilingChargeRequested = chargeBufferTimer > 0f
+                        || (settings.allowChargeAirHold && inputReader.IsJumpHeld);
+                    if (ceilingChargeRequested && attachLockoutTimer <= 0f && blockAttachCount == 0)
+                    {
+                        Vector2 ceilingPlatformVel = GetSurfaceVelocity(surfaceCollider);
+                        EnterChargingFromLanding(ceilingPlatformVel, surfaceUp);
+                        return;
+                    }
                     surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
                     return;
                 }

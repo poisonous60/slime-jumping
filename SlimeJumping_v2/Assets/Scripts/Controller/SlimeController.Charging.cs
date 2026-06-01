@@ -70,11 +70,13 @@ namespace SlimeJumping.Controller
             }
 
             // Surface/coyote physics — with probe hysteresis (absorb 1-frame misses).
-            // Tip-grab keeps the slime on a valid surface even when the bamboo bends past
-            // the ceiling-threshold dot (mirrors the sticky behavior in FixedUpdateAttached).
-            bool probeValid = (currentBambooGrab != null)
-                || (isTouchingSurface
-                    && Vector2.Dot(surfaceNormal, gravityUp) >= surfaceMod.GetCeilingThreshold(settings));
+            // Any touched surface (including a ceiling) is a valid charge surface: unlike
+            // Attached, a charge always ends in a launch — never a permanent attach — so holding
+            // on a ceiling mid-charge can't leave the slime hanging. This lets a ceiling jump
+            // (Airborne→Charging on a ceiling) hold while the player aims the downward plunge,
+            // and tip-grab stays valid through bamboo bend past the ceiling dot. isTouchingSurface
+            // still gates the off-edge → coyote → cancel path.
+            bool probeValid = (currentBambooGrab != null) || isTouchingSurface;
 
             bool onValidSurface;
             if (probeValid)
