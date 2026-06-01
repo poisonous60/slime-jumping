@@ -531,29 +531,47 @@ namespace SlimeJumping.Platforms
             if (slime == null || polygon == null) return;
             var hitSlime = other.GetComponentInParent<SlimeController>();
             if (hitSlime != slime) return;
+            if (baselinePoints == null) return;
 
-            if (slime.Velocity.y > 0f)
+            // Where is the slime relative to the rope, and how is it moving through it?
+            //   aboveDistance — signed perpendicular distance of the slime center above the
+            //                   rope's top edge (baselineNormal points away from gravity).
+            //   approachUp    — velocity component along that same normal (>0 = rising).
+            float u = ProjectToBaselineParam(slime.Position);
+            Vector2 topAtU = SampleCurveAt(u);
+            Vector2 toSlime = (Vector2)slime.Position - topAtU;
+            float aboveDistance = Vector2.Dot(toSlime, baselineNormal);
+            float approachUp = Vector2.Dot(slime.Velocity, baselineNormal);
+
+            // One-way pass-through (intended): the slime is coming UP through the rope from
+            // underneath. Decided by geometry + velocity DIRECTION, not raw Velocity.y:
+            //   (a) the slime center is genuinely UNDER the ribbon and rising, or
+            //   (b) it is rising STEEPLY (velocity within ~60° of the rope normal), which
+            //       covers a fast from-below jump that already tunneled past the thin ribbon
+            //       in one FU (so its center reads above by the time this callback runs).
+            // The old `Velocity.y > 0` test misfired on a fast, near-horizontal slide-in from
+            // an adjacent platform: a tiny positive vy (faceted-terrain tangent tilt / jitter)
+            // read as "from below", registering a false Passthrough the SurfaceProbe then
+            // honored for the whole transit — the slime fell straight through instead of
+            // landing. A horizontal slide has a small up-FRACTION, so it now lands.
+            float belowGate = ribbonThickness + slime.SlimeRadius * 0.5f;
+            bool risingThroughFromBelow = approachUp > 0f
+                && (aboveDistance < -belowGate
+                    || approachUp > 0.5f * slime.Velocity.magnitude);
+            if (risingThroughFromBelow)
             {
-                // Approaching upward → register Passthrough so probe skips us.
                 slime.RegisterIgnoredCollider(polygon, passthroughRefreshDuration);
                 inPassthroughBelow = true;
                 return;
             }
 
-            // Falling onto polygon. Anti-tunneling rescue:
-            // Fast slime can move > polygon thickness in one FU, ending up DEEPLY inside the
-            // polygon's interior. SurfaceProbe's ClosestPoint then returns the query point
-            // itself ([SingleContactSurfaceProbe.cs:30-31] deep-penetration skip), so the
-            // probe never sees the contact and slime tunnels through. Unity's normal contact
-            // manifold doesn't have this problem; ours does.
-            //
-            // Pull slime back to the curve's top edge + slimeRadius so SurfaceProbe sees a
-            // normal contact next FU and attaches cleanly.
-            if (baselinePoints == null) return;
-            float u = ProjectToBaselineParam(slime.Position);
-            Vector2 topAtU = SampleCurveAt(u);
-            Vector2 toSlime = (Vector2)slime.Position - topAtU;
-            float aboveDistance = Vector2.Dot(toSlime, baselineNormal);
+            // Otherwise the slime is landing from above (or sliding in at rope level).
+            // Anti-tunneling rescue: fast slime can move > polygon thickness in one FU, ending
+            // up DEEPLY inside the polygon's interior. SurfaceProbe's ClosestPoint then returns
+            // the query point itself ([SingleContactSurfaceProbe.cs:30-31] deep-penetration
+            // skip), so the probe never sees the contact and slime tunnels through. Pull slime
+            // back to the curve's top edge + slimeRadius so SurfaceProbe sees a normal contact
+            // next FU and attaches cleanly.
             if (aboveDistance < slime.SlimeRadius && slimeRb != null)
             {
                 slimeRb.position = topAtU + baselineNormal * slime.SlimeRadius;

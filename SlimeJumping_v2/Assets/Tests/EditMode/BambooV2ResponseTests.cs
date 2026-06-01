@@ -30,6 +30,24 @@ namespace SlimeJumping.Tests.EditMode
         }
 
         [Test]
+        public void EvaluateLaunchReleaseAngularVelocity_FasterImpactBendsMore()
+        {
+            // Impact bend (v2BendImpactSpeedScale path) reuses this helper, so a faster
+            // tangential side hit must inject a larger tip angular velocity — the
+            // "auto-shake harder on a faster hit" guarantee.
+            Vector2 arm = new Vector2(0.15f, 2.5f);
+            float scale = 1.5f;
+            float heightScale = 1f;
+
+            float slowHit = BambooV2Response.EvaluateLaunchReleaseAngularVelocityDeg(
+                arm, new Vector2(-6f, 0f), scale, heightScale);
+            float fastHit = BambooV2Response.EvaluateLaunchReleaseAngularVelocityDeg(
+                arm, new Vector2(-14f, 0f), scale, heightScale);
+
+            Assert.That(Mathf.Abs(fastHit), Is.GreaterThan(Mathf.Abs(slowHit)));
+        }
+
+        [Test]
         public void EvaluateOptionalHeightScale_DisabledReturnsFullScale()
         {
             float scale = BambooV2Response.EvaluateOptionalHeightScale(false, 0.1f, 0f, 2f);

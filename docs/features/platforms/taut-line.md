@@ -152,21 +152,34 @@ if (upSpeed < minLaunchVerticalSpeed)
 
 ## One-way platform (위에서만 attach)
 
-PolygonCollider2D 가 trigger 라 Unity 물리 충돌은 안 일어남. SurfaceProbe 측에서만 contact 등록. 슬라임이 아래에서 위로 올라올 땐 attach 막아야 함:
+PolygonCollider2D 가 trigger 라 Unity 물리 충돌은 안 일어남. SurfaceProbe 측에서만 contact 등록. 슬라임이 아래에서 위로 올라올 땐 attach 막아야 함.
+
+**from-below 판정은 raw `Velocity.y` 가 아니라 위치(어느 쪽 면에 있나) + 속도 방향으로 한다.** 옛날엔 `Velocity.y > 0f` 한 줄로 판정했는데, 옆 플랫폼에서 **빠르게 수평으로 미끄러져 들어오는** 슬라임은 수평 속도가 크고 vy 가 살짝만 + (faceted terrain 의 tangent 기울기 / jitter) 라서 "아래에서 올라온다"로 오판 → false Passthrough 등록 → SurfaceProbe 가 transit 내내 polygon 을 건너뛰어 **그대로 통과**하는 버그가 있었다.
 
 ```csharp
 void OnTriggerEnter2D(Collider2D other) {
-    if (slime.Velocity.y > 0f) {
+    // aboveDistance : 슬라임 중심이 줄 top edge 위로 떨어진 부호 있는 수직거리 (baselineNormal 기준)
+    // approachUp    : 같은 normal 방향 속도 성분 (>0 = 상승)
+    float aboveDistance = Vector2.Dot(slime.Position - topAtU, baselineNormal);
+    float approachUp    = Vector2.Dot(slime.Velocity, baselineNormal);
+
+    float belowGate = ribbonThickness + slime.SlimeRadius * 0.5f;
+    bool risingThroughFromBelow = approachUp > 0f
+        && (aboveDistance < -belowGate                        // (a) 줄 아래에 있고 상승 중, 또는
+            || approachUp > 0.5f * slime.Velocity.magnitude); // (b) 가파르게 상승(줄 normal 60° 이내) — 한 FU 에 얇은 ribbon 을 뚫고 위로 지나간 fast 점프 케이스
+    if (risingThroughFromBelow) {
         // 아래에서 위로 진입 → IgnoredColliderList.Passthrough 등록
         slime.RegisterIgnoredCollider(polygon, passthroughRefreshDuration);
         inPassthroughBelow = true;
     }
     else {
-        // 위에서 아래로 진입 → 아래의 anti-tunneling rescue 로 넘어감
+        // 위에서 떨어지거나 줄 높이로 수평 미끄러져 들어옴 → 아래의 anti-tunneling rescue 로 넘어가 착지
         ...
     }
 }
 ```
+
+수평 미끄러짐(slide-in)은 up-**비율**이 작아서 (b) 에 안 걸리고 줄 높이라 (a) 에도 안 걸림 → 정상 착지. 진짜 아래→위 점프는 up-비율이 크거나(b) 줄 아래에 있어서(a) 통과. (Springy Branch 의 `landingVelocityRetention` 미끄러짐 버그가 이 fast slide-in 을 만들어 본 버그를 드러냈지만, 둘은 독립 — slide-in 은 어느 플랫폼에서나 발생.)
 
 `OnTriggerStay` 가 매 FU `RegisterIgnoredCollider` 로 timer 갱신. `OnTriggerExit` 에서 `UnregisterIgnoredCollider`. KnifeHazard 의 hazard-passthrough 패턴 동일.
 
@@ -322,6 +335,7 @@ Tools / SlimeJumping/Mechanism/Setup TautLine Test
 | 5 | 아래에서 위로 점프 (vy>0) → 줄 위치로 | 통과, attach 안 됨, 슬라임 vy 유지 |
 | 6 | SUSPECT repro: launch → SpawnPad 튕김 → 줄 재착지 | 깔끔히 attach (RopeV3 진동 버그 케이스) |
 | 7 | 슬라임이 vy>0 로 줄 안 들어왔다가 못 넘어서 다시 떨어짐 | 통과 모드 유지, 줄 바닥으로 빠져나가 그냥 떨어짐 |
+| 8 | 옆 플랫폼에서 빠르게 수평으로 미끄러져 줄에 도달 (vy 살짝 +) | **통과 안 하고 정상 attach** (position-based from-below 판정 — up-비율 작아서 passthrough 안 함) |
 
 ## 한계 / out-of-scope
 

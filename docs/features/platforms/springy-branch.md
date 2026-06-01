@@ -68,6 +68,8 @@ BranchPivot   (월드 고정, 회전만. Rigidbody2D + SpringyBranchPlatform + S
 
 API: `PlatformMotor.OverrideSurfaceMaterial` virtual 프로퍼티 → `SpringyBranchPlatform`이 `branchSurfaceMaterial` 필드를 노출. `null`이면 호스트 SurfaceTag만 사용 (오버라이드 미적용).
 
+**`landingVelocityRetention = 0` (착지 미끄러짐 방지):** `SpringlyBranch_Surface` 머티리얼은 착지 시 tangent 속도 보존을 0 으로 둔다 (기본 바닥과 동일). 가지는 거의 수평이라 floor landing → `stickTimer=0` 인데, retention 이 1 이면 점프의 수평 속도가 그대로 `slideVelocity` 로 흘러들어가 5 m/s² 로만 감속하며 **가지 위를 길게 미끄러진다**. 0 으로 두면 착지 즉시 흡수 → 안 미끄러짐. (`slideResistanceMultiplier=5` 가 ~19° 이하 기울기의 gravity-creep 은 이미 억제하므로 retention 만 손보면 충분.)
+
 ## 한계
 - 단일 라이더 가정.
 - `pivotWorldPos`는 Awake에서 캡처 — 런타임 이동 불가.

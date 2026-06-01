@@ -68,8 +68,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   landingVelocityRetention:
-    baseValue: 1
-    fullValue: 1
+    baseValue: 0
+    fullValue: 0
     angleMin: 0
     angleMax: 90
   landingExcessGain:

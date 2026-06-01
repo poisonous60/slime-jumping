@@ -73,6 +73,8 @@ namespace SlimeJumping.Settings
         [Min(0f)] public float v2BendPumpGain = 1.4f;
         [Tooltip("Curve version of v2BendPumpGain, evaluated by side-impact speed.")]
         public AnimationCurve v2BendPumpGainByImpactSpeed = AnimationCurve.Linear(0f, 0.6f, 18f, 2.2f);
+        [Tooltip("V2 impact bend (the single 'auto-shake harder on a faster hit' knob). On the first side-contact frame the bamboo's tip angular velocity is set straight from the slime's tangential impact speed — same projection/units as v2LaunchReleaseVelocityScale, the launch recoil knob — so impact and recoil read consistently and each tune from one number. 1 = the bamboo surface at the contact height tries to match the slime's tangential impact speed; higher = bends farther. This REPLACES the v2BendPumpGain / v2BendPumpGainByImpactSpeed impulse path for the impact moment, so a faster hit bends more without hand-drawing a curve. 0 = disable the impact kick and fall back to the impulse pump. Contact-height shaping (v2BendMinHeightScale, v2BendHeightPower) still applies.")]
+        [Min(0f)] public float v2BendImpactSpeedScale = 1.5f;
         [Tooltip("Spring frequency while V2 side rebound is loaded. Lower values make the bend/release take longer.")]
         [Range(0.1f, 5f)] public float v2SpringFreqHz = 0.75f;
         [Tooltip("Damping while V2 side rebound is loaded. Lower values preserve more rebound energy.")]

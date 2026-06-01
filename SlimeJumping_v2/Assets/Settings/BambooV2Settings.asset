@@ -54,6 +54,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  v2BendImpactSpeedScale: 1.5
   v2SpringFreqHz: 0.7
   v2DampingRatio: 0.12
   v2MaxDeflectionDeg: 130

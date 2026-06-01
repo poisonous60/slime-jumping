@@ -378,6 +378,37 @@ namespace SlimeJumping.Platforms
             angularVel = Mathf.Clamp(angularVel, -maxAngularVelDeg, maxAngularVelDeg);
         }
 
+        /// <summary>
+        /// First-contact impact bend for V2: drives the tip angular velocity straight off the
+        /// slime's tangential impact speed at the contact height, so a faster side hit auto-bends
+        /// the stalk farther. Uses the SAME projection/units as ApplyV2LaunchReleaseKick — the
+        /// launch recoil the player already likes — so impact and recoil stay consistent and each
+        /// tunes from a single scale. Replaces the impulse/curve pump for the impact frame; see
+        /// the firstAttach branch in ApplyRiderInfluence.
+        /// </summary>
+        public void ApplyV2ImpactKick(Vector2 riderWorldPos, Vector2 impactVelocity)
+        {
+            if (!UsesSideReboundV2) return;
+            if (settings.v2BendImpactSpeedScale <= 0f) return;
+
+            Vector2 arm = riderWorldPos - pivotWorldPos;
+            float heightScale = EvaluateV2BendHeightScale(GetHeight01(riderWorldPos));
+            float targetAngularVelDeg = BambooV2Response.EvaluateLaunchReleaseAngularVelocityDeg(
+                arm,
+                impactVelocity,
+                settings.v2BendImpactSpeedScale,
+                heightScale);
+            if (Mathf.Abs(targetAngularVelDeg) < 1e-4f) return;
+
+            if (Mathf.Abs(targetAngularVelDeg) > Mathf.Abs(angularVel))
+                angularVel = targetAngularVelDeg;
+            else
+                angularVel += targetAngularVelDeg;
+
+            float maxAngularVelDeg = (settings.maxTipSpeed / Mathf.Max(bambooLength, 1e-4f)) * Mathf.Rad2Deg;
+            angularVel = Mathf.Clamp(angularVel, -maxAngularVelDeg, maxAngularVelDeg);
+        }
+
         float EvaluateV2BendPumpGain(float impactSpeed)
         {
             return BambooV2Response.Evaluate(
@@ -454,15 +485,26 @@ namespace SlimeJumping.Platforms
 
             if (!suppress)
             {
-                Vector2 impulseP = dv * mass;
-                float pumpGain = settings.riderPumpGain * (isCharging ? settings.chargePumpScale : 1f);
-                if (UsesSideReboundV2)
-                    pumpGain *= EvaluateV2BendPumpGain(Mathf.Abs(riderVelocity.x)) * EvaluateV2BendHeightScale(riderHeight01);
-                var (_, _, ITotal) = ComputeSpringCoeffs();
-                if (ITotal > 1e-6f)
+                // V2 impact frame: drive the bend straight off the slime's impact speed with one
+                // scale (same model as the launch recoil) instead of the impulse/curve pump, so a
+                // faster side hit auto-shakes the stalk harder without curve tuning. Later frames
+                // (sustained pump / charge) still go through the impulse path below.
+                if (UsesSideReboundV2 && firstAttach && settings.v2BendImpactSpeedScale > 0f)
                 {
-                    float impulseAngVelRad = (r.x * impulseP.y - r.y * impulseP.x) / ITotal * pumpGain;
-                    angularVel += impulseAngVelRad * Mathf.Rad2Deg;
+                    ApplyV2ImpactKick(riderWorldPos, riderVelocity);
+                }
+                else
+                {
+                    Vector2 impulseP = dv * mass;
+                    float pumpGain = settings.riderPumpGain * (isCharging ? settings.chargePumpScale : 1f);
+                    if (UsesSideReboundV2)
+                        pumpGain *= EvaluateV2BendPumpGain(Mathf.Abs(riderVelocity.x)) * EvaluateV2BendHeightScale(riderHeight01);
+                    var (_, _, ITotal) = ComputeSpringCoeffs();
+                    if (ITotal > 1e-6f)
+                    {
+                        float impulseAngVelRad = (r.x * impulseP.y - r.y * impulseP.x) / ITotal * pumpGain;
+                        angularVel += impulseAngVelRad * Mathf.Rad2Deg;
+                    }
                 }
             }
 
