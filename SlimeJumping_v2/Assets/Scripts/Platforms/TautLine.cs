@@ -179,6 +179,12 @@ namespace SlimeJumping.Platforms
         // Pass-through (from-below) state
         bool inPassthroughBelow;
 
+        // Broad-phase bounding circle for the proactive from-below check (UpdateFromBelowPassthrough).
+        // Lets a far-away slime be rejected with one subtract + sqrMagnitude before the
+        // O(sampleCount) ProjectToBaselineParam. Recomputed in Rebuild (anchors static at runtime).
+        Vector2 ropeBoundsCenter;
+        float ropeBoundsRadiusSq;
+
         // True while ropeSurfaceMaterial is on the slime's override stack and we still
         // owe a Pop. Tracked so that disabling the rope mid-attach doesn't leak the
         // override (mirrors WaterCurrentZone.overridePushed semantics).
@@ -256,6 +262,12 @@ namespace SlimeJumping.Platforms
                     + worldDown * (baselineSag * 4f * u * (1f - u));
             }
 
+            // Broad-phase bounds for UpdateFromBelowPassthrough. Generous margin so a rising
+            // slime trips the from-below test well before it reaches the probe's clip range.
+            ropeBoundsCenter = (a + b) * 0.5f;
+            float boundR = ab.magnitude * 0.5f + baselineSag + ribbonThickness + 1f;
+            ropeBoundsRadiusSq = boundR * boundR;
+
             lastAnchorAPos = anchorA.position;
             lastAnchorBPos = anchorB.position;
             lastSampleCount = sampleCount;
@@ -322,6 +334,13 @@ namespace SlimeJumping.Platforms
             {
                 riderActive = false;
             }
+
+            // --- 2a. Proactive from-below passthrough (1-FU race fix) ---
+            // Register the one-way passthrough geometrically each FU, not only from OnTrigger.
+            // See UpdateFromBelowPassthrough for why the callback alone catches a rising slime
+            // one FU too late (it would lose its upward velocity to the rope's ceiling-contact
+            // velocity clip before the passthrough takes effect).
+            UpdateFromBelowPassthrough();
 
             // --- 2b. Surface override push/pop edges ---
             // Mirrors WaterCurrentZone: Push on attach edge, Pop on detach edge. Driven by
@@ -526,6 +545,59 @@ namespace SlimeJumping.Platforms
 
         // --- One-way pass-through (from-below entry) -----------------------
 
+        // Shared from-below test (used by OnTriggerEnter2D AND the proactive per-FU check).
+        // Rising up through the rope from underneath: moving along baselineNormal (>0) AND
+        // either genuinely below the ribbon (a) or rising STEEPLY within ~60° of the rope
+        // normal (b, also covers a fast jump that tunneled the thin ribbon in one FU). A fast
+        // near-horizontal slide-in has a tiny up-FRACTION at rope level → fails both → lands.
+        bool IsRisingThroughFromBelow(float aboveDistance, float approachUp, float speed)
+        {
+            float belowGate = ribbonThickness + slime.SlimeRadius * 0.5f;
+            return approachUp > 0f
+                && (aboveDistance < -belowGate || approachUp > 0.5f * speed);
+        }
+
+        // Proactive from-below passthrough — every FixedUpdate (TautLine is execution order 200).
+        //
+        // OnTriggerEnter2D registers the passthrough only once the slime's collider physically
+        // overlaps the ribbon, and Unity fires that callback during Physics2D.Simulate — AFTER
+        // SlimeController.FixedUpdate (order 0) has already run CheckSurface +
+        // ProjectVelocityAgainstContacts this FU. A slime rising from below sits under the
+        // ribbon, so the probe sees a DOWNWARD (ceiling) contact normal and the velocity clip
+        // ZEROES its upward speed — one FU BEFORE the OnTrigger passthrough takes effect. Result:
+        // the slime is caught just under the rope ("can't pass up through it").
+        //
+        // Registering geometrically here fixes the race: the from-below test trips while the
+        // slime is still well below the ribbon, so the passthrough (honored next FU) is active
+        // long before the slime reaches the probe's clip range. Falling/landing-from-above
+        // (approachUp <= 0) never registers; the slide-in guard is shared via the predicate.
+        void UpdateFromBelowPassthrough()
+        {
+            if (slime == null || polygon == null || baselinePoints == null) return;
+            if (riderActive) return;   // sitting on top — not a from-below pass
+
+            // Cheap gates before the O(sampleCount) projection.
+            float approachUp = Vector2.Dot(slime.Velocity, baselineNormal);
+            if (approachUp <= 0f) { inPassthroughBelow = false; return; }
+            if (((Vector2)slime.Position - ropeBoundsCenter).sqrMagnitude > ropeBoundsRadiusSq)
+            { inPassthroughBelow = false; return; }
+
+            float u = ProjectToBaselineParam(slime.Position);
+            Vector2 topAtU = SampleCurveAt(u);
+            float aboveDistance = Vector2.Dot((Vector2)slime.Position - topAtU, baselineNormal);
+
+            if (IsRisingThroughFromBelow(aboveDistance, approachUp, slime.Velocity.magnitude))
+            {
+                slime.RegisterIgnoredCollider(polygon, passthroughRefreshDuration);
+                inPassthroughBelow = true;
+            }
+            else if (inPassthroughBelow)
+            {
+                // No longer rising through — stop refreshing; passthrough times out, rope re-solidifies.
+                inPassthroughBelow = false;
+            }
+        }
+
         void OnTriggerEnter2D(Collider2D other)
         {
             if (slime == null || polygon == null) return;
@@ -554,11 +626,7 @@ namespace SlimeJumping.Platforms
             // read as "from below", registering a false Passthrough the SurfaceProbe then
             // honored for the whole transit — the slime fell straight through instead of
             // landing. A horizontal slide has a small up-FRACTION, so it now lands.
-            float belowGate = ribbonThickness + slime.SlimeRadius * 0.5f;
-            bool risingThroughFromBelow = approachUp > 0f
-                && (aboveDistance < -belowGate
-                    || approachUp > 0.5f * slime.Velocity.magnitude);
-            if (risingThroughFromBelow)
+            if (IsRisingThroughFromBelow(aboveDistance, approachUp, slime.Velocity.magnitude))
             {
                 slime.RegisterIgnoredCollider(polygon, passthroughRefreshDuration);
                 inPassthroughBelow = true;

@@ -74,7 +74,12 @@ smoothedOffset = SmoothDamp(prev, targetOffset, offsetSmoothTime)
 
 // Visual Clearance Clamp (코너 침범 방지)
 // smoothedOffset/finalScale는 수정하지 않고 appliedOffset/appliedScale 로컬만 클램프
-// sag 방향 레이캐스트 → 인접 표면 clearance → ratio 기반 축소
+// sag 방향 레이캐스트(QueryClearance, groundLayer) → 인접 표면 clearance → ratio 기반 축소
+// **trigger collider 스킵** — clamp 은 SOLID 표면 관통 방지용. one-way/통과 가능한
+// trigger(TautLine 줄, hazard, water 존 등 — Environment layer 에 isTrigger)는 무시.
+// 안 그러면 줄 근처서 raycast 가 줄 trigger 를 거리 0 에 맞아 ratio→0 → body offset 이
+// 0 으로 collapse → rb.position 안 바뀌는데 visual 만 ~1m 점프(왔다갔다). queriesHitTriggers
+// 가 True 라 layer-mask raycast 도 trigger 를 맞으므로 isTrigger 명시 스킵 필요.
 appliedOffset = smoothedOffset * ratio
 appliedScale.x = 1 + max(0, deltaX) * ratio
 

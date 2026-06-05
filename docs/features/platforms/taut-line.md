@@ -185,6 +185,14 @@ void OnTriggerEnter2D(Collider2D other) {
 
 `IgnoredColliderList.Passthrough` 는 trigger collider 에 대해선 `Physics2D.IgnoreCollision` 안 부르고 SurfaceProbe.Contains() 필터만 적용 — 우리 polygon 이 trigger 라서 여기에 정확히 맞음. SurfaceProbe 가 polygon 을 surface 후보에서 제외 → attach 안 일어남 → slime 은 자기 vy 그대로 위로 통과.
 
+### Proactive from-below passthrough (1-FU 타이밍 레이스 수정)
+
+**증상:** 아래에서 위로 (벽 점프 등) 올라올 때 줄에 걸려 못 올라가고 위쪽 속도 끊김. 간헐적.
+
+**원인:** OnTrigger 통과 등록이 **1 FixedUpdate 늦음**. OnTriggerEnter/Stay 는 `Physics2D.Simulate` 중 = SlimeController.FixedUpdate(order 0)의 `CheckSurface`+`ProjectVelocityAgainstContacts` **이후** 발동. 슬라임 중심이 줄 아래 → 줄 contact normal 아래(천장) → 위쪽 속도가 클립됨, passthrough 가 켜지기 한 FU 전에. (broadphase 도달거리 > 트리거 겹침거리라 OnTriggerEnter 전에 이미 클립 contact 로 잡힘.)
+
+**수정:** `UpdateFromBelowPassthrough()` 를 `FixedUpdate`(order 200)에서 매 FU 호출 — OnTriggerEnter 와 동일 술어(`IsRisingThroughFromBelow`, slide-in 가드 공유)를 **기하학적으로** 평가. 슬라임이 줄 한참 아래(상승 중)일 때 미리 passthrough 등록 → 다음 FU CheckSurface 에 이미 활성 → 클립 범위 도달 전에 통과. cheap gate(approachUp≤0 / broadphase bounds)로 idle 비용 ~0. OnTrigger 의 from-above anti-tunnel snap 은 유지.
+
 ## Anti-tunneling rescue
 
 **문제 ([SingleContactSurfaceProbe.cs:30-31](../../../SlimeJumping_v2/Assets/Scripts/Physics/SingleContactSurfaceProbe.cs#L30-L31)):**

@@ -1093,6 +1093,13 @@ public class SlimeVisual : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             if (clearanceHits[i].collider == slimeCollider) continue;
+            // Skip trigger colliders: the clearance clamp only guards the visual against
+            // penetrating SOLID surfaces. One-way / passable triggers (TautLine ropes,
+            // hazard zones, water, etc. — all isTrigger on the ground layer) are not solid;
+            // letting them register collapses the body offset to ~0 the instant the slime
+            // nears them, snapping the visual even though rb.position never moves. (Confirmed:
+            // a rope trigger hit at distance 0 forced ratio→0 and jumped body.localPosition ~1m.)
+            if (clearanceHits[i].collider.isTrigger) continue;
             if (clearanceHits[i].distance < closest)
                 closest = clearanceHits[i].distance;
         }
