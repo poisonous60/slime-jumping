@@ -13,6 +13,7 @@ namespace SlimeJumping.Platforms
     /// Rider carry is custom: slime's arc-offset-from-head is captured on attach, and each
     /// FixedUpdate the slime is MovePosition'd by the surface delta at that arc offset.
     /// </summary>
+    [ExecuteAlways]
     [DefaultExecutionOrder(-150)]
     [RequireComponent(typeof(PolygonCollider2D))]
     public class SnakeSpine : MonoBehaviour
@@ -72,6 +73,16 @@ namespace SlimeJumping.Platforms
         [Tooltip("|segZ| > threshold omits that segment's collider path for this frame.")]
         [Min(0f)] [SerializeField] float zColliderThreshold = 0.05f;
 
+        [Header("Editor Preview")]
+        [Tooltip("Edit-mode only. When on, the static scene-view preview lays the snake as a straight " +
+                 "line along Preview Straight Dir (instead of following the path's tangent at the start), " +
+                 "so the head and body are perfectly collinear and head↔body alignment (headBodyJointLocal, " +
+                 "headRotationOffsetEuler) is easy to dial in. Has no effect at runtime.")]
+        [SerializeField] bool editorPreviewStraight = true;
+        [Tooltip("World-space direction the head faces in the straight edit preview. Body extends opposite. " +
+                 "Default (1,0,0) = head points right, body to the left — a clean horizontal reference.")]
+        [SerializeField] Vector3 editorPreviewStraightDir = Vector3.right;
+
         [Header("Debug")]
         [SerializeField] bool drawGizmos = true;
         [Tooltip("If on, logs spine/mesh/collider state to the console once per second during play.")]
@@ -82,6 +93,13 @@ namespace SlimeJumping.Platforms
 
         ISnakePath path;
         PolygonCollider2D poly;
+
+        // Prefab-instantiated head, tracked separately from the serialized headVisual so the
+        // auto-created instance never gets written into the serialized field (which would dirty
+        // the scene / leak a reference to a non-persistent preview object). ActiveHead resolves
+        // to the user-authored headVisual when assigned, else this instance.
+        Transform headInstance;
+        Transform ActiveHead => headVisual != null ? headVisual : headInstance;
 
         float headArcLen;
         Vector3 lastHeadTangent = Vector3.right;
@@ -153,7 +171,9 @@ namespace SlimeJumping.Platforms
             // the body, land/jump detection flipping). Removing the Rigidbody2D lets the
             // changing path be processed as a static-world rebuild, same as DeformablePlatform.
             poly = GetComponent<PolygonCollider2D>();
-            poly.pathCount = 0;
+            // Only reset the collider when actually simulating. In edit mode the snake's collider
+            // is meant to stay empty (runtime-built); writing pathCount here would dirty the scene.
+            if (Application.isPlaying) poly.pathCount = 0;
 
             ResolvePath();
             AllocateSegmentArrays();
@@ -164,16 +184,20 @@ namespace SlimeJumping.Platforms
         void EnsureHeadVisual()
         {
             // Prefab path: if nothing is wired to headVisual yet, instantiate the prefab as a
-            // child of the snake root and auto-assign. The prefab keeps its authored scale —
-            // SnakeSpine never writes to headVisual.localScale, so whatever size the prefab is
-            // authored at is exactly what ships on screen.
-            if (headVisual != null) return;
+            // child of the snake root and track it via headInstance (NOT the serialized field).
+            // The prefab keeps its authored scale — SnakeSpine never writes to localScale, so
+            // whatever size the prefab is authored at is exactly what ships on screen.
+            if (headVisual != null) { headInstance = null; return; }
             if (headPrefab == null) return;
+            if (headInstance != null) return; // already have a live instance this session
             var go = Instantiate(headPrefab, transform);
-            go.name = headPrefab.name;
+            go.name = headPrefab.name + " (Head Preview)";
             go.transform.localPosition = Vector3.zero;
             go.transform.localRotation = Quaternion.identity;
-            headVisual = go.transform;
+            // In edit mode the instance is a transient preview — DontSave keeps it out of the
+            // scene file and lets a domain reload clean it up. At runtime it's a normal child.
+            go.hideFlags = Application.isPlaying ? HideFlags.None : HideFlags.DontSave;
+            headInstance = go.transform;
         }
 
         void Start()
@@ -181,6 +205,17 @@ namespace SlimeJumping.Platforms
             // Deferred to Start so every component's Awake (especially WaypointSnakePath's
             // Rebuild) has already run. Seeding in OnEnable would read a half-initialized
             // path and spawn the body near the snake origin instead of along the route.
+            SeedInitialPose();
+        }
+
+        void Update()
+        {
+            // FixedUpdate drives the simulation in play mode. In edit mode Unity never calls
+            // FixedUpdate, so we rebuild a STATIC preview here (head at arc 0, body straight
+            // behind) every editor frame. This makes the scene view show the same head/body
+            // connection that ships at runtime — so headBodyJointLocal / headRotationOffsetEuler
+            // can be tuned live and WYSIWYG, instead of only being visible after pressing Play.
+            if (Application.isPlaying) return;
             SeedInitialPose();
         }
 
@@ -212,6 +247,9 @@ namespace SlimeJumping.Platforms
                     bodyMeshGO.layer = gameObject.layer;
                 }
             }
+            // In edit mode the body ribbon is a transient preview — keep it out of the scene file
+            // (and let domain reload clean it). At runtime it's a normal child.
+            bodyMeshGO.hideFlags = Application.isPlaying ? HideFlags.None : HideFlags.DontSave;
             bodyMeshFilter = bodyMeshGO.GetComponent<MeshFilter>();
             if (bodyMeshFilter == null) bodyMeshFilter = bodyMeshGO.AddComponent<MeshFilter>();
             bodyMeshRenderer = bodyMeshGO.GetComponent<MeshRenderer>();
@@ -220,6 +258,8 @@ namespace SlimeJumping.Platforms
             {
                 bodyMesh = new Mesh { name = "SnakeBodyMesh" };
                 bodyMesh.MarkDynamic();
+                // Procedural mesh has no asset backing — DontSave avoids an edit-mode leak warning.
+                bodyMesh.hideFlags = HideFlags.DontSave;
             }
             bodyMeshFilter.sharedMesh = bodyMesh;
 
@@ -231,7 +271,7 @@ namespace SlimeJumping.Platforms
                 var shader = Shader.Find("Universal Render Pipeline/Lit");
                 if (shader != null)
                 {
-                    _sharedBodyMat = new Material(shader) { name = "SnakeBody (shared)" };
+                    _sharedBodyMat = new Material(shader) { name = "SnakeBody (shared)", hideFlags = HideFlags.DontSave };
                 }
             }
             // Two material slots — one per submesh (on-plane / off-plane). Both reference the
@@ -288,6 +328,10 @@ namespace SlimeJumping.Platforms
         {
             ResolvePath();
             AllocateSegmentArrays();
+            // Idempotent — guarantees the head instance + body mesh exist even when this is
+            // driven from the edit-mode Update tick (objects may have been wiped by a reload).
+            EnsureHeadVisual();
+            EnsureBodyMesh();
             if (path == null || SegmentCount < 1) return;
 
             headArcLen = 0f;
@@ -308,6 +352,18 @@ namespace SlimeJumping.Platforms
                 lastHeadTangent = headTan.normalized;
             else
                 lastHeadTangent = Vector3.right;
+
+#if UNITY_EDITOR
+            // Authoring aid: in the edit-mode preview, override the seed direction so the snake
+            // lays out as a straight line. The path's tangent at the start is usually a diagonal,
+            // which makes judging head↔body alignment awkward. A clean horizontal reference makes
+            // headBodyJointLocal / headRotationOffsetEuler trivial to tune. Runtime is untouched.
+            if (!Application.isPlaying && editorPreviewStraight)
+            {
+                Vector3 d = editorPreviewStraightDir;
+                if (d.sqrMagnitude > 1e-8f) lastHeadTangent = d.normalized;
+            }
+#endif
 
             int n = SegmentCount;
             segPos3D[0] = headPos;
@@ -335,7 +391,9 @@ namespace SlimeJumping.Platforms
             WriteVisuals();
             RebuildBodyMesh();
             ApplyBodyMeshColor();
-            RebuildCollider();
+            // Collider is runtime-only — building it in edit mode would write the polygon path
+            // into the serialized component and dirty the scene. The preview is purely visual.
+            if (Application.isPlaying) RebuildCollider();
         }
 
         void FixedUpdate()
@@ -542,7 +600,8 @@ namespace SlimeJumping.Platforms
         void WriteVisuals()
         {
             int n = SegmentCount;
-            if (headVisual == null || n < 1) return;
+            Transform head = ActiveHead;
+            if (head == null || n < 1) return;
 
             Quaternion baseYaw;
             if (keepHeadUpright)
@@ -574,12 +633,28 @@ namespace SlimeJumping.Platforms
             }
             // Offset is pre-applied in local space (right-multiply) so the prefab's authored
             // forward is first rotated onto +X, then the motion yaw turns +X toward the tangent.
-            headVisual.rotation = baseYaw * Quaternion.Euler(headRotationOffsetEuler);
+            Quaternion targetRot = baseYaw * Quaternion.Euler(headRotationOffsetEuler);
             // Place the head so headBodyJointLocal (in head-local space) lands exactly on the
             // path sample — this is where the body tube's front ring already sits, so choosing
             // a joint point at the back of the head closes the neck gap automatically.
             // Scale is never written: the head prefab/authored transform keeps its own size.
-            headVisual.position = segPos3D[0] - headVisual.rotation * headBodyJointLocal;
+            Vector3 targetPos = segPos3D[0] - targetRot * headBodyJointLocal;
+
+            if (Application.isPlaying)
+            {
+                head.rotation = targetRot;
+                head.position = targetPos;
+            }
+            else
+            {
+                // Edit-mode preview: snap the head onto the connected pose so the scene view shows
+                // the same head↔body join that ships at runtime. Only write when the pose actually
+                // differs — otherwise a serialized (user-assigned) head would re-dirty the scene
+                // every editor frame. The snap is non-destructive in intent: SnakeSpine fully
+                // drives the head at runtime, so its authored transform is throwaway anyway.
+                if ((head.position - targetPos).sqrMagnitude > 1e-8f) head.position = targetPos;
+                if (Quaternion.Angle(head.rotation, targetRot) > 0.01f)  head.rotation = targetRot;
+            }
 
             bool headOn = segOnPlane != null ? segOnPlane[0] : true;
             ApplyVisualColor(headOn ? headColor : offPlaneColor);
@@ -591,7 +666,11 @@ namespace SlimeJumping.Platforms
             // can tint only the skin. Fall back to a MeshRenderer on headVisual's root so the
             // original single-cube authoring keeps working without wiring the new field.
             Renderer target = headSkinRenderer;
-            if (target == null && headVisual != null) target = headVisual.GetComponent<MeshRenderer>();
+            if (target == null)
+            {
+                Transform head = ActiveHead;
+                if (head != null) target = head.GetComponent<MeshRenderer>();
+            }
             if (target == null) return;
             if (mpb == null) mpb = new MaterialPropertyBlock();
             target.GetPropertyBlock(mpb);
