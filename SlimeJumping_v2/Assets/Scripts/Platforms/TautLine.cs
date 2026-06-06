@@ -134,6 +134,15 @@ namespace SlimeJumping.Platforms
         public float MaxReboundSpeed => maxCap;
         public event Action<RopeEventType, Vector2> OnRopeEvent;
 
+        // Read-only diagnostics surface (pulled by debug components; never written here).
+        public PolygonCollider2D Polygon => polygon;
+        public bool DebugRiderActive => riderActive;
+        public float DebugRiderT => riderT;
+        public float DebugDipDepth => dipDepth;
+        public float DebugDipVelocity => dipVelocity;
+        public Vector2 DebugBaselineTangent => baselineTangent;
+        public float DebugProjectParam(Vector2 worldPos) => ProjectToBaselineParam(worldPos);
+
         Vector2[] baselinePoints;
         Vector3[] lineWorldPoints;
         Vector2[] polygonLocalPoints;
@@ -324,10 +333,34 @@ namespace SlimeJumping.Platforms
                             && polygon != null
                             && slime.SurfaceCollider == polygon;
 
+            bool wasRiderActive = riderActive;   // value carried over from last FU
             if (onThisRope)
             {
                 riderActive = true;
-                riderT = ProjectToBaselineParam(slime.Position);
+                // riderT MUST NOT be re-derived from the snapped position each FU. Step 8 parks the
+                // slime at SampleCurveAt(riderT) + baselineNormal·radius, which carries the curve's
+                // vertical sag D = sag·4u(1-u) + dipDepth. Re-projecting that point back onto the rope
+                // shifts u by −D·ab.y/len² per FU on any TILTED rope (ab.y ≠ 0) — a velocity-free
+                // runaway toward the low anchor (the reported "slides right"; the slime's rope has
+                // ab.y ≈ −0.22). Both perpendicular-foot and chord projection leak this way.
+                //
+                // Instead: seed riderT once on the attach edge, then advance it ONLY by the slime's
+                // real tangential velocity. At rest slime.Velocity == 0 → riderT frozen → the slime
+                // stays exactly where it sits. A genuine slide/crawl (velocity ≠ 0) still moves it.
+                if (!wasRiderActive)
+                {
+                    riderT = ProjectToChordParam(slime.Position);
+                }
+                else if (anchorA != null && anchorB != null)
+                {
+                    Vector2 chord = (Vector2)anchorB.position - (Vector2)anchorA.position;
+                    float len = chord.magnitude;
+                    if (len > 1e-4f)
+                    {
+                        float alongSpeed = Vector2.Dot(slime.Velocity, chord / len);
+                        riderT = Mathf.Clamp01(riderT + alongSpeed * dt / len);
+                    }
+                }
                 postDetach = false;   // re-attached; clear post-detach mode
             }
             else
@@ -498,6 +531,21 @@ namespace SlimeJumping.Platforms
                 }
             }
             return bestU;
+        }
+
+        // Rider parameter along the STRAIGHT chord anchorA→anchorB. Unlike
+        // ProjectToBaselineParam (perpendicular foot on the sagged polyline), a vertical
+        // slime-radius offset above the curve barely changes this value (its component along
+        // a near-horizontal chord is ~0), so re-projecting the snapped slime each FU returns
+        // the same u — a stable fixed point instead of an uphill ratchet toward the anchors.
+        float ProjectToChordParam(Vector2 worldPos)
+        {
+            if (anchorA == null || anchorB == null) return 0f;
+            Vector2 a = anchorA.position;
+            Vector2 ab = (Vector2)anchorB.position - a;
+            float len2 = ab.sqrMagnitude;
+            if (len2 < 1e-8f) return 0f;
+            return Mathf.Clamp01(Vector2.Dot(worldPos - a, ab) / len2);
         }
 
         // --- Polygon + LineRenderer sync -----------------------------------

@@ -97,6 +97,11 @@ namespace SlimeJumping.Controller
             // Cancel velocity into all active contacts (multi-constraint). At concave
             // corners this zeroes velocity into every tangent surface, avoiding the
             // Phase-A-pushes-back rubber-banding of the single-normal clip.
+            // commandedMag is captured first: ComputeArcCompensatedTangent is a pure
+            // rotation, so it equals |finalTangent| — the tangent speed the slide channel
+            // asked for this frame. The wedge drain below compares it against how much
+            // magnitude survived the projection.
+            float commandedMag = velocity.magnitude;
             surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
 
             // Friction-based detach. Velocity is now surface-tangent clipped, so if we
@@ -104,21 +109,29 @@ namespace SlimeJumping.Controller
             if (CheckFrictionDetach(dt))
                 return;
 
-            // Drain inertial slideVelocity when the slime is *wedged* — actual motion
-            // clipped to ~0 by ProjectVelocityAgainstContacts while gravAlongTangent
-            // keeps integrating into slideVelocity each frame. Without this drain the
-            // stored energy releases as a phantom launch when the wedge breaks (player
-            // crawls free, geometry shifts, etc.).
+            // Drain inertial slideVelocity when the slime is *wedged* in a concave corner.
+            // ProjectVelocityAgainstContacts cancels motion into every active contact;
+            // where a wall meets a floor that removes most of the commanded tangent, so
+            // the slime barely moves while ComputeSlideSpeed keeps pumping gravAlongTangent
+            // into slideVelocity each frame. The banked energy then releases as a phantom
+            // launch when the wedge breaks (corner tangent rotates free, a contact drops)
+            // — observed accumulating to slideVel ≈ -46 in repro.
             //
-            // Threshold-based, not proportional: a proportional clip-ratio drain bleeds
-            // slideVelocity on free curve sliding because ComputeArcCompensatedTangent
-            // rotates velocity by ω·dt/2, dropping Dot(velocity, surfaceTangent) by
-            // ~0.5% per frame even when nothing was actually clipped — that compounds
-            // into ~22%/sec loss on continuous curves. Free sliding and slope→flat
-            // redirection both preserve |velocity|, so guarding on velocity magnitude
-            // leaves them untouched and only fires when motion truly stalls.
-            if (surfaceMod.useInertialSlide && velocity.sqrMagnitude < 0.01f)
-                slideVelocity = 0f;
+            // Detect the wedge by how much magnitude the projection removed, NOT by
+            // velocity.sqrMagnitude: because slideVelocity grows unbounded the surviving
+            // velocity stays large (6–46 in repro), so the old absolute-zero guard never
+            // fired. Free curve sliding and slope→flat redirection preserve |velocity|
+            // (the projection only rotates it to follow the surface; arc-compensation adds
+            // ≤3% loss at the 30°/frame cap), so a >15% drop is unambiguously a wedge.
+            // Resync slideVelocity to the tangent speed that actually survived so it can't
+            // bank energy that produced no motion. crawlVelocity is left untouched.
+            const float wedgeClipRetention = 0.85f;
+            if (surfaceMod.useInertialSlide
+                && commandedMag > 0.001f
+                && velocity.magnitude < commandedMag * wedgeClipRetention)
+            {
+                slideVelocity = Vector2.Dot(velocity, surfaceTangent) - crawlVelocity;
+            }
 
             SnapToSurface();
 
