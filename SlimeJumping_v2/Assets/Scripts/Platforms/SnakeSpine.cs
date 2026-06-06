@@ -52,13 +52,12 @@ namespace SlimeJumping.Platforms
         [Tooltip("Visual rings emitted between adjacent spine anchors. 1 = one ring per spine segment (sharp folds at bends). 4 is a good default — Catmull-Rom interpolates the spine so the tube bends smoothly without changing the collider or simulation (collider stays per-segment).")]
         [Range(1, 8)] [SerializeField] int visualRingsPerSegment = 4;
 
-        [Header("Colors")]
-        [Tooltip("Head visual tint when the head's collider is on the Z=0 plane (collision active).")]
-        [SerializeField] Color headColor = new Color(0.90f, 0.25f, 0.25f);
-        [Tooltip("Body visual tint when the body segment's collider is on the Z=0 plane.")]
-        [SerializeField] Color bodyColor = new Color(0.25f, 0.75f, 0.35f);
-        [Tooltip("Tint applied when a segment has drifted off the Z=0 plane — signals that its collider path is omitted this frame.")]
-        [SerializeField] Color offPlaneColor = new Color(0.35f, 0.35f, 0.35f, 1f);
+        [Header("Material")]
+        [Tooltip("Single material shared by BOTH the head and the procedural body tube, so the snake reads as one continuous creature. " +
+                 "Assign the project's Quibli (Quibli/Stylized Lit) white material here. If left empty, the body falls back to whatever " +
+                 "material the head already uses, so the two still match. SnakeSpine drives the head's renderer to this material at runtime " +
+                 "and in the edit preview — the head prefab's own material is overridden, not edited.")]
+        [SerializeField] Material snakeMaterial;
 
         [Header("Follow")]
         [Tooltip("0 = rope-like distance-constrained chain (straightens behind head, lags on turns).\n" +
@@ -119,8 +118,7 @@ namespace SlimeJumping.Platforms
         MeshRenderer bodyMeshRenderer;
         Mesh bodyMesh;
         readonly List<Vector3> scratchVerts  = new List<Vector3>();
-        readonly List<int>     scratchTrisOn = new List<int>();  // submesh 0: on-plane segments (bodyColor)
-        readonly List<int>     scratchTrisOff= new List<int>();  // submesh 1: off-plane segments (offPlaneColor)
+        readonly List<int>     scratchTris   = new List<int>();  // single submesh — uniform snake material, no two-tone
         readonly List<Vector2> scratchUVs    = new List<Vector2>();
 
         // Scratch XY & perpendicular per segment, reused each frame for mesh + collider.
@@ -141,7 +139,6 @@ namespace SlimeJumping.Platforms
         Vector3[] fineNormal;
         Vector3[] fineBinormal;
         float[]   fineRadius;
-        int[]     fineSpineBand; // which spine band (i..i+1) this fine sample starts in — used for on/off-plane submesh routing
 
         // Scratch for poly.SetPath calls — reused per frame.
         readonly List<Vector2[]> scratchPaths = new List<Vector2[]>();
@@ -152,12 +149,9 @@ namespace SlimeJumping.Platforms
         bool riderAttachedPrev;
         float riderArcOffsetFromHead;
 
-        // MPB reused across all visuals — lets us override _BaseColor without per-cube material instances.
-        MaterialPropertyBlock mpb;
-        static readonly int BaseColorID = Shader.PropertyToID("_BaseColor");
-
-        // Shared default URP Lit material for the body ribbon. Reused across all SnakeSpines so
-        // we don't leak a material per instance. The MPB on each body renderer supplies the tint.
+        // Fallback material when neither snakeMaterial nor a head material is available. Shared
+        // across all SnakeSpines so we don't leak a material per instance. Normally unused —
+        // snakeMaterial (Quibli white) drives the look.
         static Material _sharedBodyMat;
 
         // ---- Unity ----
@@ -263,24 +257,72 @@ namespace SlimeJumping.Platforms
             }
             bodyMeshFilter.sharedMesh = bodyMesh;
 
-            // AddComponent<MeshRenderer> leaves .sharedMaterial = null, which renders as
-            // Unity's magenta "missing shader" and (depending on version) can flip invisible
-            // once an MPB is applied. Assign a shared URP Lit material so the MPB tint reads.
+            // Single material slot — the body is one uniform surface (the mesh is built with one
+            // submesh). ApplyMaterials drives both this renderer and the head to the same material.
+            ApplyMaterials();
+        }
+
+        /// <summary>
+        /// Resolve the one material the whole snake wears. Priority: explicit snakeMaterial
+        /// (assign the Quibli white here) → the head's own material (so body matches head even if
+        /// nothing is assigned) → a shared URP Lit fallback (never magenta).
+        /// </summary>
+        Material ResolveSnakeMaterial()
+        {
+            if (snakeMaterial != null) return snakeMaterial;
+
+            Transform head = ActiveHead;
+            if (head != null)
+            {
+                Renderer hr = headSkinRenderer != null ? headSkinRenderer : head.GetComponentInChildren<MeshRenderer>();
+                if (hr != null && hr.sharedMaterial != null) return hr.sharedMaterial;
+            }
+
             if (_sharedBodyMat == null)
             {
                 var shader = Shader.Find("Universal Render Pipeline/Lit");
                 if (shader != null)
-                {
-                    _sharedBodyMat = new Material(shader) { name = "SnakeBody (shared)", hideFlags = HideFlags.DontSave };
-                }
+                    _sharedBodyMat = new Material(shader) { name = "SnakeBody (fallback)", hideFlags = HideFlags.DontSave };
             }
-            // Two material slots — one per submesh (on-plane / off-plane). Both reference the
-            // same shared material; per-submesh MPBs supply the tint in ApplyBodyMeshColor.
-            if (_sharedBodyMat != null)
+            return _sharedBodyMat;
+        }
+
+        /// <summary>
+        /// Drive BOTH the body tube renderer and the head's renderer(s) to the single snake
+        /// material, so head and body read as one continuous creature. Assignment is guarded on
+        /// inequality so the edit-mode preview doesn't re-dirty the scene every frame. When
+        /// snakeMaterial is unset this resolves to the head's own material, so applying it to the
+        /// head is a no-op and the body simply inherits the head look.
+        /// </summary>
+        void ApplyMaterials()
+        {
+            Material mat = ResolveSnakeMaterial();
+            if (mat == null) return;
+
+            if (bodyMeshRenderer != null)
             {
-                var mats = bodyMeshRenderer.sharedMaterials;
-                if (mats == null || mats.Length != 2 || mats[0] != _sharedBodyMat || mats[1] != _sharedBodyMat)
-                    bodyMeshRenderer.sharedMaterials = new Material[] { _sharedBodyMat, _sharedBodyMat };
+                var bm = bodyMeshRenderer.sharedMaterials;
+                if (bm == null || bm.Length != 1 || bm[0] != mat)
+                    bodyMeshRenderer.sharedMaterials = new Material[] { mat };
+            }
+
+            // Head: override every material SLOT of every MeshRenderer under the active head, so a
+            // multi-submesh head (e.g., a separate dark mouth/underside material) turns fully into
+            // the snake material instead of leaving stray slots their original color.
+            Transform head = ActiveHead;
+            if (head != null)
+            {
+                var rends = head.GetComponentsInChildren<MeshRenderer>(true);
+                for (int i = 0; i < rends.Length; i++)
+                {
+                    var slots = rends[i].sharedMaterials;
+                    if (slots == null || slots.Length == 0) { rends[i].sharedMaterial = mat; continue; }
+                    bool needs = false;
+                    for (int k = 0; k < slots.Length; k++) if (slots[k] != mat) { needs = true; break; }
+                    if (!needs) continue;
+                    for (int k = 0; k < slots.Length; k++) slots[k] = mat;
+                    rends[i].sharedMaterials = slots;
+                }
             }
         }
 
@@ -320,7 +362,6 @@ namespace SlimeJumping.Platforms
                 fineNormal    = new Vector3[fineCount];
                 fineBinormal  = new Vector3[fineCount];
                 fineRadius    = new float[fineCount];
-                fineSpineBand = new int[fineCount];
             }
         }
 
@@ -390,7 +431,7 @@ namespace SlimeJumping.Platforms
             ComputeSegmentHalfWidths();
             WriteVisuals();
             RebuildBodyMesh();
-            ApplyBodyMeshColor();
+            ApplyMaterials();
             // Collider is runtime-only — building it in edit mode would write the polygon path
             // into the serialized component and dirty the scene. The preview is purely visual.
             if (Application.isPlaying) RebuildCollider();
@@ -445,7 +486,7 @@ namespace SlimeJumping.Platforms
             ComputeSegmentHalfWidths();
             WriteVisuals();
             RebuildBodyMesh();
-            ApplyBodyMeshColor();
+            ApplyMaterials();
             RebuildCollider();
             UpdateRiderCarry();
 
@@ -655,27 +696,6 @@ namespace SlimeJumping.Platforms
                 if ((head.position - targetPos).sqrMagnitude > 1e-8f) head.position = targetPos;
                 if (Quaternion.Angle(head.rotation, targetRot) > 0.01f)  head.rotation = targetRot;
             }
-
-            bool headOn = segOnPlane != null ? segOnPlane[0] : true;
-            ApplyVisualColor(headOn ? headColor : offPlaneColor);
-        }
-
-        void ApplyVisualColor(Color c)
-        {
-            // Prefer an explicit headSkinRenderer so composite heads (cube + eye + mouth children)
-            // can tint only the skin. Fall back to a MeshRenderer on headVisual's root so the
-            // original single-cube authoring keeps working without wiring the new field.
-            Renderer target = headSkinRenderer;
-            if (target == null)
-            {
-                Transform head = ActiveHead;
-                if (head != null) target = head.GetComponent<MeshRenderer>();
-            }
-            if (target == null) return;
-            if (mpb == null) mpb = new MaterialPropertyBlock();
-            target.GetPropertyBlock(mpb);
-            mpb.SetColor(BaseColorID, c);
-            target.SetPropertyBlock(mpb);
         }
 
         /// <summary>
@@ -686,9 +706,10 @@ namespace SlimeJumping.Platforms
         /// from central differences on the fine positions and the TNB frame is parallel-transported
         /// along the fine sequence so the radial basis stays twist-free at sharp turns. Radii are
         /// linearly interpolated between segHalfW values.
-        /// Band triangles are routed into submesh 0 (on-plane) or submesh 1 (off-plane) based on
-        /// the source spine band's on-plane flag — so the two-tone tinting survives subdivision.
-        /// Only RebuildCollider filters by on-plane.
+        /// All triangles go into a single submesh — the snake wears one uniform material (head and
+        /// body share it), so there is no two-tone routing. Smooth (RecalculateNormals) shading
+        /// keeps the tube reading as one surface even where it folds over itself on tight bends.
+        /// segOnPlane is still consulted by RebuildCollider only (collider gating), not the visual.
         /// Vertices are built in world space (using Z-bearing positions) and converted to local
         /// via InverseTransformPoint, so Z excursions show up as the tube bowing out of the XY plane.
         /// </summary>
@@ -699,8 +720,7 @@ namespace SlimeJumping.Platforms
             int R = Mathf.Max(3, radialSegments);
             int K = Mathf.Max(1, visualRingsPerSegment);
             scratchVerts.Clear();
-            scratchTrisOn.Clear();
-            scratchTrisOff.Clear();
+            scratchTris.Clear();
             scratchUVs.Clear();
 
             if (n < 2) { bodyMesh.Clear(); return; }
@@ -726,13 +746,11 @@ namespace SlimeJumping.Platforms
                     int j = b * K + k;
                     fineWorldPos[j]  = CatmullRom(p0, p1, p2, p3, t);
                     fineRadius[j]    = Mathf.Lerp(r1, r2, t);
-                    fineSpineBand[j] = b;
                 }
             }
             // Closing sample at the tail.
             fineWorldPos[fineCount - 1]  = segPos3D[n - 1];
             fineRadius[fineCount - 1]    = segHalfW[n - 1];
-            fineSpineBand[fineCount - 1] = n - 2;
 
             // --- Fine tangents: central difference on fine positions (head-ward convention,
             // i.e., tangent[j] points from j+1 toward j-1, matching the 2D perp convention so
@@ -808,12 +826,9 @@ namespace SlimeJumping.Platforms
             scratchVerts.Add(transform.InverseTransformPoint(backCapWorld));
             scratchUVs.Add(new Vector2(1f, 0.5f));
 
-            // Body bands between fine ring j and j+1. Submesh routing uses the starting sample's
-            // source spine band flag so tinting boundaries follow the coarse on-plane transitions.
+            // Body bands between fine ring j and j+1 — all into the single submesh (uniform material).
             for (int j = 0; j < fineCount - 1; j++)
             {
-                int bandSrc = fineSpineBand[j];
-                var tris = segOnPlane[bandSrc] ? scratchTrisOn : scratchTrisOff;
                 int ringA = j * R;
                 int ringB = (j + 1) * R;
                 for (int r = 0; r < R; r++)
@@ -823,29 +838,25 @@ namespace SlimeJumping.Platforms
                     int a1 = ringA + rNext;
                     int bb0 = ringB + r;
                     int bb1 = ringB + rNext;
-                    tris.Add(a0); tris.Add(bb1); tris.Add(bb0);
-                    tris.Add(a0); tris.Add(a1);  tris.Add(bb1);
+                    scratchTris.Add(a0); scratchTris.Add(bb1); scratchTris.Add(bb0);
+                    scratchTris.Add(a0); scratchTris.Add(a1);  scratchTris.Add(bb1);
                 }
             }
 
-            // Front cap fan — submesh keyed by head segment's on-plane flag.
+            // Front cap fan.
+            for (int r = 0; r < R; r++)
             {
-                var tris = segOnPlane[0] ? scratchTrisOn : scratchTrisOff;
-                for (int r = 0; r < R; r++)
-                {
-                    int rNext = (r + 1) % R;
-                    tris.Add(frontCapIdx); tris.Add(r); tris.Add(rNext);
-                }
+                int rNext = (r + 1) % R;
+                scratchTris.Add(frontCapIdx); scratchTris.Add(r); scratchTris.Add(rNext);
             }
 
-            // Back cap fan — submesh keyed by tail segment's on-plane flag.
+            // Back cap fan.
             {
-                var tris = segOnPlane[n - 1] ? scratchTrisOn : scratchTrisOff;
                 int tailRing = (fineCount - 1) * R;
                 for (int r = 0; r < R; r++)
                 {
                     int rNext = (r + 1) % R;
-                    tris.Add(backCapIdx); tris.Add(tailRing + rNext); tris.Add(tailRing + r);
+                    scratchTris.Add(backCapIdx); scratchTris.Add(tailRing + rNext); scratchTris.Add(tailRing + r);
                 }
             }
 
@@ -856,29 +867,12 @@ namespace SlimeJumping.Platforms
                     ? UnityEngine.Rendering.IndexFormat.UInt32
                     : UnityEngine.Rendering.IndexFormat.UInt16;
                 bodyMesh.SetVertices(scratchVerts);
-                bodyMesh.subMeshCount = 2;
-                bodyMesh.SetTriangles(scratchTrisOn, 0);
-                bodyMesh.SetTriangles(scratchTrisOff, 1);
+                bodyMesh.subMeshCount = 1;
+                bodyMesh.SetTriangles(scratchTris, 0);
                 bodyMesh.SetUVs(0, scratchUVs);
                 bodyMesh.RecalculateNormals();
                 bodyMesh.RecalculateBounds();
             }
-        }
-
-        void ApplyBodyMeshColor()
-        {
-            if (bodyMeshRenderer == null) return;
-            if (mpb == null) mpb = new MaterialPropertyBlock();
-
-            // Submesh 0 = on-plane (collision-active) → bodyColor.
-            bodyMeshRenderer.GetPropertyBlock(mpb, 0);
-            mpb.SetColor(BaseColorID, bodyColor);
-            bodyMeshRenderer.SetPropertyBlock(mpb, 0);
-
-            // Submesh 1 = off-plane (no collision, just visual) → offPlaneColor.
-            bodyMeshRenderer.GetPropertyBlock(mpb, 1);
-            mpb.SetColor(BaseColorID, offPlaneColor);
-            bodyMeshRenderer.SetPropertyBlock(mpb, 1);
         }
 
         void RebuildCollider()
