@@ -91,6 +91,8 @@ namespace SlimeJumping.Controller
             activeChargeRadius = settings.chargeRadius;
             float ratio = aimOffset.magnitude / settings.chargeRadius;
             float power = LaunchPowerForRatio(ratio, isEnergyConversion);
+            // Wounded (mid-slice-regen) → reduced jump. 1 = normal (see SlimeController.Split.cs).
+            power *= SplitLaunchMultiplier;
             launchOriginAimPower = power;
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
             // Bamboo tip-grab: launch is a JUMP along the tip-up direction (bend tangent

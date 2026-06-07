@@ -10,8 +10,6 @@ namespace SlimeJumping.Mechanisms
     public class KnifeHazard : MonoBehaviour, IHazardSource
     {
         [Header("Hazard")]
-        [Tooltip("Slime impact speed below this threshold is ignored (slow contact = safe).")]
-        [SerializeField] private float velocityThreshold = 4f;
         [Range(0f, 1f)]
         [Tooltip("Fraction of incoming speed retained after pass-through. 1 = no slowdown, 0 = full stop.")]
         [SerializeField] private float speedRetainRatio = 0.4f;
@@ -29,6 +27,10 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float sliceKick = 2f;
         [Tooltip("Local +X should point along the cutting edge. Leave null to use this GameObject's right.")]
         [SerializeField] private Transform bladeEdgeRef;
+
+        [Header("Slice (optional)")]
+        [Tooltip("Assign to make blade hits ALSO slice the slime (visual wound + falling piece + heal), layered on top of the normal stun. Leave null for a plain stun.")]
+        [SerializeField] private SlimeSplitSequence splitSequence;
 
         [Header("Body Passthrough")]
         [Tooltip("Root transform of the knife body. All Collider2D in its subtree (except this hazard's own trigger) are ignored after a hit for `passthroughDuration` seconds. Assign the body GO or any common ancestor.")]
@@ -84,7 +86,6 @@ namespace SlimeJumping.Mechanisms
 
             var slime = other.GetComponentInParent<SlimeController>();
             if (slime == null) return;
-            if (slime.Velocity.magnitude < velocityThreshold) return;
 
             cachedSlime = slime;
 
@@ -97,6 +98,14 @@ namespace SlimeJumping.Mechanisms
             if (sliceEffectPrefab != null)
                 SliceEffect.Spawn(sliceEffectPrefab, contact, signedTangent);
             if (impulseEmitter != null) impulseEmitter.Emit(impulseForce);
+
+            // Slice is part of the stun reaction: every hit slices AND stuns. Eyes/control
+            // come from the Stunned state below — read velocity for the cut angle BEFORE
+            // ApplyHazardEffect overwrites it with knockback. Skip only if another override
+            // owns the slime.
+            if (splitSequence != null && !slime.HasOverride)
+                splitSequence.Begin(slime, slime.Velocity);
+
             slime.AddExternalVelocity(signedTangent * sliceKick);
 
             slime.ApplyHazardEffect(GetHazardEffect());

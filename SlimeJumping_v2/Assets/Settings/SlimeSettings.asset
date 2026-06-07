@@ -29,7 +29,7 @@ MonoBehaviour:
   chargeCurveExponent: 0.6
   chargeFullAimTime: 0.1
   maxAimAngularSpeed: 180
-  chargeNormalFollowSpeed: 5
+  chargeNormalFollowSpeed: 50
   chargingCoyoteTime: 0.3
   coyoteGraceTime: 0.1
   chargingSurfaceProbeGraceFrames: 3

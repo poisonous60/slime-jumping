@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "name": "E:\\260301\\project\\SlimeJumping_v2_project",
+  "color": "",
+  "canvas": {
+    "nodes": [
+      {
+        "panelId": "aa4c8a42-ca30-4465-9afc-a5400a70ef77",
+        "panelType": "terminal",
+        "title": "✳ Claude Code",
+        "origin": {
+          "x": -117,
+          "y": -42
+        },
+        "size": {
+          "width": 1191.9825073875706,
+          "height": 640.6664452012334
+        }
+      }
+    ],
+    "regions": [],
+    "zoomLevel": 0.8200640394978688,
+    "viewportOffset": {
+      "x": 208.63872675333482,
+      "y": 77.87499333490561
+    }
+  },
+  "dockState": {
+    "zones": {
+      "left": {
+        "position": "left",
+        "visible": false,
+        "size": 260,
+        "layout": null
+      },
+      "right": {
+        "position": "right",
+        "visible": false,
+        "size": 260,
+        "layout": null
+      },
+      "bottom": {
+        "position": "bottom",
+        "visible": false,
+        "size": 240,
+        "layout": null
+      },
+      "center": {
+        "position": "center",
+        "visible": true,
+        "size": 0,
+        "layout": {
+          "type": "tabs",
+          "id": "3145dfa6-313a-4d08-80cd-d9dfad82dade",
+          "panelIds": [
+            "51352afa-6d9d-4890-9d79-02eda22fde12"
+          ],
+          "activeIndex": 0
+        }
+      }
+    },
+    "locations": {
+      "51352afa-6d9d-4890-9d79-02eda22fde12": {
+        "type": "dock",
+        "zone": "center",
+        "stackId": "3145dfa6-313a-4d08-80cd-d9dfad82dade"
+      }
+    }
+  },
+  "dockPanels": {
+    "51352afa-6d9d-4890-9d79-02eda22fde12": {
+      "type": "canvas",
+      "title": "Canvas"
+    }
+  }
+}

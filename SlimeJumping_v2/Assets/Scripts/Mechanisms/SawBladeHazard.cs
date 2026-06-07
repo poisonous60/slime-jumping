@@ -35,6 +35,10 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Extra velocity along the rotational tangent, in the slime's slide direction.")]
         [SerializeField] private float sliceKick = 3f;
 
+        [Header("Slice (optional)")]
+        [Tooltip("Assign to make blade hits ALSO slice the slime (visual wound + falling piece + heal), layered on top of the normal stun. Leave null for a plain stun.")]
+        [SerializeField] private SlimeSplitSequence splitSequence;
+
         private SlimeController cachedSlime;
         private float nextHitTime;
 
@@ -107,6 +111,13 @@ namespace SlimeJumping.Mechanisms
             if (sliceEffectPrefab != null)
                 SliceEffect.Spawn(sliceEffectPrefab, contact, signedTangent);
             if (impulseEmitter != null) impulseEmitter.Emit(impulseForce);
+
+            // Slice is part of the stun reaction: every hit slices AND stuns. Eyes/control
+            // come from the Stunned state below — read velocity for the cut angle BEFORE
+            // ApplyHazardEffect overwrites it. Skip only if another override owns the slime.
+            if (splitSequence != null && !slime.HasOverride)
+                splitSequence.Begin(slime, slime.Velocity);
+
             slime.AddExternalVelocity(signedTangent * sliceKick);
 
             slime.ApplyHazardEffect(GetHazardEffect());
