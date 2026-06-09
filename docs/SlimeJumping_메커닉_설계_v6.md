@@ -68,7 +68,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Jump Ball](features/mechanisms/jump-ball.md) — 트리거 자동 점프, 보빙 비주얼
 - [Conveyor Belt](features/mechanisms/conveyor-belt.md)
 - [Spike Hazard](features/mechanisms/spike-hazard.md)
-- [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect + 베임 연출(조각 round-up · back-loaded regen · 재절단 stacking · 얼굴 절단)
+- [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect + [Slime Split](features/mechanisms/slime-split.md)(베임=진짜 모양변화: 방향별 reach로 충돌/부착/접지 — 잘린 면으로 앉음·붙음, 제거영역 안 걸림 · 곡선단면+wet+lip 비주얼 · 2축 회복 · 조각 round-up · 재절단 stacking)
 - [Turret Hazard](features/mechanisms/turret-hazard.md) — CCTV 확장 사격
 - [Icicle Hazard](features/mechanisms/icicle-hazard.md) — 낙하 고드름 (진동 → 낙하 → 파괴)
 - [Falling Train](features/mechanisms/falling-train.md) — 1회 한정 낙하 기차 (텔레그래프 → 연결부 분리 → 곡선 낙하 → 숏컷)

@@ -46,7 +46,7 @@ namespace SlimeJumping.Physics
 
         protected override bool DepenetratePass(ref Vector2 pos)
         {
-            float radius = settings.slimeRadius;
+            float radius = settings.slimeRadius;   // broadphase / max reach
             float skin = settings.depenetrationSkin;
             LayerMask mask = settings.groundLayer;
 
@@ -65,9 +65,12 @@ namespace SlimeJumping.Physics
                 // Deep penetration: skip (no reliable push direction)
                 if (dist < 0.0001f) continue;
 
-                if (dist < radius)
+                // Directional reach: the cut shape only pushes out to its cut face on the cut side,
+                // so the removed region never depenetrates the slime (no catch).
+                float reach = Reach(toSlime / dist);
+                if (dist < reach)
                 {
-                    Vector2 push = (toSlime / dist) * (radius - dist);
+                    Vector2 push = (toSlime / dist) * (reach - dist);
                     pos += push;
                     totalPush += push;
                     anyPenetration = true;

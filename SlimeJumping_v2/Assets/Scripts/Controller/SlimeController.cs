@@ -523,6 +523,12 @@ namespace SlimeJumping.Controller
             // teleports the slime past a thin edge before Phase A can catch it.
             DecideProbeMode();
 
+            // Slime-slice: feed the probe the cut shape's inscribed circle BEFORE CheckSurface so
+            // collision / sticking / grounding behave as the cut shape (no float, no catch, no
+            // phantom stick on the removed side). No-op (full circle) when not cut. Runs after
+            // DecideProbeMode so a freshly-swapped probe gets the shape this same frame.
+            ApplySplitCollisionShape();
+
             // Rope position-lock (pre-probe). When still bound to a rope from the
             // previous FU and the rope-rider channel was active, snap rb.position
             // onto the rope's current nearest surface point BEFORE CheckSurface

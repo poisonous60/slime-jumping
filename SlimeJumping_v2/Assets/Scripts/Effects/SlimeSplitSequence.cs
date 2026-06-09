@@ -82,7 +82,15 @@ namespace SlimeJumping.Effects
         private readonly float[] sliceSeal = new float[SliceMax];
         private readonly Vector4[] slicePlaneWS = new Vector4[SliceMax];
 
+        // Per-wound 2D world cut line for the inscribed-circle collision shape (B):
+        // removed side = dot(point - center, n2D) > off. off is in WORLD units (a fraction of the
+        // slime radius), so the visual mesh ↔ collider scale never matters.
+        private readonly Vector2[] woundN2D = new Vector2[SliceMax];
+        private readonly float[] woundOff = new float[SliceMax];
+        private readonly Vector3[] cutPlanesScratch = new Vector3[SliceMax];   // (n.x, n.y, off) pushed to the probe
+
         private float recutTimer;
+        private float launchBiasFactor;   // 0 healed … 1 fresh; scales the wounded launch-dir bias
 
         public bool IsActive { get; private set; }
 
@@ -98,10 +106,10 @@ namespace SlimeJumping.Effects
         private static readonly int CutRoundnessID = Shader.PropertyToID("_CutRoundness");
         private static readonly int TearAmpID = Shader.PropertyToID("_TearAmp");
         private static readonly int TearFreqID = Shader.PropertyToID("_TearFreq");
-        // Surface-aware core-foot guard (replaces the old mesh-OS-y _SliceBottomGuard): xyz =
-        // contact normal in rest OS, w = footY threshold (keep where dot(osPosRest,n) < footY).
-        private static readonly int ContactNormalOSID = Shader.PropertyToID("_ContactNormalOS");
-        // Face (world-space) foot guard — unchanged uniform name, now fed the contact normal.
+        private static readonly int LipBandID = Shader.PropertyToID("_LipBand");
+        private static readonly int LipMagID = Shader.PropertyToID("_LipMag");
+        // Face (world-space) guard uniform — fed a disabled (-∞) threshold now that the cut is a
+        // real shape change (face clips fully; grounding is handled by the collision shape).
         private static readonly int SliceBottomGuardWSID = Shader.PropertyToID("_SliceBottomGuardWS");
         private static readonly int SliceCountWSID = Shader.PropertyToID("_SliceCountWS");
         private static readonly int SlicePlaneWSID = Shader.PropertyToID("_SlicePlaneWS");
@@ -192,6 +200,9 @@ namespace SlimeJumping.Effects
             }
 
             if (slime != null) slime.SplitLaunchMultiplier = activeCount > 0 ? minJump : 1f;
+            launchBiasFactor = activeCount > 0
+                ? Mathf.Clamp01((1f - minJump) / Mathf.Max(0.01f, 1f - settings.woundedJumpMultiplierMin))
+                : 0f;
 
             if (activeCount == 0) RestoreAll();
         }
@@ -221,25 +232,18 @@ namespace SlimeJumping.Effects
                 Vector3 pWs = bodyFilter.transform.TransformPoint(w.normalOS * w.dispOffset);
                 slicePlaneWS[count] = new Vector4(nWs.x, nWs.y, nWs.z, Vector3.Dot(pWs, nWs));
 
+                // 2D world cut line for the collision shape. off as a FRACTION of the mesh extent
+                // along this cut → scaled to the slime's world radius, so it's expressed in the
+                // same units the surface probe uses (independent of any visual/collider scale gap).
+                Vector2 n2d = new Vector2(nWs.x, nWs.y);
+                float n2dLen = n2d.magnitude;
+                woundN2D[count] = n2dLen > 1e-5f ? n2d / n2dLen : Vector2.right;
+                Vector3 me = origMesh.bounds.extents;
+                float extOS = Mathf.Abs(w.normalOS.x) * me.x + Mathf.Abs(w.normalOS.y) * me.y + Mathf.Abs(w.normalOS.z) * me.z;
+                woundOff[count] = (extOS > 1e-5f ? w.dispOffset / extOS : 1f) * slime.SlimeRadius;
+
                 count++;
             }
-
-            // Surface-aware CORE-FOOT guard (replaces the old mesh-OS-y bottom guard). The contact
-            // patch is NEVER clipped, so the slime never floats when a cut takes its ground-contact
-            // band — for ANY cut direction or surface slope. Contact normal = the attached surface
-            // normal (grounded) or gravity up (airborne); footY = keep-band threshold along that
-            // normal in rest OS (keep where dot(osPosRest, contactNormalOS) < footY).
-            Vector2 cn2 = (slime.CurrentState != SlimeController.SlimeState.Airborne
-                           && slime.SurfaceNormal.sqrMagnitude > 1e-4f)
-                ? slime.SurfaceNormal.normalized
-                : slime.GravityUp;
-            Vector3 contactNormalWS = new Vector3(cn2.x, cn2.y, 0f);
-            Vector3 contactNormalOS = bodyFilter.transform.InverseTransformDirection(contactNormalWS).normalized;
-            Vector3 ext = origMesh.bounds.extents;
-            float extAlongContact = Mathf.Abs(contactNormalOS.x) * ext.x
-                                  + Mathf.Abs(contactNormalOS.y) * ext.y
-                                  + Mathf.Abs(contactNormalOS.z) * ext.z;
-            float footY = -extAlongContact * (1f - Mathf.Clamp01(settings.footPatch));
 
             bodyRenderer.GetPropertyBlock(mpb);
             mpb.SetFloat(SliceCountID, count);
@@ -254,16 +258,29 @@ namespace SlimeJumping.Effects
             mpb.SetFloat(CutRoundnessID, settings.cutRoundness);
             mpb.SetFloat(TearAmpID, settings.tearAmp);
             mpb.SetFloat(TearFreqID, settings.tearFreq);
-            mpb.SetVector(ContactNormalOSID,
-                new Vector4(contactNormalOS.x, contactNormalOS.y, contactNormalOS.z, footY));
+            mpb.SetFloat(LipBandID, settings.lipBand);
+            mpb.SetFloat(LipMagID, settings.lipMag);
             bodyRenderer.SetPropertyBlock(mpb);
 
-            // Same foot guard for the face, as a world plane (keep where dot(posWS,n) < d).
-            Vector3 guardP = bodyFilter.transform.TransformPoint(contactNormalOS * footY);
-            Vector4 guardWS = new Vector4(contactNormalWS.x, contactNormalWS.y, contactNormalWS.z,
-                                          Vector3.Dot(guardP, contactNormalWS));
-
+            // Face: NO foot guard — the cut is a real shape change, so the face (eyes/mouth) clips
+            // fully wherever the wound crosses it. Push a disabled guard (keep-threshold = -∞ so the
+            // "keep where dot(posWS,n) < d" test never short-circuits).
+            Vector4 guardWS = new Vector4(0f, 1f, 0f, -1e30f);
             PushFace(count, guardWS);
+
+            // Collision SHAPE (B): push the active cut planes to the surface probe. The probe
+            // collides as the cut shape via a directional reach (it rests on / sticks by its flat
+            // cut face, no float; the removed region is out of reach → no catch / no phantom stick).
+            // count == 0 → probe restores the full circle.
+            for (int i = 0; i < count; i++)
+                cutPlanesScratch[i] = new Vector3(woundN2D[i].x, woundN2D[i].y, woundOff[i]);
+            slime.SetSplitCutPlanes(cutPlanesScratch, count);
+
+            // Launch-dir bias: veer toward the kept side (opposite the summed cut normals).
+            Vector2 keptSum = Vector2.zero;
+            for (int i = 0; i < count; i++) keptSum -= woundN2D[i];
+            Vector2 keptDir = keptSum.sqrMagnitude > 1e-6f ? keptSum.normalized : Vector2.zero;
+            slime.SetSplitLaunchBias(keptDir, settings.launchDirBiasDeg * launchBiasFactor);
         }
 
         // --- internals ---
@@ -413,7 +430,13 @@ namespace SlimeJumping.Effects
                     fr.SetPropertyBlock(faceMpb);
                 }
             }
-            if (slime != null) slime.SplitLaunchMultiplier = 1f;
+            if (slime != null)
+            {
+                slime.SplitLaunchMultiplier = 1f;
+                slime.SetSplitCutPlanes(cutPlanesScratch, 0);   // back to full circle
+                slime.SetSplitLaunchBias(Vector2.zero, 0f);
+            }
+            launchBiasFactor = 0f;
             for (int i = 0; i < wounds.Length; i++)
                 if (wounds[i] != null && wounds[i].active) RetireWound(wounds[i]);
             IsActive = false;

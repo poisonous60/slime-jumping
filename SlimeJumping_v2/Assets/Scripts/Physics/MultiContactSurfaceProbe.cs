@@ -89,7 +89,7 @@ namespace SlimeJumping.Physics
 
         protected override bool DepenetratePass(ref Vector2 pos)
         {
-            float radius = settings.slimeRadius;
+            float radius = settings.slimeRadius;   // broadphase / max reach
             float skin = settings.depenetrationSkin;
             LayerMask mask = settings.groundLayer;
             float dedupeDot = settings.surfaceProbeDedupeDot;
@@ -480,8 +480,10 @@ namespace SlimeJumping.Physics
                 Vector2 normal = toSlime / dist;
                 if (IsContactBuried(col, closest, normal, dist, otherBuffer, otherCount))
                     return 0;
+                float reach = Reach(normal) - dist;
+                if (reach <= 0f) return 0;
                 pushNormals[0] = normal;
-                pushDepths[0] = radius - dist;
+                pushDepths[0] = reach;
                 pushCount = 1;
             }
 
@@ -520,7 +522,10 @@ namespace SlimeJumping.Physics
             // outermost surface's pushes do the work.
             if (IsContactBuried(col, closest, outward, dist, otherBuffer, otherCount)) return;
 
-            float depth = radius - dist;
+            // Directional reach: only push out to the cut shape's extent toward this surface, so
+            // the removed region never depenetrates the slime (no catch / no phantom push).
+            float depth = Reach(toSlime / dist) - dist;
+            if (depth <= 0f) return;
 
             // Same bisector-vs-outward split as the contact path: clamped vertices push
             // along the bisector (radial) so a slime caught on a small convex corner is
@@ -590,7 +595,7 @@ namespace SlimeJumping.Physics
             if (lastGoodNormal.sqrMagnitude > 0.5f && Vector2.Dot(toSlime, lastGoodNormal) < 0f)
             {
                 n = lastGoodNormal;
-                depth = radius - Vector2.Dot(toSlime, lastGoodNormal);
+                depth = Reach(lastGoodNormal) - Vector2.Dot(toSlime, lastGoodNormal);
                 distForBuried = Mathf.Max(0.0001f, distSq > 0.0001f ? Mathf.Sqrt(distSq) : 0.0001f);
             }
             else
@@ -598,7 +603,8 @@ namespace SlimeJumping.Physics
                 if (distSq < 0.0001f) return;
                 float dist = Mathf.Sqrt(distSq);
                 n = toSlime / dist;
-                depth = radius - dist;
+                depth = Reach(toSlime / dist) - dist;
+                if (depth <= 0f) return;
                 distForBuried = dist;
             }
 

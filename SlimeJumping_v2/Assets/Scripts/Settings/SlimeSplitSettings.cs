@@ -43,11 +43,6 @@ namespace SlimeJumping.Settings
         [Tooltip("Surface-tension lip outward magnitude (OS) at sealRatio=1 (S2 vertex stage). Small.")]
         public float lipMag = 0.06f;
 
-        [Header("Grounding (surface-aware core-foot)")]
-        [Range(0.05f, 0.5f)]
-        [Tooltip("Contact-patch foot kept-band thickness along the contact normal, as a fraction of the mesh half-extent. The cut NEVER removes this foot, so the slime never floats — for ANY cut direction / surface slope (surface-aware, unlike the old mesh-Y guard). Small (~0.2) so it reads as a goo foot, not the old shelf.")]
-        public float footPatch = 0.2f;
-
         [Header("Severed piece — flies off (same gravity as the slime)")]
         [Range(0f, 1f)]
         [Tooltip("Fraction of the slime's incoming velocity the severed piece inherits.")]

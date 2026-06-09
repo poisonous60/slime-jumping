@@ -101,12 +101,58 @@ namespace SlimeJumping.Physics
         // Finding 1: preserve last valid normal for deep penetration fallback
         protected Vector2 lastGoodNormal = Vector2.up;
 
+        // --- Cut SHAPE (slime-slice "the cut part is gone") ---
+        // When the slime is cut, SlimeSplitSequence feeds the active cut planes (world). The probe
+        // then collides as the CUT SHAPE via a DIRECTIONAL reach: the slime's extent toward a
+        // surface = the support length of (disk R ∩ cut half-planes) in that direction. Toward the
+        // cut the reach is the cut plane itself (so the slime rests on / sticks by its flat cut
+        // face, no float), away from the cut it is the full radius, and a surface in the removed
+        // region is out of reach (no catch / no phantom stick). The CENTER stays rb.position (no
+        // offset), so there is no transition pop. cutPlaneCount == 0 → Reach == settings.slimeRadius,
+        // byte-for-byte the old circle.
+        protected readonly Vector3[] cutPlanes = new Vector3[3];  // xy = world unit normal (→ removed side), z = off (world, from center)
+        protected int cutPlaneCount;
+        public void SetCutShape(Vector3[] planes, int count)
+        {
+            cutPlaneCount = Mathf.Clamp(count, 0, cutPlanes.Length);
+            for (int i = 0; i < cutPlaneCount; i++) cutPlanes[i] = planes[i];
+        }
+        public void ClearCutShape() { cutPlaneCount = 0; }
+
+        // Support length of the cut shape toward a surface whose outward (toward-slime) normal is
+        // contactNormal — i.e. how far the slime reaches in direction d = -contactNormal.
+        protected float Reach(Vector2 contactNormal)
+        {
+            float R = settings.slimeRadius;
+            if (cutPlaneCount == 0) return R;
+            Vector2 d = -contactNormal;
+            float h = R;
+            for (int i = 0; i < cutPlaneCount; i++)
+            {
+                Vector2 n = new Vector2(cutPlanes[i].x, cutPlanes[i].y);
+                float off = cutPlanes[i].z;
+                float dn = Vector2.Dot(d, n);
+                if (dn > 0f && R * dn > off)   // d points toward the removed side AND the cut limits it
+                {
+                    float planar = off * dn + Mathf.Sqrt(Mathf.Max(0f, R * R - off * off)) * Mathf.Sqrt(Mathf.Max(0f, 1f - dn * dn));
+                    if (planar < h) h = planar;
+                }
+            }
+            return Mathf.Max(h, R * 0.1f);
+        }
+        // Per-contact reach, filled in CheckSurface (parallel to contactNormals) so SelectPrimary /
+        // EffectiveNormal / ProjectVelocityAgainstContacts read it without recomputing.
+        protected readonly float[] contactReach = new float[16];
+
         protected SurfaceProbe(Rigidbody2D rb, SlimeSettings settings, List<Collider2D> ignoredColliders)
         {
             this.rb = rb;
             this.settings = settings;
             this.ignoredColliders = ignoredColliders;
         }
+        // NOTE: a probe-mode swap does NOT need an explicit cut-shape transfer — the controller
+        // re-applies splitCutPlanes via ApplySplitCollisionShape() right after DecideProbeMode()
+        // every FixedUpdate, so the new probe gets the shape before its first CheckSurface.
 
         // Called on runtime mode swap. Without this, a new probe starts with
         // lastGoodNormal=Vector2.up — a slime attached to a ceiling/wall at swap
@@ -123,7 +169,7 @@ namespace SlimeJumping.Physics
             float distMultiplier, float inputX, Collider2D prevCollider,
             Vector2 gravityUp, Vector2 gravityRight)
         {
-            float radius = settings.slimeRadius;
+            float radius = settings.slimeRadius;   // broadphase / max reach
             float detectRange = settings.surfaceCheckDistance * distMultiplier;
             LayerMask mask = settings.groundLayer;
             Vector2 pos = rb.position;
@@ -165,6 +211,13 @@ namespace SlimeJumping.Physics
                     out contactCeilingThreshold[i], out _);
             }
 
+            // Directional reach per contact — how far the CUT SHAPE extends toward each contact's
+            // surface. Equals settings.slimeRadius when not cut. SelectPrimary / EffectiveNormal /
+            // ProjectVelocityAgainstContacts read this instead of a constant radius so the slime
+            // rests on / sticks by its flat cut face and never collides past the removed region.
+            for (int i = 0; i < contactCount; i++)
+                contactReach[i] = Reach(contactNormals[i]);
+
             // Identify active contacts (within slimeRadius + contactSkin)
             // and select primary using 5-step fallback
             int selected = SelectPrimary(radius, settings.contactSkin, inputX, prevCollider, gravityUp, gravityRight);
@@ -199,7 +252,7 @@ namespace SlimeJumping.Physics
                     closestDist = contactDistances[i];
                     closestIdx = i;
                 }
-                bool isActive = contactDistances[i] <= radius + contactSkin;
+                bool isActive = contactDistances[i] <= contactReach[i] + contactSkin;
                 contactActive[i] = isActive;
                 if (isActive)
                 {
@@ -293,7 +346,7 @@ namespace SlimeJumping.Physics
                     if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < contactCeilingThreshold[i]) continue;
                     if (contactColliders[i] == prevCollider)
                     {
-                        float pen = radius - contactDistances[i];
+                        float pen = contactReach[i] - contactDistances[i];
                         if (pen > prevPen)
                         {
                             prevPen = pen;
@@ -310,7 +363,7 @@ namespace SlimeJumping.Physics
                         if (!contactActive[i]) continue;
                         if (contactColliders[i] == prevCollider) continue; // other samples of same collider don't count as "other"
                         if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < contactCeilingThreshold[i]) continue;
-                        float pen = radius - contactDistances[i];
+                        float pen = contactReach[i] - contactDistances[i];
                         if (pen > maxOtherPen) maxOtherPen = pen;
                     }
                     if (maxOtherPen - prevPen <= hysteresis) return prevIdx;
@@ -324,7 +377,7 @@ namespace SlimeJumping.Physics
             {
                 if (!contactActive[i]) continue;
                 if (filterCeiling && Vector2.Dot(contactNormals[i], gravityUp) < contactCeilingThreshold[i]) continue;
-                float pen = radius - contactDistances[i];
+                float pen = contactReach[i] - contactDistances[i];
                 if (pen > deepestPen)
                 {
                     deepestPen = pen;
@@ -396,7 +449,6 @@ namespace SlimeJumping.Physics
         {
             get
             {
-                float radius = settings.slimeRadius;
                 float contactSkin = settings.contactSkin;
                 // Soft band: contacts within (radius + fullBand) contribute, weighted
                 // by a smoothstep ramp. Replaces the old hard "active or not" gate.
@@ -412,7 +464,7 @@ namespace SlimeJumping.Physics
                 {
                     if (contactClamped[i]) continue;
                     if (Vector2.Dot(contactNormals[i], lastGravityUp) < contactCeilingThreshold[i]) continue;
-                    float w = radius + fullBand - contactDistances[i];
+                    float w = contactReach[i] + fullBand - contactDistances[i];
                     if (w <= 0f) continue;
                     if (rampWidth > 1e-6f)
                     {
@@ -459,7 +511,6 @@ namespace SlimeJumping.Physics
             if (vnFb < 0f) v -= fallbackNormal * vnFb;
 
             // Step 2: multi-clip against non-aligned contacts only.
-            float radius = settings.slimeRadius;
             float contactSkin = settings.contactSkin;
             float fullBand = contactSkin * Mathf.Max(1f, settings.effectiveNormalSoftBandMultiplier);
             float rampWidth = fullBand * Mathf.Clamp01(settings.effectiveNormalWeightRampBand);
@@ -478,7 +529,7 @@ namespace SlimeJumping.Physics
                     float vn = Vector2.Dot(v, n);
                     if (vn >= 0f) continue; // contact doesn't oppose this velocity — nothing to clip.
 
-                    float w = radius + fullBand - contactDistances[i];
+                    float w = contactReach[i] + fullBand - contactDistances[i];
                     if (w <= 0f) continue; // outside the soft band — wouldn't clip anyway.
                     float weight;
                     if (rampWidth > 1e-6f)
@@ -514,7 +565,7 @@ namespace SlimeJumping.Physics
         {
             if (surfaceCollider == null) return;
 
-            float radius = settings.slimeRadius;
+            float radius = settings.slimeRadius;   // max reach (broadphase post-overlap)
             float contactSkin = settings.contactSkin;
             Vector2 pos = rb.position;
 
@@ -545,8 +596,9 @@ namespace SlimeJumping.Physics
                     Vector2 d = pos - c;
                     float dist = d.magnitude;
                     if (dist < 0.0001f) continue;
-                    if (dist < radius)
-                        phaseARemainPen += radius - dist;
+                    float reach = Reach(d / dist);
+                    if (dist < reach)
+                        phaseARemainPen += reach - dist;
                 }
             }
 
@@ -559,17 +611,21 @@ namespace SlimeJumping.Physics
                 Vector2 closest = surfaceCollider.ClosestPoint(pos);
                 Vector2 toSlime = pos - closest;
                 float dist = toSlime.magnitude;
+                // Reach toward THIS surface = how far the cut shape extends here. Anchoring at the
+                // reach (not the full radius) is what rests the slime on its flat cut face: toward
+                // the cut the reach is the cut plane, so the cut face sits on the surface.
+                float reach = dist > 0.0001f ? Reach(toSlime / dist) : settings.slimeRadius;
                 // Small-ledge climb: while a passthrough is active, loosen the re-anchor
                 // tolerance by stepHeight so Phase A's "up the slope" push can raise the
                 // slime onto the ledge before Phase B yanks it back to the primary. Without
                 // this the slime can only rise ~contactSkin above the slope — far too little
                 // to climb even a tiny lip. Reverts to the tight tolerance once the slime is
                 // on the ledge top and the primary has switched to it (no more passthrough).
-                float anchorTolerance = radius + contactSkin;
+                float anchorTolerance = reach + contactSkin;
                 if (lowLedgePassthroughCount > 0)
                     anchorTolerance += settings.smallLedgeStepHeight;
                 if (dist > anchorTolerance && dist > 0.0001f)
-                    pos = closest + (toSlime / dist) * radius;
+                    pos = closest + (toSlime / dist) * reach;
             }
 
             rb.position = pos;

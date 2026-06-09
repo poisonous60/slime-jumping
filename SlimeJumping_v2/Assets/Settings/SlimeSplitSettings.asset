@@ -151,5 +151,5 @@ MonoBehaviour:
   sliceCapColor: {r: 0.18, g: 0.32, b: 0.18, a: 1}
   sliceCapRimColor: {r: 0.45, g: 0.7, b: 0.42, a: 1}
   sliceCapDepth: 0.35
-  woundedJumpMultiplierMin: 0.5
+  woundedJumpMultiplierMin: 1
   launchDirBiasDeg: 6
