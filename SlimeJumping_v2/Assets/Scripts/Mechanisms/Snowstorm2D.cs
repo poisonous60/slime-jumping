@@ -12,7 +12,7 @@ namespace SlimeJumping.Mechanisms
     // instead of snapping. Reuses WindZone2D_v2's slime-push contract
     // (AddSustainedFlowImpulse + state multiplier + terminalSpeed falloff) with
     // a dynamic windAcceleration vector driven by the phase state machine.
-    [RequireComponent(typeof(BoxCollider2D))]
+    [RequireComponent(typeof(PolygonCollider2D))]
     public class Snowstorm2D : MonoBehaviour
     {
         public enum Phase { WindLeft, CalmAfterLeft, WindRight, CalmAfterRight }
@@ -80,7 +80,7 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float chargingMultiplier = 0.2f;
 
         [Header("Visual — Snow Force Field")]
-        [Tooltip("Box ParticleSystemForceField that pushes snow particles. Auto-synced from BoxCollider2D bounds. Zone bounds-only — slime/snow outside the storm collider are unaffected.")]
+        [Tooltip("Box ParticleSystemForceField that pushes ambient snow sideways. Camera-anchored and viewport-sized at runtime (NOT tied to the zone collider) so the whole screen's snow drifts while the slime is inside the zone. The PolygonCollider2D is only the on/off trigger; drift strength is gated by slime presence.")]
         [SerializeField] private ParticleSystemForceField snowForceField;
 
         [Min(0f)]
@@ -194,6 +194,7 @@ namespace SlimeJumping.Mechanisms
         // when the slime enters; only opacity fades in/out.
         private ParticleSystemRenderer stormRenderer;
         private ParticleSystemRenderer sideStormRenderer;
+        private ParticleSystemRenderer ambientSnowRenderer;
         private MaterialPropertyBlock stormMpb;
         private static readonly int s_BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int s_ColorId = Shader.PropertyToID("_Color");
@@ -213,7 +214,7 @@ namespace SlimeJumping.Mechanisms
 
         void Reset()
         {
-            GetComponent<BoxCollider2D>().isTrigger = true;
+            GetComponent<PolygonCollider2D>().isTrigger = true;
         }
 
 
@@ -299,6 +300,14 @@ namespace SlimeJumping.Mechanisms
             // zone goes away and contaminate any other zone that shares the same
             // Snow.prefab instance.
             if (snowBaselineCaptured) RestoreSnow(snowParticles, snowBaselineRate, snowBaselineSizeMultiplier);
+            // Same reasoning for the presence alpha multiplier: clear it so a storm
+            // disabled while the slime is outside doesn't leave the shared Snow.prefab
+            // instance stuck transparent.
+            if (ambientSnowRenderer != null)
+            {
+                if (stormMpb == null) stormMpb = new MaterialPropertyBlock();
+                ApplyAlphaToRenderer(ambientSnowRenderer, Color.white);
+            }
         }
 
         void Update()
@@ -346,6 +355,15 @@ namespace SlimeJumping.Mechanisms
             Color c = new Color(1f, 1f, 1f, slimePresenceWeight);
             ApplyAlphaToRenderer(stormRenderer, c);
             ApplyAlphaToRenderer(sideStormRenderer, c);
+            // Ambient Snow.prefab fades with presence too. Its emission is also gated to
+            // 0 outside the zone (ApplySnowBoost), but emission alone leaves in-flight
+            // particles falling for their full 5-9s lifetime — visible as stray snow well
+            // beyond the storm. The alpha fade clears them in lockstep with presence so
+            // the ambient snowfall vanishes with the rest of the storm at the boundary.
+            // Lazy capture handles late inspector wire-up of snowParticles.
+            if (ambientSnowRenderer == null && snowParticles != null)
+                ambientSnowRenderer = snowParticles.GetComponent<ParticleSystemRenderer>();
+            ApplyAlphaToRenderer(ambientSnowRenderer, c);
         }
 
         void ApplyAlphaToRenderer(ParticleSystemRenderer r, Color c)
@@ -591,29 +609,25 @@ namespace SlimeJumping.Mechanisms
 
         // ---- ForceField sync --------------------------------------------------------------
 
+        // Static force field config only (shape/drag/layer). Geometry is NOT derived from
+        // the zone collider — the PolygonCollider2D is purely the on/off trigger. The
+        // field follows the camera and covers the whole viewport (see
+        // ApplyForceFieldToViewport) so ambient Snow.prefab blows sideways across the
+        // entire screen while the slime is inside the zone, not only within the collider.
         void SyncForceFieldGeometry()
         {
             if (snowForceField == null) return;
-            var box = GetComponent<BoxCollider2D>();
-            if (box == null) return;
-
             var ff = snowForceField;
             ff.shape = ParticleSystemForceFieldShape.Box;
-            // endRange=0.5 with localScale=size → field half-extents match the visible
-            // collider bounds (verified in WindZone2D_v2). Without this the field is 2×
-            // too large.
+            // endRange=0.5 with localScale=size → field half-extents = size/2 (verified in
+            // WindZone2D_v2). Without this the field is 2× too large.
             ff.endRange = 0.5f;
-
-            var ffT = ff.transform;
-            if (ffT.parent == transform)
-            {
-                ffT.localPosition = new Vector3(box.offset.x, box.offset.y, 0f);
-                ffT.localRotation = Quaternion.identity;
-                // Z=100 → effectively infinite depth so 3D-noise drifts in Z don't fall
-                // outside the field.
-                ffT.localScale = new Vector3(box.size.x, box.size.y, 100f);
-            }
-
+            // Snow is pushed SIDEWAYS by directionX/Y (wind) — never radially. Zero the
+            // radial gravity/rotation so the field can't suck particles toward its center.
+            // Critical now that the field follows the camera: a non-zero gravity would
+            // read as a gravity well centered on the slime (snow clumping inward).
+            ff.gravity = new ParticleSystem.MinMaxCurve(0f);
+            ff.rotationSpeed = new ParticleSystem.MinMaxCurve(0f);
             ff.multiplyDragByParticleVelocity = false;
             ff.multiplyDragByParticleSize = false;
             ff.drag = new ParticleSystem.MinMaxCurve(snowDrag);
@@ -623,10 +637,36 @@ namespace SlimeJumping.Mechanisms
                 ff.gameObject.layer = layer;
         }
 
+        // Camera-anchored, viewport-sized force field. Driven every LateUpdate from the
+        // same cam/halfW/halfH as the storm strips so the ambient-snow sideways drift is
+        // full-screen, matching the camera-anchored storm particles. coverageMultiplier
+        // margin keeps particles just outside the viewport already drifting before they
+        // scroll into view (no seam at the screen edge on camera motion).
+        void ApplyForceFieldToViewport(Vector3 cam, float halfW, float halfH)
+        {
+            if (snowForceField == null) return;
+            var ffT = snowForceField.transform;
+            ffT.position = new Vector3(cam.x, cam.y, 0f);
+            ffT.rotation = Quaternion.identity;
+            // Target is a WORLD size (viewport units). position/rotation are world too, so
+            // convert to localScale by dividing out the parent's lossyScale — a designer
+            // scaling the storm GameObject then no longer shrinks/grows the field.
+            // Z=100 → effectively infinite depth so Z-noise stays inside.
+            Vector3 parentScale = ffT.parent != null ? ffT.parent.lossyScale : Vector3.one;
+            ffT.localScale = new Vector3(
+                halfW * 2f * coverageMultiplier / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
+                halfH * 2f * coverageMultiplier / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
+                100f / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
+        }
+
         void ApplyForceField()
         {
             if (snowForceField == null) return;
             Vector2 wind = activeSectionAffectsSnowParticles ? currentWindAcceleration : Vector2.zero;
+            // Gate by slime presence so the sideways drift fades in/out with the rest of
+            // the storm as the slime crosses the zone boundary: straight-down fall when
+            // outside, full horizontal blow when inside.
+            wind *= slimePresenceWeight;
             snowForceField.directionX = new ParticleSystem.MinMaxCurve(wind.x);
             snowForceField.directionY = new ParticleSystem.MinMaxCurve(wind.y);
             snowForceField.directionZ = new ParticleSystem.MinMaxCurve(0f);
@@ -679,18 +719,21 @@ namespace SlimeJumping.Mechanisms
             // the baseline uncaptured and the boost a no-op.
             TryCapturePsBaseline(snowParticles, ref snowBaselineCaptured, ref snowBaselineRate, ref snowBaselineRateScalar, ref snowBaselineSizeMultiplier);
 
-            // Boost intensity gated by slime presence — ambient snow returns to its
-            // unmodified baseline when the slime is outside the zone.
-            float gatedIntensity = NormalizedIntensity() * slimePresenceWeight;
-            BoostSnow(snowParticles, snowBaselineCaptured, snowBaselineRateScalar, snowBaselineSizeMultiplier, snowPeakRate, snowPeakSizeMultiplier, gatedIntensity);
+            // intensity drives the calm→peak ramp (rate target + size); presence gates
+            // the whole emission. Outside the zone presence=0 → ambient snow stops
+            // emitting, so it no longer appears as stray snowfall beyond the storm
+            // bounds. Inside-but-calm (presence=1, intensity=0) keeps the unmodified
+            // baseline rate — the wind stopped, not the snow.
+            float intensity = NormalizedIntensity();
+            BoostSnow(snowParticles, snowBaselineCaptured, snowBaselineRateScalar, snowBaselineSizeMultiplier, snowPeakRate, snowPeakSizeMultiplier, intensity, slimePresenceWeight);
         }
 
-        static void BoostSnow(ParticleSystem ps, bool captured, float baseRateScalar, float baseSizeMultiplier, float peakRate, float peakSizeMultiplier, float intensity)
+        static void BoostSnow(ParticleSystem ps, bool captured, float baseRateScalar, float baseSizeMultiplier, float peakRate, float peakSizeMultiplier, float intensity, float presence)
         {
             if (ps == null || !captured) return;
 
             var emis = ps.emission;
-            emis.rateOverTime = new ParticleSystem.MinMaxCurve(Mathf.Lerp(baseRateScalar, peakRate, intensity));
+            emis.rateOverTime = new ParticleSystem.MinMaxCurve(Mathf.Lerp(baseRateScalar, peakRate, intensity) * presence);
 
             var main = ps.main;
             main.startSizeMultiplier = Mathf.Lerp(baseSizeMultiplier, baseSizeMultiplier * peakSizeMultiplier, intensity);
@@ -746,6 +789,7 @@ namespace SlimeJumping.Mechanisms
 
             ApplyTopStrip(cam, halfW, halfH, intensity);
             ApplySideStrip(cam, halfW, halfH, intensity);
+            ApplyForceFieldToViewport(cam, halfW, halfH);
         }
 
         void ApplyTopStrip(Vector3 cam, float halfW, float halfH, float intensity)
@@ -944,28 +988,19 @@ namespace SlimeJumping.Mechanisms
 
         void OnDrawGizmosSelected()
         {
-            var box = GetComponent<BoxCollider2D>();
-            if (box == null) return;
-
-            Color fill = new Color(0.6f, 0.85f, 1f, 0.10f);
-            Color outline = new Color(0.6f, 0.85f, 1f, 0.55f);
-
-            Matrix4x4 old = Gizmos.matrix;
-            Gizmos.matrix = Matrix4x4.TRS(
-                transform.TransformPoint(box.offset),
-                transform.rotation, transform.lossyScale);
-            Gizmos.color = fill;
-            Gizmos.DrawCube(Vector3.zero, box.size);
-            Gizmos.color = outline;
-            Gizmos.DrawWireCube(Vector3.zero, box.size);
-            Gizmos.matrix = old;
+            var poly = GetComponent<PolygonCollider2D>();
+            if (poly == null) return;
+            // Polygon outline is drawn by Unity's own collider gizmo; we only add the
+            // wind-direction arrows, centered on the polygon's bounds.
 
             float magForGizmo = Application.isPlaying ? currentMagnitude : windAccelerationMagnitude;
             float dirForGizmo = Application.isPlaying ? currentDirection : 1f;
             if (magForGizmo < 0.001f) return;
 
-            Vector3 center = transform.TransformPoint(box.offset);
-            Vector3 dir = transform.right * dirForGizmo;
+            Vector3 center = poly.bounds.center;
+            // Wind is always world-X (PhaseWindAcceleration uses ±X), so the arrow must
+            // point along world-X regardless of any Z-rotation on the zone object.
+            Vector3 dir = Vector3.right * dirForGizmo;
             float len = Mathf.Clamp(magForGizmo * 0.1f, 0.5f, 4f);
             Vector3 perp = Vector3.Cross(dir, Vector3.forward).normalized;
 

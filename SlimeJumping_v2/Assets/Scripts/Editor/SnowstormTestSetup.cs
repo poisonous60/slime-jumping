@@ -52,9 +52,12 @@ namespace SlimeJumping.Editor
             stormGo.transform.parent = root.transform;
             stormGo.transform.position = new Vector3(baseX, baseY + zoneHeight * 0.5f, 0f);
 
-            var col = stormGo.AddComponent<BoxCollider2D>();
+            // PolygonCollider2D so designers can reshape the storm zone to non-rectangular
+            // areas. Seeded as a rectangle matching the old box so the test scene is
+            // unchanged until edited.
+            var col = stormGo.AddComponent<PolygonCollider2D>();
             col.isTrigger = true;
-            col.size = new Vector2(zoneWidth, zoneHeight);
+            col.points = RectPoints(zoneWidth, zoneHeight);
 
             var storm = stormGo.AddComponent<Snowstorm2D>();
 
@@ -297,6 +300,19 @@ namespace SlimeJumping.Editor
             var leaf = System.IO.Path.GetFileName(path);
             if (!AssetDatabase.IsValidFolder(parent)) EnsureFolder(parent);
             AssetDatabase.CreateFolder(parent, leaf);
+        }
+
+        static Vector2[] RectPoints(float width, float height)
+        {
+            float hx = width * 0.5f;
+            float hy = height * 0.5f;
+            return new[]
+            {
+                new Vector2(-hx, -hy),
+                new Vector2(hx, -hy),
+                new Vector2(hx, hy),
+                new Vector2(-hx, hy),
+            };
         }
 
         static GameObject CreatePlatform(string name, Transform parent, Vector3 pos, Vector3 scale)

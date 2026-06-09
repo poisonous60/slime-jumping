@@ -22,9 +22,31 @@ namespace SlimeJumping.Settings
         [Range(0.01f, 0.9f)]
         [Tooltip("Asymmetry: cut plane offset off-center, as a fraction of the slime radius. Min 0.01 (NOT 0) so the cut plane never passes through the body center — that guarantees the slime core (dot=0) is never clipped away, so no number of overlapping cuts can erase the blob. Higher = smaller severed piece. ~0.45 ≈ a 20–30% piece.")]
         public float cutOffsetFraction = 0.45f;
-        [Range(0f, 0.9f)]
-        [Tooltip("The bottom band (surface-contact side, -localY) that is NEVER clipped, as a fraction of the slime height. Keeps the slime from visually floating when a cut would remove its ground-contact bottom — only the upper part is cut. 0.3 = bottom 30% always kept.")]
-        public float bottomProtectFraction = 0.3f;
+
+        [Header("Cut shape — Axis-A (instantaneous: open raw tear ↔ surface-tension sealed)")]
+        [Range(0f, 1f)]
+        [Tooltip("sealRatio (Axis-A). 0 = open raw tear (flat sharp cut face, more boundary noise). 1 = surface-tension sealed (rounded bowed cut face, no noise, lip puckers out). The instantaneous SHAPE of the wound, independent of the recovery timeline. The asymmetry stays at all values — this is NOT a uniform shrink.")]
+        public float sealRatio = 0.25f;
+        [Range(0f, 4f)]
+        [Tooltip("How much the cut face bows convex (rounded) at sealRatio=1. 0 = always a flat plane. Scaled by sealRatio in the shader.")]
+        public float cutRoundness = 1.2f;
+        [Range(0f, 0.3f)]
+        [Tooltip("Boundary noise amplitude (OS) at sealRatio=0, for an organic torn edge. Default 0 = a clean smooth curve (no mess). Keep LOW; frozen per cut (no crawling). Faded by sealRatio.")]
+        public float tearAmp = 0f;
+        [Range(0.5f, 8f)]
+        [Tooltip("Boundary noise frequency. Keep LOW (a couple of gentle scallops, not confetti).")]
+        public float tearFreq = 2.5f;
+        [Range(0.02f, 0.6f)]
+        [Tooltip("Surface-tension lip band width (OS, fraction of radius) — the rim band pushed outward (S2 vertex stage). >= ~4 mesh edge lengths to avoid faceting.")]
+        public float lipBand = 0.18f;
+        [Range(0f, 0.3f)]
+        [Tooltip("Surface-tension lip outward magnitude (OS) at sealRatio=1 (S2 vertex stage). Small.")]
+        public float lipMag = 0.06f;
+
+        [Header("Grounding (surface-aware core-foot)")]
+        [Range(0.05f, 0.5f)]
+        [Tooltip("Contact-patch foot kept-band thickness along the contact normal, as a fraction of the mesh half-extent. The cut NEVER removes this foot, so the slime never floats — for ANY cut direction / surface slope (surface-aware, unlike the old mesh-Y guard). Small (~0.2) so it reads as a goo foot, not the old shelf.")]
+        public float footPatch = 0.2f;
 
         [Header("Severed piece — flies off (same gravity as the slime)")]
         [Range(0f, 1f)]
@@ -49,7 +71,7 @@ namespace SlimeJumping.Settings
         [Header("Severed piece — surface-tension round-up (flat sliver → round droplet)")]
         [Tooltip("Final droplet radius as a fraction of the slime radius. The piece is the slime's own blob mesh scaled to this — a genuinely round ball, not a reprojected crescent.")]
         [Range(0.1f, 0.9f)]
-        public float pieceFinalScale = 0.4f;
+        public float pieceFinalScale = 0.65f;
         [Tooltip("Initial flatten along the cut normal at spawn: the round droplet starts squashed to a thin sliver (matches 'just cut'), then un-squashes to a ball. 0.1 = very flat.")]
         [Range(0.02f, 1f)]
         public float pieceFlatten = 0.12f;
@@ -96,15 +118,13 @@ namespace SlimeJumping.Settings
         [Tooltip("Seconds between stain re-stamps during the melt (the stain widens with the puddle).")]
         public float meltStampInterval = 0.12f;
 
-        [Header("Regen timeline — back-loaded per wound (hold → gather → fill)")]
-        [Tooltip("HOLD: the clean flat cut face is held this long before anything heals. Slime is wounded + weak here.")]
-        public float regenHoldDuration = 1.5f;
-        [Tooltip("GATHER: the fresh-goo fill tint ramps up at the wound before the cut starts closing. Brief lead-in to the fill.")]
-        public float regenGatherDuration = 0.4f;
-        [Tooltip("FILL: the cut slowly closes (clip recedes off the mesh) as slime goo wells up to fill the opening. SLOW — the wound should take its time refilling, not snap shut.")]
-        public float regenFillDuration = 2.5f;
-        [Tooltip("0→1 ease of the fill. Ease-in-out reads as goo steadily welling up. Default ease-in-out.")]
-        public AnimationCurve regenFillCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+        [Header("Recovery — Axis-B (continuous, independent of Axis-A; ~20–60s controllable)")]
+        [Tooltip("Total recovery time (seconds). The cut state persists and is controllable for this long, then the wound is fully healed. ~20–60s.")]
+        public float recoveryDuration = 30f;
+        [Tooltip("SHAPE recovery 0→1 over recoveryDuration: drives the cut closing (clip recede), sink unwind, lip relax. Draw 'stays low then rises at the end' for a wound that lingers then quickly seals. MUST reach 1 at t=1.")]
+        public AnimationCurve recoveryCurve = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.7f, 0.15f), new Keyframe(1f, 1f));
+        [Tooltip("LAUNCH-POWER recovery 0→1 over recoveryDuration: drives SplitLaunchMultiplier (and launch-dir bias decay). SEPARATE from the shape curve so the slime can look wounded while already regaining power, or vice versa. Defaults equal to the shape curve.")]
+        public AnimationCurve launchRecoveryCurve = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.7f, 0.15f), new Keyframe(1f, 1f));
 
         [Header("Regeneration look — fresh slime goo wells up to fill the cut (no energy glow)")]
         [ColorUsage(false, false)]
@@ -123,14 +143,23 @@ namespace SlimeJumping.Settings
         [Tooltip("Minimum seconds between two cuts (internal guard against same-frame / double-hazard re-trigger). The blade's own hitCooldown is the primary gate.")]
         public float recutMinInterval = 0.15f;
 
-        [Header("Slice look")]
+        [Header("Slice look — wet cross-section (rim wet → deep dark, cel-quantized)")]
         [ColorUsage(false, false)]
-        [Tooltip("Flat interior color of the cut cross-section (the 'inside' of the slime). Darker than the body so the open cut reads as deep flesh, not a bright fill.")]
+        [Tooltip("DEEP interior color of the cut cross-section (the 'inside' of the slime), shown deep into the wound. Darker than the body so the open cut reads as deep goo.")]
         public Color sliceCapColor = new Color(0.18f, 0.32f, 0.18f, 1f);
+        [ColorUsage(false, false)]
+        [Tooltip("WET RIM color at the cut opening edge — lighter/wetter than the deep color, so the exposed interior reads as gooey jelly, not a flat dark slab.")]
+        public Color sliceCapRimColor = new Color(0.45f, 0.7f, 0.42f, 1f);
+        [Range(0.02f, 1f)]
+        [Tooltip("OS depth over which the cross-section shades from the wet rim color (at the opening) to the deep color (into the wound). Fraction of the slime radius.")]
+        public float sliceCapDepth = 0.35f;
 
-        [Header("Wounded jump power")]
+        [Header("Wounded jump power + feel")]
         [Range(0f, 1f)]
-        [Tooltip("Jump-power multiplier at the moment of the slice (fresh wound). Ramps linearly back to 1 as the wound heals over regenDuration. 1 = no reduction.")]
-        public float woundedJumpMultiplierMin = 0.4f;
+        [Tooltip("Jump-power multiplier at the moment of the slice (fresh wound). Ramps back to 1 via launchRecoveryCurve as the wound heals. 1 = no reduction.")]
+        public float woundedJumpMultiplierMin = 0.5f;
+        [Range(0f, 20f)]
+        [Tooltip("Launch direction bias (degrees) at a fresh wound — the launch veers AWAY from the missing side so a lopsided slime launches lopsided. Decays via launchRecoveryCurve. Small-angle; disabled while on a rope/bamboo/carrier so it never overrides aimed momentum. 0 = straight launch.")]
+        public float launchDirBiasDeg = 6f;
     }
 }

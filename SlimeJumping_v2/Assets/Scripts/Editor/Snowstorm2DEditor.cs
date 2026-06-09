@@ -165,18 +165,19 @@ namespace SlimeJumping.Editor
 
         static Vector2 DefaultShelterSize(Snowstorm2D storm)
         {
-            BoxCollider2D stormBox = storm.GetComponent<BoxCollider2D>();
-            if (stormBox == null) return new Vector2(4f, 3f);
+            Collider2D stormCol = storm.GetComponent<Collider2D>();
+            if (stormCol == null) return new Vector2(4f, 3f);
+            Vector2 worldSize = stormCol.bounds.size;
             return new Vector2(
-                Mathf.Max(1f, stormBox.size.x * 0.25f),
-                Mathf.Max(1f, stormBox.size.y * 0.25f));
+                Mathf.Max(1f, worldSize.x * 0.25f),
+                Mathf.Max(1f, worldSize.y * 0.25f));
         }
 
         static Vector3 DefaultShelterLocalPosition(Snowstorm2D storm)
         {
-            BoxCollider2D stormBox = storm.GetComponent<BoxCollider2D>();
-            return stormBox != null
-                ? new Vector3(stormBox.offset.x, stormBox.offset.y, 0f)
+            Collider2D stormCol = storm.GetComponent<Collider2D>();
+            return stormCol != null
+                ? storm.transform.InverseTransformPoint(stormCol.bounds.center)
                 : Vector3.zero;
         }
 

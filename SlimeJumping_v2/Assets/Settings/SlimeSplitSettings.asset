@@ -14,7 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSplitSettings
   cutNormalJitterDeg: 12
   cutOffsetFraction: 0.45
-  bottomProtectFraction: 0.3
+  sealRatio: 0.25
+  cutRoundness: 1.2
+  tearAmp: 0
+  tearFreq: 2.5
+  lipBand: 0.18
+  lipMag: 0.06
+  footPatch: 0.2
   inheritVelocityFactor: 0.5
   severImpulseMin: 2
   severImpulseMax: 4
@@ -25,7 +31,7 @@ MonoBehaviour:
   spinMinDeg: 0
   spinMaxDeg: 0
   severedMaxAirTime: 4
-  pieceFinalScale: 0.4
+  pieceFinalScale: 0.65
   pieceFlatten: 0.12
   pieceSharpBeat: 0.15
   pieceRoundUpDuration: 0.35
@@ -70,15 +76,55 @@ MonoBehaviour:
   meltStampRadius: 0.45
   meltStampStrength: 0.7
   meltStampInterval: 0.12
-  regenHoldDuration: 1.5
-  regenGatherDuration: 0.4
-  regenFillDuration: 2.5
-  regenFillCurve:
+  recoveryDuration: 30
+  recoveryCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
       time: 0
       value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.7
+      value: 0.15
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  launchRecoveryCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.7
+      value: 0.15
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -103,4 +149,7 @@ MonoBehaviour:
   maxWounds: 3
   recutMinInterval: 0.15
   sliceCapColor: {r: 0.18, g: 0.32, b: 0.18, a: 1}
-  woundedJumpMultiplierMin: 1
+  sliceCapRimColor: {r: 0.45, g: 0.7, b: 0.42, a: 1}
+  sliceCapDepth: 0.35
+  woundedJumpMultiplierMin: 0.5
+  launchDirBiasDeg: 6

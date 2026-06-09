@@ -1,6 +1,6 @@
 # Snowstorm2D (눈폭풍 구간)
 
-스테이지 폭 단위로 깔리는 BoxCollider2D 트리거. 기본값은 Jump King "Stormwall Pass" 식 4-페이즈 사이클로 좌/우 바람이 번갈아 불며, 슬라임이 zone 내부로 들어오면 화면 전체에 storm 비주얼이 fade-in 되고 나가면 fade-out 됨. 필요하면 `sections`로 구간별 고정 바람/무풍을 지정하고, `windShelterAreas`로 실내·벽 뒤처럼 슬라임이 바람 영향을 받지 않는 쉘터를 지정한다. WindZone2D_v2와 별개 컴포넌트 — v2는 단일 정적 바람 의미론, Snowstorm2D는 timer-driven + presence-gated + section override.
+스테이지 폭 단위로 깔리는 PolygonCollider2D 트리거 (zone 범위를 비사각형으로 자유롭게 그릴 수 있음). 기본값은 Jump King "Stormwall Pass" 식 4-페이즈 사이클로 좌/우 바람이 번갈아 불며, 슬라임이 zone 내부로 들어오면 화면 전체에 storm 비주얼이 fade-in 되고 나가면 fade-out 됨. 필요하면 `sections`로 구간별 고정 바람/무풍을 지정하고, `windShelterAreas`로 실내·벽 뒤처럼 슬라임이 바람 영향을 받지 않는 쉘터를 지정한다. WindZone2D_v2와 별개 컴포넌트 — v2는 단일 정적 바람 의미론, Snowstorm2D는 timer-driven + presence-gated + section override.
 
 관련 파일: [Snowstorm2D.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/Snowstorm2D.cs), [SnowstormTestSetup.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/SnowstormTestSetup.cs).
 
@@ -58,10 +58,10 @@ Inspector의 `Wind Shelter Areas` 섹션에는 전용 생성 버튼이 있다.
 | `chargingMultiplier` | 0.2 | Charging 상태 배율 |
 
 ### Visual — Snow ForceField
-WindZone2D_v2와 동일 모델. ambient Snow.prefab을 zone bounds 안에서 가속.
+ambient Snow.prefab을 가로로 미는 box ForceField. **zone collider와 무관 — 매 LateUpdate 카메라 따라가며 viewport 전체(× `coverageMultiplier`) 크기로 리사이즈**. PolygonCollider2D는 on/off 트리거일 뿐이고, 폭풍 안에 들어오면 화면 전체 ambient 눈이 옆으로 흩날린다(존 박스 안에서만이 아니라). drift 강도는 `slimePresenceWeight`로 게이트 → 존 밖은 수직 낙하, 안은 full 횡류로 fade in/out.
 | 필드 | 기본 | 설명 |
 |------|------|------|
-| `snowForceField` | (wire) | 자식 ParticleSystemForceField. OnValidate에서 BoxCollider2D 기준 size/위치 자동 싱크 |
+| `snowForceField` | (wire) | 자식 ParticleSystemForceField. 정적 config(shape/drag/layer)만 OnValidate/OnEnable에서 설정, geometry는 런타임 카메라 viewport 추종. direction = `currentWindAcceleration × presence` |
 | `snowDrag` | 1.5 | linear drag — terminal ≈ `magnitude / snowDrag` |
 
 ### Visual — ambient Snow.prefab boost (옵셔널)
@@ -118,9 +118,11 @@ gravityModifier = 0.6  (configure 시점, 누적 가속)
 - side emission = `peakRate × intensity × presence`
 - post Volume weight = `presence × intensity` (직접 할당)
 - ambient sound volume = `intensity × presence × peakVolume`
-- ambient Snow.prefab boost: `gatedIntensity = intensity × presence`로 lerp
+- ambient Snow.prefab: emission rate = `Lerp(baseRate, peakRate, intensity) × presence`, 렌더러 알파 = `presence` (storm-owned PS와 동일한 MPB fade). zone 밖(presence=0)에선 **emission 0 + 알파 0** → in-flight 입자까지 fade out 되어 storm 범위 밖에 ambient 눈이 안 보임. inside-calm(presence=1, intensity=0)은 baseline rate 그대로 유지 ("바람만 멈춤"). intensity는 calm→peak rate/size 램프만 담당, presence가 전체 게이트.
 
 이전 hard zone-bounds particle cull로 인한 boundary snap 제거. 슬라임 zone 이탈 시 emission 점진 0, 잔존 입자는 lifetime 끝까지 자연 wind-down.
+
+> **이전 버그 (수정됨)**: ambient Snow.prefab의 baseline emission이 presence 게이트 밖에 있어 slime이 zone을 떠나도 220/s로 계속 분출됐다. `SnowCameraEmitter.emitterArea`(카메라 추종 cull 폴리곤)가 그 입자를 얇은 띠로 잘라, storm 범위 밖에서도 눈이 "가끔 나타났다 사라지는" 현상. 위처럼 emission + 알파를 모두 presence로 게이트해 해결.
 
 ### Post-process
 | 필드 | 기본 | 설명 |
@@ -170,12 +172,12 @@ Attached/Charging에서 `slideVelocity`/`crawlVelocity` 영구 채널 적분 →
 - `slimeInside` (트리거 상태)
 - `slimePresenceWeight` (0~1 fade weight)
 
-씬 Gizmo: zone collider AABB + 풍향 화살표 (Application.isPlaying이면 currentMagnitude/Direction 반영, 아니면 정적 windAccelerationMagnitude).
+씬 Gizmo: polygon outline은 Unity 기본 collider gizmo가 그림. Snowstorm2D는 polygon bounds 중심에 풍향 화살표만 추가 (Application.isPlaying이면 currentMagnitude/Direction 반영, 아니면 정적 windAccelerationMagnitude).
 
 ## Setup tool
 
 `SlimeJumping/Mechanism/Setup Snowstorm Test` ([SnowstormTestSetup.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/SnowstormTestSetup.cs)) — 자동 셋업:
-- 기본 zone 40×24 BoxCollider2D 트리거 + Snowstorm2D
+- 기본 zone 40×24 사각 PolygonCollider2D 트리거 + Snowstorm2D (path 편집으로 비사각형 변형 가능)
 - 테스트 플랫폼 (Floor / LaunchStep / MiddlePerch / RightLanding)
 - 자식 SnowForceField (WindForceField layer)
 - 자식 StormParticles_Top + StormParticles_Side (모두 ConfigureStormPs로 동일 정적 traits 적용 — Local sim, lifetime 3-5s, startSize 0.10-0.18, gravity 0.6, Noise 모듈, ExternalForces off, prewarm OFF)
@@ -193,7 +195,7 @@ prewarm은 양 PS 모두 OFF — presence 게이트와 충돌 (씬 시작 시 �
 2. `SnowCameraEmitter.emitterArea` 폴리곤이 좁아 화면 중앙 띠만 보이고 위/아래 잘림
 3. spawn 영역이 viewport 전체라 풍속 강할 때 입자가 즉시 downwind 이탈, 유효 in-screen 밀도 폭락 + 슬라임 점프 시 World sim이라 입자 뒤에 남음
 
-해결: Snowstorm2D가 자체 PS 직접 소유 + Local sim space + 카메라 앵커 + upwind-edge spawn strip. ambient Snow.prefab은 optional 보조로만 wire (스테이지 전반의 baseline snowfall).
+해결: Snowstorm2D가 자체 PS 직접 소유 + Local sim space + 카메라 앵커 + upwind-edge spawn strip. ambient Snow.prefab은 optional 보조로만 wire. **단 emission + 알파를 presence로 게이트**해 zone 안에서만 보임 — 한계 #1(zone 밖 입자 보임)을 게이트로 차단. (stage 전반의 항시 baseline snowfall이 필요하면 Snowstorm2D에 wire하지 말고 Snow.prefab을 독립 배치할 것.)
 
 ### 왜 hard cull이 아니라 presence fade인가
 초기에 zone bounds AABB cull로 zone 밖 입자 즉시 사망. 결과: 슬라임이 zone 경계 통과하면 입자가 boundary에서 snap → 어색. presence weight 게이트로 emission만 fade하고 잔존 입자는 lifetime 끝까지 자연 낙하 → "폭풍이 점차 잦아드는" 느낌.
