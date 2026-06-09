@@ -47,7 +47,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Rolling Disk](features/platforms/rolling-disk.md) — 360° 회전 원형
 - [Pendulum](features/platforms/pendulum.md) — 매달린 진자
 - [Springy Branch](features/platforms/springy-branch.md) — 탄력 나뭇가지
-- [Bamboo](features/platforms/bamboo.md) — 수직 대나무. SpringyBranch 물리 식 + vertical 적용, N-segment collider polyline + single shader-bent cylinder visual (sub-pixel coincident). 기본적으로 visible node frequency를 physics `segmentCount`에 동기화해 보이는 마디/구간 경계가 물리 segment와 일치. 마디 bulge + sheath scar 지오메트리, Quibli-style 2-tone + height gradient color. `BambooSettings.interactionMode`로 기존 TipGrab과 SideReboundV2 전환: V2는 top hanging을 끄고 측면 충돌을 더 크게 휘게 한 뒤, Space charging release 방향을 따라 보너스를 더한다. V2 launch-release 반작용은 전용 접촉 높이 보정 노브를 받아 아래쪽 점프는 덜 흔들리고 위쪽 점프는 더 크게 흔들린다. 대나무 하강 jitter 원인 추적용 `BambooSurfaceJitterDebugger`를 슬라임에 붙여 segment switch / normal jump / carry residual / probe churn을 관측한다.
+- [Bamboo](features/platforms/bamboo.md) — 수직 대나무. SpringyBranch 물리 식 + vertical 적용, N-segment collider polyline + single shader-bent cylinder visual (sub-pixel coincident). 기본적으로 visible node frequency를 physics `segmentCount`에 동기화해 보이는 마디/구간 경계가 물리 segment와 일치. 마디 bulge + sheath scar 지오메트리, Quibli-style 2-tone + height gradient color. `BambooSettings.enableTipGrab` / `enableSideReboundV2` 독립 bool 2개 (예전 상호배타 `interactionMode` enum 제거 — 둘 다 켜면 옆구리 V2 반동 + 꼭대기 tip-grab 동시 동작, 스프링 계수 우선순위 grab>v2>기본). V2는 측면 충돌을 더 크게 휘게 한 뒤 Space charging release 방향을 따라 보너스를 더한다. V2 launch-release 반작용은 전용 접촉 높이 보정 노브를 받아 아래쪽 점프는 덜 흔들리고 위쪽 점프는 더 크게 흔들린다. 대나무 하강 jitter 원인 추적용 `BambooSurfaceJitterDebugger`를 슬라임에 붙여 segment switch / normal jump / carry residual / probe churn을 관측한다.
 - [Deformable Mud](features/platforms/deformable-mud.md) — 진흙/찰흙 소성 변형
 - [Rope](features/platforms/rope.md) — Verlet + 반동 Launch (v1 = sag-based, [v2 = timing-based](features/platforms/rope-v2.md), [v3 = trampoline-coupled](features/platforms/rope-v3.md))
 
@@ -68,7 +68,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Jump Ball](features/mechanisms/jump-ball.md) — 트리거 자동 점프, 보빙 비주얼
 - [Conveyor Belt](features/mechanisms/conveyor-belt.md)
 - [Spike Hazard](features/mechanisms/spike-hazard.md)
-- [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect
+- [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect + 베임 연출(조각 round-up · back-loaded regen · 재절단 stacking · 얼굴 절단)
 - [Turret Hazard](features/mechanisms/turret-hazard.md) — CCTV 확장 사격
 - [Icicle Hazard](features/mechanisms/icicle-hazard.md) — 낙하 고드름 (진동 → 낙하 → 파괴)
 - [Falling Train](features/mechanisms/falling-train.md) — 1회 한정 낙하 기차 (텔레그래프 → 연결부 분리 → 곡선 낙하 → 숏컷)

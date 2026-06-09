@@ -27,7 +27,8 @@ MonoBehaviour:
   carrierDistanceScale: 1
   slamMinHorizontalSpeed: 3
   slamReattachLockout: 0.15
-  interactionMode: 0
+  enableTipGrab: 1
+  enableSideReboundV2: 0
   v2ResponseMode: 0
   v2BendPumpGain: 1.4
   v2BendPumpGainByImpactSpeed:

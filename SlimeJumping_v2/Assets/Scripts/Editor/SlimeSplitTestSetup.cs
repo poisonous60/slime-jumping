@@ -52,7 +52,8 @@ namespace SlimeJumping.Editor
             var so = new SerializedObject(seq);
             so.FindProperty("settings").objectReferenceValue = settings;
             so.FindProperty("chunkMaterial").objectReferenceValue = chunkMat;
-            // proxyMeshOverride / meshScaleSource left null → auto-found from the slime's 3D body mesh.
+            // settings + chunkMaterial are the only serialized fields; the body mesh, face
+            // renderers and SlimeVisual are auto-resolved from the slime at runtime (Begin).
             so.ApplyModifiedProperties();
 
             int wired = 0;
@@ -60,6 +61,9 @@ namespace SlimeJumping.Editor
                 wired += WireHazard(saw, seq);
             foreach (var knife in Object.FindObjectsByType<KnifeHazard>(FindObjectsSortMode.None))
                 wired += WireHazard(knife, seq);
+
+            // Face slice material on eyes + mouth so the face clips with the wound.
+            SlimeFaceSliceSetup.Wire();
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
                 UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());

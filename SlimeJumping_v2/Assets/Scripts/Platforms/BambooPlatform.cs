@@ -147,8 +147,8 @@ namespace SlimeJumping.Platforms
 
         public float CurrentDeflectionDeg => currentAngle;
         public float BambooLength => bambooLength;
-        public bool UsesTipGrab => settings.interactionMode == BambooInteractionMode.TipGrab;
-        public bool UsesSideReboundV2 => settings.interactionMode == BambooInteractionMode.SideReboundV2;
+        public bool UsesTipGrab => settings.enableTipGrab;
+        public bool UsesSideReboundV2 => settings.enableSideReboundV2;
         public float GrabEnterDot => settings.grabEnterDot;
         /// <summary>Multiplier on the charge-power launch component for a tip-grab launch
         /// (the up-the-stalk jump). Read by SlimeController.Launch.</summary>

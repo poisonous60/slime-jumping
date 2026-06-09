@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSplitSettings
   cutNormalJitterDeg: 12
   cutOffsetFraction: 0.45
+  bottomProtectFraction: 0.3
   inheritVelocityFactor: 0.5
   severImpulseMin: 2
   severImpulseMax: 4
@@ -24,6 +25,34 @@ MonoBehaviour:
   spinMinDeg: 0
   spinMaxDeg: 0
   severedMaxAirTime: 4
+  pieceFinalScale: 0.4
+  pieceFlatten: 0.12
+  pieceSharpBeat: 0.15
+  pieceRoundUpDuration: 0.35
+  pieceRoundUpCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   jiggleAmplitude: 0.35
   jiggleFrequency: 9
   jiggleDecay: 3.5
@@ -41,6 +70,37 @@ MonoBehaviour:
   meltStampRadius: 0.45
   meltStampStrength: 0.7
   meltStampInterval: 0.12
-  regenDuration: 2.5
-  sliceCapColor: {r: 0.5, g: 0.75, b: 0.5, a: 1}
-  woundedJumpMultiplierMin: 0.4
+  regenHoldDuration: 1.5
+  regenGatherDuration: 0.4
+  regenFillDuration: 2.5
+  regenFillCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  sliceHealColor: {r: 0.6, g: 0.88, b: 0.55, a: 1}
+  sliceHealIntensity: 0.7
+  sliceHealWidth: 0.3
+  maxWounds: 3
+  recutMinInterval: 0.15
+  sliceCapColor: {r: 0.18, g: 0.32, b: 0.18, a: 1}
+  woundedJumpMultiplierMin: 1

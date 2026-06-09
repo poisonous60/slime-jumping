@@ -95,15 +95,14 @@ namespace SlimeJumping.Controller
             power *= SplitLaunchMultiplier;
             launchOriginAimPower = power;
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
-            // Bamboo tip-grab: launch is a JUMP along the tip-up direction (bend tangent
-            // at the tip), NOT along the swing tangent. Aim is ignored; the base launch
-            // points "off the top of the bent stalk". The bamboo's swing velocity is added
-            // separately as momentum via the carrier inheritance below — so a fast swing
-            // skews the jump sideways, but the base direction stays up-the-stalk and a slow
-            // swing still launches mostly upward instead of flinging flat sideways.
+            // Bamboo tip-grab: the player aims the launch with WASD exactly like a ground
+            // charge — aimOffset already integrates AimInput during Charging — so dir stays
+            // the aim vector computed above. Only the power knob is grab-specific. The
+            // bamboo's swing velocity is still added as momentum via the carrier inheritance
+            // below, so a fast swing skews the aimed jump sideways; with no aim input the
+            // drift (seeded from -surfaceNormal ≈ tip-up) still launches off the top.
             if (currentBambooGrab != null)
             {
-                dir = currentBambooGrab.GetTipUpDirection();
                 power *= currentBambooGrab.GrabLaunchPowerScale;
             }
             TryApplyBambooV2ChargedLaunch(ref dir, ref power);

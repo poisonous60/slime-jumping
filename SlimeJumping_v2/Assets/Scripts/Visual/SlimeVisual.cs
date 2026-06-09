@@ -514,6 +514,10 @@ public class SlimeVisual : MonoBehaviour
         externalCompression = extraScale;
     }
 
+    // Face subtree root (eyes + mouth sprites). SlimeSplitSequence reads its child
+    // SpriteRenderers to clip the face along the same wound planes as the body.
+    public Transform FaceTransform => face;
+
     // Public refs for systems that need to attach decals/effects on the slime visual
     // (e.g. SlimeBurnVisual placing burn marks). body is the legacy 2D sprite root,
     // body3d is the 3D mesh root. Either can be null depending on visual setup;

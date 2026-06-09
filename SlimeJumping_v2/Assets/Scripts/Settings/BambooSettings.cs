@@ -4,12 +4,6 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Settings
 {
-    public enum BambooInteractionMode
-    {
-        TipGrab = 0,
-        SideReboundV2 = 1
-    }
-
     /// <summary>
     /// Single source of truth for bamboo gameplay tuning. BambooPlatform references one of
     /// these assets; every per-stalk tweak that affects feel (spring frequency, damping,
@@ -63,8 +57,10 @@ namespace SlimeJumping.Settings
         [Min(0f)] public float slamReattachLockout = 0.15f;
 
         [Header("Interaction Mode")]
-        [Tooltip("TipGrab keeps the original top hanging behavior. SideReboundV2 disables top grab and turns side impacts into delayed rebound jumps.")]
-        public BambooInteractionMode interactionMode = BambooInteractionMode.TipGrab;
+        [Tooltip("Top hanging grab when the slime lands on the bamboo tip. Independent of Side Rebound V2 — both can be on.")]
+        public bool enableTipGrab = true;
+        [Tooltip("Side impacts bend the stalk into delayed rebound jumps. Independent of Tip Grab — both can be on.")]
+        public bool enableSideReboundV2 = false;
 
         [Header("Side-Rebound V2 - Bend")]
         [Tooltip("How V2 bend and launch values are resolved. Additive uses the constant fields; SpeedCurve evaluates the curves by impact speed or charge power.")]

@@ -5,17 +5,18 @@ using SlimeJumping.Rendering;
 namespace SlimeJumping.Effects
 {
     /// <summary>
-    /// The small severed piece of a sliced slime. Self-contained:
-    ///   1. flies off + falls under the SAME gravity vector as the slime (applied
-    ///      manually, gravityScale 0), wobbling like viscous goo;
-    ///   2. on landing, MELTS — flattens + spreads with its bottom PINNED to the ground
-    ///      surface found by a downward cast (not a uniform shrink, not the snowball-vanish
-    ///      FX); the pin holds the puddle on the floor for the whole melt so it never melts
-    ///      in mid-air or sinks through the ground, and stamps a WorldTrail stain where it
-    ///      melted, so it leaves a mark;
-    ///   3. destroys itself.
-    /// Shader velocity-stretch is pushed via a per-renderer MaterialPropertyBlock
-    /// (never mutates the shared material → no regression on the live slime).
+    /// The small severed piece of a sliced slime — the slime's OWN round blob mesh, spawned
+    /// small. Self-contained:
+    ///   1. at spawn it is SQUASHED to a thin sliver along the cut normal (reads as "just cut
+    ///      off"), then surface-tensions: it un-squashes into a genuinely round goo droplet
+    ///      (clean blob topology, NOT a reprojected crescent) over pieceRoundUpDuration while
+    ///      flying off + falling under the SAME gravity vector as the slime;
+    ///   2. wobbles like viscous goo the whole way;
+    ///   3. on landing, MELTS — flattens + spreads with its bottom PINNED to the ground surface
+    ///      found by a downward cast, stamping a WorldTrail stain where it melted;
+    ///   4. destroys itself.
+    /// Shader velocity-stretch is pushed via a per-renderer MaterialPropertyBlock (never mutates
+    /// the shared material → no regression on the live slime).
     /// </summary>
     [RequireComponent(typeof(Rigidbody2D))]
     public class SlimeChunk : MonoBehaviour
@@ -26,7 +27,7 @@ namespace SlimeJumping.Effects
         private MaterialPropertyBlock mpb;
         private SlimeSplitSettings s;
 
-        private Vector3 baseMeshScale;
+        private Vector3 baseMeshScale;     // the round droplet's rest scale (uniform)
         private Vector3 baseMeshLocalPos;
         private float meshLocalExtentY;    // mesh half-height in its local space (for planted sink)
         private Vector2 gravity;           // slime's gravity vector (m/s²)
@@ -34,6 +35,7 @@ namespace SlimeJumping.Effects
         private float jiggleEnv;
         private float jigglePhase;
         private float airTime;
+        private bool roundUpDone;          // sliver→ball un-squash finished → mesh frame reset upright
 
         private bool melting;
         private float meltTimer;
@@ -58,6 +60,8 @@ namespace SlimeJumping.Effects
             if (rb == null) rb = GetComponent<Rigidbody2D>();
         }
 
+        /// <param name="severDir">The cut-plane normal (world). The droplet is flattened along
+        /// this at spawn — the thin axis of the wedge it came from.</param>
         public void Init(SlimeSplitSettings settings, Vector2 inheritVel, Vector2 severDir, Vector2 gravityVec)
         {
             s = settings;
@@ -78,8 +82,13 @@ namespace SlimeJumping.Effects
                 : 0.5f;
             mpb = new MaterialPropertyBlock();
 
+            // Orient the mesh so its local Y aligns with the cut normal — the round-up then
+            // flattens along Y (= the wedge's thin axis). The blob is symmetric, so this
+            // rotation is invisible; it is reset upright once the droplet is round.
+            Vector2 dir = severDir.sqrMagnitude > 1e-4f ? severDir.normalized : Vector2.up;
+            meshTf.localRotation = Quaternion.FromToRotation(Vector3.up, new Vector3(dir.x, dir.y, 0f));
+
             float imp = Random.Range(s.severImpulseMin, s.severImpulseMax);
-            Vector2 dir = severDir.sqrMagnitude > 1e-4f ? severDir.normalized : Vector2.right;
             rb.linearVelocity = inheritVel * s.inheritVelocityFactor
                               + dir * imp
                               + Vector2.up * s.upwardImpulse;
@@ -113,10 +122,27 @@ namespace SlimeJumping.Effects
                 jigglePhase += dt * s.jiggleFrequency * 2f * Mathf.PI;
                 float j = Mathf.Sin(jigglePhase) * s.jiggleAmplitude * jiggleEnv;
 
-                Vector3 sc = baseMeshScale;
-                sc.x = baseMeshScale.x * (1f + j);
-                sc.y = baseMeshScale.y * (1f - j);
+                // Surface-tension un-squash: flat sliver (along local Y = cut normal) → round
+                // ball. Volume-preserving (the two perpendicular axes expand as Y flattens).
+                float rt = Mathf.Clamp01((airTime - s.pieceSharpBeat) / Mathf.Max(0.001f, s.pieceRoundUpDuration));
+                float rc = (s.pieceRoundUpCurve != null && s.pieceRoundUpCurve.length > 1)
+                    ? s.pieceRoundUpCurve.Evaluate(rt) : rt;
+                float flatY = Mathf.Lerp(s.pieceFlatten, 1f, rc);
+                float perp = 1f / Mathf.Sqrt(Mathf.Max(0.01f, flatY));
+
+                Vector3 sc;
+                sc.x = baseMeshScale.x * perp * (1f + j);
+                sc.y = baseMeshScale.y * flatY * (1f - j);
+                sc.z = baseMeshScale.z * perp;
                 meshTf.localScale = sc;
+
+                // Once round, drop the cut-normal frame so wobble + melt run upright. Seamless
+                // because the droplet is a symmetric ball at this point.
+                if (!roundUpDone && rt >= 1f)
+                {
+                    roundUpDone = true;
+                    meshTf.localRotation = Quaternion.identity;
+                }
 
                 PushVelocityStretch();
             }
@@ -134,10 +160,8 @@ namespace SlimeJumping.Effects
                 if (groundAnchored && meshRenderer != null)
                 {
                     // Pin the VISIBLE puddle's bottom-center to the landing spot on the ground,
-                    // measured from the live world AABB. The chunk mesh's pivot is the slime
-                    // origin (DMC), far from the piece centroid — so scaling slides + lifts the
-                    // visible piece. Re-anchoring from renderer.bounds each frame makes the
-                    // bottom sit EXACTLY on the ground (no float, no sink) and stops the slide.
+                    // measured from the live world AABB, so the bottom sits EXACTLY on the
+                    // ground (no float, no sink) and never slides.
                     Bounds wb = meshRenderer.bounds;
                     Vector3 wp = meshTf.position;
                     wp.x += anchorX - wb.center.x;
@@ -185,7 +209,9 @@ namespace SlimeJumping.Effects
             rb.angularVelocity = 0f;
             rb.bodyType = RigidbodyType2D.Kinematic;
 
-            // Reset any leftover wobble so the bottom-center we measure is the piece at rest.
+            // Reset to an upright, un-wobbled round ball so the melt flattens vertically and the
+            // bottom-center we measure is the piece at rest (handles melting mid-round-up too).
+            meshTf.localRotation = Quaternion.identity;
             meshTf.localScale = baseMeshScale;
             meshTf.localPosition = baseMeshLocalPos;
 

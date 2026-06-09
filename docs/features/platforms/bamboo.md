@@ -226,12 +226,14 @@ Multi probe의 `OutputVelocity` teleport branch도 반드시 `SlimeController.Sn
 
 ## Side-Rebound V2 모드
 
-`BambooSettings.interactionMode = SideReboundV2` 인 bamboo는 기존 절차 cylinder visual, N-segment collider polyline, `BambooBend.shader`를 그대로 사용하지만 tip-grab/hanging 진입을 막는다. 슬라임이 측면으로 부딪히면 bamboo가 더 크게 휜다. 자동 발사는 없고, Space를 눌러 기존 Charging 상태로 들어간 뒤 release할 때 플레이어 aim 방향 그대로 bamboo V2 보너스를 더한다.
+`BambooSettings.enableSideReboundV2 = true` 인 bamboo는 기존 절차 cylinder visual, N-segment collider polyline, `BambooBend.shader`를 그대로 사용한다. 슬라임이 측면으로 부딪히면 bamboo가 더 크게 휜다. 자동 발사는 없고, Space를 눌러 기존 Charging 상태로 들어간 뒤 release할 때 플레이어 aim 방향 그대로 bamboo V2 보너스를 더한다.
+
+> **`enableTipGrab` / `enableSideReboundV2` 는 독립 bool** (예전 `interactionMode` enum 의 상호배타 제거). 둘 다 켜면 한 대나무가 옆구리 충돌엔 V2 반동, 꼭대기 착지엔 tip-grab 으로 동시에 반응한다. 트리거 면이 다르고(side normal vs `dot(normal, gravityUp) ≥ grabEnterDot`) 스프링 계수 선택이 `grabActive > v2Active > 기본` 우선순위라 충돌 없음. `BambooV2Settings.asset` 기본값 = 둘 다 ON.
 
 구현 위치:
 - `BambooPlatform` — V2 여부, side-contact 판정, V2 spring/max deflection, bend pump gain, auto/charged launch 값을 제공.
 - `SlimeController.BambooV2.cs` — landing 순간 side rebound/bonus handle을 arm, charged launch 보너스 적용.
-- `SlimeController.BambooGrab.cs` — `UsesTipGrab` 이 false인 V2 bamboo는 top grab을 만들지 않음.
+- `SlimeController.BambooGrab.cs` — `UsesTipGrab`(=`enableTipGrab`) 이 false면 top grab을 만들지 않음. V2 여부와 독립.
 - `BambooV2Response` — Additive/SpeedCurve 공통 평가 helper.
 
 튜닝 방식은 두 가지다.
@@ -342,7 +344,7 @@ public void ApplyTiltTorque(float inputX, bool isCharging);
 | `grabPumpChargingScale` | 0 | Charging 중 boost multiplier. 기본 0 |
 | `grabCapPenaltyGain` | 5 | Soft cap stiffening 강도 (quartic) |
 | `grabModeCarrierScale` | 1.0 | Tip-grab Launch 시 carrier inheritance(`ω × arm`) 추가 곱셈 |
-| `grabLaunchPowerScale` | 1.0 | Tip-Up Launch 시 charge-power 점프 성분(`tipUp * power`) 곱셈. 위쪽 점프 세기. carrier(swing momentum)와 독립 |
+| `grabLaunchPowerScale` | 1.0 | Tip-grab Launch 시 charge-power 점프 성분(`aim * power`) 곱셈. 발사 세기. carrier(swing momentum)와 독립 |
 | `grabChargeFillScale` | 2.0 | grab 중 charge auto-drift 속도 배율. A/D가 tilt로 가서 aim 입력 없이 drift로만 충전되므로, 평지보다 빠르게 차게 함. >1 = 길게 안 눌러도 빨리 충전 |
 | `grabChargeFullAimTime` | -1 | grab 중 `chargeFullAimTime`(full charge edge 도달 후 auto-launch 까지 grace/유지시간) override. -1 = slime 기본값. 0 = full 되는 즉시 발사. 크게 = swing timing 맞출 hold 시간 ↑ (surface tag 방식) |
 
@@ -359,7 +361,7 @@ finalCarrierVel = ω × arm * VelocityTransferScale * (currentBambooGrab == this
 3. A/D 누름 → Lean 채널이 `grabHoldBendDeg` 만큼 정적 휨 만듦. 슬라임은 tip 고정이라 같이 호 그림
 4. 운동 시작되면 Anti-damping Boost 채널이 잠금 — tip 운동 방향대로 입력 유지 시 매 swing 진폭 누적 증가. 입력 떼면 스프링 복원 + damping 으로 자연 감쇠
 5. Charge 입력 → Charging 진입. Grab anchor 유지. Lean/Boost 두 채널 모두 default 0 으로 mute (입력 키 겹침 회피)
-6. release → Launch. **Tip-Up Launch**: grab 중이면 aim 무시, 기본 발사 방향 = tip-up 축(`GetTipUpDirection`, 휜 장대 끝 위쪽) 점프, 세기 = `power * grabLaunchPowerScale`. 거기에 swing momentum(`ω × arm` carrier, `grabModeCarrierScale`)을 가산 → 느린 swing 은 거의 위로, 빠른 swing 은 이동 방향으로 비스듬히 점프
+6. release → Launch. **Aim-controlled Launch**: grab 중에도 평지 charge 와 동일하게 WASD(AimInput)로 발사 방향 조준. `aimOffset` 이 charging 중 AimInput 을 적분하므로 발사 방향 = aim 벡터, 세기 = `power * grabLaunchPowerScale`. 무입력이면 drift(시드 `-surfaceNormal ≈ tip-up`)로 기본 위쪽 발사. 거기에 swing momentum(`ω × arm` carrier, `grabModeCarrierScale`)을 가산 → 느린 swing 은 조준 방향 거의 그대로, 빠른 swing 은 조준 방향에서 이동 방향으로 비스듬히 skew
 7. Airborne 진입 시 `currentBambooGrab = null`. 다음 attach까지 일반
 
 ### 알려진 한계 / 미해결
