@@ -265,7 +265,7 @@ namespace SlimeJumping.Controller
                     // Probe distance = slimeRadius + a generous skin so a small
                     // bump in surface depth (chord-arc gap, polygon facets) still
                     // counts as "ground present".
-                    float probeDist = settings.slimeRadius + settings.cornerDetachHorizonProbeSkin;
+                    float probeDist = SlimeRadius + settings.cornerDetachHorizonProbeSkin;
                     RaycastHit2D hit = Physics2D.Raycast(projectedCenter, -surfaceNormal, probeDist, settings.groundLayer);
                     // ignoredColliders (post-launch hop, etc.) shouldn't count
                     // as ground for this check — treat them as empty space.

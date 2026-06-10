@@ -206,7 +206,7 @@ namespace SlimeJumping.Controller
                 bool onSnow = false;
                 if (isTouchingSurface)
                 {
-                    Vector2 sample = rb.position - surfaceNormal * settings.slimeRadius;
+                    Vector2 sample = rb.position - surfaceNormal * SlimeRadius;
                     onSnow = cachedSnowField.TryFindFootprintHit(
                         sample, out cachedFootprintStrip, out cachedFootprintVertIdx);
                 }

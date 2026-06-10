@@ -101,15 +101,21 @@ namespace SlimeJumping.Physics
         // Finding 1: preserve last valid normal for deep penetration fallback
         protected Vector2 lastGoodNormal = Vector2.up;
 
-        // --- Cut SHAPE (slime-slice "the cut part is gone") ---
-        // When the slime is cut, SlimeSplitSequence feeds the active cut planes (world). The probe
-        // then collides as the CUT SHAPE via a DIRECTIONAL reach: the slime's extent toward a
-        // surface = the support length of (disk R ∩ cut half-planes) in that direction. Toward the
-        // cut the reach is the cut plane itself (so the slime rests on / sticks by its flat cut
-        // face, no float), away from the cut it is the full radius, and a surface in the removed
-        // region is out of reach (no catch / no phantom stick). The CENTER stays rb.position (no
-        // offset), so there is no transition pop. cutPlaneCount == 0 → Reach == settings.slimeRadius,
-        // byte-for-byte the old circle.
+        // --- Body scale (slime-cut: "a cut slime is a smaller slime") ---
+        // SlimeController pushes its bodyScaleRatio here whenever it changes. Every
+        // radius-derived length in the probes uses EffRadius so collision matches the scaled
+        // CircleCollider2D. 1 = full size, byte-for-byte the original circle.
+        protected float radiusScale = 1f;
+        public void SetRadiusScale(float s) { radiusScale = Mathf.Max(0.05f, s); }
+        protected float EffRadius => settings.slimeRadius * radiusScale;
+
+        // --- Cut SHAPE (directional reach) ---
+        // LEGACY of the cut-plane slice design: with planes set, the probe collides as the cut
+        // shape via a DIRECTIONAL reach (support length of disk R ∩ cut half-planes). The
+        // cut-as-smaller-slime redesign (SlimeController.BodyScale.cs) has NO caller for
+        // SetCutShape, so cutPlaneCount stays 0 and Reach() is identically EffRadius — the
+        // machinery is inert and byte-for-byte the plain circle. Kept because contactReach[]
+        // threads through SelectPrimary / EffectiveNormal / ProjectVelocityAgainstContacts.
         protected readonly Vector3[] cutPlanes = new Vector3[3];  // xy = world unit normal (→ removed side), z = off (world, from center)
         protected int cutPlaneCount;
         public void SetCutShape(Vector3[] planes, int count)
@@ -123,7 +129,7 @@ namespace SlimeJumping.Physics
         // contactNormal — i.e. how far the slime reaches in direction d = -contactNormal.
         protected float Reach(Vector2 contactNormal)
         {
-            float R = settings.slimeRadius;
+            float R = EffRadius;
             if (cutPlaneCount == 0) return R;
             Vector2 d = -contactNormal;
             float h = R;
@@ -163,13 +169,14 @@ namespace SlimeJumping.Physics
             if (other == null) return;
             this.lastGoodNormal = other.lastGoodNormal;
             this.lastGravityUp = other.lastGravityUp;
+            this.radiusScale = other.radiusScale;
         }
 
         public bool CheckSurface(out Vector2 normal, out Collider2D col,
             float distMultiplier, float inputX, Collider2D prevCollider,
             Vector2 gravityUp, Vector2 gravityRight)
         {
-            float radius = settings.slimeRadius;   // broadphase / max reach
+            float radius = EffRadius;   // broadphase / max reach
             float detectRange = settings.surfaceCheckDistance * distMultiplier;
             LayerMask mask = settings.groundLayer;
             Vector2 pos = rb.position;
@@ -565,7 +572,7 @@ namespace SlimeJumping.Physics
         {
             if (surfaceCollider == null) return;
 
-            float radius = settings.slimeRadius;   // max reach (broadphase post-overlap)
+            float radius = EffRadius;   // max reach (broadphase post-overlap)
             float contactSkin = settings.contactSkin;
             Vector2 pos = rb.position;
 
@@ -614,7 +621,7 @@ namespace SlimeJumping.Physics
                 // Reach toward THIS surface = how far the cut shape extends here. Anchoring at the
                 // reach (not the full radius) is what rests the slime on its flat cut face: toward
                 // the cut the reach is the cut plane, so the cut face sits on the surface.
-                float reach = dist > 0.0001f ? Reach(toSlime / dist) : settings.slimeRadius;
+                float reach = dist > 0.0001f ? Reach(toSlime / dist) : EffRadius;
                 // Small-ledge climb: while a passthrough is active, loosen the re-anchor
                 // tolerance by stepHeight so Phase A's "up the slope" push can raise the
                 // slime onto the ledge before Phase B yanks it back to the primary. Without

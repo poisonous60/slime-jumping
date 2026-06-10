@@ -16,7 +16,7 @@ namespace SlimeJumping.Controller
         {
             ignoredColliderList.RegisterOverlapping(
                 rb.position,
-                settings.slimeRadius + settings.launchClearanceThreshold,
+                SlimeRadius + settings.launchClearanceThreshold,
                 settings.groundLayer);
         }
 
@@ -95,20 +95,6 @@ namespace SlimeJumping.Controller
             power *= SplitLaunchMultiplier;
             launchOriginAimPower = power;
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
-
-            // Wounded launch veers toward the kept side (away from the missing mass) — a small
-            // clamped rotation of the aimed dir, decaying as the wound heals. Disabled while on a
-            // rope/bamboo/carrier so it never perturbs inherited momentum (those add velocity below).
-            if (SplitLaunchBiasDeg > 0.01f && SplitLaunchKeptDir.sqrMagnitude > 0.5f
-                && currentRope == null && currentBambooGrab == null
-                && !(carrier != null && carrier.IsOnPlatform))
-            {
-                float maxA = Vector2.Angle(dir, SplitLaunchKeptDir);
-                float cross = dir.x * SplitLaunchKeptDir.y - dir.y * SplitLaunchKeptDir.x;
-                float a = Mathf.Sign(cross) * Mathf.Min(SplitLaunchBiasDeg, maxA) * Mathf.Deg2Rad;
-                float cs = Mathf.Cos(a), sn = Mathf.Sin(a);
-                dir = new Vector2(dir.x * cs - dir.y * sn, dir.x * sn + dir.y * cs);
-            }
             // Bamboo tip-grab: the player aims the launch with WASD exactly like a ground
             // charge — aimOffset already integrates AimInput during Charging — so dir stays
             // the aim vector computed above. Only the power knob is grab-specific. The

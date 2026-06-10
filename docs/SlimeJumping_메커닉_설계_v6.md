@@ -68,7 +68,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Jump Ball](features/mechanisms/jump-ball.md) — 트리거 자동 점프, 보빙 비주얼
 - [Conveyor Belt](features/mechanisms/conveyor-belt.md)
 - [Spike Hazard](features/mechanisms/spike-hazard.md)
-- [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect + [Slime Split](features/mechanisms/slime-split.md)(베임=진짜 모양변화: 방향별 reach로 충돌/부착/접지 — 잘린 면으로 앉음·붙음, 제거영역 안 걸림 · 곡선단면+wet+lip 비주얼 · 2축 회복 · 조각 round-up · 재절단 stacking)
+- [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect + [Slime Split](features/mechanisms/slime-split.md)(잘림=작아진 둥근 슬라임: collider.radius 실제 축소(BodyScale) — 작아진 크기로 충돌·부착·앉음 · 비주얼 스프링 출렁 뭉침(출렁임 튜닝) · 손실 부피만큼 조각 사출(sliver→droplet→melt) · heal=크기 재성장 · 공중 셀프 분열 API(2단 점프 연료) · 지속 단면/클립 없음)
 - [Turret Hazard](features/mechanisms/turret-hazard.md) — CCTV 확장 사격
 - [Icicle Hazard](features/mechanisms/icicle-hazard.md) — 낙하 고드름 (진동 → 낙하 → 파괴)
 - [Falling Train](features/mechanisms/falling-train.md) — 1회 한정 낙하 기차 (텔레그래프 → 연결부 분리 → 곡선 낙하 → 숏컷)

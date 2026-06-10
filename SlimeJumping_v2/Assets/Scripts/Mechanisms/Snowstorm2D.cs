@@ -98,6 +98,10 @@ namespace SlimeJumping.Mechanisms
         [Min(0.1f)]
         [SerializeField] private float snowPeakSizeMultiplier = 1.8f;
 
+        [Header("Visual — Stage Snow Swap")]
+        [Tooltip("Existing stage-wide snow PS (e.g. the always-on Snow.prefab covering the whole stage) that should fade OUT while the slime is inside this zone, so the stage's ambient snowfall and the storm visuals SWAP rather than stack. Inverse of slimePresenceWeight: full snow outside the zone, off inside. Emission is gated to baseline×(1−presence) and renderer alpha to (1−presence) so in-flight flakes clear in lockstep. Restored to baseline on disable. Distinct from snowParticles above, which is a presence-GATED boost target shown only INSIDE the zone.")]
+        [SerializeField] private ParticleSystem[] suppressedSnowParticles;
+
         [Header("Visual — Storm-owned Particles")]
         [Tooltip("Snowstorm-owned top-strip PS — spawns above the viewport, particles fall into view. Local sim space anchored to the camera. Covers the upper diagonal half of the viewport during wind (top-left → bottom-right at +X wind).")]
         [SerializeField] private ParticleSystem stormParticles;
@@ -211,6 +215,14 @@ namespace SlimeJumping.Mechanisms
         private float snowBaselineRateScalar;
         private float snowBaselineSizeMultiplier;
 
+        // Stage-snow swap baselines. Each suppressed PS's emission rate is captured so the
+        // inverse-presence gate scales from the real baseline; the full MinMaxCurve is
+        // retained for mode-safe restore on disable, mirroring the snow-boost capture.
+        private bool suppressedBaselinesCaptured;
+        private ParticleSystem.MinMaxCurve[] suppressedBaselineRates;
+        private float[] suppressedBaselineRateScalars;
+        private ParticleSystemRenderer[] suppressedSnowRenderers;
+
 
         void Reset()
         {
@@ -268,6 +280,7 @@ namespace SlimeJumping.Mechanisms
         {
             SyncForceFieldGeometry();
             CaptureSnowBaselines();
+            CaptureSuppressedSnowBaselines();
             ConfigureStormForFade();
         }
 
@@ -308,6 +321,21 @@ namespace SlimeJumping.Mechanisms
                 if (stormMpb == null) stormMpb = new MaterialPropertyBlock();
                 ApplyAlphaToRenderer(ambientSnowRenderer, Color.white);
             }
+            // Restore the stage snow PS so a disabled storm doesn't leave the existing
+            // always-on snowfall stuck suppressed (emission + alpha) — it must resume full
+            // snowfall everywhere once this zone is gone.
+            if (suppressedBaselinesCaptured && suppressedSnowParticles != null)
+            {
+                if (stormMpb == null) stormMpb = new MaterialPropertyBlock();
+                for (int i = 0; i < suppressedSnowParticles.Length; i++)
+                {
+                    ParticleSystem ps = suppressedSnowParticles[i];
+                    if (ps == null) continue;
+                    var emis = ps.emission;
+                    emis.rateOverTime = suppressedBaselineRates[i];
+                    ApplyAlphaToRenderer(suppressedSnowRenderers[i], Color.white);
+                }
+            }
         }
 
         void Update()
@@ -317,6 +345,7 @@ namespace SlimeJumping.Mechanisms
             AdvancePhase(dt);
             ApplyForceField();
             ApplySnowBoost();
+            ApplySuppressedSnow();
             ApplyPostVolume();
             ApplyAmbient();
         }
@@ -364,6 +393,17 @@ namespace SlimeJumping.Mechanisms
             if (ambientSnowRenderer == null && snowParticles != null)
                 ambientSnowRenderer = snowParticles.GetComponent<ParticleSystemRenderer>();
             ApplyAlphaToRenderer(ambientSnowRenderer, c);
+
+            // Stage snow swap: fade the existing always-on snowfall OUT as presence rises —
+            // inverse of the storm fade-in — so in-flight flakes clear in lockstep with the
+            // emission gate (ApplySuppressedSnow). Lazy-capture guards late inspector wire-up.
+            if (!suppressedBaselinesCaptured) CaptureSuppressedSnowBaselines();
+            if (suppressedSnowRenderers != null)
+            {
+                Color keepColor = new Color(1f, 1f, 1f, 1f - slimePresenceWeight);
+                for (int i = 0; i < suppressedSnowRenderers.Length; i++)
+                    ApplyAlphaToRenderer(suppressedSnowRenderers[i], keepColor);
+            }
         }
 
         void ApplyAlphaToRenderer(ParticleSystemRenderer r, Color c)
@@ -746,6 +786,49 @@ namespace SlimeJumping.Mechanisms
             emis.rateOverTime = baselineRate;
             var main = ps.main;
             main.startSizeMultiplier = baseSizeMultiplier;
+        }
+
+        // ---- Stage snow swap -------------------------------------------------------------
+        //
+        // The existing stage-wide ambient snow (a SEPARATE always-on Snow.prefab) should
+        // hand the screen over to the storm while the slime is inside the zone, instead of
+        // both snowfalls stacking. Driven by the SAME slimePresenceWeight that fades the
+        // storm IN, but inverted, so the two cross-fade: full stage snow outside, off
+        // inside. Emission gate (here) + renderer alpha fade (ApplyStormAlpha) so in-flight
+        // flakes clear too, matching how the ambient/storm particles fade.
+
+        void CaptureSuppressedSnowBaselines()
+        {
+            if (suppressedBaselinesCaptured || suppressedSnowParticles == null) return;
+            int n = suppressedSnowParticles.Length;
+            suppressedBaselineRates = new ParticleSystem.MinMaxCurve[n];
+            suppressedBaselineRateScalars = new float[n];
+            suppressedSnowRenderers = new ParticleSystemRenderer[n];
+            for (int i = 0; i < n; i++)
+            {
+                ParticleSystem ps = suppressedSnowParticles[i];
+                if (ps == null) continue;
+                suppressedBaselineRates[i] = ps.emission.rateOverTime;
+                suppressedBaselineRateScalars[i] = ExtractRateScalar(ps.emission.rateOverTime);
+                suppressedSnowRenderers[i] = ps.GetComponent<ParticleSystemRenderer>();
+            }
+            suppressedBaselinesCaptured = true;
+        }
+
+        void ApplySuppressedSnow()
+        {
+            // Lazy capture handles inspector wire-up after OnEnable, same as ApplySnowBoost.
+            CaptureSuppressedSnowBaselines();
+            if (!suppressedBaselinesCaptured || suppressedSnowParticles == null) return;
+
+            float keep = 1f - slimePresenceWeight; // outside zone: 1 → stage snow on; inside: 0 → off
+            for (int i = 0; i < suppressedSnowParticles.Length; i++)
+            {
+                ParticleSystem ps = suppressedSnowParticles[i];
+                if (ps == null) continue;
+                var emis = ps.emission;
+                emis.rateOverTime = new ParticleSystem.MinMaxCurve(suppressedBaselineRateScalars[i] * keep);
+            }
         }
 
         float NormalizedIntensity()

@@ -12,15 +12,107 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9413a2a5fb0bad247b5823c1b66ddc5e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.SlimeSplitSettings
+  cutVolumeFraction: 0.3
+  selfSplitVolumeFraction: 0.25
   cutNormalJitterDeg: 12
-  cutOffsetFraction: 0.45
-  sealRatio: 0.25
-  cutRoundness: 1.2
-  tearAmp: 0
+  recutMinInterval: 0.15
+  bodyScaleSpringK: 60
+  bodyScaleSpringDamping: 7
+  cutHoldDuration: 1
+  closeDuration: 1
+  closeBodyCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  closeSealCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  gatherAmount: 1.1
+  gatherCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.35
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  cutRoundnessMax: 0
+  tearAmp: 0.05
   tearFreq: 2.5
   lipBand: 0.18
   lipMag: 0.06
-  footPatch: 0.2
+  sliceHealColor: {r: 0.6, g: 0.88, b: 0.55, a: 1}
+  sliceHealIntensity: 0.7
+  sliceHealWidth: 0.3
+  sliceCapColor: {r: 0.18, g: 0.32, b: 0.18, a: 1}
+  sliceCapRimColor: {r: 0.45, g: 0.7, b: 0.42, a: 1}
+  sliceCapDepth: 0.35
   inheritVelocityFactor: 0.5
   severImpulseMin: 2
   severImpulseMax: 4
@@ -31,7 +123,6 @@ MonoBehaviour:
   spinMinDeg: 0
   spinMaxDeg: 0
   severedMaxAirTime: 4
-  pieceFinalScale: 0.65
   pieceFlatten: 0.12
   pieceSharpBeat: 0.15
   pieceRoundUpDuration: 0.35
@@ -76,7 +167,7 @@ MonoBehaviour:
   meltStampRadius: 0.45
   meltStampStrength: 0.7
   meltStampInterval: 0.12
-  recoveryDuration: 30
+  recoveryDuration: 5
   recoveryCurve:
     serializedVersion: 2
     m_Curve:
@@ -90,19 +181,10 @@ MonoBehaviour:
       inWeight: 0
       outWeight: 0
     - serializedVersion: 3
-      time: 0.7
-      value: 0.15
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
       time: 1
       value: 1
-      inSlope: 0
-      outSlope: 0
+      inSlope: 2
+      outSlope: 2
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
@@ -143,13 +225,5 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  sliceHealColor: {r: 0.6, g: 0.88, b: 0.55, a: 1}
-  sliceHealIntensity: 0.7
-  sliceHealWidth: 0.3
-  maxWounds: 3
-  recutMinInterval: 0.15
-  sliceCapColor: {r: 0.18, g: 0.32, b: 0.18, a: 1}
-  sliceCapRimColor: {r: 0.45, g: 0.7, b: 0.42, a: 1}
-  sliceCapDepth: 0.35
-  woundedJumpMultiplierMin: 1
-  launchDirBiasDeg: 6
+  regrowPopKick: 0.4
+  woundedJumpMultiplierMin: 0.9

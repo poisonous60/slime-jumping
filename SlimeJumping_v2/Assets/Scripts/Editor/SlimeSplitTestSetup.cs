@@ -56,6 +56,20 @@ namespace SlimeJumping.Editor
             // renderers and SlimeVisual are auto-resolved from the slime at runtime (Begin).
             so.ApplyModifiedProperties();
 
+            // Body-scale spring (slosh) tuning lives in the same settings asset — wire the
+            // visual to it so the displayed size springs instead of snapping.
+            var visual = slime.GetComponentInChildren<SlimeVisual>(true);
+            if (visual != null)
+            {
+                var vso = new SerializedObject(visual);
+                var sp = vso.FindProperty("splitSettings");
+                if (sp != null)
+                {
+                    sp.objectReferenceValue = settings;
+                    vso.ApplyModifiedProperties();
+                }
+            }
+
             int wired = 0;
             foreach (var saw in Object.FindObjectsByType<SawBladeHazard>(FindObjectsSortMode.None))
                 wired += WireHazard(saw, seq);
@@ -93,6 +107,53 @@ namespace SlimeJumping.Editor
             Vector2 entry = slime.Velocity.sqrMagnitude > 0.5f ? slime.Velocity : Vector2.right * 8f;
             seq.Begin(slime, entry);
             Debug.Log("[SlimeSplitTest] Split triggered.");
+        }
+
+        // Mid-air self-split (double-jump fuel): ejects a piece downward and shrinks the body.
+        // The recoil impulse is gameplay's job, so this menu only shows the volume/visual side.
+        [MenuItem("SlimeJumping/Effects/Trigger Self Split Now (Play Mode)")]
+        public static void TriggerSelfSplitNow()
+        {
+            if (!Application.isPlaying)
+            {
+                Debug.LogWarning("[SlimeSplitTest] Enter Play Mode first, then trigger.");
+                return;
+            }
+            var slime = Object.FindFirstObjectByType<SlimeController>();
+            var seq = Object.FindFirstObjectByType<SlimeSplitSequence>();
+            if (slime == null || seq == null)
+            {
+                Debug.LogError("[SlimeSplitTest] Need a SlimeController and a SlimeSplitSequence in the scene (run Setup first).");
+                return;
+            }
+            seq.BeginSelfSplit(slime, Vector2.down);
+            Debug.Log("[SlimeSplitTest] Self split triggered.");
+        }
+
+        // Movement-regression check at a fixed small size, bypassing the split sequence and
+        // heal timeline entirely: force the physics ratio and play — crawl/launch/wall/ceiling
+        // should all behave, just smaller.
+        [MenuItem("SlimeJumping/Effects/Body Scale 0.6 (Play Mode)")]
+        public static void ForceBodyScaleSmall() => ForceBodyScale(0.6f);
+
+        [MenuItem("SlimeJumping/Effects/Body Scale 1.0 (Play Mode)")]
+        public static void ForceBodyScaleFull() => ForceBodyScale(1f);
+
+        private static void ForceBodyScale(float ratio)
+        {
+            if (!Application.isPlaying)
+            {
+                Debug.LogWarning("[SlimeSplitTest] Enter Play Mode first.");
+                return;
+            }
+            var slime = Object.FindFirstObjectByType<SlimeController>();
+            if (slime == null)
+            {
+                Debug.LogError("[SlimeSplitTest] No SlimeController in the scene.");
+                return;
+            }
+            slime.SetBodyScale(ratio);
+            Debug.Log($"[SlimeSplitTest] BodyScale forced to {ratio:F2}.");
         }
 
         // DynamicMeshCutter reads CPU mesh data at runtime, which requires Read/Write

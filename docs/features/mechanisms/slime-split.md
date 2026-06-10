@@ -1,251 +1,129 @@
-# Slime Split — 베임 = 진짜 모양 변화
+# Slime Split — 잘림 = 작아진 둥근 슬라임
 
-블레이드(Saw/Knife)에 베이면 슬라임은 **잘린 모양 그 자체가 된다 — 렌더·오클루전·충돌·부착·접지 전부.**
-제거된 부분은 "없는 것"이다. 이 문서는 전체 아키텍처 / 수학 / 통합지점 / 폐기된 접근 / 튜닝 / 회귀안전을
-기록한다.
+> **2026-06-10 전면 재설계.** 이전 "reach 컷 + 셰이더 클립 단면" 구조(이 문서의 구버전)와
+> 같은 날 그 위에 얹은 품질 스택(A 한 몸 클립 / B 모션 wobble / C goo 단면)은 **전부 폐기**.
+> 유저가 평면 단면 실루엣 자체를 기각("안 귀엽다") — 컷 평면을 어떻게 그리든 답이 없었다.
+> 폐기 경위·실패 모드는 [slime-cut-redesign-brief.md](slime-cut-redesign-brief.md) 참조.
+
+블레이드(Saw/Knife)에 베이거나 공중에서 스스로 분열하면 슬라임은 **부피를 잃고
+출렁이며 다시 둥글어진 작은 슬라임**이 된다. 잘린 단면이라는 지속 상태가 없다 —
+지속 상태는 그냥 "작고 동그란 슬라임"이고, heal은 크기 재성장이다.
 
 - 상위: [saw-knife-hazard.md](saw-knife-hazard.md) (해저드 본체 + SliceEffect)
-- 관련: [../slime/stunned.md](../slime/stunned.md), [../infra/external-velocity-two-channel.md](../infra/external-velocity-two-channel.md)
+- 관련: [../slime/stunned.md](../slime/stunned.md)
 
 ---
 
-## 1. 요구사항 (설계 인터뷰로 정련된 것)
-
-1. **잘림은 진짜 모양 변화.** "겉보기 연출"이 아니다. 제거된 부분은 모든 판정에서 없다:
-   - 안 뜬다(구처럼 떠 보이면 안 됨).
-   - 잘린 데서 **안 걸린다**(없는 부분에 물리가 걸려 멈추면 안 됨).
-   - 잘린 쪽으로 **안 붙는다**(없는 부분이 벽붙기 판정 내면 안 됨).
-   - **잘린 면으로 닿고 붙는다**(잘린 평면 = 진짜 슬라임 표면 → 지면/벽에 그 면으로 접지·부착).
-   - 지형에 가렸을 때 흰색 오클루전 실루엣도 컷 반영.
-2. **20–60s 지속, 조작 가능.** 잘린 채로 벽/천장/슬로프 붙어 다니고 차지·런치까지 한다.
-3. **두 직교 축**:
-   - Axis-A `sealRatio`: 한 프레임의 **모양**(열린 샤프 컷 ↔ 표면장력 봉합). 회복과 무관.
-   - Axis-B 회복: **연속**, 디자이너 곡선으로 모양/파워 따로 회복.
-4. **goo답게.** 직선 칼자국이 아니라 곡선 단면 + 바깥 입술 + 젖은 속.
-5. **회귀 0.** 안 잘린 평소엔 byte-for-byte 동일.
-6. 떨어져나간 조각(`SlimeChunk`)은 기존대로 유지.
-
----
-
-## 2. 핵심 모델 — 방향별 reach (support function)
-
-콜라이더는 `CircleCollider2D` 그대로 두되, **surface probe가 컷 모양으로 충돌**하게 만든다.
-폴리곤 콜라이더(probe 전면 재작성)도, 내접원(점접촉+offset 버그)도 아니다.
-
-**slime center는 rb.position 고정.** 바뀌는 것은 *어떤 표면을 향한 슬라임의 도달거리(reach)*뿐이다:
+## 1. 비전 (유저 확정, 2026-06-10)
 
 ```
-reach(d) = (disk 반경 R ∩ 모든 cut 반평면) 의 방향 d 로의 support 길이
+잘리기 전          잘린 직후(출렁)        정착 상태
+   ●●●●●            ●●●●●
+  ●●●●●●●          ●●●●●●●        ●●●●
+  ●● ● ●●●   →     ●● ● ●●   →    ●● ● ●
+  ●●●●●●●          ~~~~~~~        ●●●●●
+   ●●●●●          (출렁이며 뭉침)   (작고 동그람)
 ```
 
-`SurfaceProbe.Reach(contactNormal)` ( [SurfaceProbe.cs](../../../SlimeJumping_v2/Assets/Scripts/Physics/SurfaceProbe.cs) ):
+- 단면/클립/cap 없음. 잘린 부분은 진짜 조각으로 날아가고, 남은 몸은 작은 둥근 슬라임.
+- 2단 점프(공중 셀프 분열) 트로프와 일치: 슬라임 분열 = 작아짐.
+- face는 body 자식이라 몸과 같이 스케일 → **튜닝해둔 face 비율이 모든 크기에서 유지**(귀여움 보존).
 
-```
-d = -contactNormal          // contactNormal = 표면→슬라임. 슬라임이 표면을 향해 뻗는 방향 = -그것
-h = R                       // disk
-각 cut plane i (n_i = 제거쪽 단위법선, off_i > 0 = 중심→컷선 거리):
-    dn = dot(d, n_i)
-    if (dn > 0 && R*dn > off_i):                       // d가 제거쪽을 향하고, 컷이 실제로 도달을 제한할 때만
-        planar = off_i*dn + sqrt(R²-off_i²)*sqrt(1-dn²)  // 컷 평면 위에서의 support
-        h = min(h, planar)
-reach = max(h, R*0.1)        // 극단 컷에서 0 방지
-```
+## 2. 아키텍처 — 3층
 
-직관:
-- **컷 쪽으로** (d·n>0) → reach = 컷 평면까지 → 슬라임이 **잘린 면으로 낮게 앉음**. (바닥컷이면 reach(아래)=off → 중심이 지면+off, 잘린 면이 지면에 닿음.)
-- **수직/반대쪽** → reach = full R.
-- **제거영역** → 그쪽 표면은 reach 밖 → contact 안 생김 → 안 걸림/안 붙음.
-- **off → R** (컷이 메워짐) → reach → R → full circle 복귀.
+### 2.1 물리: BodyScale (`SlimeController.BodyScale.cs`)
 
-수치 검증(R=0.5, 바닥컷 n=down off=0.225): floor 0.225 / 천장 0.5 / 벽 0.5 / 45°→floor 0.475 / uncut 0.5. ✓
+물리 진실은 스칼라 하나. `SetBodyScale(ratio)` / `BodyScaleRatio`(1 = 풀사이즈, `MinBodyScale=0.25` 안전 하한).
 
-**왜 offset 없이 reach만?** 내접원은 콜라이더를 kept쪽으로 옮겨(offset) 갓 잘린 순간 콜라이더가 떠
-detect 실패 → airborne 지속 버그를 냈다. reach는 중심을 안 옮기므로 전환 pop/airborne이 없다. 슬라임은
-잘린 직후 잘린 깊이만큼 **가라앉아** 잘린 면으로 다시 앉는다(= "잘린 만큼 아래로 들어간다").
+- `SlimeRadius` 프로퍼티 = `settings.slimeRadius × bodyScaleRatio` (**effective 반경**)로 전환.
+  CircleCollider2D 반경 즉시 반영 + `SurfaceProbe.SetRadiusScale` 푸시.
+- 반경 파생 길이 전부 effective 추종: probe broadphase/reach/depenetration(`EffRadius`),
+  CCD CircleCast, 로프 락, 대나무 그랩 앵커, 코너 호라이즌, launch clearance,
+  IgnoredColliderList, snow 발밑 샘플. 외부 시스템(ClothField/TautLine/GravityField/Spike/SnowField)은
+  radius 라이브 read라 자동 적응.
+- **작아진 슬라임이 진짜 그 크기로 충돌·부착·앉음.** 땅 위에서 자랄 땐 콜라이더가 프레임당
+  미세 확장 → 일반 depenetration이 밀어올림. 특수처리 0.
+- 회귀: ratio=1이면 모든 식이 기존과 동일.
 
-### 2.1 probe 통합 (변환된 모든 지점)
+### 2.2 비주얼: 스케일 스프링 (`SlimeVisual` + `SlimeVisualSettings`)
 
-`CheckSurface`에서 contact별 `contactReach[i] = Reach(contactNormals[i])`를 1회 채우고, 상수 radius를
-쓰던 per-contact 지점을 전부 이걸로 교체. **broadphase(OverlapCircle)는 R(max) 유지** — 멀리 있는
-콜라이더를 누락하지 않기 위해.
+표시 스케일이 물리 ratio를 **underdamped 스프링**(WaterZone_v2 수식: Hooke + damping,
+semi-implicit Euler, dt 클램프)으로 추적:
 
-| 위치 | 변환 |
+- 컷 = 물리 ratio 계단 하락 → 스프링이 오버슛하며 **출렁이며 뭉침**. 추가로
+  `bodyScaleCutKick` × 손실량의 안쪽 속도 킥 — 깊은 컷일수록 크게 출렁.
+- heal = 물리 ratio 완만 상승 → 스프링이 팝 없이 따라 성장.
+- 적용: bulk scale/offset에 균일 곱(body 2D + body3d, body3d는 Z 포함 3축).
+  velStr 빼기도 같은 비율로 스케일(접합부 오차 방지).
+- **튜닝 (출렁임 정도, 유저 노출)**: `bodyScaleSpringK`(빠르기, ω≈√k),
+  `bodyScaleSpringDamping`(2√k = 임계감쇠; 낮을수록 출렁), `bodyScaleCutKick` —
+  **`SlimeSplitSettings`에 위치** (SlimeVisual이 `splitSettings` 참조로 읽음, 미배선 시 스냅).
+- **face 명시 스케일**: face는 body의 형제(`SlimeVisual/Face`)라 body 스케일이 안 닿음 —
+  `UpdateFaceOffset`에서 `faceRestScale × displayedBodyScale` 직접 적용 + drift 오프셋도 같이 축소.
+  → face 비율이 모든 크기에서 유지.
+
+### 2.3 이벤트: `SlimeSplitSequence` (재작성)
+
+- `Begin(slime, entryVelocity)` — saw/knife 컷. 진입 속도에 수직(지터)으로 조각 사출.
+  부피 `cutVolumeFraction`(현재 부피의 f) 손실:
+  **조각 반경 = R·f^⅓, 본체 ratio ×= (1-f)^⅓** (부피 보존, 구 가정).
+- `BeginSelfSplit(slime, ejectDir)` — 공중 셀프 분열(2단 점프 연료).
+  `selfSplitVolumeFraction` 손실, 조각은 ejectDir로. **반동 임펄스는 게임플레이 호출자 몫.**
+- 조각 = 기존 `SlimeChunk` 그대로 (자기 블롭 메쉬, sliver flatten → 표면장력 round-up →
+  낙하 → melt + WorldTrail 얼룩). 크기만 손실 부피와 일치하도록 변경.
+- **과도기 (유저 확정: 동시 다층, 비대칭)**: HOLD(`cutHoldDuration`) — 풀사이즈 + 부피-정확
+  깊이(구면 cap 부피식 Newton 풀이)의 진짜 평평한 단면. → CLOSE(`closeDuration`) — **3레이어
+  동시 진행, 각자 곡선**:
+  - **L1 상처 덮임** (`closeSealCurve`): 클립 평면이 깊이→표면 밖으로 후퇴(단면이 가장자리부터
+    점으로 닫힘) + 표면장력 입술(`lipBand/lipMag`) + 거친 찢김 페이드(`tearAmp`) + 닫히는
+    가장자리에 새살 goo 띠(`sliceHealColor/Intensity/Width`). 도밍은 `cutRoundnessMax`(기본 0).
+  - **L2 비대칭 정착** (`gatherAmount/gatherCurve`): 몸(비주얼)이 잘린 면 쪽으로 끌려갔다
+    봉합되며 재중심 — 반대쪽 살이 흘러와 덮는 느낌. 콜라이더는 중심 유지.
+  - **L3 작은 구** (`closeBodyCurve`): 물리 반경이 곡선 따라 램프(비주얼-충돌 괴리 없음),
+    비주얼 스프링이 그 위에서 출렁.
+  평면 OS 변환은 (live 회전 × rest scale × displayedBodyScale) 참조행렬 — 회전·축소 보정(월드
+  고정+닫힘), squash/stretch 비보정(한 몸 변형). 닫히면 `_SliceCount=0` 영구.
+- **재성장 (유저 확정: 조용한 균일 + 마지막 뿅)**: `recoveryCurve` 램프는 조용히, 완주 순간
+  `regrowPopKick`이 스프링에 바깥 킥 — 한 번 출렁이며 풀사이즈 선언.
+- heal: 단일 타임라인. `recoveryDuration` 동안 `recoveryCurve`로 ratio → 1,
+  `launchRecoveryCurve`로 `SplitLaunchMultiplier` → 1 (크기와 점프력 독립 곡선).
+  재절단은 현재 ratio에서 다시 깎고 타이머 리셋 — 자연 스태킹.
+- 회귀: idle일 때 아무것도 안 건드림. `OnDestroy` 시 ratio/multiplier 복원.
+
+## 3. 폐기된 것 (이번 재설계에서 제거)
+
+| 제거 | 비고 |
 |---|---|
-| `SelectPrimary` active 판정 | `dist <= contactReach[i] + skin` |
-| `SelectPrimary` 연속/타/deepest pen (3곳) | `contactReach[i] - dist` |
-| `EffectiveNormal` 가중 | `contactReach[i] + fullBand - dist` |
-| `ProjectVelocityAgainstContacts` 가중 | `contactReach[i] + fullBand - dist` |
-| `SnapToSurface` Phase A 잔여penetration | `Reach(d/dist) - dist` |
-| `SnapToSurface` Phase B 앵커 | `pos = closest + n*Reach(n)` (잘린 면으로 앉음) |
-| `SingleContactSurfaceProbe.DepenetratePass` | `Reach(toSlime/dist) - dist` |
-| `MultiContactSurfaceProbe` push 3경로 | `Reach(...) - dist`, depth<=0 skip |
+| `SetSplitCutPlanes` / `ApplySplitCollisionShape` / cut-plane 충돌 | probe의 directional reach 기계(`SetCutShape`/`Reach`)는 호출자 0인 inert 상태로 잔존 (SelectPrimary에 엮여 있어 제거 리스크 > 이득) |
+| 셰이더 클립 푸시 전체 (`_SlicePlaneOS`/`SliceCap`/`_SliceWobble`/heal tint/face WS clip) | 셰이더 파일(`SlimeSlice.hlsl` 등)은 잔존하나 `_SliceCount=0` 영구 no-op |
+| launch 방향 bias (`SetSplitLaunchBias`) | 작아진 슬라임은 lopsided가 아님 |
+| 설정 필드: cutOffsetFraction, sealRatio, cutRoundness, tear/lip, slice look 색상군, cut wobble군, maxWounds, pieceFinalScale | `SlimeSplitSettings` 정리. 기존 asset의 해당 직렬화 값은 무시됨 |
+| 유지 | `SplitLaunchMultiplier`(점프력 회복), `SlimeChunk` 전체, recovery 곡선 2종, recutMinInterval |
 
-`cutPlaneCount==0` → `Reach`가 첫 줄에서 `return R` (부동소수 연산 0) → 모든 지점이 상수 R로 환원
-→ **byte-for-byte 미컷과 동일**.
+§9 폐기 목록(IExternalController 분할, 내접원 콜라이더, visual-sink, DMC 등)은 구버전 문서/브리프 참조.
 
-### 2.2 데이터 흐름 / 타이밍
+## 4. 테스트
 
-```
-SlimeSplitSequence.LateUpdate(order 110)         SlimeController.FixedUpdate
-  컷 평면(world 2D: n.x, n.y, off) 계산   ──push──▶  SetSplitCutPlanes(저장)
-                                                     DecideProbeMode()
-                                                     ApplySplitCollisionShape() → probe.SetCutShape
-                                                     UpdateSurfaceContact()  ← reach 사용
-```
+- `SlimeJumping/Effects/Setup Slime Split Test` — 씬 와이어링 (기존).
+- `Trigger Split Now (Play Mode)` — 블레이드 컷.
+- `Trigger Self Split Now (Play Mode)` — 공중 분열 (조각 아래로, 반동 없음 — 비주얼/부피만).
+- `Body Scale 0.6 / 1.0 (Play Mode)` — 시퀀스 우회하고 물리 ratio 고정. **이동 회귀 체크용**:
+  작은 크기로 크롤/런치/벽/천장/슬로프가 전부 동작해야 함.
+- 진단: `SlimeSplitJitterProbe`(read-only) 잔존.
 
-- 컷 평면 off는 **메쉬 비율 → 월드** 변환: `off = (dispOffset / extentOS) * slimeRadius`. 비주얼 메쉬와
-  콜라이더의 스케일 차이를 타지 않음(probe의 R과 같은 단위).
-- 적용은 **DecideProbeMode 직후** → 모드 스왑된 새 probe도 첫 CheckSurface 전에 모양을 받음(별도
-  TransferShape 불필요).
-- **1프레임 lag**: SSS LateUpdate→다음 FixedUpdate. 갓 잘린 첫 1프레임만 full circle — **히트 스턴이
-  가림**, 허용(문서화).
+## 5. 튜닝 표면
 
----
+전부 `SlimeSplitSettings` (한국어 헤더로 섹션 정리):
+[컷—부피] cutVolumeFraction/selfSplitVolumeFraction/jitter/recutMinInterval ·
+[컷—출렁임] bodyScaleSpringK/Damping/CutKick ·
+[컷—잘린 면] cutHoldDuration/capVanishScale/transitionMaxDuration/cap 색 3종 ·
+[조각] 사출/round-up/jiggle/melt/얼룩 군 ·
+[회복] recoveryDuration + 곡선 2종, woundedJumpMultiplierMin.
+SlimeVisual은 `splitSettings` 참조 필요(Setup 메뉴가 자동 와이어링).
 
-## 3. 비주얼
+## 6. 알려진 트레이드오프 / 미해결
 
-### 3.1 셰이더 데이터 / include 구조
-- **[SlimeSliceData.hlsl](../../../SlimeJumping_v2/Assets/Art/Shader/SlimeSliceData.hlsl)** (신규) — 모든
-  slice uniform의 **단독 소유**(`#ifndef` 가드) + `SliceSignedDist`. `SlimeBody_QuibliDeformInject.hlsl`
-  **첫 줄로 hoist**(SlimeDeform보다 먼저) → ShadowCaster 포함 모든 deform 패스가 심볼 해결.
-  `SlimeSlice.hlsl`도 include(가드로 no-op). 정점 lip과 fragment clip이 **`SliceSignedDist`를 공유**.
-- `_SliceCount==0` → 전 함수 no-op = 회귀 0.
-
-### 3.2 곡선 단면 + 노이즈 (`SliceSignedDist`)
-```
-d = dot(osPosRest, n) - off                          // 평면 base (==기존)
-d += (cutRoundness * seal) * dot(perp, perp)          // seal로 볼록하게 휨(둥근 단면)
-d += (tearAmp * (1-seal)) * frozenNoise(osPosRest)    // 찢긴 경계(기본 0, 저주파, 시간항 없음=안 기어다님)
-```
-seal↑ → 둥글고 매끈, seal↓ → 평평하고(샤프) 약간 찢김.
-
-### 3.3 wet 단면 (`SliceCap`, fragment, back-face)
-opening의 back-face를 평평한 검정 대신 **rim(젖은 밝음)→deep(어두움)** 으로 셰이딩, 셀 3밴드.
-`dmin = min |SliceSignedDist|` → `lerp(rim, deep, dmin/capDepth)`.
-
-### 3.4 정점 lip (`SlimeDeform.hlsl` stage 6)
-kept쪽 rim 밴드(`d∈[-lipBand,0]`)를 **normalOS 따라 바깥 볼록**으로 밀어 표면장력 입술 형성:
-```
-bump = smoothstep(-lipBand,0,d) * step(d,0) * saturate(seal)
-deformedOS += normalOS * bump * lipMag
-normalOS    = normalize(normalOS + cutNormal * bump * lipMag * 4)   // analytic 노멀 틸트(셀 ramp가 둥글게)
-```
-finite-diff 아님(셀 ramp에서 노이즈 → 기어다니는 밴드). `_SliceCount==0` no-op. (폐기된 SliceDome가
-저폴리 흰 spike였던 건 노멀 미재계산 + 무한 dome 때문 — 여기선 얇은 밴드 + analytic 노멀.)
-
-### 3.5 얼굴
-[SlimeFaceSlice.shader](../../../SlimeJumping_v2/Assets/Art/Shader/SlimeFaceSlice.shader) — 눈/입을 world-plane
-배열로 동일 절단. 가드 비활성(완전 컷). sink는 콜라이더 reach가 처리하므로 **별도 face transform sink 없음**.
-
----
-
-## 4. 두 직교 축 (회복)
-
-`SlimeSplitSequence.Update`:
-```
-tn          = saturate(timer / recoveryDuration)
-healVisual  = recoveryCurve.Evaluate(tn)        // 모양 회복
-healLaunch  = launchRecoveryCurve.Evaluate(tn)  // 파워 회복 (별도 곡선)
-dispOffset  = lerp(offsetStart, offsetEnd, healVisual)   // 컷이 메쉬 밖으로 후퇴
-SplitLaunchMultiplier = lerp(woundedJumpMultiplierMin, 1, healLaunch)   // freshest wound 기준
-retire when timer>=dur && healVisual>=.999 && healLaunch>=.999
-```
-- Axis-A(`sealRatio`)는 timer 함수 아님 — 모양과 회복 독립.
-- 기본 곡선 back-loaded("오래 유지 → 막판 회복"). 디자이너가 둘 다 그림.
-- stacking: 재절단 = 새 wound(최대 3), 초과 시 가장-많이-회복된 wound evict.
-
----
-
-## 5. 조작 feel (Tier 2)
-- **런치 파워↓**: `SplitLaunchMultiplier` (위 healLaunch로 회복).
-- **런치 방향 bias**: kept쪽(`-Σ woundN2D`)으로 small-angle 회전. `deg = launchDirBiasDeg * launchBiasFactor`,
-  `launchBiasFactor = (1-minJump)/(1-woundedJumpMultiplierMin)`. **rope/bamboo/carrier(IsOnPlatform) 시 비활성**
-  (관성 상속 안 흔듦). aim/power 항에만 적용. [SlimeController.Launch.cs](../../../SlimeJumping_v2/Assets/Scripts/Controller/SlimeController.Launch.cs)
-- **CoM offset은 폐기** — `rb`가 FreezeRotation + 모션 전부 analytic + torque 0 → `centerOfMass` 무효
-  (코드 grep 확인). 비대칭 접지/부착은 reach가 자연 제공.
-
----
-
-## 6. 파일 맵
-
-| 파일 | 역할 |
-|---|---|
-| `Physics/SurfaceProbe.cs` | `Reach()` + `contactReach[]` + `SetCutShape/ClearCutShape` + 모든 per-contact reach 치환 |
-| `Physics/Single/MultiContactSurfaceProbe.cs` | DepenetratePass / push 경로 reach 치환 |
-| `Controller/SlimeController.cs` | FixedUpdate에 `ApplySplitCollisionShape()` 호출(DecideProbeMode 직후) |
-| `Controller/SlimeController.Split.cs` (partial) | `SetSplitCutPlanes`/`ApplySplitCollisionShape`/`SetSplitLaunchBias`/`SplitLaunchMultiplier` |
-| `Controller/SlimeController.Launch.cs` | 런치 방향 bias 적용 |
-| `Effects/SlimeSplitSequence.cs` | wound 리스트, 컷 평면/2축/lip·cap MPB push, 내접원 아님 |
-| `Effects/SlimeChunk.cs` | 떨어져나간 조각(불변) |
-| `Settings/SlimeSplitSettings.cs` | 튜닝 SO |
-| `Art/Shader/SlimeSliceData.hlsl` | slice uniform 단독 소유 + `SliceSignedDist` |
-| `Art/Shader/SlimeSlice.hlsl` | fragment clip/cap/heal |
-| `Art/Shader/SlimeDeform.hlsl` | 정점 deform stage 6 = lip |
-| `Art/Shader/SlimeFaceSlice.shader` | 얼굴 컷 |
-
----
-
-## 7. 튜닝 (`SlimeSplitSettings.asset`)
-
-| 헤더 | 필드 | 의미 |
-|---|---|---|
-| Cut | `cutNormalJitterDeg`, `cutOffsetFraction` | 컷 평면 각 지터 / 중심offset(=조각 크기, 코어보존 위해 >0) |
-| Cut shape (A) | `sealRatio` | 0 열린샤프 ↔ 1 둥근봉합 |
-| | `cutRoundness` | seal=1에서 단면 휨 정도 |
-| | `tearAmp`/`tearFreq` | 경계 노이즈(기본 0, 저주파) |
-| | `lipBand`/`lipMag` | 표면장력 입술 밴드폭/돌출(정점) |
-| Recovery (B) | `recoveryDuration` | 회복 총시간(~20–60s) |
-| | `recoveryCurve` | 모양 회복 곡선 |
-| | `launchRecoveryCurve` | 파워 회복 곡선(별도) |
-| Slice look | `sliceCapColor`/`sliceCapRimColor`/`sliceCapDepth` | 단면 deep/wet rim/깊이 |
-| | `sliceHealColor`/`sliceHealIntensity`/`sliceHealWidth` | 점액 차오름 fill |
-| Jump+feel | `woundedJumpMultiplierMin` | 갓 잘림 런치 파워(기본 0.5) |
-| | `launchDirBiasDeg` | 런치 방향 bias 최대각 |
-| 조각/melt/wobble/stacking | (불변) | `pieceFinalScale`/melt/`maxWounds`/`recutMinInterval` 등 |
-
----
-
-## 8. 회귀 안전
-- `_SliceCount==0` → fragment + 정점 lip 전부 no-op. `cutPlaneCount==0` → probe `Reach==slimeRadius`로
-  완전 동일(직접 수치 검증).
-- 공유 `Mat_SlimeBody3D_Quibli`/`SlimeIcosphere`/`SlimeVisual` 핵심 미변경. body/face MPB는 instance
-  MPB(공유 머티리얼 안 건드림). 조각(`SlimeChunk`)은 `sharedMaterial` 직접 쓰고 MPB 없음 → 새 uniform이
-  안 샘.
-- `SlimeController` 코어 미수정 — Split partial에만 추가(CLAUDE.md 규약).
-- 코어 보존 불변식: `off>0`이라 중심(dot=0)은 어느 컷도 제거 못 함 → 블롭 안 사라짐(비치명).
-
----
-
-## 9. 폐기된 접근 (다시 만들지 말 것)
-
-| 접근 | 폐기 이유 |
-|---|---|
-| `IExternalController` FALL/REGEN (2개 실조각 분리) | 슬라임 장악, 과복잡 (2026-06-06 이전) |
-| layered 비주얼 + `_SliceBottomGuard` (mesh-OS-y 30%) | 밑면만 안 잘려 **shelf** 어색 + OS-y라 벽/천장서 엉뚱한 밴드 보호(surface-aware 아님) |
-| **내접원 콜라이더** (kept쪽 offset+축소) | 점접촉 + 갓 잘린 순간 콜라이더가 떠 **airborne 지속 버그**, 잘린 *면*에 못 앉음 |
-| visual-sink (메쉬만 아래로) | 한 점만 닿음(기울면 떠 보임), 이동 물리와 호환 불명, 잘린 면 부착 안 됨 |
-| contact-filter만 (원 콜라이더 유지 + 제거쪽 contact 무시) | 안 붙긴 하나 잘린 *면*으로 못 앉음(공중 부유 가능) |
-| 폴리곤 콜라이더 (A) | probe 전체(5-step/slide/corner/ledge)가 원 가정 → 통째 재작성, 고위험 |
-| CoM offset | FreezeRotation+analytic+torque 0 → 관측 효과 0 (무효) |
-| conform / foot guard / 3-phase regen(hold→gather→fill) | reach가 접지 해결 / 단일 곡선으로 대체 |
-
-→ **현재**: 방향별 reach(중심 고정) + 곡선단면+wet+lip + 2축.
-
----
-
-## 10. 검증
-- C# + 셰이더 컴파일 클린(`ShaderUtil.ShaderHasError==False`).
-- `Reach()` 수치 검증(§2).
-- **audit PASS** ([code-audit-reviewer]) — 잡아서 고친 것:
-  1. `SurfaceProbe` Step3 deepest-pen이 상수 radius → `contactReach[i]` (컷측 contact 오선택).
-  2. launch bias carrier 게이트 `carrier==null`(항상 false→bias 영영 안 켜짐) → `carrier.IsOnPlatform`.
-  3. 죽은 `TransferShapeFrom` 제거.
-
-## 11. 테스트
-메뉴 `SlimeJumping/Effects/Setup Slime Split Test` → Play → `Trigger Split Now`. 확인:
-1. 바닥컷 시 **잘린 면으로 낮게 앉음**(airborne X).
-2. 잘린 면으로 지면/벽 **부착**.
-3. 제거영역 **안 걸림/안 붙음**.
-4. **미컷 이동 불변**(점프/벽타기/슬로프).
-5. 단면 **둥근 lip + wet 속**.
-연속 호출 시 stacking. `Scripts/Editor/SlimeSplitTestSetup.cs`, `SlimeFaceSliceSetup.cs`.
+- launch power·로프 sag는 크기 무관(상수) — 작은 슬라임도 같은 점프력.
+  플레이 느낌 보고 `SplitLaunchMultiplier` 외 추가 스케일 여부 결정.
+- probe skin류(contactSkin 등)는 절대값 유지 — ratio 0.6 수준에선 문제없을 것으로 예상, 회귀 메뉴로 확인.
+- 메쉬 월드 Y 톱니 떨림(브리프 §4)은 컷과 무관한 비주얼 파이프라인 이슈로 잔존 — 별도 진단 건.

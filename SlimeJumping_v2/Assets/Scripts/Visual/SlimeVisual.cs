@@ -9,6 +9,9 @@ public class SlimeVisual : MonoBehaviour
     [SerializeField] private SlimeController slimeController;
     [SerializeField] private SlimeVisualSettings settings;
     [SerializeField] private SlimeSettings slimeSettings;
+    // Slime-cut tuning (body-scale spring lives there with the rest of the cut feel).
+    // Null-safe: without it the displayed scale snaps to the physics ratio (no slosh).
+    [SerializeField] private SlimeSplitSettings splitSettings;
     [SerializeField] private CircleCollider2D slimeCollider;
     [SerializeField] private Transform body;
     // Sibling root of the 3D mesh subtree. Lives at Slime/SlimeVisual3d (next
@@ -55,6 +58,31 @@ public class SlimeVisual : MonoBehaviour
     // Offset pipeline
     private Vector2 smoothedOffset;
     private Vector2 offsetVelocity;
+
+    // Body scale (slime-cut). The physics BodyScaleRatio steps down instantly on a cut and
+    // ramps back up while healing; the displayed ratio chases it through an underdamped
+    // spring (WaterZone_v2-style Hooke + damping) so the body visibly sloshes as it gathers
+    // into a smaller round blob, and grows back without popping. 1 = rest, multiplies the
+    // whole bulk scale/offset uniformly (face is a child of body, so its tuned proportion
+    // to the body survives every size).
+    private float displayedBodyScale = 1f;
+    private float bodyScaleSpringVel;
+    private Vector3 faceRestScale = Vector3.one;
+
+    // Pulled by SlimeSplitSequence to keep the transient cut-face clip glued to the
+    // sloshing displayed size (the flat face closes exactly as the body rounds up).
+    public float DisplayedBodyScale => displayedBodyScale;
+
+    // Cut-transition layer 2 (asymmetric gather): SlimeSplitSequence pushes a WORLD-space
+    // offset each frame during CLOSE — the body visually migrates toward the cut face while
+    // the collider stays centered, so the far side reads as flowing in to cover the wound.
+    // Zeroed by the sequence when the transition ends.
+    private Vector2 cutGatherWorld;
+    public void SetCutGatherOffset(Vector2 worldOffset) => cutGatherWorld = worldOffset;
+
+    // One-shot kick to the body-scale spring (e.g. the regrow-complete "pop"). Positive =
+    // outward overshoot.
+    public void AddBodyScaleImpulse(float velocity) => bodyScaleSpringVel += velocity;
 
     // Impact (C-2)
     private float impactTimer = -1f;
@@ -175,7 +203,11 @@ public class SlimeVisual : MonoBehaviour
         transformRestLossyScaleY = transform.lossyScale.y;
         // Capture the inspector-set face position as the rest baseline. Done in Start
         // (before any LateUpdate) so UpdateFaceOffset's per-frame writes don't taint it.
-        if (face != null) faceRestLocalPosition = face.localPosition;
+        if (face != null)
+        {
+            faceRestLocalPosition = face.localPosition;
+            faceRestScale = face.localScale;
+        }
         // The 3D mesh now lives on a sibling subtree (Slime/SlimeVisual3d/...)
         // rather than under the 2D body. Walk that subtree to cache the
         // renderer + filter. Stays null if body3d isn't wired, in which case
@@ -242,6 +274,27 @@ public class SlimeVisual : MonoBehaviour
         Vector2 targetOff = sag + lean + chargePush;
         smoothedOffset = SmoothDampV2(smoothedOffset, targetOff, ref offsetVelocity, settings.offsetSmoothTime);
 
+        // Body scale (slime-cut): an underdamped spring chases the physics ratio (semi-implicit
+        // Euler, dt clamped so an editor hitch can't blow it up). During CLOSE the physics ramps
+        // along closeBodyCurve, so the visible shrink is that curve with goo lag; the natural
+        // overshoot at the ramp's end is the settle slosh. springK/damping tune both.
+        {
+            float physScale = slimeController.BodyScaleRatio;
+            if (splitSettings == null)
+            {
+                displayedBodyScale = physScale;
+                bodyScaleSpringVel = 0f;
+            }
+            else
+            {
+                float sdt = Mathf.Min(Time.deltaTime, 0.05f);
+                bodyScaleSpringVel += (-splitSettings.bodyScaleSpringK * (displayedBodyScale - physScale)
+                                       - splitSettings.bodyScaleSpringDamping * bodyScaleSpringVel) * sdt;
+                displayedBodyScale += bodyScaleSpringVel * sdt;
+                displayedBodyScale = Mathf.Clamp(displayedBodyScale, 0.1f, 1.5f);
+            }
+        }
+
         // Visual clearance clamp (prevent penetration at corners)
         Vector2 appliedOffset = smoothedOffset;
         Vector2 appliedScale = finalScale;
@@ -296,6 +349,14 @@ public class SlimeVisual : MonoBehaviour
             }
         }
 
+        appliedScale *= displayedBodyScale;
+        appliedOffset *= displayedBodyScale;
+
+        // Cut gather (world units, already shaped by the sequence's curve) — applied after
+        // the body-scale multiply so its magnitude is exactly what the sequence computed.
+        if (cutGatherWorld.sqrMagnitude > 1e-10f)
+            appliedOffset += (Vector2)transform.InverseTransformVector(cutGatherWorld);
+
         var bulkScale    = new Vector3(appliedScale.x, appliedScale.y, 1f);
         var bulkPosition = new Vector3(appliedOffset.x, appliedOffset.y, 0f);
         body.localScale    = bulkScale;
@@ -317,10 +378,13 @@ public class SlimeVisual : MonoBehaviour
             // NOT applied here; the shader's volume-preserving stretch (5b in
             // SlimeDeform.hlsl) handles it along world velocity direction.
             // This avoids the diagonal-ball issue caused by axis-aligned scale.
+            // velStr was summed into appliedScale before the body-scale multiply, so its
+            // subtraction here must scale by the same ratio. Z (depth) shrinks uniformly
+            // with the body-scale ratio — bulkScale.z stays 1 for the 2D sprite.
             var bulkScale3D = new Vector3(
-                bulkScale.x - smoothedVelStr.x,
-                bulkScale.y - smoothedVelStr.y,
-                bulkScale.z);
+                bulkScale.x - smoothedVelStr.x * displayedBodyScale,
+                bulkScale.y - smoothedVelStr.y * displayedBodyScale,
+                bulkScale.z * displayedBodyScale);
             // Compose surface alignment (body.localRotation) over designer's rest
             // rotation (body3dRestRotation). For p in mesh-local:
             //   p_final = surfaceRot * (restRot * p_mesh) = (surfaceRot * restRot) * p_mesh.
@@ -524,6 +588,10 @@ public class SlimeVisual : MonoBehaviour
     // SlimeBurnVisual prefers body3d if present.
     public Transform Body => body;
     public Transform Body3d => body3d;
+    // body3d's rest localScale captured in Start. SlimeSplitSequence pulls the world cut
+    // plane back through (live rotation × REST scale) so the rendered cut counter-rotates
+    // with the body (world-fixed orientation) but rides the live squash/stretch scale.
+    public Vector3 Body3dRestScale => body3dRestScale;
 
     private void ApplyExternalFaceOffset()
     {
@@ -1034,9 +1102,13 @@ public class SlimeVisual : MonoBehaviour
         currentFaceOffset = Vector2.SmoothDamp(
             currentFaceOffset, target, ref faceVelocity, settings.faceSmoothTime);
 
-        Vector2 finalFacePos = (Vector2)body.localPosition + currentFaceOffset;
+        // Face is a SIBLING of body (Slime/SlimeVisual/Face), so the body-scale multiply on
+        // body.localScale never reaches it — scale it explicitly so the tuned face-to-body
+        // proportion survives every size, and shrink the drift offset with it.
+        Vector2 finalFacePos = (Vector2)body.localPosition + currentFaceOffset * displayedBodyScale;
         face.localPosition = new Vector3(finalFacePos.x, finalFacePos.y, face.localPosition.z);
         face.localRotation = Quaternion.identity;
+        face.localScale = faceRestScale * displayedBodyScale;
     }
 
     // --- Blink (unchanged from C-1) ---

@@ -95,7 +95,7 @@ namespace SlimeJumping.Controller
         {
             Vector2 tip = bamboo.GetTipWorldPos();
             Vector2 tipUp = bamboo.GetTipUpDirection();
-            return tip + tipUp * settings.slimeRadius;
+            return tip + tipUp * SlimeRadius;
         }
 
         /// <summary>

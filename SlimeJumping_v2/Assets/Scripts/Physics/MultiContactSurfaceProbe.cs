@@ -60,7 +60,7 @@ namespace SlimeJumping.Physics
             rejectedCount = 0;
 
             bool hasNearby = false;
-            float maxDist = settings.slimeRadius + lastDetectRange;
+            float maxDist = EffRadius + lastDetectRange;
             float maxDistSq = maxDist * maxDist;
             float dedupeDot = settings.surfaceProbeDedupeDot;
 
@@ -89,7 +89,7 @@ namespace SlimeJumping.Physics
 
         protected override bool DepenetratePass(ref Vector2 pos)
         {
-            float radius = settings.slimeRadius;   // broadphase / max reach
+            float radius = EffRadius;   // broadphase / max reach
             float skin = settings.depenetrationSkin;
             LayerMask mask = settings.groundLayer;
             float dedupeDot = settings.surfaceProbeDedupeDot;
@@ -311,7 +311,7 @@ namespace SlimeJumping.Physics
             // ProjectVelocityAgainstContacts skips its clip and the controller exempts
             // this collider from the teleport CCD. closest == the clamped vertex.
             bool lowLedge = clamped && settings.surfaceProbeSmoothSmallLedges
-                && IsSmallLedgeVertex(col, closest, settings.slimeRadius);
+                && IsSmallLedgeVertex(col, closest, EffRadius);
             MergeOrAddContact(col, normal, dist, clamped, lowLedge, dedupeDot, firstNewIdx);
         }
 

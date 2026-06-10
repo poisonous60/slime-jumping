@@ -72,6 +72,17 @@ ambient Snow.prefab을 가로로 미는 box ForceField. **zone collider와 무�
 | `snowPeakRate` | 1800 | peak intensity 시 절대 emission rate |
 | `snowPeakSizeMultiplier` | 1.8 | peak 시 baseline 위 상대 size 배율 |
 
+### Visual — Stage Snow Swap (기존 스테이지 눈 교체)
+스테이지 전반에 항시 깔려 있는 **별도** 눈 PS(예: 스테이지 전역에 배치된 [Snow.prefab](../../../SlimeJumping_v2/Assets/Prebs/VFX/Snow.prefab) 인스턴스, `SnowCameraEmitter` 포함)를 `suppressedSnowParticles` 배열에 wire하면, 슬라임이 zone 안에 있는 동안 그 눈이 **fade-out**된다. storm 비주얼이 presence로 fade-IN 하는 것과 정확히 반대 → 둘이 **교체(cross-fade)**되어 눈이 겹쳐 두 배로 쌓이지 않음. zone 밖에선 스테이지 눈 그대로, 안에선 꺼짐.
+
+`snowParticles`(presence-GATED 부스트, zone 안에서만 보임)와 구분되는 별개 필드 — 이쪽은 zone 밖에서 평소 풀로 켜져 있다가 안에서 꺼지는 항시-눈.
+
+| 필드 | 기본 | 설명 |
+|------|------|------|
+| `suppressedSnowParticles` | empty | zone 진입 시 끌 기존 스테이지 눈 PS 배열 |
+
+게이트 모델: emission rate = `baseline × (1 − slimePresenceWeight)`, 렌더러 알파 = `1 − slimePresenceWeight` (storm/ambient와 동일한 MPB `_BaseColor`/`_Color`/`_TintColor` fade). 알파까지 같이 내려야 in-flight 입자(눈 lifetime 5-9s)도 lockstep으로 사라져 깔끔히 교체됨. baseline은 OnEnable lazy capture (전체 MinMaxCurve 보존, mode-safe), OnDisable에 emission + 알파 모두 복원 → zone 사라지면 스테이지 눈 풀로 재개.
+
 ### Visual — Storm-owned PS pair (top + side)
 Snowstorm2D 직속 자식 ParticleSystem 2개 — `stormParticles` (top-strip) + `sideStormParticles` (upwind-side-strip). **카메라 앵커 Local sim** — 매 LateUpdate에 PS transform=카메라 위치, simulationSpace=Local로 입자가 viewport에 묶임 → 슬라임 빠른 점프에도 입자 안 뒤처짐.
 

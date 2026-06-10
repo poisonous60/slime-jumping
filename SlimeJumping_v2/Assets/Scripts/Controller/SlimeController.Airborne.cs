@@ -66,7 +66,7 @@ namespace SlimeJumping.Controller
                     && Vector2.Dot(surfaceNormal, gravityUp) < 0f)
                 {
                     Vector2 ropeContact = surfaceCollider.ClosestPoint(rb.position);
-                    rb.position = ropeContact + gravityUp * settings.slimeRadius;
+                    rb.position = ropeContact + gravityUp * SlimeRadius;
                     surfaceNormal = gravityUp;
                     surfaceTangent = new Vector2(-surfaceNormal.y, surfaceNormal.x);
                 }

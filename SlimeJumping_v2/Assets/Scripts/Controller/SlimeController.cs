@@ -89,7 +89,9 @@ namespace SlimeJumping.Controller
         public float StickDeccelTimer => stickDeccelTimer;
         public float SlideRampTimer => slideRampTimer;
         public float Gravity => settings.gravity;
-        public float SlimeRadius => settings.slimeRadius;
+        // Effective (body-scaled) radius — the slime's actual current size. Shrinks when cut,
+        // regrows while healing. See SlimeController.BodyScale.cs.
+        public float SlimeRadius => settings.slimeRadius * bodyScaleRatio;
         public float CrawlVelocity => crawlVelocity;
         public Vector2 SurfaceTangent => surfaceTangent;
         public SurfaceProbe Probe => surfaceProbe;
@@ -452,7 +454,8 @@ namespace SlimeJumping.Controller
             if (circleCollider != null)
             {
                 float s = transform.localScale.x;
-                circleCollider.radius = s > 0.001f ? settings.slimeRadius / s : settings.slimeRadius;
+                float r = settings.slimeRadius * bodyScaleRatio;
+                circleCollider.radius = s > 0.001f ? r / s : r;
             }
         }
 
@@ -513,7 +516,7 @@ namespace SlimeJumping.Controller
 
             UpdateGravityDirection(dt);
 
-            ignoredColliderList.Tick(dt, rb.position, settings.slimeRadius, settings.launchClearanceThreshold);
+            ignoredColliderList.Tick(dt, rb.position, SlimeRadius, settings.launchClearanceThreshold);
 
             // Probe-mode decision must happen BEFORE CheckSurface — the new probe
             // populates contacts during CheckSurface, and a post-check swap would
@@ -522,12 +525,6 @@ namespace SlimeJumping.Controller
             // empty contacts, ProjectVelocityAgainstContacts no-ops, slide gravity
             // teleports the slime past a thin edge before Phase A can catch it.
             DecideProbeMode();
-
-            // Slime-slice: feed the probe the cut shape's inscribed circle BEFORE CheckSurface so
-            // collision / sticking / grounding behave as the cut shape (no float, no catch, no
-            // phantom stick on the removed side). No-op (full circle) when not cut. Runs after
-            // DecideProbeMode so a freshly-swapped probe gets the shape this same frame.
-            ApplySplitCollisionShape();
 
             // Rope position-lock (pre-probe). When still bound to a rope from the
             // previous FU and the rope-rider channel was active, snap rb.position
@@ -837,7 +834,7 @@ namespace SlimeJumping.Controller
                 float dist = delta.magnitude;
                 if (dist > 1e-5f)
                 {
-                    int hits = Physics2D.CircleCastNonAlloc(rb.position, settings.slimeRadius,
+                    int hits = Physics2D.CircleCastNonAlloc(rb.position, SlimeRadius,
                         delta / dist, ccdHitBuffer, dist, settings.groundLayer);
                     float clamped = dist;
                     for (int i = 0; i < hits; i++)
@@ -1087,7 +1084,7 @@ namespace SlimeJumping.Controller
 
             ISurfaceAnchorProvider provider = GetSurfaceAnchorProvider(surfaceCollider);
             if (provider != null
-                && provider.TryGetSurfaceAnchor(surfaceCollider, rb.position, settings.slimeRadius,
+                && provider.TryGetSurfaceAnchor(surfaceCollider, rb.position, SlimeRadius,
                     out SurfaceAnchorInfo anchorInfo))
             {
                 rb.position = anchorInfo.anchorWorldPos;

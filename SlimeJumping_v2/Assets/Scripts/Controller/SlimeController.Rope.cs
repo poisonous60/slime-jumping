@@ -36,12 +36,12 @@ namespace SlimeJumping.Controller
             // Bound the lock to ~1.5× slime radius — beyond that assume the
             // slime intentionally left the rope (crawled off the polyline end,
             // teleported, etc.) and let the probe handle detach normally.
-            if (ropeLockDist < settings.slimeRadius * 1.5f)
+            if (ropeLockDist < SlimeRadius * 1.5f)
             {
                 Vector2 dir = ropeLockDist > 0.0001f
                     ? (toSlime / ropeLockDist)
                     : gravityUp;
-                rb.position = ropeContact + dir * settings.slimeRadius;
+                rb.position = ropeContact + dir * SlimeRadius;
             }
         }
     }

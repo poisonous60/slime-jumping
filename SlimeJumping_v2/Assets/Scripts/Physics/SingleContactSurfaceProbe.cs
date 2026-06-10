@@ -46,7 +46,7 @@ namespace SlimeJumping.Physics
 
         protected override bool DepenetratePass(ref Vector2 pos)
         {
-            float radius = settings.slimeRadius;   // broadphase / max reach
+            float radius = EffRadius;   // broadphase / max reach
             float skin = settings.depenetrationSkin;
             LayerMask mask = settings.groundLayer;
 

@@ -3,158 +3,175 @@ using UnityEngine;
 namespace SlimeJumping.Settings
 {
     /// <summary>
-    /// Tunables for the "slime sliced by a blade" reaction. One asymmetric cut along
-    /// the slime's entry direction:
-    ///   • the small severed piece (the slime's own blob mesh, spawned small and squashed to
-    ///     a sliver, then un-squashed into a round droplet) falls under the SAME gravity as the
-    ///     slime, then MELTS into the ground leaving a WorldTrail stain;
-    ///   • the body keeps its full mesh and shows the cut as a shader CLIP wound that
-    ///     HEALS smoothly (continuous, like a burn fading) over regenDuration, during
-    ///     which the slime is controllable with reduced jump power.
-    /// ScriptableObject so the whole feel is Inspector-editable — NO magic numbers in code.
+    /// "잘림 = 작아진 둥근 슬라임" 튜닝 (지속 단면 없음):
+    ///   • 본체 — 부피를 잃고 실제로 작아짐(콜라이더+비주얼). 비주얼은 스프링으로 출렁이며 뭉치고,
+    ///     잘린 직후 잠깐 보이는 평평한 단면이 몸이 줄어들며 원형으로 닫힘(transition).
+    ///   • 조각 — 손실 부피만큼의 자기 블롭 메쉬가 sliver→droplet 으로 펴지며 날아가 melt.
+    ///   • 회복 — recoveryDuration 동안 크기·점프력이 각자 곡선으로 복귀.
+    /// ScriptableObject — 전부 인스펙터 튜닝, 코드에 매직넘버 없음.
     /// </summary>
     [CreateAssetMenu(menuName = "SlimeJumping/Slime Split Settings", fileName = "SlimeSplitSettings")]
     public class SlimeSplitSettings : ScriptableObject
     {
-        [Header("Cut")]
-        [Tooltip("Random rotation (± deg) added to the entry-direction cut plane so no two slices look identical.")]
-        public float cutNormalJitterDeg = 12f;
-        [Range(0.01f, 0.9f)]
-        [Tooltip("Asymmetry: cut plane offset off-center, as a fraction of the slime radius. Min 0.01 (NOT 0) so the cut plane never passes through the body center — that guarantees the slime core (dot=0) is never clipped away, so no number of overlapping cuts can erase the blob. Higher = smaller severed piece. ~0.45 ≈ a 20–30% piece.")]
-        public float cutOffsetFraction = 0.45f;
+        // ───────────────────────── 컷 ─────────────────────────
 
-        [Header("Cut shape — Axis-A (instantaneous: open raw tear ↔ surface-tension sealed)")]
-        [Range(0f, 1f)]
-        [Tooltip("sealRatio (Axis-A). 0 = open raw tear (flat sharp cut face, more boundary noise). 1 = surface-tension sealed (rounded bowed cut face, no noise, lip puckers out). The instantaneous SHAPE of the wound, independent of the recovery timeline. The asymmetry stays at all values — this is NOT a uniform shrink.")]
-        public float sealRatio = 0.25f;
+        [Header("컷 — 부피 손실")]
+        [Range(0.01f, 0.9f)]
+        [Tooltip("블레이드 컷 한 번에 잃는 부피 (현재 부피의 비율 f). 조각 반경 = 몸반경×f^⅓, 본체 반경 ×(1-f)^⅓. 0.3 ≈ 눈에 띄게 작아지지만 멀쩡한 슬라임.")]
+        public float cutVolumeFraction = 0.3f;
+        [Range(0.01f, 0.9f)]
+        [Tooltip("공중 셀프 분열(2단 점프 연료)이 내보내는 부피 비율. 반동 임펄스는 게임플레이 쪽 책임 — 여기선 몸을 얼마나 떼어주는지만.")]
+        public float selfSplitVolumeFraction = 0.25f;
+        [Tooltip("조각 사출 방향에 더하는 랜덤 회전 (±deg). 매번 똑같은 컷으로 안 보이게.")]
+        public float cutNormalJitterDeg = 12f;
+        [Tooltip("두 컷 사이 최소 간격 (초). 같은 프레임/이중 해저드 재트리거 가드. 블레이드 자체 hitCooldown이 1차 게이트.")]
+        public float recutMinInterval = 0.15f;
+
+        [Header("컷 — 본체 출렁임 (비주얼 스프링)")]
+        [Tooltip("표시 크기가 물리 크기를 쫓아가는 스프링 강성. 클수록 빠르고 탱탱하게 뭉침. ω≈√k rad/s (60 ≈ 1.2Hz).")]
+        [Min(1f)] public float bodyScaleSpringK = 60f;
+        [Tooltip("스프링 감쇠. 낮을수록 출렁임(오버슛)이 크고 오래감, 높을수록 출렁임 없이 바로 정착. 임계값 = 2√k (k=60 → ≈15.5).")]
+        [Min(0f)] public float bodyScaleSpringDamping = 7f;
+
+        [Header("컷 — 과도기 (HOLD 단면 → CLOSE 아물며 작아짐)")]
+        [Tooltip("HOLD: 잘린 직후 풀사이즈+평평한 단면을 유지하는 박자 (초). 조각의 sliver 박자(pieceSharpBeat)와 맞추면 '방금 잘렸다'가 한 호흡으로 읽힘.")]
+        [Min(0f)] public float cutHoldDuration = 0.15f;
+        [Tooltip("CLOSE: 단면이 아물면서 몸이 작은 슬라임으로 줄어드는 과도기 길이 (초). 몸 크기(물리+비주얼)와 단면 후퇴가 이 시간 동안 각자 곡선으로 진행.")]
+        [Min(0.05f)] public float closeDuration = 0.5f;
+        [Tooltip("CLOSE 동안 몸 크기 진행 0→1 (0=풀사이즈, 1=컷 후 크기). 물리 콜라이더가 이 곡선대로 줄고 비주얼 스프링이 그 위를 쫓아감(goo 추종+잔여 출렁). 끝에서 급히 떨어지는 모양 = 머뭇대다 한 번에 뭉침.")]
+        public AnimationCurve closeBodyCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+        [Tooltip("CLOSE 동안 단면 아묾 진행 0→1 (0=부피 깊이 그대로, 1=메쉬 밖까지 후퇴=면적 0, 완전히 닫힘). 몸 곡선과 독립 — 늦게 두면 작아진 몸에 상처가 남아있다 닫히고, 빠르면 먼저 아문 뒤 줄어듦. 1에 도달하는 시점이 곧 단면이 사라지는 시점.")]
+        public AnimationCurve closeSealCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+        [Header("컷 — 과도기 레이어 2: 비대칭 정착 (몸이 잘린 쪽으로 당겨짐)")]
+        [Range(0f, 1.5f)]
+        [Tooltip("CLOSE 동안 몸(비주얼)이 잘린 면 쪽으로 끌려가는 양. 1 = 잃은 반경만큼(잘린 면은 제자리, 반대쪽 살이 흘러와 채우는 느낌), 0 = 제자리 균일 축소.")]
+        public float gatherAmount = 1f;
+        [Tooltip("당겨짐의 시간 모양 0→1→0 (X = CLOSE 진행도, Y = 당겨짐 비율). 기본: 빠르게 쏠렸다가 닫히면서 중심으로 복귀.")]
+        public AnimationCurve gatherCurve = new AnimationCurve(
+            new Keyframe(0f, 0f), new Keyframe(0.35f, 1f), new Keyframe(1f, 0f));
+
+        [Header("컷 — 상처 look (아무는 동안의 단면 표현)")]
         [Range(0f, 4f)]
-        [Tooltip("How much the cut face bows convex (rounded) at sealRatio=1. 0 = always a flat plane. Scaled by sealRatio in the shader.")]
-        public float cutRoundness = 1.2f;
+        [Tooltip("아물수록 단면이 볼록하게 부푸는 정도 (표면장력 도밍). 0 = 끝까지 평평한 채 가장자리부터 닫힘(기본). closeSealCurve 진행 × 이 값으로 셰이더에서 휨 — 원하면 살짝만.")]
+        public float cutRoundnessMax = 0f;
         [Range(0f, 0.3f)]
-        [Tooltip("Boundary noise amplitude (OS) at sealRatio=0, for an organic torn edge. Default 0 = a clean smooth curve (no mess). Keep LOW; frozen per cut (no crawling). Faded by sealRatio.")]
-        public float tearAmp = 0f;
+        [Tooltip("갓 잘린 가장자리의 거친 찢김 노이즈 (OS). 아물수록(=seal 진행) 매끈해짐. 0 = 처음부터 깨끗한 직선.")]
+        public float tearAmp = 0.05f;
         [Range(0.5f, 8f)]
-        [Tooltip("Boundary noise frequency. Keep LOW (a couple of gentle scallops, not confetti).")]
+        [Tooltip("찢김 노이즈 주파수. 낮게 — 부드러운 굴곡 몇 개, 좁쌀 노이즈 아님.")]
         public float tearFreq = 2.5f;
         [Range(0.02f, 0.6f)]
-        [Tooltip("Surface-tension lip band width (OS, fraction of radius) — the rim band pushed outward (S2 vertex stage). >= ~4 mesh edge lengths to avoid faceting.")]
+        [Tooltip("아무는 가장자리의 표면장력 입술(lip) 폭 (OS, 반경 비율). 봉합될수록 도드라짐.")]
         public float lipBand = 0.18f;
         [Range(0f, 0.3f)]
-        [Tooltip("Surface-tension lip outward magnitude (OS) at sealRatio=1 (S2 vertex stage). Small.")]
+        [Tooltip("입술이 바깥으로 부푸는 크기 (OS). 0 = 입술 없음.")]
         public float lipMag = 0.06f;
-
-        [Header("Severed piece — flies off (same gravity as the slime)")]
+        [ColorUsage(false, false)]
+        [Tooltip("아무는 가장자리에 차오르는 새살 goo 색. 몸색보다 살짝 밝고 젖은 톤.")]
+        public Color sliceHealColor = new Color(0.6f, 0.88f, 0.55f, 1f);
         [Range(0f, 1f)]
-        [Tooltip("Fraction of the slime's incoming velocity the severed piece inherits.")]
+        [Tooltip("새살 goo 띠의 최대 강도. 0 = 표시 안 함.")]
+        public float sliceHealIntensity = 0.7f;
+        [Tooltip("새살 goo 띠의 폭 (OS, 반경 비율).")]
+        public float sliceHealWidth = 0.3f;
+        [ColorUsage(false, false)]
+        [Tooltip("단면 속(깊은 쪽) 색. 몸색보다 어둡게 — 열린 단면이 깊은 점액으로 읽힘. transition 동안만 보임.")]
+        public Color sliceCapColor = new Color(0.18f, 0.32f, 0.18f, 1f);
+        [ColorUsage(false, false)]
+        [Tooltip("단면 가장자리(열린 입구) 젖은 색. 속색보다 밝게.")]
+        public Color sliceCapRimColor = new Color(0.45f, 0.7f, 0.42f, 1f);
+        [Range(0.02f, 1f)]
+        [Tooltip("입구→속 색이 변하는 깊이 (OS, 슬라임 반경 비율).")]
+        public float sliceCapDepth = 0.35f;
+
+        // ───────────────────────── 조각 ─────────────────────────
+
+        [Header("조각 — 사출 (슬라임과 같은 중력)")]
+        [Range(0f, 1f)]
+        [Tooltip("슬라임 진입 속도를 조각이 물려받는 비율.")]
         public float inheritVelocityFactor = 0.5f;
-        [Tooltip("Outward pop along the cut normal (random in range).")]
+        [Tooltip("사출 방향 바깥쪽 팝 (범위 내 랜덤).")]
         public float severImpulseMin = 2f;
         public float severImpulseMax = 4f;
-        [Tooltip("Small upward kick so the piece arcs before falling.")]
+        [Tooltip("위쪽 살짝 킥 — 조각이 호를 그리며 떨어지게.")]
         public float upwardImpulse = 1.5f;
         public float linearDamping = 0.05f;
         public float angularDamping = 0.05f;
         [Range(0.1f, 1f)]
-        [Tooltip("Severed piece CircleCollider2D radius as a fraction of its mesh half-extent.")]
+        [Tooltip("조각 CircleCollider2D 반경 = 메쉬 절반 크기 × 이 값.")]
         public float colliderRadiusFactor = 0.7f;
-        [Tooltip("Spin (deg/s) range. Both 0 = no rotation (a piece that flew off, not a tumbling crescent).")]
+        [Tooltip("스핀 (deg/s) 범위. 둘 다 0 = 회전 없음.")]
         public float spinMinDeg = 0f;
         public float spinMaxDeg = 0f;
-        [Tooltip("Safety: if the piece never lands (fell into a pit), melt anyway after this airtime.")]
+        [Tooltip("안전장치: 착지 못하면(구덩이) 이 시간 후 공중에서 melt.")]
         public float severedMaxAirTime = 4f;
 
-        [Header("Severed piece — surface-tension round-up (flat sliver → round droplet)")]
-        [Tooltip("Final droplet radius as a fraction of the slime radius. The piece is the slime's own blob mesh scaled to this — a genuinely round ball, not a reprojected crescent.")]
-        [Range(0.1f, 0.9f)]
-        public float pieceFinalScale = 0.65f;
-        [Tooltip("Initial flatten along the cut normal at spawn: the round droplet starts squashed to a thin sliver (matches 'just cut'), then un-squashes to a ball. 0.1 = very flat.")]
+        [Header("조각 — 표면장력 round-up (납작 sliver → 둥근 droplet)")]
+        [Tooltip("스폰 시 사출축 방향 납작 정도. 0.1 = 아주 납작.")]
         [Range(0.02f, 1f)]
         public float pieceFlatten = 0.12f;
-        [Tooltip("Time the piece holds its flat sliver shape (matches the body's clean-cut beat) before it starts rounding up.")]
+        [Tooltip("납작한 sliver 모양을 유지하는 박자 (초). 본체 cutHoldDuration과 맞추면 한 호흡.")]
         public float pieceSharpBeat = 0.15f;
-        [Tooltip("Time the piece takes to un-squash from the flat sliver into a round goo droplet, in the air.")]
+        [Tooltip("sliver → 둥근 droplet 으로 펴지는 시간 (초).")]
         public float pieceRoundUpDuration = 0.35f;
-        [Tooltip("0→1 ease of the sliver→ball un-squash. Default ease-in-out if no curve set.")]
+        [Tooltip("펴짐 0→1 ease. 비우면 ease-in-out.")]
         public AnimationCurve pieceRoundUpCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
-        [Header("Severed wobble (viscous jiggle)")]
+        [Header("조각 — 점성 출렁임")]
         public float jiggleAmplitude = 0.35f;
         public float jiggleFrequency = 9f;
         public float jiggleDecay = 3.5f;
-        [Tooltip("How much a bounce re-energises the wobble envelope.")]
+        [Tooltip("바운스가 출렁임 envelope를 재충전하는 양.")]
         public float landingJiggleBoost = 1f;
         [Range(0f, 1f)]
-        [Tooltip("Scales the shader velocity-stretch (teardrop) while the piece flies.")]
+        [Tooltip("비행 중 셰이더 velocity-stretch(물방울꼴) 강도.")]
         public float velocityStretchScale = 0.5f;
         public float wobbleSpeedRef = 12f;
 
-        [Header("Melt (on landing — NOT a uniform shrink)")]
-        [Tooltip("Grace period after spawn before a collision can start the melt. Prevents the piece from melting instantly on the spawn-overlap with the ground/slime — it must actually fly + land first.")]
+        [Header("조각 — melt (착지 후 녹아내림)")]
+        [Tooltip("스폰 직후 이 시간 동안은 충돌해도 melt 시작 안 함 — 일단 날아가서 착지부터.")]
         public float meltContactGrace = 0.2f;
-        [Tooltip("Time to melt away once landed.")]
+        [Tooltip("착지 후 녹아 사라지는 시간 (초).")]
         public float meltDuration = 1.2f;
         [Range(0f, 3f)]
-        [Tooltip("How much the puddle spreads sideways as it flattens.")]
+        [Tooltip("납작해지며 옆으로 퍼지는 양.")]
         public float meltSpread = 0.8f;
-        [Tooltip("Extra cast distance (world units) BELOW the piece, on top of its own size, when finding the ground to melt onto at landing. The puddle's bottom is then pinned to that surface for the whole melt — so it never floats in the air or sinks through the floor.")]
+        [Tooltip("착지 시 발밑 지면 탐색 추가 거리 (m). 퍼들 바닥을 그 면에 고정 — 공중에 뜨거나 바닥을 뚫지 않게.")]
         public float meltGroundProbe = 0.5f;
-        [Tooltip("Layers counted as ground for the melt-onto cast. Leave as Nothing/empty to use every layer except the slime's (recommended).")]
+        [Tooltip("melt 지면 탐색 레이어. Nothing = 슬라임 레이어 제외 전부 (권장).")]
         public LayerMask groundMask = 0;
         [Range(0f, 1.5f)]
-        [Tooltip("PIT FALLBACK ONLY (no ground found beneath the piece). On real ground the puddle is hard-pinned to the surface instead. 1 = bottom stays put as it flattens; >1 sinks; <1 lifts.")]
+        [Tooltip("구덩이 폴백 전용 (발밑 지면 없음). 1 = 바닥 고정, >1 가라앉음, <1 떠오름.")]
         public float meltSinkFactor = 1f;
 
-        [Header("Melt trail stain (WorldTrail)")]
-        [Tooltip("World-radius of the stain stamped where the piece melts. 0 = no stain.")]
+        [Header("조각 — melt 얼룩 (WorldTrail)")]
+        [Tooltip("melt 자리에 찍는 얼룩 월드 반경. 0 = 얼룩 없음.")]
         public float meltStampRadius = 0.45f;
         [Range(0f, 1f)]
-        [Tooltip("Stain mask strength.")]
+        [Tooltip("얼룩 마스크 강도.")]
         public float meltStampStrength = 0.7f;
-        [Tooltip("Seconds between stain re-stamps during the melt (the stain widens with the puddle).")]
+        [Tooltip("melt 중 얼룩 재스탬프 간격 (초) — 퍼들이 퍼지는 만큼 얼룩도 넓어짐.")]
         public float meltStampInterval = 0.12f;
 
-        [Header("Recovery — Axis-B (continuous, independent of Axis-A; ~20–60s controllable)")]
-        [Tooltip("Total recovery time (seconds). The cut state persists and is controllable for this long, then the wound is fully healed. ~20–60s.")]
+        // ───────────────────────── 회복 ─────────────────────────
+
+        [Header("회복 — 크기 재성장 (~20–60s, 조작 가능)")]
+        [Tooltip("전체 회복 시간 (초). 이 동안 작은 채로 조작 가능, 끝나면 풀사이즈.")]
         public float recoveryDuration = 30f;
-        [Tooltip("SHAPE recovery 0→1 over recoveryDuration: drives the cut closing (clip recede), sink unwind, lip relax. Draw 'stays low then rises at the end' for a wound that lingers then quickly seals. MUST reach 1 at t=1.")]
+        [Tooltip("크기 회복 0→1 곡선: BodyScaleRatio → 1. '낮게 머물다 끝에 차오름' 모양 추천. t=1에서 반드시 1.")]
         public AnimationCurve recoveryCurve = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.7f, 0.15f), new Keyframe(1f, 1f));
-        [Tooltip("LAUNCH-POWER recovery 0→1 over recoveryDuration: drives SplitLaunchMultiplier (and launch-dir bias decay). SEPARATE from the shape curve so the slime can look wounded while already regaining power, or vice versa. Defaults equal to the shape curve.")]
+        [Tooltip("점프력 회복 0→1 곡선: SplitLaunchMultiplier → 1. 크기 곡선과 독립 — 작아 보여도 힘은 먼저 돌아오게 (또는 반대로) 가능.")]
         public AnimationCurve launchRecoveryCurve = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.7f, 0.15f), new Keyframe(1f, 1f));
 
-        [Header("Regeneration look — fresh slime goo wells up to fill the cut (no energy glow)")]
-        [ColorUsage(false, false)]
-        [Tooltip("Color of the fresh goo at the fill front — a lighter/wetter slime tone, NOT energy. The band at the closing edge is tinted toward this, settling to the body color behind. Keep close to the slime's own green.")]
-        public Color sliceHealColor = new Color(0.6f, 0.88f, 0.55f, 1f);
+        [Header("회복 — 마지막 뿅")]
+        [Min(0f)]
+        [Tooltip("크기 회복이 완료되는 순간 비주얼 스프링에 주는 바깥쪽 속도 킥 — '뿅' 하고 한 번 출렁이며 풀사이즈 복귀 선언. 0 = 조용히 끝남.")]
+        public float regrowPopKick = 0.6f;
+
+        [Header("회복 — 점프력")]
         [Range(0f, 1f)]
-        [Tooltip("How strongly the fill front is tinted toward the fresh-goo color. 0 = no tint (plain clip recede). ~0.7 = clearly fresh goo welling up.")]
-        public float sliceHealIntensity = 0.7f;
-        [Tooltip("OS band width of the fresh-goo fill front on the kept side at the closing edge (how thick the wet 'rising goo' band is). A fraction of the slime radius.")]
-        public float sliceHealWidth = 0.3f;
-
-        [Header("Stacking — re-cut while regenerating")]
-        [Range(1, 3)]
-        [Tooltip("Max simultaneous wounds. A new cut beyond this evicts the most-healed wound. Shader supports up to 3 planes.")]
-        public int maxWounds = 3;
-        [Tooltip("Minimum seconds between two cuts (internal guard against same-frame / double-hazard re-trigger). The blade's own hitCooldown is the primary gate.")]
-        public float recutMinInterval = 0.15f;
-
-        [Header("Slice look — wet cross-section (rim wet → deep dark, cel-quantized)")]
-        [ColorUsage(false, false)]
-        [Tooltip("DEEP interior color of the cut cross-section (the 'inside' of the slime), shown deep into the wound. Darker than the body so the open cut reads as deep goo.")]
-        public Color sliceCapColor = new Color(0.18f, 0.32f, 0.18f, 1f);
-        [ColorUsage(false, false)]
-        [Tooltip("WET RIM color at the cut opening edge — lighter/wetter than the deep color, so the exposed interior reads as gooey jelly, not a flat dark slab.")]
-        public Color sliceCapRimColor = new Color(0.45f, 0.7f, 0.42f, 1f);
-        [Range(0.02f, 1f)]
-        [Tooltip("OS depth over which the cross-section shades from the wet rim color (at the opening) to the deep color (into the wound). Fraction of the slime radius.")]
-        public float sliceCapDepth = 0.35f;
-
-        [Header("Wounded jump power + feel")]
-        [Range(0f, 1f)]
-        [Tooltip("Jump-power multiplier at the moment of the slice (fresh wound). Ramps back to 1 via launchRecoveryCurve as the wound heals. 1 = no reduction.")]
+        [Tooltip("컷 직후 점프력 배율. launchRecoveryCurve 따라 1로 복귀. 1 = 감소 없음.")]
         public float woundedJumpMultiplierMin = 0.5f;
-        [Range(0f, 20f)]
-        [Tooltip("Launch direction bias (degrees) at a fresh wound — the launch veers AWAY from the missing side so a lopsided slime launches lopsided. Decays via launchRecoveryCurve. Small-angle; disabled while on a rope/bamboo/carrier so it never overrides aimed momentum. 0 = straight launch.")]
-        public float launchDirBiasDeg = 6f;
     }
 }
