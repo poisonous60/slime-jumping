@@ -3,11 +3,13 @@ using UnityEngine;
 namespace SlimeJumping.Settings
 {
     /// <summary>
-    /// "잘림 = 작아진 둥근 슬라임" 튜닝 (지속 단면 없음):
-    ///   • 본체 — 부피를 잃고 실제로 작아짐(콜라이더+비주얼). 비주얼은 스프링으로 출렁이며 뭉치고,
-    ///     잘린 직후 잠깐 보이는 평평한 단면이 몸이 줄어들며 원형으로 닫힘(transition).
-    ///   • 조각 — 손실 부피만큼의 자기 블롭 메쉬가 sliver→droplet 으로 펴지며 날아가 melt.
-    ///   • 회복 — recoveryDuration 동안 크기·점프력이 각자 곡선으로 복귀.
+    /// "잘림 = 작아진 둥근 슬라임 + 자크식 회수" 튜닝 (지속 단면 없음):
+    ///   • 본체 — 부피를 잃고 실제로 작아짐(콜라이더+비주얼). 상처는 평면 후퇴가 아니라
+    ///     메니스커스(표면장력 막)가 스프링으로 차오르며 림→중심으로 봉합.
+    ///   • 조각 — 손실 부피만큼의 자기 블롭이 sliver→droplet 으로 펴지며 날아가 바닥에 잔존.
+    ///     슬라임이 근접하면 자석처럼 끌려와 합체(흡수)되고 그만큼 즉시 회복.
+    ///   • 회복 — 흡수 = 빠른 회복. 조각 분실(낙사) = slowRecoveryDuration 기반 느린 자연 회복.
+    ///     점프력 페널티는 몸집 비율에서 파생(독립 타이머 없음).
     /// ScriptableObject — 전부 인스펙터 튜닝, 코드에 매직넘버 없음.
     /// </summary>
     [CreateAssetMenu(menuName = "SlimeJumping/Slime Split Settings", fileName = "SlimeSplitSettings")]
@@ -38,10 +40,8 @@ namespace SlimeJumping.Settings
         [Min(0f)] public float cutHoldDuration = 0.15f;
         [Tooltip("CLOSE: 단면이 아물면서 몸이 작은 슬라임으로 줄어드는 과도기 길이 (초). 몸 크기(물리+비주얼)와 단면 후퇴가 이 시간 동안 각자 곡선으로 진행.")]
         [Min(0.05f)] public float closeDuration = 0.5f;
-        [Tooltip("CLOSE 동안 몸 크기 진행 0→1 (0=풀사이즈, 1=컷 후 크기). 물리 콜라이더가 이 곡선대로 줄고 비주얼 스프링이 그 위를 쫓아감(goo 추종+잔여 출렁). 끝에서 급히 떨어지는 모양 = 머뭇대다 한 번에 뭉침.")]
+        [Tooltip("CLOSE 동안 몸 크기 진행 0→1 (0=풀사이즈, 1=컷 후 크기). 물리 콜라이더가 이 곡선대로 줄고 비주얼 스프링이 그 위를 쫓아감(goo 추종+잔여 출렁). 끝에서 급히 떨어지는 모양 = 머뭇대다 한 번에 뭉침. 상처 봉합은 이 보이는 수축에 잠금(독립 곡선 없음) — 몸이 줄어드는 만큼 정확히 닫힘.")]
         public AnimationCurve closeBodyCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
-        [Tooltip("CLOSE 동안 단면 아묾 진행 0→1 (0=부피 깊이 그대로, 1=메쉬 밖까지 후퇴=면적 0, 완전히 닫힘). 몸 곡선과 독립 — 늦게 두면 작아진 몸에 상처가 남아있다 닫히고, 빠르면 먼저 아문 뒤 줄어듦. 1에 도달하는 시점이 곧 단면이 사라지는 시점.")]
-        public AnimationCurve closeSealCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [Header("컷 — 과도기 레이어 2: 비대칭 정착 (몸이 잘린 쪽으로 당겨짐)")]
         [Range(0f, 1.5f)]
@@ -51,10 +51,42 @@ namespace SlimeJumping.Settings
         public AnimationCurve gatherCurve = new AnimationCurve(
             new Keyframe(0f, 0f), new Keyframe(0.35f, 1f), new Keyframe(1f, 0f));
 
-        [Header("컷 — 상처 look (아무는 동안의 단면 표현)")]
+        [Header("컷 — 메니스커스 (상처 막의 스프링 동역학)")]
+        [Tooltip("봉합 진행(타깃 곡선)을 쫓는 막 스프링 강성. 클수록 빠르고 탱탱하게 차오름.")]
+        [Min(1f)] public float meniscusSpringK = 90f;
+        [Tooltip("막 스프링 감쇠. 임계값 = 2√k (k=90 → ≈19). 낮을수록 차오른 뒤 출렁임이 큼.")]
+        [Min(0f)] public float meniscusSpringDamping = 9f;
+        [Range(0f, 0.5f)]
+        [Tooltip("HOLD 동안 단면이 파여 있는 깊이 (잘린 캡 높이 비율). 날이 파고든 자국 — 0 = 완전 평면에서 시작.")]
+        public float cutConcaveDepthFrac = 0.12f;
+
+        [Header("컷 — 봉합 잔여 출렁 (봉합 직후 → 작은 슬라임 사이 점성 보간)")]
+        [Tooltip("봉합 완료 후 부풀음이 가라앉는 감쇠율. 클수록 빨리 잦아듦 (5 ≈ 0.8초 안에 소멸).")]
+        public float sealRelaxDecay = 5f;
+        [Tooltip("가라앉는 동안 위로만 살짝 튕기는 바운스의 진동수 (Hz). 출렁임의 박자.")]
+        public float sealRelaxFreq = 2.5f;
+        [Range(0f, 0.9f)]
+        [Tooltip("바운스 세기. 부풀음 높이가 가라앉는 궤적 위에서 이만큼 출렁임 — 0 = 단조 감쇠, 반전(안쪽 함몰) 없음.")]
+        public float sealRelaxBounce = 0.35f;
         [Range(0f, 4f)]
-        [Tooltip("아물수록 단면이 볼록하게 부푸는 정도 (표면장력 도밍). 0 = 끝까지 평평한 채 가장자리부터 닫힘(기본). closeSealCurve 진행 × 이 값으로 셰이더에서 휨 — 원하면 살짝만.")]
-        public float cutRoundnessMax = 0f;
+        [Tooltip("가라앉는 동안 부풀음의 발(폭)이 퍼지는 양 — 점성 액체가 납작하게 퍼지며 녹는 핵심 단서. 1.5 = 폭이 최대 2.5배까지 넓어지며 낮아짐.")]
+        public float sealRelaxSpread = 1.5f;
+        [Range(0f, 2f)]
+        [Tooltip("봉합 완료 순간 상처 부위에 주는 잔물결 킥 — 막이 합쳐지는 '뭉클' 반동. RELAX 동안은 저주파 슬로시로 흐름.")]
+        public float sealRelaxWobbleKick = 0.9f;
+
+        [Header("컷 — 타격 잔동 (HOLD 퀴버)")]
+        [Range(0f, 0.3f)]
+        [Tooltip("잘린 순간 단면+림이 부들부들 떨리는 진폭 (OS, 메쉬 반경 비율). 0 = 퀴버 없음.")]
+        public float quiverAmp = 0.05f;
+        [Tooltip("퀴버 진동수 (Hz).")]
+        public float quiverFreq = 16f;
+        [Tooltip("퀴버 감쇠율. 클수록 빨리 잦아듦 (5 ≈ 0.6초 내 소멸).")]
+        public float quiverDecay = 5f;
+        [Tooltip("퀴버의 공간 주파수 (경계를 따라 물결 개수 느낌).")]
+        public float quiverSpatialFreq = 7f;
+
+        [Header("컷 — 상처 look (아무는 동안의 단면 표현)")]
         [Range(0f, 0.3f)]
         [Tooltip("갓 잘린 가장자리의 거친 찢김 노이즈 (OS). 아물수록(=seal 진행) 매끈해짐. 0 = 처음부터 깨끗한 직선.")]
         public float tearAmp = 0.05f;
@@ -67,14 +99,6 @@ namespace SlimeJumping.Settings
         [Range(0f, 0.3f)]
         [Tooltip("입술이 바깥으로 부푸는 크기 (OS). 0 = 입술 없음.")]
         public float lipMag = 0.06f;
-        [ColorUsage(false, false)]
-        [Tooltip("아무는 가장자리에 차오르는 새살 goo 색. 몸색보다 살짝 밝고 젖은 톤.")]
-        public Color sliceHealColor = new Color(0.6f, 0.88f, 0.55f, 1f);
-        [Range(0f, 1f)]
-        [Tooltip("새살 goo 띠의 최대 강도. 0 = 표시 안 함.")]
-        public float sliceHealIntensity = 0.7f;
-        [Tooltip("새살 goo 띠의 폭 (OS, 반경 비율).")]
-        public float sliceHealWidth = 0.3f;
         [ColorUsage(false, false)]
         [Tooltip("단면 속(깊은 쪽) 색. 몸색보다 어둡게 — 열린 단면이 깊은 점액으로 읽힘. transition 동안만 보임.")]
         public Color sliceCapColor = new Color(0.18f, 0.32f, 0.18f, 1f);
@@ -98,19 +122,25 @@ namespace SlimeJumping.Settings
         public float upwardImpulse = 1.5f;
         public float linearDamping = 0.05f;
         public float angularDamping = 0.05f;
+        [Range(0.5f, 3f)]
+        [Tooltip("조각 크기 배율 (비주얼+콜라이더 동반). 1 = 부피 정직값(조각 반경 = 몸반경×f^⅓). 게임플레이 회복량은 부피 비율 그대로 — 보이는 크기만 키움.")]
+        public float pieceSizeScale = 1.4f;
         [Range(0.1f, 1f)]
         [Tooltip("조각 CircleCollider2D 반경 = 메쉬 절반 크기 × 이 값.")]
         public float colliderRadiusFactor = 0.7f;
         [Tooltip("스핀 (deg/s) 범위. 둘 다 0 = 회전 없음.")]
         public float spinMinDeg = 0f;
         public float spinMaxDeg = 0f;
-        [Tooltip("안전장치: 착지 못하면(구덩이) 이 시간 후 공중에서 melt.")]
+        [Tooltip("안전장치: 연속 공중 시간(흡인 중 제외)이 이를 넘으면 구덩이 추락으로 보고 조각 소멸 → 느린 자연 회복으로 전환.")]
         public float severedMaxAirTime = 4f;
 
         [Header("조각 — 표면장력 round-up (납작 sliver → 둥근 droplet)")]
         [Tooltip("스폰 시 사출축 방향 납작 정도. 0.1 = 아주 납작.")]
         [Range(0.02f, 1f)]
         public float pieceFlatten = 0.12f;
+        [Range(1f, 3f)]
+        [Tooltip("납작해질 때 수직축이 퍼지는 최대 배율. 완전 부피 보존은 1/√flatten (flatten 0.12 → ×2.9 = 길게 늘어진 판)이라 의도적으로 클램프 — 1 = 퍼짐 없음(그냥 납작), 1.2 ≈ 살짝 퍼진 조각.")]
+        public float piecePerpExpandMax = 1.2f;
         [Tooltip("납작한 sliver 모양을 유지하는 박자 (초). 본체 cutHoldDuration과 맞추면 한 호흡.")]
         public float pieceSharpBeat = 0.15f;
         [Tooltip("sliver → 둥근 droplet 으로 펴지는 시간 (초).")]
@@ -129,49 +159,55 @@ namespace SlimeJumping.Settings
         public float velocityStretchScale = 0.5f;
         public float wobbleSpeedRef = 12f;
 
-        [Header("조각 — melt (착지 후 녹아내림)")]
-        [Tooltip("스폰 직후 이 시간 동안은 충돌해도 melt 시작 안 함 — 일단 날아가서 착지부터.")]
-        public float meltContactGrace = 0.2f;
-        [Tooltip("착지 후 녹아 사라지는 시간 (초).")]
-        public float meltDuration = 1.2f;
-        [Range(0f, 3f)]
-        [Tooltip("납작해지며 옆으로 퍼지는 양.")]
-        public float meltSpread = 0.8f;
-        [Tooltip("착지 시 발밑 지면 탐색 추가 거리 (m). 퍼들 바닥을 그 면에 고정 — 공중에 뜨거나 바닥을 뚫지 않게.")]
-        public float meltGroundProbe = 0.5f;
-        [Tooltip("melt 지면 탐색 레이어. Nothing = 슬라임 레이어 제외 전부 (권장).")]
-        public LayerMask groundMask = 0;
-        [Range(0f, 1.5f)]
-        [Tooltip("구덩이 폴백 전용 (발밑 지면 없음). 1 = 바닥 고정, >1 가라앉음, <1 떠오름.")]
-        public float meltSinkFactor = 1f;
+        [Header("조각 — 절단면 (본체와 같은 메니스커스 언어)")]
+        [Range(0f, 0.8f)]
+        [Tooltip("조각의 절단면 깊이 (중심에서 절단면까지, 조각 OS 반경 비율). 작을수록 깊은(큰) 단면 — 너무 깊으면 조각이 얇은 판처럼 보임. 단면은 -사출방향 쪽에 생기고 round-up 동안 메니스커스로 아묾.")]
+        public float pieceCutFaceFrac = 0.6f;
 
-        [Header("조각 — melt 얼룩 (WorldTrail)")]
-        [Tooltip("melt 자리에 찍는 얼룩 월드 반경. 0 = 얼룩 없음.")]
-        public float meltStampRadius = 0.45f;
+        [Header("조각 — 바닥 잔존 (흡수 대기)")]
+        [Tooltip("대기 중 숨쉬듯 말랑이는 아이들 워블 진폭 (스케일 비율).")]
+        [Range(0f, 0.3f)] public float restBreathAmp = 0.05f;
+        [Tooltip("아이들 워블 주기 (Hz).")]
+        public float restBreathFreq = 1.1f;
+
+        [Header("조각 — 흡수 (자크식 근접 흡인)")]
+        [Tooltip("슬라임 중심이 이 거리 안에 들어오면 조각이 끌려오기 시작 (월드 m).")]
+        public float absorbPullRadius = 2.5f;
+        [Tooltip("끌림 가속도 (m/s²). 점성 있는 자석 느낌 — 너무 크면 순간이동처럼 보임.")]
+        public float absorbPullAccel = 60f;
+        [Tooltip("끌림 최고 속도 (m/s).")]
+        public float absorbPullMaxSpeed = 14f;
+        [Tooltip("스폰 직후 이 시간 동안은 흡인 무장 안 함 — 일단 날아가서 몸 밖으로 나가야 함 (스폰 위치가 슬라임 중심이라 즉시 재흡수 방지).")]
+        public float absorbArmDelay = 0.35f;
         [Range(0f, 1f)]
-        [Tooltip("얼룩 마스크 강도.")]
-        public float meltStampStrength = 0.7f;
-        [Tooltip("melt 중 얼룩 재스탬프 간격 (초) — 퍼들이 퍼지는 만큼 얼룩도 넓어짐.")]
-        public float meltStampInterval = 0.12f;
+        [Tooltip("끌려오는 동안 셰이더 velocity-stretch 추가 강도 — 본체 쪽으로 길쭉하게 늘어나는 점성 표현.")]
+        public float absorbStretchBoost = 0.5f;
+
+        [Header("흡수 — 합체 연출")]
+        [Tooltip("조각이 닿은 뒤 부피가 차오르는 시간 (초). 이 동안 닿은 지점이 국소적으로 불룩(립+워블)했다가 가라앉음.")]
+        public float mergeDuration = 0.35f;
+        [Min(0f)]
+        [Tooltip("합체 순간 전신 스케일 스프링에 주는 바깥쪽 속도 킥 — 꿀꺽 삼키는 출렁임.")]
+        public float absorbPopKick = 0.6f;
+        [Range(0f, 2f)]
+        [Tooltip("합체 지점 워블(잔물결) 킥 — 닿은 부위가 부르르 떨리는 정도.")]
+        public float mergeWobbleKick = 0.8f;
+        [Range(0.5f, 0.98f)]
+        [Tooltip("합체 벌지의 막 위치 (중심에서 표면까지 비율). 1에 가까울수록 표면에 얕고 국소적인 불룩.")]
+        public float mergeFaceFrac = 0.85f;
 
         // ───────────────────────── 회복 ─────────────────────────
 
-        [Header("회복 — 크기 재성장 (~20–60s, 조작 가능)")]
-        [Tooltip("전체 회복 시간 (초). 이 동안 작은 채로 조작 가능, 끝나면 풀사이즈.")]
-        public float recoveryDuration = 30f;
-        [Tooltip("크기 회복 0→1 곡선: BodyScaleRatio → 1. '낮게 머물다 끝에 차오름' 모양 추천. t=1에서 반드시 1.")]
-        public AnimationCurve recoveryCurve = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.7f, 0.15f), new Keyframe(1f, 1f));
-        [Tooltip("점프력 회복 0→1 곡선: SplitLaunchMultiplier → 1. 크기 곡선과 독립 — 작아 보여도 힘은 먼저 돌아오게 (또는 반대로) 가능.")]
-        public AnimationCurve launchRecoveryCurve = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.7f, 0.15f), new Keyframe(1f, 1f));
+        [Header("회복 — 흡수가 곧 회복")]
+        [Tooltip("조각을 영영 잃었을 때(낙사 등)의 느린 자연 회복: 풀 부피 기준 이 시간에 걸쳐 재생. 흡수는 mergeDuration 만에 그 조각 몫을 즉시 회복.")]
+        public float slowRecoveryDuration = 45f;
 
-        [Header("회복 — 마지막 뿅")]
-        [Min(0f)]
-        [Tooltip("크기 회복이 완료되는 순간 비주얼 스프링에 주는 바깥쪽 속도 킥 — '뿅' 하고 한 번 출렁이며 풀사이즈 복귀 선언. 0 = 조용히 끝남.")]
-        public float regrowPopKick = 0.6f;
-
-        [Header("회복 — 점프력")]
+        [Header("회복 — 점프력 (몸집 파생, 독립 타이머 없음)")]
         [Range(0f, 1f)]
-        [Tooltip("컷 직후 점프력 배율. launchRecoveryCurve 따라 1로 복귀. 1 = 감소 없음.")]
+        [Tooltip("점프력 배율의 하한. 몸집이 woundedScaleRef 까지 작아졌을 때 이 값.")]
         public float woundedJumpMultiplierMin = 0.5f;
+        [Range(0.1f, 0.99f)]
+        [Tooltip("점프력이 하한에 닿는 몸집 비율. 몸집이 이 값~1 사이를 오가면 점프력도 min~1 사이를 선형으로 따라감.")]
+        public float woundedScaleRef = 0.6f;
     }
 }

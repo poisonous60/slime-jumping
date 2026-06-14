@@ -1,13 +1,14 @@
-# Slime Split — 잘림 = 작아진 둥근 슬라임
+# Slime Split — 잘림 = 작아진 둥근 슬라임 + 자크식 회수
 
-> **2026-06-10 전면 재설계.** 이전 "reach 컷 + 셰이더 클립 단면" 구조(이 문서의 구버전)와
-> 같은 날 그 위에 얹은 품질 스택(A 한 몸 클립 / B 모션 wobble / C goo 단면)은 **전부 폐기**.
-> 유저가 평면 단면 실루엣 자체를 기각("안 귀엽다") — 컷 평면을 어떻게 그리든 답이 없었다.
-> 폐기 경위·실패 모드는 [slime-cut-redesign-brief.md](slime-cut-redesign-brief.md) 참조.
+> **2026-06-10 전면 재설계**(reach 컷 + 셰이더 클립 단면 폐기, 경위는
+> [slime-cut-redesign-brief.md](slime-cut-redesign-brief.md)) 후 **2026-06-11 2차 개편**:
+> ① 상처 봉합을 "클립 평면 후퇴(스캔 룩)" → **메니스커스 막(표면장력) 차오름**으로 교체,
+> ② 조각 melt/얼룩 폐기 → **조각 = 잔존하는 회수 아이템(롤 자크식)**, heal = 흡수 게이트.
 
 블레이드(Saw/Knife)에 베이거나 공중에서 스스로 분열하면 슬라임은 **부피를 잃고
 출렁이며 다시 둥글어진 작은 슬라임**이 된다. 잘린 단면이라는 지속 상태가 없다 —
-지속 상태는 그냥 "작고 동그란 슬라임"이고, heal은 크기 재성장이다.
+지속 상태는 "작고 동그란 슬라임 + 바닥 어딘가의 내 조각"이고, heal은 **조각을 주워
+담는 것**(흡수)이다. 조각을 영영 잃으면(낙사) 느린 자연 회복으로 전환된다.
 
 - 상위: [saw-knife-hazard.md](saw-knife-hazard.md) (해저드 본체 + SliceEffect)
 - 관련: [../slime/stunned.md](../slime/stunned.md)
@@ -62,33 +63,73 @@ semi-implicit Euler, dt 클램프)으로 추적:
   `UpdateFaceOffset`에서 `faceRestScale × displayedBodyScale` 직접 적용 + drift 오프셋도 같이 축소.
   → face 비율이 모든 크기에서 유지.
 
-### 2.3 이벤트: `SlimeSplitSequence` (재작성)
+### 2.3 이벤트: `SlimeSplitSequence` (2026-06-11 메니스커스 + 흡수 게이트로 재작성)
 
 - `Begin(slime, entryVelocity)` — saw/knife 컷. 진입 속도에 수직(지터)으로 조각 사출.
   부피 `cutVolumeFraction`(현재 부피의 f) 손실:
   **조각 반경 = R·f^⅓, 본체 ratio ×= (1-f)^⅓** (부피 보존, 구 가정).
-- `BeginSelfSplit(slime, ejectDir)` — 공중 셀프 분열(2단 점프 연료).
-  `selfSplitVolumeFraction` 손실, 조각은 ejectDir로. **반동 임펄스는 게임플레이 호출자 몫.**
-- 조각 = 기존 `SlimeChunk` 그대로 (자기 블롭 메쉬, sliver flatten → 표면장력 round-up →
-  낙하 → melt + WorldTrail 얼룩). 크기만 손실 부피와 일치하도록 변경.
-- **과도기 (유저 확정: 동시 다층, 비대칭)**: HOLD(`cutHoldDuration`) — 풀사이즈 + 부피-정확
-  깊이(구면 cap 부피식 Newton 풀이)의 진짜 평평한 단면. → CLOSE(`closeDuration`) — **3레이어
-  동시 진행, 각자 곡선**:
-  - **L1 상처 덮임** (`closeSealCurve`): 클립 평면이 깊이→표면 밖으로 후퇴(단면이 가장자리부터
-    점으로 닫힘) + 표면장력 입술(`lipBand/lipMag`) + 거친 찢김 페이드(`tearAmp`) + 닫히는
-    가장자리에 새살 goo 띠(`sliceHealColor/Intensity/Width`). 도밍은 `cutRoundnessMax`(기본 0).
-  - **L2 비대칭 정착** (`gatherAmount/gatherCurve`): 몸(비주얼)이 잘린 면 쪽으로 끌려갔다
-    봉합되며 재중심 — 반대쪽 살이 흘러와 덮는 느낌. 콜라이더는 중심 유지.
-  - **L3 작은 구** (`closeBodyCurve`): 물리 반경이 곡선 따라 램프(비주얼-충돌 괴리 없음),
-    비주얼 스프링이 그 위에서 출렁.
-  평면 OS 변환은 (live 회전 × rest scale × displayedBodyScale) 참조행렬 — 회전·축소 보정(월드
-  고정+닫힘), squash/stretch 비보정(한 몸 변형). 닫히면 `_SliceCount=0` 영구.
-- **재성장 (유저 확정: 조용한 균일 + 마지막 뿅)**: `recoveryCurve` 램프는 조용히, 완주 순간
-  `regrowPopKick`이 스프링에 바깥 킥 — 한 번 출렁이며 풀사이즈 선언.
-- heal: 단일 타임라인. `recoveryDuration` 동안 `recoveryCurve`로 ratio → 1,
-  `launchRecoveryCurve`로 `SplitLaunchMultiplier` → 1 (크기와 점프력 독립 곡선).
-  재절단은 현재 ratio에서 다시 깎고 타이머 리셋 — 자연 스태킹.
-- 회귀: idle일 때 아무것도 안 건드림. `OnDestroy` 시 ratio/multiplier 복원.
+- `BeginSelfSplit(slime, ejectDir)` — 공중 셀프 분열 API. 코드 잔존하나 **기능 보류**
+  (2026-06-11: 셀프 스플릿 시스템은 만들지 않기로 — 호출자 없음).
+- **상처 = 메니스커스 막 (스캔 룩 제거)**: 컷 평면은 부피-정확 깊이(구면 cap Newton 풀이)에
+  **월드 고정 — 다시는 움직이지 않는다**. 봉합 모션 전부가 막(膜)의 것:
+  - 셰이더 `SliceSignedDist`(SlimeSliceData.hlsl)가 평면이 아니라 **고정 림 원에 앵커된
+    구면 멤브레인** SDF. 멤브레인 apex 높이 `b`: 음수 = 오목 파임, 양수 = 볼록 차오름,
+    `b = cap 높이` 도달 시 멤브레인 ≡ 몸 구면 → 클립 면적 정확히 0. 상처는 평면 슬라이드가
+    아니라 **림→중심 동심 봉합**으로 닫힌다.
+  - **봉합 = 보이는 수축에 잠금 (2026-06-11 2차 피드백)**: CLOSE 동안 진행도 `w`는 독립
+    곡선이 아니라 **DisplayedBodyScale(스프링 지연 포함)의 수축 진행에서 직접 파생** —
+    몸이 줄어드는 만큼 정확히 닫혀서 "몸은 이미 작은데 상처가 아직 열려있는" 탈동기화가
+    구조적으로 불가능. SETTLE에서만 스프링(`meniscusSpringK/Damping`, Close 말미 닫힘
+    속도를 시드로)이 마지막 출렁 오버슈트를 만든다. `closeSealCurve` 제거됨.
+  - **HOLD 퀴버**: 잘린 순간 단면+림이 고주파 감쇠 진동(`quiverAmp/Freq/Decay/SpatialFreq`
+    → 셰이더 `_SliceWobble`) — 정지 프레임이 아니라 때린 젤리의 잔동. 단면은 살짝 오목한
+    상태로 시작.
+- **과도기 페이즈**: HOLD(오목+퀴버) → CLOSE(L1 메니스커스 = 수축 잠금 · L2 비대칭 정착
+  `gatherAmount/gatherCurve` · L3 물리 반경 램프 `closeBodyCurve` + 비주얼 스프링 출렁) →
+  SETTLE(막 스프링 마지막 출렁, 클립 면적 0 도달) → RELAX(점성 가라앉기: 부풀음의 **발이
+  퍼지며 높이가 낮아짐**(`sealRelaxSpread`) + 위로만 살짝 튕기는 바운스(`sealRelaxBounce`,
+  반전 함몰 없음) + 저주파 슬로시 잔물결, 다 녹은 뒤에야 `_SliceCount=0` — 림 원에 기하학적으로
+  고정된 입술이 한 프레임에 꺼지며 모양이 점프하던 문제의 해결책, `sealRelax*` 5종).
+  표면장력 입술(`lipBand/lipMag`)·찢김 페이드(`tearAmp`)는 멤브레인 SDF를 그대로
+  소비하므로 자동 추종. **새살 goo 발광 띠는 제거**(회복 진행이 빛으로 티남 — 유저 기각,
+  `_SliceHeal` 상시 0). 평면 OS 변환 참조행렬은 기존과 동일.
+- **heal = 흡수 게이트 (자크식)**:
+  - `NotifyChunkAbsorbed(dir, vol)` — 조각이 닿으면 그 조각이 가져간 부피만큼 **즉시 회복**
+    (`mergeDuration` smoothstep 램프). 연출: 닿은 지점에 멤브레인을 표면 밖으로 밀어넣은
+    **합체 벌지**(클립 0, lip/wobble만 점등 — 발광 없음) + `absorbPopKick` 전신 출렁 +
+    `mergeWobbleKick` 국소 잔물결. **컷 과도기 중 도착하면 그 부피를 CLOSE 램프의 목적지
+    (postScale)에 합산** — 수축이 회복으로 한 동작으로 블렌드, "다 줄어든 뒤 다시 커짐"
+    2단계 없음 (2026-06-11 2차 피드백). 새 컷이 머지를 끊으면 잔여 부피 먼저 정산.
+  - `NotifyChunkLost(vol)` — 조각 영구 분실(낙사): 그 부피가 `slowPool`로 전환,
+    `slowRecoveryDuration`(풀 부피 기준) 속도의 **느린 자연 회복** — 소프트락 불가.
+- **점프력 = 몸집 파생**: `SplitLaunchMultiplier`는 매 프레임 현재 `BodyScaleRatio`에서
+  계산(`woundedScaleRef`→`woundedJumpMultiplierMin` 선형 매핑). 독립 회복 타이머 없음 —
+  흡수로 몸이 돌아오면 점프력도 같이 돌아온다.
+- 재절단은 현재 ratio에서 다시 깎음 — 자연 스태킹(조각도 하나 더 생김).
+- 회귀: idle일 때 아무것도 안 건드림. 완전 회복 시 조용히 리셋. `OnDestroy` 시 복원.
+
+### 2.4 조각: `SlimeChunk` (잔존-회수 아이템으로 재작성)
+
+melt/WorldTrail 얼룩 **삭제**. 라이프사이클:
+
+1. **FLYING** — sliver flatten → 표면장력 round-up(기존). 추가로 **절단면**(-사출방향,
+   mesh OS -Y)에 본체와 같은 메니스커스 상처를 푸시 — 잘린 단면이 보였다가 round-up과
+   함께 동심 봉합(`pieceCutFaceFrac`, 같은 스프링 상수).
+2. **RESTING** — 착지 후 무기한 잔존. `restBreathAmp/Freq` 아이들 숨쉬기 워블.
+   (받침이 사라져 다시 떨어지면 FLYING 복귀.)
+3. **ATTRACTING** — 슬라임이 `absorbPullRadius` 안에 들어오면 중력 끄고 자석 흡인
+   (`absorbPullAccel/MaxSpeed`), 셰이더 velocity-stretch에 `absorbStretchBoost`를 얹어
+   본체 쪽으로 길쭉하게 늘어나며 끌려옴. 스폰 직후엔 `absorbArmDelay` + "몸 밖으로 한 번
+   나갔는가" 체크로 무장 — 같은 프레임 재흡수 방지.
+4. **소멸** — 흡수(`NotifyChunkAbsorbed`) 또는 연속 공중 `severedMaxAirTime` 초과 = 낙사
+   (`NotifyChunkLost`). 부피는 정확히 한 번만 정산(`resolved` 가드).
+
+**플레이어와 절대 충돌하지 않음**: 스포너가 조각 콜라이더에 `excludeLayers = 슬라임 레이어`
+(엔진 레벨, 수명 무관). 과거의 "조각이 밑에 깔리면 무한 airborne" 버그는
+① 타이머식 ignore 리스트가 런치 클리어런스 sweep(`RegisterOverlapping`)에 전부 wipe되어
+조각 충돌이 부활하고 ② probe는 슬라임 레이어를 못 봐 부착 판정이 안 되던 것 —
+`IgnoredColliderList.RegisterOverlapping`이 Passthrough 항목을 보존하도록 함께 수정
+(KnifeHazard 통과 중 런치 시의 동일 잠재 버그도 해결).
 
 ## 3. 폐기된 것 (이번 재설계에서 제거)
 
@@ -115,11 +156,18 @@ semi-implicit Euler, dt 클램프)으로 추적:
 
 전부 `SlimeSplitSettings` (한국어 헤더로 섹션 정리):
 [컷—부피] cutVolumeFraction/selfSplitVolumeFraction/jitter/recutMinInterval ·
-[컷—출렁임] bodyScaleSpringK/Damping/CutKick ·
-[컷—잘린 면] cutHoldDuration/capVanishScale/transitionMaxDuration/cap 색 3종 ·
-[조각] 사출/round-up/jiggle/melt/얼룩 군 ·
-[회복] recoveryDuration + 곡선 2종, woundedJumpMultiplierMin.
+[컷—출렁임] bodyScaleSpringK/Damping ·
+[컷—메니스커스] meniscusSpringK/Damping, cutConcaveDepthFrac ·
+[컷—퀴버] quiverAmp/Freq/Decay/SpatialFreq ·
+[컷—과도기] cutHoldDuration/closeDuration + closeBodyCurve(봉합이 이 수축에 잠금), gather 군 ·
+[컷—상처 look] tear/lip/cap 색 군 ·
+[조각] 사출(pieceSizeScale)/round-up(piecePerpExpandMax)/jiggle/절단면(pieceCutFaceFrac)/잔존(restBreath)/흡수(absorbPull·Arm·Stretch) ·
+[흡수—합체] mergeDuration/absorbPopKick/mergeWobbleKick/mergeFaceFrac ·
+[회복] slowRecoveryDuration, woundedJumpMultiplierMin/woundedScaleRef (몸집 파생).
 SlimeVisual은 `splitSettings` 참조 필요(Setup 메뉴가 자동 와이어링).
+2026-06-11 제거: melt/얼룩 군, recoveryDuration/recoveryCurve/launchRecoveryCurve/regrowPopKick,
+cutRoundnessMax (멤브레인으로 대체), closeSealCurve(봉합=수축 잠금), sliceHeal 색/강도/폭
+(발광 띠 제거). 기존 asset의 해당 직렬화 값은 무시됨.
 
 ## 6. 알려진 트레이드오프 / 미해결
 

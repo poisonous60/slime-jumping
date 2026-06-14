@@ -66,16 +66,23 @@ namespace SlimeJumping.Physics
         // Registers every collider on `mask` overlapping the slime as ReattachGuard entries.
         // Used by Launch/Hop/ForceAirborneWithVelocity — prevents instant re-stick to the
         // surface the slime is leaving, without suppressing physical collision.
+        //
+        // Only REATTACH-GUARD entries are swept; Passthrough entries survive. Wiping them
+        // here used to re-enable Physics2D collision mid-overlap (launching while transiting
+        // a knife blade, or right after a cut while the severed chunk was still registered),
+        // because Passthrough owners register once / on a slow refresh — not every frame.
         public void RegisterOverlapping(Vector2 position, float radius, LayerMask mask)
         {
-            for (int i = 0; i < colliders.Count; i++)
+            for (int i = colliders.Count - 1; i >= 0; i--)
+            {
+                if (modes[i] != IgnoreMode.ReattachGuard) continue;
                 RestoreCollision(colliders[i], modes[i]);
-            colliders.Clear();
-            timers.Clear();
-            modes.Clear();
+                RemoveAt(i);
+            }
             Collider2D[] overlaps = Physics2D.OverlapCircleAll(position, radius, mask);
             foreach (var c in overlaps)
             {
+                if (colliders.Contains(c)) continue;   // already guarded (e.g. surviving Passthrough)
                 colliders.Add(c);
                 timers.Add(maxIgnoreTime);
                 modes.Add(IgnoreMode.ReattachGuard);

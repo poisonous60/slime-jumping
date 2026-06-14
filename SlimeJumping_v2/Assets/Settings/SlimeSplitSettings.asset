@@ -18,8 +18,8 @@ MonoBehaviour:
   recutMinInterval: 0.15
   bodyScaleSpringK: 60
   bodyScaleSpringDamping: 7
-  cutHoldDuration: 1
-  closeDuration: 1
+  cutHoldDuration: 0.2
+  closeDuration: 2
   closeBodyCurve:
     serializedVersion: 2
     m_Curve:
@@ -35,32 +35,8 @@ MonoBehaviour:
     - serializedVersion: 3
       time: 1
       value: 1
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  closeSealCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
+      inSlope: 2
+      outSlope: 2
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
@@ -102,14 +78,17 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  cutRoundnessMax: 0
+  meniscusSpringK: 90
+  meniscusSpringDamping: 9
+  cutConcaveDepthFrac: 0.12
+  quiverAmp: 0.05
+  quiverFreq: 16
+  quiverDecay: 5
+  quiverSpatialFreq: 7
   tearAmp: 0.05
   tearFreq: 2.5
   lipBand: 0.18
   lipMag: 0.06
-  sliceHealColor: {r: 0.6, g: 0.88, b: 0.55, a: 1}
-  sliceHealIntensity: 0.7
-  sliceHealWidth: 0.3
   sliceCapColor: {r: 0.18, g: 0.32, b: 0.18, a: 1}
   sliceCapRimColor: {r: 0.45, g: 0.7, b: 0.42, a: 1}
   sliceCapDepth: 0.35
@@ -119,13 +98,15 @@ MonoBehaviour:
   upwardImpulse: 1.5
   linearDamping: 0.05
   angularDamping: 0.05
+  pieceSizeScale: 1.4
   colliderRadiusFactor: 0.7
   spinMinDeg: 0
   spinMaxDeg: 0
   severedMaxAirTime: 4
-  pieceFlatten: 0.12
+  pieceFlatten: 1
+  piecePerpExpandMax: 1.2
   pieceSharpBeat: 0.15
-  pieceRoundUpDuration: 0.35
+  pieceRoundUpDuration: 1
   pieceRoundUpCurve:
     serializedVersion: 2
     m_Curve:
@@ -150,80 +131,24 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  jiggleAmplitude: 0.35
-  jiggleFrequency: 9
+  jiggleAmplitude: 0.1
+  jiggleFrequency: 1
   jiggleDecay: 3.5
   landingJiggleBoost: 1
   velocityStretchScale: 0.5
   wobbleSpeedRef: 12
-  meltContactGrace: 0.2
-  meltDuration: 1.2
-  meltSpread: 0.8
-  meltGroundProbe: 0.5
-  groundMask:
-    serializedVersion: 2
-    m_Bits: 0
-  meltSinkFactor: 1
-  meltStampRadius: 0.45
-  meltStampStrength: 0.7
-  meltStampInterval: 0.12
-  recoveryDuration: 5
-  recoveryCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 2
-      outSlope: 2
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  launchRecoveryCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 0.7
-      value: 0.15
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  regrowPopKick: 0.4
+  pieceCutFaceFrac: 0.3
+  restBreathAmp: 0.05
+  restBreathFreq: 1.1
+  absorbPullRadius: 0.6
+  absorbPullAccel: 60
+  absorbPullMaxSpeed: 14
+  absorbArmDelay: 0.35
+  absorbStretchBoost: 0.5
+  mergeDuration: 0.35
+  absorbPopKick: 0.6
+  mergeWobbleKick: 0.8
+  mergeFaceFrac: 0.85
+  slowRecoveryDuration: 45
   woundedJumpMultiplierMin: 0.9
+  woundedScaleRef: 0.6

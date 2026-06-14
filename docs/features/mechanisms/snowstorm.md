@@ -64,76 +64,57 @@ ambient Snow.prefab을 가로로 미는 box ForceField. **zone collider와 무�
 | `snowForceField` | (wire) | 자식 ParticleSystemForceField. 정적 config(shape/drag/layer)만 OnValidate/OnEnable에서 설정, geometry는 런타임 카메라 viewport 추종. direction = `currentWindAcceleration × presence` |
 | `snowDrag` | 1.5 | linear drag — terminal ≈ `magnitude / snowDrag` |
 
-### Visual — ambient Snow.prefab boost (옵셔널)
-`snowParticles` 슬롯에 씬의 [Snow.prefab](../../../SlimeJumping_v2/Assets/Prebs/VFX/Snow.prefab) 인스턴스 wire하면, storm 활성 중 그 PS의 emission rate + startSize를 lerp로 부스트. baseline은 OnEnable에 lazy capture (전체 MinMaxCurve 보존, mode-safe). OnDisable에 자동 복원.
-| 필드 | 기본 | 설명 |
-|------|------|------|
-| `snowParticles` | null | 부스트 대상 ambient PS |
-| `snowPeakRate` | 1800 | peak intensity 시 절대 emission rate |
-| `snowPeakSizeMultiplier` | 1.8 | peak 시 baseline 위 상대 size 배율 |
-
 ### Visual — Stage Snow Swap (기존 스테이지 눈 교체)
 스테이지 전반에 항시 깔려 있는 **별도** 눈 PS(예: 스테이지 전역에 배치된 [Snow.prefab](../../../SlimeJumping_v2/Assets/Prebs/VFX/Snow.prefab) 인스턴스, `SnowCameraEmitter` 포함)를 `suppressedSnowParticles` 배열에 wire하면, 슬라임이 zone 안에 있는 동안 그 눈이 **fade-out**된다. storm 비주얼이 presence로 fade-IN 하는 것과 정확히 반대 → 둘이 **교체(cross-fade)**되어 눈이 겹쳐 두 배로 쌓이지 않음. zone 밖에선 스테이지 눈 그대로, 안에선 꺼짐.
-
-`snowParticles`(presence-GATED 부스트, zone 안에서만 보임)와 구분되는 별개 필드 — 이쪽은 zone 밖에서 평소 풀로 켜져 있다가 안에서 꺼지는 항시-눈.
 
 | 필드 | 기본 | 설명 |
 |------|------|------|
 | `suppressedSnowParticles` | empty | zone 진입 시 끌 기존 스테이지 눈 PS 배열 |
 
-게이트 모델: emission rate = `baseline × (1 − slimePresenceWeight)`, 렌더러 알파 = `1 − slimePresenceWeight` (storm/ambient와 동일한 MPB `_BaseColor`/`_Color`/`_TintColor` fade). 알파까지 같이 내려야 in-flight 입자(눈 lifetime 5-9s)도 lockstep으로 사라져 깔끔히 교체됨. baseline은 OnEnable lazy capture (전체 MinMaxCurve 보존, mode-safe), OnDisable에 emission + 알파 모두 복원 → zone 사라지면 스테이지 눈 풀로 재개.
+게이트 모델: emission rate = `baseline × (1 − slimePresenceWeight)`, 렌더러 알파 = `1 − slimePresenceWeight` (storm PS와 동일한 MPB `_BaseColor`/`_Color`/`_TintColor` fade). 알파까지 같이 내려야 in-flight 입자(눈 lifetime 5-9s)도 lockstep으로 사라져 깔끔히 교체됨. baseline은 OnEnable lazy capture (전체 MinMaxCurve 보존, mode-safe), OnDisable에 emission + 알파 모두 복원 → zone 사라지면 스테이지 눈 풀로 재개.
 
-### Visual — Storm-owned PS pair (top + side)
-Snowstorm2D 직속 자식 ParticleSystem 2개 — `stormParticles` (top-strip) + `sideStormParticles` (upwind-side-strip). **카메라 앵커 Local sim** — 매 LateUpdate에 PS transform=카메라 위치, simulationSpace=Local로 입자가 viewport에 묶임 → 슬라임 빠른 점프에도 입자 안 뒤처짐.
+`Sync Storm Vy To Stage Snow` context menu: `suppressedSnowParticles[0]`의 낙하 속도(velocityOverLifetime.y, 없으면 startSpeed)를 calm/left/right peak Vy에 복사 — 경계 cross-fade가 "같은 눈이 거세지는" 느낌이 되도록 storm 낙하 속도를 스테이지 눈에 맞춤.
+
+### Visual — Storm-owned PS (전체 화면 볼륨 스폰)
+Snowstorm2D 직속 자식 ParticleSystem 1개 — `stormParticles`. **카메라 앵커 Local sim** — 매 LateUpdate에 PS transform=카메라 위치, simulationSpace=Local로 입자가 viewport에 묶임 → 슬라임 빠른 점프에도 입자 안 뒤처짐.
+
+**Spawn box = viewport 전체 × `coverageMultiplier` (볼륨 스폰).** 이전의 top-strip + side-strip 쌍을 대체 — strip 방식은 emission rate 변화(입장 시 phase reset, calm→wind 램프)가 strip에서만 주입돼 새 밀도가 화면 꼭대기부터 띠로 내려오는 게 보였음 ("눈이 한 번에 생성되고 떨어지는" 현상). 볼륨 스폰은 rate 변화가 화면 전체에 즉시 균일 반영되고, 풍향 무관하게 viewport를 커버해 side strip이 불필요. 화면 중간 spawn/death 팝은 colorOverLifetime 알파 페이드(0→15% in, 85→100% out, Snow.prefab과 동일 키 배치 — ConfigureStormForFade에서 코드로 강제)로 가림.
 
 | 필드 | 기본 | 설명 |
 |------|------|------|
-| `stormParticles` | (wire) | top-strip PS — viewport 위쪽 밖 horizontal strip |
-| `sideStormParticles` | (wire) | upwind-side-strip PS — viewport 옆쪽 밖 vertical strip |
+| `stormParticles` | (wire) | 전체 화면 볼륨 스폰 PS |
 | `targetCamera` | Camera.main fallback | 추종 대상 |
-| `stripThickness` | 2 | spawn strip 두께 (위쪽 strip의 Y, 측면 strip의 X) |
-| `stripOffset` | 1.5 | viewport edge로부터 strip까지 안전 마진 |
-| `coverageMultiplier` | 1.4 | strip 길이 = viewport extent × multiplier |
-| `stormCalmRate` | 900 | top-strip calm baseline emission |
-| `stormPeakRate` | 1800 | top-strip peak emission |
-| `sideStormPeakRate` | 1000 | side-strip peak emission (calm baseline 0 — vx=0이라 측면 spawn 무의미) |
-| `stormDriftSpeed` | 14 | velocityOverLifetime.x = `direction × drift × intensity` |
-| `stormFallBias` | 3 | velocityOverLifetime.y constant downward (gravityModifier 위 추가) |
+| `coverageMultiplier` | 1.4 | base spawn box = viewport extent × multiplier (양 축) |
+| `stormParticleLifetime` | 2.5s | 입자 수명. upstream 마진 크기도 결정 (아래 참고) |
+| `stormCalmRate` | 900 | calm baseline emission (화면 내 밀도 기준 — 박스 면적비로 자동 스케일) |
+| `stormPeakRate` | 1800 | peak emission (동일) |
+| `calmVelocity` | (0, -2.75) | calm 시 입자 속도 (스테이지 눈 낙하 속도와 일치) |
+| `leftPeakVelocity` / `rightPeakVelocity` | (∓14, -2.75) | peak wind 시 입자 속도 |
 | `stormFallJitter` | 0.4 | vy ±jitter 비율 — 평행선 패턴 깸 |
-
-#### Spawn 전략
-| strip | local position | local scale | 역할 |
-|-------|---------------|-------------|------|
-| top | `(0, halfH + stripOffset + thickness/2, 0)` | `(halfW × 2 × cov, thickness, 0)` | 위에서 떨어짐, viewport 상단부 채움 |
-| side | `(-direction × (halfW + stripOffset + thickness/2), 0, 0)` | `(thickness, halfH × 2 × cov, 0)` | 측면에서 횡단, viewport 하단부 채움 |
-
-top 단독으로는 +X 풍향 시 (top-left → bottom-right) 사선 패턴이 되어 좌하단이 빔. side가 그 갭 메움.
 
 #### 입자 운동 (Local space)
 ```
 vel.space = Local
-vel.x = direction × stormDriftSpeed × intensity
-vel.y = MinMaxCurve(-fallBias × (1 + jitter), -fallBias × (1 - jitter))
-gravityModifier = 0.6  (configure 시점, 누적 가속)
+vel = Lerp(calmVelocity, directionPeakVelocity, intensity)
+vel.y per-particle jitter: MinMaxCurve(vy × (1 + jitter), vy × (1 - jitter))
+gravityModifier = 0, startSpeed = 0  (velocityOverLifetime이 유일한 속도 소스)
 ```
 
-가로 drift는 intensity 스케일 (calm vx=0 = 수직 낙하). 세로 fall은 jitter range로 입자별 변동 → 평행선 패턴 깨짐. Noise 모듈도 추가 (strength 1.2, freq 0.6) → 유기적 perturbation.
+#### Upstream 마진 (스폰 영역 희박 문제)
+균일 볼륨 스폰의 정상상태 밀도는 박스 가장자리(입자가 들어오는 쪽)에서 0이고, 수명 동안 이동 거리(`|v| × lifetime`)만큼 하류로 내려와야 포화된다 — 박스를 viewport에 딱 맞추면 화면 위쪽(calm)·upwind 쪽(wind)이 눈에 띄게 희박해짐. Stage2 눈의 `heightMultiplier` overshoot와 같은 아이디어를 정확한 크기로 적용: 매 프레임 spawn box를 속도의 반대 방향(상류)으로 축별 `|v_axis| × stormParticleLifetime`만큼 연장(+중심을 상류로 반마진 이동) → 희박 ramp 전체가 화면 밖. emission rate는 박스/기준 면적비로 곱해 설정 rate가 "화면 내 밀도" 의미를 유지 (안 하면 peak wind에서 박스가 커지며 눈이 옅어짐). maxParticles는 OnEnable에서 ≥20000으로 강제 (peak: ~5800/s × 2.5s ≈ 15k — cap에 걸리면 조용한 스로틀로 희박 문제가 재발).
 
 ### Slime Presence Fade
 | 필드 | 기본 | 설명 |
 |------|------|------|
 | `presenceFadeSpeed` | 1.5 | 모든 storm 비주얼 통합 fade 속도 (units/sec). 1.5 ≈ 0.66s |
 
-런타임 `slimePresenceWeight` (0~1)이 슬라임 trigger in/out에 따라 MoveTowards. 모든 storm 비주얼이 이 weight를 곱해 사용:
-- top emission = `Lerp(calmRate, peakRate, intensity) × presence`
-- side emission = `peakRate × intensity × presence`
+런타임 `slimePresenceWeight` (0~1)이 슬라임 trigger in/out에 따라 MoveTowards. storm 비주얼이 이 weight를 사용:
+- storm PS emission = `Lerp(calmRate, peakRate, intensity)` — **presence 게이트 없이 항상 풀 rate** (steady-state 인구 상시 유지), 가시성은 렌더러 MPB 알파 = `presence`로만 게이트 → 입장 순간 이미 화면에 깔린 눈이 페이드인됨 ("입장하자마자 눈이 새로 생성돼 떨어지는" 현상 방지)
 - post Volume weight = `presence × intensity` (직접 할당)
 - ambient sound volume = `intensity × presence × peakVolume`
-- ambient Snow.prefab: emission rate = `Lerp(baseRate, peakRate, intensity) × presence`, 렌더러 알파 = `presence` (storm-owned PS와 동일한 MPB fade). zone 밖(presence=0)에선 **emission 0 + 알파 0** → in-flight 입자까지 fade out 되어 storm 범위 밖에 ambient 눈이 안 보임. inside-calm(presence=1, intensity=0)은 baseline rate 그대로 유지 ("바람만 멈춤"). intensity는 calm→peak rate/size 램프만 담당, presence가 전체 게이트.
+- 스테이지 눈 (suppressedSnowParticles): emission `× (1 − presence)`, 알파 `1 − presence` — storm과 cross-fade
 
-이전 hard zone-bounds particle cull로 인한 boundary snap 제거. 슬라임 zone 이탈 시 emission 점진 0, 잔존 입자는 lifetime 끝까지 자연 wind-down.
-
-> **이전 버그 (수정됨)**: ambient Snow.prefab의 baseline emission이 presence 게이트 밖에 있어 slime이 zone을 떠나도 220/s로 계속 분출됐다. `SnowCameraEmitter.emitterArea`(카메라 추종 cull 폴리곤)가 그 입자를 얇은 띠로 잘라, storm 범위 밖에서도 눈이 "가끔 나타났다 사라지는" 현상. 위처럼 emission + 알파를 모두 presence로 게이트해 해결.
+이전 hard zone-bounds particle cull로 인한 boundary snap 제거. 슬라임 zone 이탈 시 storm 알파 점진 0, 스테이지 눈 복귀.
 
 ### Post-process
 | 필드 | 기본 | 설명 |
@@ -191,12 +172,11 @@ Attached/Charging에서 `slideVelocity`/`crawlVelocity` 영구 채널 적분 →
 - 기본 zone 40×24 사각 PolygonCollider2D 트리거 + Snowstorm2D (path 편집으로 비사각형 변형 가능)
 - 테스트 플랫폼 (Floor / LaunchStep / MiddlePerch / RightLanding)
 - 자식 SnowForceField (WindForceField layer)
-- 자식 StormParticles_Top + StormParticles_Side (모두 ConfigureStormPs로 동일 정적 traits 적용 — Local sim, lifetime 3-5s, startSize 0.10-0.18, gravity 0.6, Noise 모듈, ExternalForces off, prewarm OFF)
+- 자식 StormParticles 1개 (ConfigureStormPs — Local sim, Noise 모듈, ExternalForces off)
 - 자식 StormVolume (글로벌 URP Volume + SnowstormProfile asset 자동 생성)
-- ambient Snow.prefab 1개 인스턴스 (snowParticles 슬롯에 wire, optional 부스트용)
-- Material 재사용: Snow.prefab의 ParticleSystemRenderer.sharedMaterial을 storm PS에 전달. fallback URP Particles/Unlit + null-guard + LogWarning
+- Material 재사용: Snow.prefab 에셋의 ParticleSystemRenderer.sharedMaterial을 storm PS에 전달 (인스턴스화 없음). fallback URP Particles/Unlit + null-guard + LogWarning
 
-prewarm은 양 PS 모두 OFF — presence 게이트와 충돌 (씬 시작 시 슬라임 위치 무관 burst 방지).
+스테이지 눈(suppressedSnowParticles)은 씬마다 손으로 wire — setup tool은 storm 내부 부품만 만든다. prewarm은 Snowstorm2D가 OnEnable에 ON으로 강제 (emission이 항상 풀 rate라 presence 게이트와 충돌 없음).
 
 ## 디자인 결정 노트
 
@@ -206,16 +186,21 @@ prewarm은 양 PS 모두 OFF — presence 게이트와 충돌 (씬 시작 시 �
 2. `SnowCameraEmitter.emitterArea` 폴리곤이 좁아 화면 중앙 띠만 보이고 위/아래 잘림
 3. spawn 영역이 viewport 전체라 풍속 강할 때 입자가 즉시 downwind 이탈, 유효 in-screen 밀도 폭락 + 슬라임 점프 시 World sim이라 입자 뒤에 남음
 
-해결: Snowstorm2D가 자체 PS 직접 소유 + Local sim space + 카메라 앵커 + upwind-edge spawn strip. ambient Snow.prefab은 optional 보조로만 wire. **단 emission + 알파를 presence로 게이트**해 zone 안에서만 보임 — 한계 #1(zone 밖 입자 보임)을 게이트로 차단. (stage 전반의 항시 baseline snowfall이 필요하면 Snowstorm2D에 wire하지 말고 Snow.prefab을 독립 배치할 것.)
+해결: Snowstorm2D가 자체 PS 직접 소유 + Local sim space + 카메라 앵커. 한계 #3의 "downwind 이탈로 밀도 폭락"은 emission rate를 충분히 높게 잡고 lifetime을 탈출 시간에 auto-size해 흡수.
+
+> **2026-06-11 정리**: 한때 ambient Snow.prefab 복사본("AmbientSnow")을 `snowParticles` 슬롯에 wire해 zone 안 밀도 부스트로 썼으나 제거됨. 스테이지 눈과 외형이 같아 "storm 안에 stage 눈이 보인다"로 읽혔고, World sim + noise wobble로 storm 입자의 균일 낙하와 어긋나는(가끔 위로 떠오르는) 알갱이가 거슬렸음. zone 안 눈은 storm-owned PS가 전담하고, 밀도는 `stormCalmRate`/`stormPeakRate`로 조절.
+
+### 왜 strip 스폰이 아니라 전체 화면 볼륨 스폰인가
+초기 구현은 top-strip(위에서 낙하 진입) + side-strip(upwind에서 횡단 진입) 쌍. emission rate 변화가 strip에서만 주입되다 보니 rate가 바뀔 때마다(입장 phase reset, calm→wind 램프) 새 밀도가 화면 꼭대기부터 띠 모양으로 내려오는 게 보였음 — "눈이 한 번에 생성되고 떨어지는" 어색함. 전체 화면 볼륨 스폰은 rate 변화가 화면 전역에 즉시 균일 반영되고 풍향 무관 커버리지로 side strip도 불필요. 화면 중간 spawn/death 팝은 Snow.prefab과 같은 colorOverLifetime 알파 페이드로 가림. 입자 외형(startSize 0.05-0.14, white)과 calm 낙하 속도(-2.75)도 스테이지 눈과 통일해 경계 cross-fade가 "같은 눈이 거세지는" 연출로 읽히게 함.
 
 ### 왜 hard cull이 아니라 presence fade인가
 초기에 zone bounds AABB cull로 zone 밖 입자 즉시 사망. 결과: 슬라임이 zone 경계 통과하면 입자가 boundary에서 snap → 어색. presence weight 게이트로 emission만 fade하고 잔존 입자는 lifetime 끝까지 자연 낙하 → "폭풍이 점차 잦아드는" 느낌.
 
 ### 왜 calm rate가 0이 아닌가
-"바람이 멈춘 거지 눈이 멈춘 게 아니다." Top emission `Lerp(calm=900, peak=1800, intensity)` → calm에도 baseline snowfall 유지. 단 vx=0이라 수직 낙하 (사선 drift는 wind 페이즈에서만). Side emission은 calm 0 — vx=0이면 측면 spawn 입자가 viewport 안 못 들어오고 edge 밖에서만 떨어져 무의미.
+"바람이 멈춘 거지 눈이 멈춘 게 아니다." Emission `Lerp(calm, peak, intensity)` → calm에도 baseline snowfall 유지. 단 vx=0이라 수직 낙하 (사선 drift는 wind 페이즈에서만).
 
 ### 왜 vy jitter + Noise 모듈인가
-모든 입자 동일 vy → trajectory 평행 → 시각적으로 ruled lines 패턴. `stormFallJitter` ±40% MinMaxCurve range + Noise 모듈 (strength 1.2, freq 0.6, damping)로 깸. 자연스러운 snowfall 분포.
+모든 입자 동일 vy → trajectory 평행 → 시각적으로 ruled lines 패턴. `stormFallJitter` ±40% MinMaxCurve range + Noise 모듈로 깸. 자연스러운 snowfall 분포.
 
 ### 참고 레퍼런스
 - [Celeste Wind Wiki](https://celeste.ink/wiki/Wind) — 입자가 단일 픽셀 흰/연파랑, gravity 변동으로 미세 curve, off-camera 시작

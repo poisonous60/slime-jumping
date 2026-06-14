@@ -241,14 +241,19 @@ Multi probe의 `OutputVelocity` teleport branch도 반드시 `SlimeController.Sn
 | 필드 | Additive 모드 | SpeedCurve 모드 |
 |---|---|---|
 | `v2BendPumpGain` / `v2BendPumpGainByImpactSpeed` | 측면 충돌 pump gain 고정 배율 | 측면 충돌 속도별 bend pump gain |
+| `v2BendImpactSpeedScale` / `v2BendTipTravelByImpactSpeed` | 첫 충돌: 접선 충돌 속도 → tip 각속도 배율 | 첫 충돌: **직각 충돌 속도(m/s) → 목표 끝 이동거리(m)** 그래프, 길이 정규화(θ=travel/L) |
 | `v2ChargedLaunchBonus` / `v2ChargedLaunchBonusByChargePower` | Charging release 발사 power에 더할 고정 보너스 | charge launch power별 추가 보너스 |
 
-**첫 충돌 휨 (impact bend) — `v2BendImpactSpeedScale` (단일 노브).** 슬라임이 처음 측면에 닿는 프레임에서 대나무 tip angular velocity를 슬라임의 **접선 충돌 속도**에서 바로 계산한다 (`ApplyV2ImpactKick`). 발사 반동(`v2LaunchReleaseVelocityScale`)과 **같은 투영식·같은 단위**라 충돌과 반동이 일관되게 읽히고 각각 숫자 하나로 튠한다. `1` = 접촉 높이의 대나무 표면이 슬라임 접선 충돌 속도를 그대로 따라가려 함, 클수록 더 휨. 이 경로가 **첫 충돌에 한해** `v2BendPumpGain`/`v2BendPumpGainByImpactSpeed` impulse 펌프를 대체하므로, 빠르게 부딪힐수록 곡선 손튠 없이 자동으로 더 크게 흔들린다. `0` = impact kick 끄고 기존 impulse 펌프로 폴백. 접촉 높이 보정(`v2BendMinHeightScale`, `v2BendHeightPower`)은 그대로 곱해진다. `v2BendPumpGain`/curve는 이제 첫 충돌 이후의 sustained/charge 프레임에만 영향 (대개 ~0).
+**첫 충돌 휨 (impact bend) — 모드별 2가지 (`ApplyV2ImpactKick`).** 슬라임이 처음 측면에 닿는 프레임에서 대나무 tip angular velocity를 설정한다. 빠르게 부딪힐수록 더 크게 흔들리는 점은 두 모드 공통이고, 첫 충돌에 한해 `v2BendPumpGain`/`v2BendPumpGainByImpactSpeed` impulse 펌프를 대체한다. 접촉 높이 보정(`v2BendMinHeightScale`, `v2BendHeightPower`)은 두 모드 모두 그대로 곱해진다. `v2BendPumpGain`/curve는 첫 충돌 이후의 sustained/charge 프레임에만 영향 (대개 ~0).
+
+- **Additive 모드 — `v2BendImpactSpeedScale` (단일 노브).** tip angular velocity를 슬라임의 **접선 충돌 속도**에서 바로 비례 계산. 발사 반동(`v2LaunchReleaseVelocityScale`)과 **같은 투영식·같은 단위**라 충돌과 반동이 일관되게 읽히고 각각 숫자 하나로 튠한다. `1` = 접촉 높이의 대나무 표면이 슬라임 접선 충돌 속도를 그대로 따라가려 함, 클수록 더 휨. `0` = impact kick 끄고 impulse 펌프로 폴백.
+- **SpeedCurve 모드 — `v2BendTipTravelByImpactSpeed` (그래프).** X = **직각 충돌 속도** (m/s, 대나무 축에 수직으로 들어오는 속도 성분 = `BambooV2Response.SignedPerpendicularSpeed`), Y = **목표 끝 이동거리** (m, 대나무 *끝*이 첫 스윙에 이동하는 거리). "이 속도로 부딪히면 끝이 이만큼 움직인다"를 디자이너가 그래프로 직접 그린다. **길이 정규화**: 끝 이동거리 → 휨 각도 변환을 `θ = tipTravel / bambooLength`(`PeakBendDegForTipTravel`)로 하므로, 한 그래프가 모든 길이에 일관되게 적용된다 — 긴 대나무는 같은 끝 이동을 *작은 각도*로, 짧은 대나무는 *큰 각도*로 만든다. 그 peak 각도에 V2 스프링이 실제로 도달하도록 underdamped 2차계 역산으로 초기 각속도를 부여한다: peak = `(ω₀/ω_d)·exp(−ζ/√(1−ζ²)·atan2(√(1−ζ²), ζ))` → `ω₀ = peak·ω_d/decay` (`AngularVelocityForPeakBendDeg`, freq=`v2SpringFreqHz` / ζ=`v2DampingRatio`). 끝 이동거리(m)는 호 근사(θ=travel/L)+`v2DampingRatio` decay 때문에 근사값이라 눈으로 튠한다. 빈 곡선이면 impact kick 끄고 impulse 펌프로 폴백.
 
 Charging release는 플레이어가 aim한 방향을 그대로 사용하고, `base charge power + v2ChargedLaunchBonus`만 적용한다. `v2ChargedLaunchBonus`는 “차징 점프 방향을 따라가는 추가 속도”이고, `v2CarrierScale`은 “슬라임이 bamboo에서 받는 스윙 속도 상속 배율”이다. 발사 직후 bamboo 자체도 `v2LaunchReleaseVelocityScale`만큼 반작용 kick을 받는다. `v2LaunchReleaseUseHeightScale`이 켜져 있으면 이 kick에 별도 접촉 높이 보정(`v2LaunchReleaseMinHeightScale`, `v2LaunchReleaseHeightPower`)을 곱한다. 따라서 아래쪽에서 점프하면 같은 launch velocity라도 덜 흔들리고, 위쪽/끝에 가까운 접촉일수록 접선 속도에 가까운 큰 반작용이 난다. 즉 차징을 더 세게 만들고 싶으면 `v2ChargedLaunchBonus`/`v2ChargedLaunchBonusByChargePower`, 슬라임이 스윙에서 받는 보상을 키우고 싶으면 `v2CarrierScale`, 슬라임이 떨어져나간 뒤 bamboo가 더 빠르게 튕기게 만들고 싶으면 `v2LaunchReleaseVelocityScale`을 올린다.
 
 시간/형상 노브:
-- `v2BendImpactSpeedScale` — 첫 측면 충돌 시 슬라임 접선 충돌 속도 → tip angular velocity 변환 배율. 빠른 충돌일수록 자동으로 더 크게 흔들리게 하는 단일 노브 (위 "첫 충돌 휨" 참조). 0이면 기존 impulse 펌프로 폴백.
+- `v2BendImpactSpeedScale` — (**Additive 모드**) 첫 측면 충돌 시 슬라임 접선 충돌 속도 → tip angular velocity 변환 배율. 빠른 충돌일수록 자동으로 더 크게 흔들리게 하는 단일 노브 (위 "첫 충돌 휨" 참조). 0이면 기존 impulse 펌프로 폴백.
+- `v2BendTipTravelByImpactSpeed` — (**SpeedCurve 모드**) 직각 충돌 속도(m/s) → 목표 끝 이동거리(m) 그래프. 길이 정규화(`θ = tipTravel / bambooLength`)라 한 그래프가 모든 길이에 일관 — 긴 대나무는 작은 각도, 짧은 대나무는 큰 각도. `v2BendImpactSpeedScale`을 대체. 빈 곡선이면 impulse 펌프로 폴백 (위 "첫 충돌 휨" 참조).
 - `v2SpringFreqHz` — 낮을수록 더 오래 휘고 늦게 돌아온다.
 - `v2DampingRatio` — 낮을수록 반동 에너지가 덜 죽는다.
 - `v2MaxDeflectionDeg` — 측면 충돌 시 허용되는 최대 휨.

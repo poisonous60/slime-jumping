@@ -85,55 +85,33 @@ namespace SlimeJumping.Editor
             volume.weight = 0f;
             volume.sharedProfile = LoadOrCreateStormProfile();
 
-            // --- Ambient Snow.prefab instance (optional baseline snowfall). Snowstorm2D
-            // boosts this PS's emission rate + size during wind phases. Camera-follows
-            // and culls outside its own polygon area (Snow.prefab's SnowCameraEmitter).
-            var snowPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(SnowPrefabPath);
-            ParticleSystem ambientSnowPs = null;
+            // --- Snowflake material reused from Snow.prefab (no instance — the storm
+            // owns all snow inside the zone; stage-wide Snow.prefab instances are wired
+            // into suppressedSnowParticles by hand so they swap out on entry).
             Material reusedSnowMaterial = null;
+            var snowPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(SnowPrefabPath);
             if (snowPrefab != null)
             {
-                var ambientInstance = (GameObject)PrefabUtility.InstantiatePrefab(snowPrefab, root.transform);
-                ambientInstance.name = "AmbientSnow";
-                ambientInstance.transform.position = new Vector3(baseX, baseY + zoneHeight * 0.5f, 0f);
-                ambientSnowPs = ambientInstance.GetComponentInChildren<ParticleSystem>();
-                if (ambientSnowPs != null)
-                {
-                    var r = ambientSnowPs.GetComponent<ParticleSystemRenderer>();
-                    if (r != null)
-                    {
-                        r.sortingOrder = 10;
-                        reusedSnowMaterial = r.sharedMaterial;
-                    }
-                }
+                var prefabRenderer = snowPrefab.GetComponentInChildren<ParticleSystemRenderer>();
+                if (prefabRenderer != null) reusedSnowMaterial = prefabRenderer.sharedMaterial;
             }
             else
             {
-                Debug.LogWarning($"Snow prefab missing at {SnowPrefabPath} — ambient snowfall won't render until added manually.");
+                Debug.LogWarning($"Snow prefab missing at {SnowPrefabPath} — storm particles fall back to a plain white material.");
             }
 
-            // --- Storm-owned PS pair (top-strip + side-strip). Snowstorm2D owns both
-            // directly and drives spawn position/emission/velocity per frame. Top-strip
-            // covers the upper diagonal half of the viewport via fall+drift; side-strip
-            // fills the lower diagonal half by drifting in from the upwind edge.
-            var topPsGo = new GameObject("StormParticles_Top");
-            topPsGo.transform.parent = stormGo.transform;
-            topPsGo.transform.localPosition = Vector3.zero;
-            var topPs = topPsGo.AddComponent<ParticleSystem>();
-            ConfigureStormPs(topPs, reusedSnowMaterial);
-
-            var sidePsGo = new GameObject("StormParticles_Side");
-            sidePsGo.transform.parent = stormGo.transform;
-            sidePsGo.transform.localPosition = Vector3.zero;
-            var sidePs = sidePsGo.AddComponent<ParticleSystem>();
-            ConfigureStormPs(sidePs, reusedSnowMaterial);
+            // --- Storm-owned PS. Snowstorm2D owns it and drives spawn box/emission/
+            // velocity per frame — full-viewport volume spawn, camera-anchored.
+            var stormPsGo = new GameObject("StormParticles");
+            stormPsGo.transform.parent = stormGo.transform;
+            stormPsGo.transform.localPosition = Vector3.zero;
+            var stormPs = stormPsGo.AddComponent<ParticleSystem>();
+            ConfigureStormPs(stormPs, reusedSnowMaterial);
 
             // --- Wire references on Snowstorm2D ---
             var so = new SerializedObject(storm);
             so.FindProperty("snowForceField").objectReferenceValue = ff;
-            so.FindProperty("snowParticles").objectReferenceValue = ambientSnowPs;
-            so.FindProperty("stormParticles").objectReferenceValue = topPs;
-            so.FindProperty("sideStormParticles").objectReferenceValue = sidePs;
+            so.FindProperty("stormParticles").objectReferenceValue = stormPs;
             so.FindProperty("postVolume").objectReferenceValue = volume;
             so.ApplyModifiedProperties();
 
@@ -146,9 +124,8 @@ namespace SlimeJumping.Editor
 
         // Storm-owned PS. Local sim space anchored to the camera (Snowstorm2D moves the
         // PS transform to camera every LateUpdate); particles are visually glued to the
-        // viewport regardless of camera motion. Snowstorm2D drives spawn strip position,
-        // emission rate, and horizontal velocity per frame — this configures only the
-        // static traits. Same config for both top + side strips.
+        // viewport regardless of camera motion. Snowstorm2D drives the spawn box,
+        // emission rate, and velocity per frame — this configures only the static traits.
         static void ConfigureStormPs(ParticleSystem ps, Material reusedSnowMaterial)
         {
             if (ps == null) return;
@@ -190,12 +167,12 @@ namespace SlimeJumping.Editor
             var shape = ps.shape;
             shape.shapeType = ParticleSystemShapeType.Box;
             shape.boxThickness = Vector3.zero;
-            // Initial above-viewport approximation. Prewarm runs at PS enable BEFORE
-            // any LateUpdate, so without a sane default here the prewarmed cloud would
-            // spawn at the PS center (camera origin) and be visible at viewport center
-            // for the first ~3-5s. ApplyStormParticles overwrites this every frame
-            // with the camera-accurate value (halfH + topStripOffset + thickness/2).
-            shape.position = new Vector3(0f, 7f, 0f);
+            // Initial viewport-sized approximation; prewarm runs at PS enable BEFORE any
+            // LateUpdate, so a sane default avoids a one-frame point-spawn cloud.
+            // ApplyStormParticles overwrites this every frame with the camera-accurate
+            // full-viewport box.
+            shape.position = Vector3.zero;
+            shape.scale = new Vector3(25f, 15f, 0f);
             shape.rotation = Vector3.zero;
 
             // sizeOverLifetime: short fade-in so newly-spawned particles become visible

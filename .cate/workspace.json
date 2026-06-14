@@ -5,9 +5,9 @@
   "canvas": {
     "nodes": [
       {
-        "panelId": "aa961816-05d2-4f90-858b-b009556e2d73",
+        "panelId": "f9736368-e848-46cd-9b04-65701a078de0",
         "panelType": "terminal",
-        "title": "",
+        "title": "C:\\WINDOWS\\system32\\cmd.exe",
         "origin": {
           "x": -120.62308210775262,
           "y": 15.969313724042934
@@ -16,13 +16,39 @@
           "width": 1304.3809404415515,
           "height": 673.5376850566429
         }
+      },
+      {
+        "panelId": "0b25ff13-d862-48ba-b0fc-8bf8e9a66c51",
+        "panelType": "terminal",
+        "title": "C:\\WINDOWS\\system32\\cmd.exe",
+        "origin": {
+          "x": -120,
+          "y": 720
+        },
+        "size": {
+          "width": 1308.0097388247227,
+          "height": 541.1840543895701
+        }
+      },
+      {
+        "panelId": "5975f140-267a-4260-bad5-06f402475a9d",
+        "panelType": "terminal",
+        "title": "C:\\WINDOWS\\system32\\cmd.exe",
+        "origin": {
+          "x": 1195.9065770319532,
+          "y": 17.974930006116953
+        },
+        "size": {
+          "width": 1177.0642806862338,
+          "height": 633.2472263892948
+        }
       }
     ],
     "regions": [],
-    "zoomLevel": 0.8378591982361303,
+    "zoomLevel": 0.5551806928343042,
     "viewportOffset": {
-      "x": 519.2265114499014,
-      "y": 66.43837547887802
+      "x": 357.40063773607415,
+      "y": 214.62593242768745
     }
   },
   "dockState": {

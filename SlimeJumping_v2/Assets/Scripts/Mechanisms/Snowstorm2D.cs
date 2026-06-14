@@ -86,55 +86,32 @@ namespace SlimeJumping.Mechanisms
         [Min(0f)]
         [SerializeField] private float snowDrag = 1.5f;
 
-        [Header("Visual — Snow Density Boost")]
-        [Tooltip("Main snowfall PS (typically the existing Snow.prefab in the scene, which already handles camera following + polygon area culling). At peak storm intensity its emission rate and start size are scaled up so the snowfall visibly thickens.")]
-        [SerializeField] private ParticleSystem snowParticles;
-
-        [Tooltip("Absolute emission rate at peak intensity (particles/sec). Linearly interpolated against the base rate captured from the PS at OnEnable. e.g. base 220 → peak 1800 ≈ 8× thicker snowfall during wind phases.")]
-        [Min(0f)]
-        [SerializeField] private float snowPeakRate = 1800f;
-
-        [Tooltip("Relative size boost applied on top of the captured baseline at peak intensity. 1 = no change. e.g. base startSizeMultiplier=1, peak multiplier=1.8 → particles get 1.8× larger during peak wind.")]
-        [Min(0.1f)]
-        [SerializeField] private float snowPeakSizeMultiplier = 1.8f;
-
         [Header("Visual — Stage Snow Swap")]
         [Tooltip("Existing stage-wide snow PS (e.g. the always-on Snow.prefab covering the whole stage) that should fade OUT while the slime is inside this zone, so the stage's ambient snowfall and the storm visuals SWAP rather than stack. Inverse of slimePresenceWeight: full snow outside the zone, off inside. Emission is gated to baseline×(1−presence) and renderer alpha to (1−presence) so in-flight flakes clear in lockstep. Restored to baseline on disable. Distinct from snowParticles above, which is a presence-GATED boost target shown only INSIDE the zone.")]
         [SerializeField] private ParticleSystem[] suppressedSnowParticles;
 
         [Header("Visual — Storm-owned Particles")]
-        [Tooltip("Snowstorm-owned top-strip PS — spawns above the viewport, particles fall into view. Local sim space anchored to the camera. Covers the upper diagonal half of the viewport during wind (top-left → bottom-right at +X wind).")]
+        [Tooltip("Snowstorm-owned PS — full-viewport volume spawn, Local sim space anchored to the camera. Emission-rate changes appear uniformly across the screen instead of as a density band falling in from the top; colorOverLifetime fade-in/out (applied at OnEnable) hides mid-screen spawn/death pops, same approach as Snow.prefab.")]
         [SerializeField] private ParticleSystem stormParticles;
-
-        [Tooltip("Snowstorm-owned upwind-side-strip PS — spawns just outside the upwind viewport edge, particles drift across into view. Fills the lower diagonal half that the top-strip can't reach (because top-spawn particles fall out before drifting that far). Together with stormParticles this covers the full viewport during wind.")]
-        [SerializeField] private ParticleSystem sideStormParticles;
 
         [Tooltip("Camera the storm PS follows. Falls back to Camera.main.")]
         [SerializeField] private UnityEngine.Camera targetCamera;
 
-        [Tooltip("Strip thickness (perpendicular to spawn edge) in local units. Used for both top-strip Y thickness and side-strip X thickness.")]
-        [Min(0.1f)]
-        [SerializeField] private float stripThickness = 2f;
-
-        [Tooltip("Safety margin between the viewport edge and the spawn strip (local units). Larger = more pre-drift travel time before particles become visible, smoother on fast camera motion.")]
-        [Min(0f)]
-        [SerializeField] private float stripOffset = 1.5f;
-
-        [Tooltip("Strip extent perpendicular to its spawn edge × this multiplier (top-strip horizontal width, side-strip vertical height = viewport extent × this). >1 keeps wind-drifted particles visible at viewport corners during peak storm.")]
+        [Tooltip("Spawn box extent = viewport extent × this multiplier (both axes). >1 keeps particles just outside the viewport already falling/drifting before they scroll into view on camera motion.")]
         [Min(1f)]
         [SerializeField] private float coverageMultiplier = 1.4f;
 
-        [Tooltip("Top-strip baseline emission (particles/sec) during calm — keeps snow falling when the wind is silent. The wind only stops; the snow does not. Set close enough to stormPeakRate that the calm phase doesn't visually feel like a sudden cliff drop in density.")]
+        [Tooltip("Particle lifetime (s). Also sizes the upstream spawn margin (= velocity × lifetime, added on the side particles come FROM), which guarantees the steady-state density at the viewport edge equals the saturated interior — without the margin the spawn-box edge shows a sparse band (same flaw the stage snow mitigates with its heightMultiplier). Longer = flakes visible longer but a larger off-screen box and particle pool.")]
+        [Min(0.5f)]
+        [SerializeField] private float stormParticleLifetime = 2.5f;
+
+        [Tooltip("Baseline emission (particles/sec) during calm — keeps snow falling when the wind is silent. The wind only stops; the snow does not. Set close enough to stormPeakRate that the calm phase doesn't visually feel like a sudden cliff drop in density.")]
         [Min(0f)]
         [SerializeField] private float stormCalmRate = 900f;
 
-        [Tooltip("Top-strip peak emission rate (particles/sec) at intensity=1. Lerps from stormCalmRate up to this value as wind ramps in.")]
+        [Tooltip("Peak emission rate (particles/sec) at intensity=1. Lerps from stormCalmRate up to this value as wind ramps in.")]
         [Min(0f)]
         [SerializeField] private float stormPeakRate = 1800f;
-
-        [Tooltip("Side-strip peak emission rate (particles/sec) at intensity=1. No calm baseline — side strip only emits during wind because in calm there is no horizontal drift to carry particles into view, so they would just pile at the spawn edge.")]
-        [Min(0f)]
-        [SerializeField] private float sideStormPeakRate = 1000f;
 
         [Tooltip("Random ± fraction applied to per-particle vy so trajectories aren't parallel. 0 = all particles fall at the same speed (looks like ruled lines). 0.4 ≈ ±40% jitter on the fall bias.")]
         [Range(0f, 0.9f)]
@@ -192,28 +169,15 @@ namespace SlimeJumping.Mechanisms
         private Vector2 windTransitionTarget;
         private float windTransitionElapsed;
 
-        // Storm PS renderers + shared MPB. Used to fade particle alpha by
+        // Storm PS renderer + shared MPB. Used to fade particle alpha by
         // slimePresenceWeight without touching the prefab's shared material. Emission
         // runs at full rate at all times so a steady-state population already exists
         // when the slime enters; only opacity fades in/out.
         private ParticleSystemRenderer stormRenderer;
-        private ParticleSystemRenderer sideStormRenderer;
-        private ParticleSystemRenderer ambientSnowRenderer;
         private MaterialPropertyBlock stormMpb;
         private static readonly int s_BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int s_ColorId = Shader.PropertyToID("_Color");
         private static readonly int s_TintColorId = Shader.PropertyToID("_TintColor");
-
-        // Snow boost baselines, captured lazily from each assigned PS so designers can
-        // tune the prefab freely and the storm peaks remain expressed as absolute target
-        // rates rather than opaque multipliers. The full MinMaxCurve is stored (not just
-        // .constant) so OnDisable can restore PS configured with TwoConstants/Curve rate
-        // modes without permanently flattening them to a single value. A separate scalar
-        // is extracted for the boost lerp.
-        private bool snowBaselineCaptured;
-        private ParticleSystem.MinMaxCurve snowBaselineRate;
-        private float snowBaselineRateScalar;
-        private float snowBaselineSizeMultiplier;
 
         // Stage-snow swap baselines. Each suppressed PS's emission rate is captured so the
         // inverse-presence gate scales from the real baseline; the full MinMaxCurve is
@@ -279,7 +243,6 @@ namespace SlimeJumping.Mechanisms
         void OnEnable()
         {
             SyncForceFieldGeometry();
-            CaptureSnowBaselines();
             CaptureSuppressedSnowBaselines();
             ConfigureStormForFade();
         }
@@ -287,19 +250,35 @@ namespace SlimeJumping.Mechanisms
         void ConfigureStormForFade()
         {
             // Enable prewarm so the PS fills the viewport at scene start. Without this,
-            // first-entry into the zone shows an empty top strip until ~lifetime seconds
-            // of emission has filled the viewport.
+            // first-entry into the zone shows an empty viewport until ~lifetime seconds
+            // of emission has filled it.
             if (stormParticles != null)
             {
                 var m = stormParticles.main;
                 m.prewarm = true;
+                // Pool headroom for the worst case: peak rate × upstream-margin area
+                // scale (~3×) × lifetime. Hitting maxParticles silently throttles
+                // emission, which would reintroduce the sparse-spawn look.
+                m.maxParticles = Mathf.Max(m.maxParticles, 20000);
                 stormRenderer = stormParticles.GetComponent<ParticleSystemRenderer>();
-            }
-            if (sideStormParticles != null)
-            {
-                var m = sideStormParticles.main;
-                m.prewarm = true;
-                sideStormRenderer = sideStormParticles.GetComponent<ParticleSystemRenderer>();
+
+                // Per-particle alpha fade-in/out over lifetime — hides the pop of
+                // particles spawning/dying mid-screen, which the full-viewport volume
+                // spawn makes possible (the old top-strip spawned off-screen only).
+                // Same key layout as Snow.prefab's colorOverLifetime.
+                var col = stormParticles.colorOverLifetime;
+                col.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                    new[]
+                    {
+                        new GradientAlphaKey(0f, 0f),
+                        new GradientAlphaKey(1f, 0.15f),
+                        new GradientAlphaKey(1f, 0.85f),
+                        new GradientAlphaKey(0f, 1f),
+                    });
+                col.color = new ParticleSystem.MinMaxGradient(grad);
             }
             if (stormMpb == null) stormMpb = new MaterialPropertyBlock();
         }
@@ -308,19 +287,6 @@ namespace SlimeJumping.Mechanisms
         {
             StopAmbient();
             if (postVolume != null) postVolume.weight = 0f;
-            // Restore snow PS to its captured baselines so a disabled storm doesn't
-            // leave the rate/size stuck on peak, which would visually persist after the
-            // zone goes away and contaminate any other zone that shares the same
-            // Snow.prefab instance.
-            if (snowBaselineCaptured) RestoreSnow(snowParticles, snowBaselineRate, snowBaselineSizeMultiplier);
-            // Same reasoning for the presence alpha multiplier: clear it so a storm
-            // disabled while the slime is outside doesn't leave the shared Snow.prefab
-            // instance stuck transparent.
-            if (ambientSnowRenderer != null)
-            {
-                if (stormMpb == null) stormMpb = new MaterialPropertyBlock();
-                ApplyAlphaToRenderer(ambientSnowRenderer, Color.white);
-            }
             // Restore the stage snow PS so a disabled storm doesn't leave the existing
             // always-on snowfall stuck suppressed (emission + alpha) — it must resume full
             // snowfall everywhere once this zone is gone.
@@ -344,7 +310,6 @@ namespace SlimeJumping.Mechanisms
             UpdatePresenceWeight(dt);
             AdvancePhase(dt);
             ApplyForceField();
-            ApplySnowBoost();
             ApplySuppressedSnow();
             ApplyPostVolume();
             ApplyAmbient();
@@ -383,16 +348,6 @@ namespace SlimeJumping.Mechanisms
             if (stormMpb == null) stormMpb = new MaterialPropertyBlock();
             Color c = new Color(1f, 1f, 1f, slimePresenceWeight);
             ApplyAlphaToRenderer(stormRenderer, c);
-            ApplyAlphaToRenderer(sideStormRenderer, c);
-            // Ambient Snow.prefab fades with presence too. Its emission is also gated to
-            // 0 outside the zone (ApplySnowBoost), but emission alone leaves in-flight
-            // particles falling for their full 5-9s lifetime — visible as stray snow well
-            // beyond the storm. The alpha fade clears them in lockstep with presence so
-            // the ambient snowfall vanishes with the rest of the storm at the boundary.
-            // Lazy capture handles late inspector wire-up of snowParticles.
-            if (ambientSnowRenderer == null && snowParticles != null)
-                ambientSnowRenderer = snowParticles.GetComponent<ParticleSystemRenderer>();
-            ApplyAlphaToRenderer(ambientSnowRenderer, c);
 
             // Stage snow swap: fade the existing always-on snowfall OUT as presence rises —
             // inverse of the storm fade-in — so in-flight flakes clear in lockstep with the
@@ -712,34 +667,12 @@ namespace SlimeJumping.Mechanisms
             snowForceField.directionZ = new ParticleSystem.MinMaxCurve(0f);
         }
 
-        // ---- Snow boost ------------------------------------------------------------------
-        //
-        // Reference: Celeste & Jump King wind levels both express the storm via *more
-        // dense round snowflakes blowing horizontally*, NOT stretched white line
-        // streaks. We drive emission rate + size on the existing Snow.prefab instances
-        // so the scene's snowfall thickens during wind phases and visibly goes back to
-        // normal during calm. Horizontal motion comes from the snowForceField above.
-
-        void CaptureSnowBaselines()
-        {
-            TryCapturePsBaseline(snowParticles, ref snowBaselineCaptured, ref snowBaselineRate, ref snowBaselineRateScalar, ref snowBaselineSizeMultiplier);
-        }
-
-        static void TryCapturePsBaseline(ParticleSystem ps, ref bool captured, ref ParticleSystem.MinMaxCurve baselineRate, ref float baselineRateScalar, ref float baselineSizeMultiplier)
-        {
-            if (ps == null || captured) return;
-            baselineRate = ps.emission.rateOverTime;
-            baselineRateScalar = ExtractRateScalar(baselineRate);
-            baselineSizeMultiplier = ps.main.startSizeMultiplier;
-            captured = true;
-        }
-
         // Pick a representative scalar for lerping from the captured rate. Constant /
         // TwoConstants modes give a clean answer; for Curve / TwoCurves we approximate
-        // with curveMultiplier (the upper-bound scale) so the boost still lerps to a
-        // sensible peak. RestoreSnow always writes back the original MinMaxCurve so the
-        // mode/curve shape is preserved verbatim — the scalar approximation only matters
-        // during the lerp.
+        // with curveMultiplier (the upper-bound scale) so the gate still lerps to a
+        // sensible value. The restore path always writes back the original MinMaxCurve
+        // so the mode/curve shape is preserved verbatim — the scalar approximation only
+        // matters during the lerp.
         static float ExtractRateScalar(ParticleSystem.MinMaxCurve c)
         {
             switch (c.mode)
@@ -750,42 +683,6 @@ namespace SlimeJumping.Mechanisms
                 case ParticleSystemCurveMode.TwoCurves: return c.curveMultiplier;
                 default: return c.constant;
             }
-        }
-
-        void ApplySnowBoost()
-        {
-            // Lazy capture: handles late inspector wire-up after OnEnable. Without this,
-            // assigning snowParticles in the inspector at runtime would silently leave
-            // the baseline uncaptured and the boost a no-op.
-            TryCapturePsBaseline(snowParticles, ref snowBaselineCaptured, ref snowBaselineRate, ref snowBaselineRateScalar, ref snowBaselineSizeMultiplier);
-
-            // intensity drives the calm→peak ramp (rate target + size); presence gates
-            // the whole emission. Outside the zone presence=0 → ambient snow stops
-            // emitting, so it no longer appears as stray snowfall beyond the storm
-            // bounds. Inside-but-calm (presence=1, intensity=0) keeps the unmodified
-            // baseline rate — the wind stopped, not the snow.
-            float intensity = NormalizedIntensity();
-            BoostSnow(snowParticles, snowBaselineCaptured, snowBaselineRateScalar, snowBaselineSizeMultiplier, snowPeakRate, snowPeakSizeMultiplier, intensity, slimePresenceWeight);
-        }
-
-        static void BoostSnow(ParticleSystem ps, bool captured, float baseRateScalar, float baseSizeMultiplier, float peakRate, float peakSizeMultiplier, float intensity, float presence)
-        {
-            if (ps == null || !captured) return;
-
-            var emis = ps.emission;
-            emis.rateOverTime = new ParticleSystem.MinMaxCurve(Mathf.Lerp(baseRateScalar, peakRate, intensity) * presence);
-
-            var main = ps.main;
-            main.startSizeMultiplier = Mathf.Lerp(baseSizeMultiplier, baseSizeMultiplier * peakSizeMultiplier, intensity);
-        }
-
-        static void RestoreSnow(ParticleSystem ps, ParticleSystem.MinMaxCurve baselineRate, float baseSizeMultiplier)
-        {
-            if (ps == null) return;
-            var emis = ps.emission;
-            emis.rateOverTime = baselineRate;
-            var main = ps.main;
-            main.startSizeMultiplier = baseSizeMultiplier;
         }
 
         // ---- Stage snow swap -------------------------------------------------------------
@@ -841,20 +738,23 @@ namespace SlimeJumping.Mechanisms
 
         // ---- Storm-owned particles -------------------------------------------------------
         //
-        // Camera-anchored Local-space PS pair. Both transforms follow the camera every
+        // Camera-anchored Local-space PS. The transform follows the camera every
         // LateUpdate; particles simulate in PS-local coordinates, so they are visually
         // glued to the viewport regardless of how fast the slime/camera moves — solves
         // the "snow gets left behind on fast jump" problem of World-space sim.
         //
-        // Two strips: top (above viewport, particles fall in) + side (just outside the
-        // upwind viewport edge, particles drift in). Top alone leaves the lower-half
-        // of the downwind diagonal empty because top-spawn particles fall out of view
-        // before drifting that far horizontally; the side strip fills that gap.
+        // Full-viewport volume spawn (replaced the old top+side strip pair): emission
+        // rate changes (calm→wind ramps, zone-entry phase reset) appear uniformly
+        // across the whole screen at once. With strip spawning, a rate change only
+        // injected at the strip, so the new density arrived as a visible band falling
+        // in from the top of the screen ("snow spawning all at once"). Volume spawn
+        // also covers the viewport at every wind angle, so no side strip is needed.
+        // Mid-screen spawn/death pops are hidden by the colorOverLifetime fade
+        // (ConfigureStormForFade), the same technique Snow.prefab uses.
         //
         // Wind drift = horizontal local-space velocity, scaled by storm intensity.
-        // During calm: top emission held at stormCalmRate (snow keeps falling), side
-        // emission goes to zero (no horizontal drift to carry particles in, would
-        // just pile at the spawn edge).
+        // During calm, emission holds at stormCalmRate — the wind stops, the snow
+        // does not.
 
         void ApplyStormParticles()
         {
@@ -870,94 +770,62 @@ namespace SlimeJumping.Mechanisms
             float intensity = NormalizedIntensity();
             Vector3 cam = targetCamera.transform.position;
 
-            ApplyTopStrip(cam, halfW, halfH, intensity);
-            ApplySideStrip(cam, halfW, halfH, intensity);
+            ApplyStormVolume(cam, halfW, halfH, intensity);
             ApplyForceFieldToViewport(cam, halfW, halfH);
         }
 
-        void ApplyTopStrip(Vector3 cam, float halfW, float halfH, float intensity)
+        void ApplyStormVolume(Vector3 cam, float halfW, float halfH, float intensity)
         {
             if (stormParticles == null) return;
 
             stormParticles.transform.SetPositionAndRotation(
                 new Vector3(cam.x, cam.y, 0f), Quaternion.identity);
 
+            // Upstream spawn margin. A uniform volume spawn reaches its saturated
+            // steady-state density only one lifetime of travel (|v|×L) downstream of
+            // the box edge — at the edge itself density is zero and ramps up linearly.
+            // Extending the box by exactly |v|×L on the side particles come FROM
+            // (above for fall, upwind for drift) puts that ramp entirely off-screen,
+            // so the visible viewport sits in the saturated zone. Same idea as the
+            // stage snow's heightMultiplier spawn-box overshoot, sized exactly.
+            Vector2 vel = GetStormVelocity(intensity);
+            float life = stormParticleLifetime;
+            float baseW = halfW * 2f * coverageMultiplier;
+            float baseH = halfH * 2f * coverageMultiplier;
+            float sizeX = baseW + Mathf.Abs(vel.x) * life;
+            float sizeY = baseH + Mathf.Abs(vel.y) * life;
+
             var shape = stormParticles.shape;
             shape.shapeType = ParticleSystemShapeType.Box;
             shape.rotation = Vector3.zero;
             shape.boxThickness = Vector3.zero;
-            shape.position = new Vector3(0f, halfH + stripOffset + stripThickness * 0.5f, 0f);
-            shape.scale = new Vector3(halfW * 2f * coverageMultiplier, stripThickness, 0f);
+            // Center shifted upstream (against velocity) by half the margin so the
+            // base box stays centered on the camera and only the margin side grows.
+            shape.position = new Vector3(-vel.x * life * 0.5f, -vel.y * life * 0.5f, 0f);
+            shape.scale = new Vector3(sizeX, sizeY, 0f);
 
             // Always emit at full rate so a steady-state particle population exists
             // around the camera at all times. Visibility is gated by alpha (MPB on the
             // renderer), so the snowfall is already on screen the instant the slime
             // enters the zone — only its opacity fades in.
+            // Rate is scaled by the box growth so the configured calm/peak rates keep
+            // meaning "on-screen density" no matter how far the box extends upstream
+            // (otherwise peak wind would enlarge the box and visibly THIN the snow).
+            float areaScale = (sizeX * sizeY) / (baseW * baseH);
             var emis = stormParticles.emission;
             emis.rateOverTime = new ParticleSystem.MinMaxCurve(
-                Mathf.Lerp(stormCalmRate, stormPeakRate, intensity));
+                Mathf.Lerp(stormCalmRate, stormPeakRate, intensity) * areaScale);
 
-            // Auto-size lifetime so particles survive the full vertical traversal
-            // (spawn-strip → bottom of viewport). Without this the prefab's fixed
-            // startLifetime expires mid-screen when vy is low → particles fade out
-            // visibly near the center.
-            Vector2 vel = GetStormVelocity(intensity);
-            float topTravel = halfH * 2f + stripOffset * 2f + stripThickness;
-            var topMain = stormParticles.main;
-            topMain.startLifetime = new ParticleSystem.MinMaxCurve(
-                ComputeLifetime(topTravel, Mathf.Abs(vel.y)));
+            var main = stormParticles.main;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(life);
 
             ApplyStormVelocity(stormParticles, intensity);
-        }
-
-        void ApplySideStrip(Vector3 cam, float halfW, float halfH, float intensity)
-        {
-            if (sideStormParticles == null) return;
-
-            sideStormParticles.transform.SetPositionAndRotation(
-                new Vector3(cam.x, cam.y, 0f), Quaternion.identity);
-
-            var shape = sideStormParticles.shape;
-            shape.shapeType = ParticleSystemShapeType.Box;
-            shape.rotation = Vector3.zero;
-            shape.boxThickness = Vector3.zero;
-            // Strip on the upwind side — opposite the wind direction. Wind=+X → strip
-            // on left (−X). Particles spawn there and drift +X into the viewport.
-            shape.position = new Vector3(
-                -currentDirection * (halfW + stripOffset + stripThickness * 0.5f), 0f, 0f);
-            shape.scale = new Vector3(stripThickness, halfH * 2f * coverageMultiplier, 0f);
-
-            // Side strip only emits during wind — calm has vx=0, so spawned particles
-            // would just pile at the side edge and look wrong. No slime-presence gating
-            // here either; alpha fade handles entry/exit (see ApplyStormAlpha).
-            var emis = sideStormParticles.emission;
-            emis.rateOverTime = new ParticleSystem.MinMaxCurve(
-                sideStormPeakRate * intensity);
-
-            // Lifetime sized for horizontal traversal (spawn edge → opposite edge).
-            Vector2 vel = GetStormVelocity(intensity);
-            float sideTravel = halfW * 2f + stripOffset * 2f + stripThickness;
-            var sideMain = sideStormParticles.main;
-            sideMain.startLifetime = new ParticleSystem.MinMaxCurve(
-                ComputeLifetime(sideTravel, Mathf.Abs(vel.x)));
-
-            ApplyStormVelocity(sideStormParticles, intensity);
         }
 
         Vector2 GetStormVelocity(float intensity)
         {
             Vector2 peak = currentDirection >= 0f ? rightPeakVelocity : leftPeakVelocity;
             return Vector2.Lerp(calmVelocity, peak, intensity);
-        }
-
-        // Returns travel/speed * safety margin, capped so a near-zero speed doesn't
-        // produce a multi-minute lifetime that bloats the particle pool.
-        const float kLifetimeSafetyMargin = 1.5f;
-        const float kLifetimeMaxCap = 30f;
-        static float ComputeLifetime(float travel, float speed)
-        {
-            if (speed < 0.01f) return kLifetimeMaxCap;
-            return Mathf.Min(travel / speed * kLifetimeSafetyMargin, kLifetimeMaxCap);
         }
 
         void ApplyStormVelocity(ParticleSystem ps, float intensity)
@@ -994,24 +862,30 @@ namespace SlimeJumping.Mechanisms
         }
 
         // Designer convenience: right-click the component header → "Sync Storm Vy To
-        // Outer Snow" to overwrite all three Y components (calm/left/right) with the
-        // outer snowParticles' startSpeed, so the storm-owned snow falls at the same
-        // visual rate as the ambient Snow.prefab.
-        [ContextMenu("Sync Storm Vy To Outer Snow")]
-        void SyncStormVyToOuterSnow()
+        // Stage Snow" to overwrite all three Y components (calm/left/right) with the
+        // stage-wide snow's fall speed, so the boundary cross-fade reads as the same
+        // snowfall intensifying rather than a different effect swapping in. Snow.prefab
+        // falls via velocityOverLifetime (startSpeed=0), so read that module first.
+        [ContextMenu("Sync Storm Vy To Stage Snow")]
+        void SyncStormVyToStageSnow()
         {
-            if (snowParticles == null)
+            ParticleSystem stageSnow =
+                suppressedSnowParticles != null && suppressedSnowParticles.Length > 0
+                    ? suppressedSnowParticles[0]
+                    : null;
+            if (stageSnow == null)
             {
-                Debug.LogWarning("[Snowstorm2D] snowParticles not assigned — cannot sync Vy.", this);
+                Debug.LogWarning("[Snowstorm2D] suppressedSnowParticles[0] not assigned — cannot sync Vy.", this);
                 return;
             }
-            // startSpeed is the spawn-time speed magnitude; snow falls downward, so
-            // negate to express it in our "Vy negative = down" convention.
-            float fallSpeed = -Mathf.Abs(snowParticles.main.startSpeed.constant);
+            var vol = stageSnow.velocityOverLifetime;
+            float fallSpeed = vol.enabled
+                ? -Mathf.Abs(ExtractRateScalar(vol.y))
+                : -Mathf.Abs(stageSnow.main.startSpeed.constant);
             calmVelocity.y = fallSpeed;
             leftPeakVelocity.y = fallSpeed;
             rightPeakVelocity.y = fallSpeed;
-            Debug.Log($"[Snowstorm2D] Storm Vy synced to {fallSpeed} (matches '{snowParticles.name}' startSpeed).", this);
+            Debug.Log($"[Snowstorm2D] Storm Vy synced to {fallSpeed} (matches '{stageSnow.name}').", this);
         }
 
 

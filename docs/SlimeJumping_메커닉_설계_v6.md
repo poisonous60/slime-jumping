@@ -57,7 +57,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Portal](features/mechanisms/portal.md) — 텔레포터 쌍 + PortalSwapper (v2: 소비/재생성, 자동 페어링, 색 지정)
 - [Signal / Button](features/mechanisms/signal-button.md) — SignalSource, WeightDescendPlatform
 - [Wind Zone](features/mechanisms/wind-zone.md) — v1 (slime physics push), v2 (= v1 + Snow ParticleSystemForceField 연동)
-- [Snowstorm](features/mechanisms/snowstorm.md) — 스테이지 전체 눈폭풍 (기본 Jump King 4-페이즈 사이클: WindLeft → CalmAfterLeft → WindRight → CalmAfterRight, 구간별 `sections` override로 약한 상시 좌풍/무풍 눈 연출 등 지정 가능, `windShelterAreas`로 실내·벽 뒤처럼 슬라임 push만 차단, 짧은 lerp ramp 전환, WindZone2D_v2 동일 슬라임 push, 카메라 앵커 Local sim PS pair [top-strip + upwind-side-strip] 으로 viewport 전 영역 커버, slimePresenceWeight 통합 fade로 zone in/out 시 모든 비주얼 [particles + URP Volume vignette/cool-tint/WhiteBalance + ambient loop + Snow.prefab boost] 동기 fade in/out, calm 시 emission baseline 유지로 "바람만 멈추고 눈은 계속" 표현)
+- [Snowstorm](features/mechanisms/snowstorm.md) — 스테이지 전체 눈폭풍 (기본 Jump King 4-페이즈 사이클: WindLeft → CalmAfterLeft → WindRight → CalmAfterRight, 구간별 `sections` override로 약한 상시 좌풍/무풍 눈 연출 등 지정 가능, `windShelterAreas`로 실내·벽 뒤처럼 슬라임 push만 차단, 짧은 lerp ramp 전환, WindZone2D_v2 동일 슬라임 push, 카메라 앵커 Local sim PS의 전체 화면 볼륨 스폰으로 viewport 전 영역 커버 [rate 변화가 화면 전역에 균일 반영 — strip 스폰의 "위에서 띠로 내려오는" 어색함 제거], 입자 외형·낙하속도를 스테이지 눈과 통일 + suppressedSnowParticles cross-fade로 "같은 눈이 거세지는" 경계 연출, slimePresenceWeight 통합 fade로 zone in/out 시 모든 비주얼 [particles + URP Volume vignette/cool-tint/WhiteBalance + ambient loop] 동기 fade in/out, calm 시 emission baseline 유지로 "바람만 멈추고 눈은 계속" 표현)
 - [Drag Zone](features/mechanisms/drag-zone.md) — 감속/모래 + 볼륨 차징
 - [Gravity Field](features/mechanisms/gravity-field.md) — 중력 방향 치환
 - [Water Zone](features/mechanisms/water-zone.md) — 물 v1/v2 + 파도 + Underwater 포스트
@@ -68,7 +68,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Jump Ball](features/mechanisms/jump-ball.md) — 트리거 자동 점프, 보빙 비주얼
 - [Conveyor Belt](features/mechanisms/conveyor-belt.md)
 - [Spike Hazard](features/mechanisms/spike-hazard.md)
-- [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect + [Slime Split](features/mechanisms/slime-split.md)(잘림=작아진 둥근 슬라임: collider.radius 실제 축소(BodyScale) — 작아진 크기로 충돌·부착·앉음 · 비주얼 스프링 출렁 뭉침(출렁임 튜닝) · 손실 부피만큼 조각 사출(sliver→droplet→melt) · heal=크기 재성장 · 공중 셀프 분열 API(2단 점프 연료) · 지속 단면/클립 없음)
+- [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect + [Slime Split](features/mechanisms/slime-split.md)(잘림=작아진 둥근 슬라임 + 자크식 회수: collider.radius 실제 축소(BodyScale) · 상처=메니스커스 막이 림→중심 동심 봉합(스프링 차오름+타격 퀴버, 평면 후퇴 없음) · 손실 부피만큼 조각 사출(sliver→droplet→바닥 잔존, melt/얼룩 폐기) · 조각은 근접 시 자석 흡인→합체 벌지로 흡수 · heal=흡수 게이트(분실 시 느린 자연 회복) · 점프력=몸집 파생 · 지속 단면/클립 없음)
 - [Turret Hazard](features/mechanisms/turret-hazard.md) — CCTV 확장 사격
 - [Icicle Hazard](features/mechanisms/icicle-hazard.md) — 낙하 고드름 (진동 → 낙하 → 파괴)
 - [Falling Train](features/mechanisms/falling-train.md) — 1회 한정 낙하 기차 (텔레그래프 → 연결부 분리 → 곡선 낙하 → 숏컷)

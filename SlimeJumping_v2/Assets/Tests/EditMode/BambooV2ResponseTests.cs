@@ -54,5 +54,78 @@ namespace SlimeJumping.Tests.EditMode
 
             Assert.AreEqual(1f, scale);
         }
+
+        [Test]
+        public void SignedPerpendicularSpeed_VerticalArm_EqualsHorizontalSpeed()
+        {
+            // Vertical bamboo, contact partway up: the +tangent of the arm is horizontal,
+            // so a purely horizontal hit's perpendicular speed equals its x-speed.
+            Vector2 arm = new Vector2(0f, 2.5f);
+
+            float perp = BambooV2Response.SignedPerpendicularSpeed(arm, new Vector2(-8f, -3f));
+
+            // +tangent = (-arm.y, arm.x)/|arm| = (-1, 0); dot with (-8,-3) = 8.
+            Assert.That(perp, Is.EqualTo(8f).Within(1e-3f));
+        }
+
+        [Test]
+        public void EvaluateTipTravelByImpactSpeed_FasterImpactProducesMoreTravel()
+        {
+            var curve = AnimationCurve.Linear(0f, 0f, 18f, 3f);
+
+            float slow = BambooV2Response.EvaluateTipTravelByImpactSpeed(curve, 6f);
+            float fast = BambooV2Response.EvaluateTipTravelByImpactSpeed(curve, 14f);
+
+            Assert.That(fast, Is.GreaterThan(slow));
+        }
+
+        [Test]
+        public void EvaluateTipTravelByImpactSpeed_EmptyCurveIsZero()
+        {
+            Assert.AreEqual(0f, BambooV2Response.EvaluateTipTravelByImpactSpeed(new AnimationCurve(), 10f));
+            Assert.AreEqual(0f, BambooV2Response.EvaluateTipTravelByImpactSpeed(null, 10f));
+        }
+
+        [Test]
+        public void PeakBendDegForTipTravel_LongStalkBendsLessAngleForSameTravel()
+        {
+            // Same target tip travel (2 m): a long bamboo reaches it at a smaller bend angle,
+            // a short bamboo at a larger angle — the length-normalisation guarantee.
+            float travel = 2f;
+
+            float longStalk = BambooV2Response.PeakBendDegForTipTravel(travel, 8f);
+            float shortStalk = BambooV2Response.PeakBendDegForTipTravel(travel, 2f);
+
+            Assert.That(longStalk, Is.LessThan(shortStalk));
+            // θ = travel / L (rad). Short stalk (L=2) → 1 rad.
+            Assert.That(shortStalk, Is.EqualTo(Mathf.Rad2Deg).Within(1e-2f));
+        }
+
+        [Test]
+        public void AngularVelocityForPeakBendDeg_LargerPeakNeedsLargerKick_SignPreserved()
+        {
+            float small = BambooV2Response.AngularVelocityForPeakBendDeg(20f, 0.7f, 0.12f);
+            float large = BambooV2Response.AngularVelocityForPeakBendDeg(60f, 0.7f, 0.12f);
+
+            Assert.That(large, Is.GreaterThan(small));
+            Assert.That(small, Is.GreaterThan(0f));
+            // Negative target (other bend direction) flips the kick sign.
+            float neg = BambooV2Response.AngularVelocityForPeakBendDeg(-60f, 0.7f, 0.12f);
+            Assert.That(neg, Is.EqualTo(-large).Within(1e-3f));
+        }
+
+        [Test]
+        public void AngularVelocityForPeakBendDeg_UndampedKickReachesPeakInOneQuarterPeriod()
+        {
+            // ζ=0: x(t) = (ω0/ωn) sin(ωn t), peak = ω0/ωn → ω0 = peak·ωn. The helper must
+            // return that (decay factor = 1, ωd = ωn).
+            float freqHz = 1.0f;
+            float omegaN = 2f * Mathf.PI * freqHz;
+            float peakDeg = 45f;
+
+            float kickDeg = BambooV2Response.AngularVelocityForPeakBendDeg(peakDeg, freqHz, 0f);
+
+            Assert.That(kickDeg, Is.EqualTo(peakDeg * omegaN).Within(1e-2f));
+        }
     }
 }

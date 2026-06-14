@@ -386,18 +386,54 @@ namespace SlimeJumping.Platforms
         /// tunes from a single scale. Replaces the impulse/curve pump for the impact frame; see
         /// the firstAttach branch in ApplyRiderInfluence.
         /// </summary>
+        /// <summary>True when the first-contact impact bend should fire. Additive mode needs
+        /// v2BendImpactSpeedScale > 0; SpeedCurve mode needs a non-empty v2BendAngleByImpactSpeed
+        /// graph. When false, the side hit falls back to the impulse pump path in
+        /// ApplyRiderInfluence.</summary>
+        bool UsesV2ImpactBend
+        {
+            get
+            {
+                if (settings.v2ResponseMode == BambooV2ResponseMode.SpeedCurve)
+                    return settings.v2BendTipTravelByImpactSpeed != null
+                           && settings.v2BendTipTravelByImpactSpeed.length > 0;
+                return settings.v2BendImpactSpeedScale > 0f;
+            }
+        }
+
         public void ApplyV2ImpactKick(Vector2 riderWorldPos, Vector2 impactVelocity)
         {
             if (!UsesSideReboundV2) return;
-            if (settings.v2BendImpactSpeedScale <= 0f) return;
 
             Vector2 arm = riderWorldPos - pivotWorldPos;
             float heightScale = EvaluateV2BendHeightScale(GetHeight01(riderWorldPos));
-            float targetAngularVelDeg = BambooV2Response.EvaluateLaunchReleaseAngularVelocityDeg(
-                arm,
-                impactVelocity,
-                settings.v2BendImpactSpeedScale,
-                heightScale);
+            float targetAngularVelDeg;
+
+            if (settings.v2ResponseMode == BambooV2ResponseMode.SpeedCurve)
+            {
+                // Graph-driven impact bend: the curve maps perpendicular impact speed (m/s) to
+                // a target TIP TRAVEL (metres). Length-normalise that travel to a bend angle
+                // (θ = travel / bambooLength) so one graph reads the same on every stalk — a
+                // long bamboo reaches the travel at a smaller angle, a short one at a larger
+                // angle. Then convert the target peak angle into the tip angular velocity the
+                // V2 spring needs to reach it. Contact-height shaping still scales the travel.
+                float perpSpeed = BambooV2Response.SignedPerpendicularSpeed(arm, impactVelocity);
+                float tipTravel = BambooV2Response.EvaluateTipTravelByImpactSpeed(
+                    settings.v2BendTipTravelByImpactSpeed, Mathf.Abs(perpSpeed)) * heightScale;
+                float peakDeg = BambooV2Response.PeakBendDegForTipTravel(tipTravel, bambooLength)
+                                * Mathf.Sign(perpSpeed);
+                targetAngularVelDeg = BambooV2Response.AngularVelocityForPeakBendDeg(
+                    peakDeg, settings.v2SpringFreqHz, settings.v2DampingRatio);
+            }
+            else
+            {
+                if (settings.v2BendImpactSpeedScale <= 0f) return;
+                targetAngularVelDeg = BambooV2Response.EvaluateLaunchReleaseAngularVelocityDeg(
+                    arm,
+                    impactVelocity,
+                    settings.v2BendImpactSpeedScale,
+                    heightScale);
+            }
             if (Mathf.Abs(targetAngularVelDeg) < 1e-4f) return;
 
             if (Mathf.Abs(targetAngularVelDeg) > Mathf.Abs(angularVel))
@@ -489,7 +525,7 @@ namespace SlimeJumping.Platforms
                 // scale (same model as the launch recoil) instead of the impulse/curve pump, so a
                 // faster side hit auto-shakes the stalk harder without curve tuning. Later frames
                 // (sustained pump / charge) still go through the impulse path below.
-                if (UsesSideReboundV2 && firstAttach && settings.v2BendImpactSpeedScale > 0f)
+                if (UsesSideReboundV2 && firstAttach && UsesV2ImpactBend)
                 {
                     ApplyV2ImpactKick(riderWorldPos, riderVelocity);
                 }

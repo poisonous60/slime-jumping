@@ -1,59 +1,91 @@
 using UnityEngine;
+using SlimeJumping.Controller;
 using SlimeJumping.Settings;
-using SlimeJumping.Rendering;
 
 namespace SlimeJumping.Effects
 {
     /// <summary>
-    /// The small severed piece of a sliced slime — the slime's OWN round blob mesh, spawned
-    /// small. Self-contained:
-    ///   1. at spawn it is SQUASHED to a thin sliver along the cut normal (reads as "just cut
-    ///      off"), then surface-tensions: it un-squashes into a genuinely round goo droplet
-    ///      (clean blob topology, NOT a reprojected crescent) over pieceRoundUpDuration while
-    ///      flying off + falling under the SAME gravity vector as the slime;
-    ///   2. wobbles like viscous goo the whole way;
-    ///   3. on landing, MELTS — flattens + spreads with its bottom PINNED to the ground surface
-    ///      found by a downward cast, stamping a WorldTrail stain where it melted;
-    ///   4. destroys itself.
-    /// Shader velocity-stretch is pushed via a per-renderer MaterialPropertyBlock (never mutates
-    /// the shared material → no regression on the live slime).
+    /// The severed piece of a sliced slime — the slime's OWN round blob mesh, spawned small,
+    /// and a REAL pickup (Zac-style). Lifecycle:
+    ///   1. FLYING: at spawn it is SQUASHED to a thin sliver along the cut normal, with the
+    ///      cut face showing as a wet cross-section that heals shut via the SAME meniscus
+    ///      membrane the body uses (one shader language for both halves of the cut). It
+    ///      surface-tensions into a round droplet while flying under the slime's gravity,
+    ///      wobbling like viscous goo.
+    ///   2. RESTING: on landing it stays — breathing softly (idle wobble) for as long as it
+    ///      takes the player to come back for it.
+    ///   3. ATTRACTING: once the slime is inside absorbPullRadius the piece is pulled in like
+    ///      goo to a magnet (gravity off, velocity-stretch elongates it toward the body).
+    ///   4. ABSORBED: touching the slime hands its volume to SlimeSplitSequence
+    ///      (NotifyChunkAbsorbed → merge bulge + size restore) and the piece despawns.
+    ///   Lost instead (continuous falling > severedMaxAirTime, i.e. a pit): NotifyChunkLost
+    ///   converts the volume to the slow ambient regen — never a soft-lock.
+    /// Never collides with the player: the collider excludes the slime's layer at the engine
+    /// level (set by the spawner), and the surface probe can't see the slime's own layer.
+    /// Shader pushes go through a per-renderer MaterialPropertyBlock (never mutates the
+    /// shared material → no regression on the live slime).
     /// </summary>
     [RequireComponent(typeof(Rigidbody2D))]
     public class SlimeChunk : MonoBehaviour
     {
+        private enum ChunkState { Flying, Resting, Attracting }
+
         private Rigidbody2D rb;
+        private CircleCollider2D circle;
         private Transform meshTf;
         private MeshRenderer meshRenderer;
         private MaterialPropertyBlock mpb;
         private SlimeSplitSettings s;
+        private SlimeSplitSequence sequence;
+        private SlimeController slime;
 
         private Vector3 baseMeshScale;     // the round droplet's rest scale (uniform)
         private Vector3 baseMeshLocalPos;
-        private float meshLocalExtentY;    // mesh half-height in its local space (for planted sink)
         private Vector2 gravity;           // slime's gravity vector (m/s²)
+        private float lostVolume;          // full-body volume units this piece carries
 
+        private ChunkState state = ChunkState.Flying;
         private float jiggleEnv;
         private float jigglePhase;
-        private float airTime;
-        private bool roundUpDone;          // sliver→ball un-squash finished → mesh frame reset upright
+        private float airTime;             // total time since spawn
+        private float airborneTime;        // CONTINUOUS airborne time (reset by any contact)
+        private bool armed;                // absorption armed once the piece has left the body
+        private float breathPhase;
+        private bool resolved;             // notified absorbed/lost — guards double-counting
+        private float roundUpGate;         // 0 = sliver, 1 = round droplet — gates shader stretch
 
-        private bool melting;
-        private float meltTimer;
-        private float stampTimer;
-        private Collider2D meltSurface;
-        private Vector2 meltPoint;
-
-        // Ground anchor resolved at melt-start: the puddle's bottom-center is pinned here
-        // (world space) every melt frame so it melts ON the ground, never floating / sinking.
-        private bool groundAnchored;
-        private float groundY;     // world Y of the surface the puddle melts onto
-        private float anchorX;     // world X of the landing spot (keeps the puddle from sliding)
-        private static readonly RaycastHit2D[] groundHits = new RaycastHit2D[4];
+        // Cut-face meniscus (mesh OS): the face the piece was cut along looks back toward the
+        // body = local -Y (Init aligns local +Y with the fling direction). Same spring
+        // language as the body wound.
+        private float faceW;
+        private float faceWVel;
+        private bool faceDone;
+        private float faceOff;             // plane offset along (0,-1,0), OS
+        private float faceCapH;            // membrane cap height, OS
+        private float faceRho2;            // rim radius², OS
 
         private static readonly int VelocityDirWSID = Shader.PropertyToID("_VelocityDirWS");
         private static readonly int VelocityStretchAmountID = Shader.PropertyToID("_VelocityStretchAmount");
         private static readonly int SurfaceNormalWSID = Shader.PropertyToID("_SurfaceNormalWS");
         private static readonly int DipDirWSID = Shader.PropertyToID("_DipDirWS");
+        private static readonly int SliceCountID = Shader.PropertyToID("_SliceCount");
+        private static readonly int SlicePlaneOSID = Shader.PropertyToID("_SlicePlaneOS");
+        private static readonly int SliceSealID = Shader.PropertyToID("_SliceSeal");
+        private static readonly int SliceHealID = Shader.PropertyToID("_SliceHeal");
+        private static readonly int SliceMeniscusID = Shader.PropertyToID("_SliceMeniscus");
+        private static readonly int TearAmpID = Shader.PropertyToID("_TearAmp");
+        private static readonly int TearFreqID = Shader.PropertyToID("_TearFreq");
+        private static readonly int LipBandID = Shader.PropertyToID("_LipBand");
+        private static readonly int LipMagID = Shader.PropertyToID("_LipMag");
+        private static readonly int SliceCapColorID = Shader.PropertyToID("_SliceCapColor");
+        private static readonly int SliceCapRimColorID = Shader.PropertyToID("_SliceCapRimColor");
+        private static readonly int SliceCapDepthID = Shader.PropertyToID("_SliceCapDepth");
+
+        // SLICE_MAX-sized scratch (must match SlimeSlice.hlsl); only slot 0 is used here.
+        private static readonly Vector4[] planeScratch = new Vector4[3];
+        private static readonly float[] sealScratch = new float[3];
+        private static readonly float[] healScratch = new float[3];
+        private static readonly Vector4[] meniscusScratch = new Vector4[3];
 
         private void Awake()
         {
@@ -62,11 +94,16 @@ namespace SlimeJumping.Effects
 
         /// <param name="severDir">The cut-plane normal (world). The droplet is flattened along
         /// this at spawn — the thin axis of the wedge it came from.</param>
-        public void Init(SlimeSplitSettings settings, Vector2 inheritVel, Vector2 severDir, Vector2 gravityVec)
+        public void Init(SlimeSplitSettings settings, SlimeSplitSequence seq, SlimeController slimeRef,
+                         Vector2 inheritVel, Vector2 severDir, Vector2 gravityVec, float volume)
         {
             s = settings;
+            sequence = seq;
+            slime = slimeRef;
             gravity = gravityVec;
+            lostVolume = volume;
             rb = GetComponent<Rigidbody2D>();
+            circle = GetComponent<CircleCollider2D>();
             rb.gravityScale = 0f;                 // gravity applied manually = same as the slime
             rb.linearDamping = s.linearDamping;
             rb.angularDamping = s.angularDamping;
@@ -76,15 +113,11 @@ namespace SlimeJumping.Effects
             meshTf = meshRenderer != null ? meshRenderer.transform : transform;
             baseMeshScale = meshTf.localScale;
             baseMeshLocalPos = meshTf.localPosition;
-            var mf = GetComponentInChildren<MeshFilter>();
-            meshLocalExtentY = (mf != null && mf.sharedMesh != null)
-                ? mf.sharedMesh.bounds.extents.y
-                : 0.5f;
             mpb = new MaterialPropertyBlock();
 
             // Orient the mesh so its local Y aligns with the cut normal — the round-up then
-            // flattens along Y (= the wedge's thin axis). The blob is symmetric, so this
-            // rotation is invisible; it is reset upright once the droplet is round.
+            // flattens along Y (= the wedge's thin axis) and the cut face sits on local -Y.
+            // The blob is symmetric, so this rotation is invisible.
             Vector2 dir = severDir.sqrMagnitude > 1e-4f ? severDir.normalized : Vector2.up;
             meshTf.localRotation = Quaternion.FromToRotation(Vector3.up, new Vector3(dir.x, dir.y, 0f));
 
@@ -100,15 +133,94 @@ namespace SlimeJumping.Effects
 
             jiggleEnv = 1f;
             jigglePhase = Random.value * Mathf.PI * 2f;
+            breathPhase = Random.value * Mathf.PI * 2f;
+
+            InitCutFace();
+        }
+
+        // Cut-face membrane geometry in mesh OS, along n = (0,-1,0). Static for the piece's
+        // lifetime; only the spring (faceW) animates.
+        private void InitCutFace()
+        {
+            var mf = GetComponentInChildren<MeshFilter>();
+            if (mf == null || mf.sharedMesh == null || meshRenderer == null) { faceDone = true; return; }
+            Bounds mb = mf.sharedMesh.bounds;
+            float support = -mb.center.y + mb.extents.y;          // AABB support along (0,-1,0)
+            faceOff = Mathf.Clamp01(s.pieceCutFaceFrac) * support;
+            faceCapH = support - faceOff;
+            faceRho2 = Mathf.Max(support * support - faceOff * faceOff, 0.0025f * support * support);
+            faceW = 0f;
+            faceWVel = 0f;
+            faceDone = faceCapH <= 1e-4f;
+
+            // Static wound-look uniforms once; per-frame pushes only touch the dynamic arrays.
+            meshRenderer.GetPropertyBlock(mpb);
+            mpb.SetFloat(TearAmpID, s.tearAmp);
+            mpb.SetFloat(TearFreqID, s.tearFreq);
+            mpb.SetFloat(LipBandID, s.lipBand);
+            mpb.SetFloat(LipMagID, s.lipMag);
+            mpb.SetColor(SliceCapColorID, s.sliceCapColor);
+            mpb.SetColor(SliceCapRimColorID, s.sliceCapRimColor);
+            mpb.SetFloat(SliceCapDepthID, s.sliceCapDepth);
+            meshRenderer.SetPropertyBlock(mpb);
         }
 
         private void FixedUpdate()
         {
-            if (s == null || melting) return;
-            rb.linearVelocity += gravity * Time.fixedDeltaTime;   // slime's own gravity
-            airTime += Time.fixedDeltaTime;
-            if (airTime >= s.severedMaxAirTime)
-                StartMelt(null, rb.position, null);   // pit safety — melt where it is
+            if (s == null) return;
+            float dt = Time.fixedDeltaTime;
+            airTime += dt;
+
+            if (state == ChunkState.Attracting)
+            {
+                if (slime == null) { state = ChunkState.Flying; return; }
+                Vector2 toSlime = slime.Position - rb.position;
+                float dist = toSlime.magnitude;
+                float reach = slime.SlimeRadius + ChunkWorldRadius() * 0.25f;
+                if (dist <= reach)
+                {
+                    Resolve(absorbed: true, contactDir: -toSlime);
+                    return;
+                }
+                Vector2 dir = dist > 1e-4f ? toSlime / dist : Vector2.up;
+                rb.linearVelocity = Vector2.MoveTowards(
+                    rb.linearVelocity, dir * s.absorbPullMaxSpeed, s.absorbPullAccel * dt);
+                return;   // no gravity, no pit timer while being reeled in
+            }
+
+            rb.linearVelocity += gravity * dt;   // slime's own gravity
+
+            // Resting → falling again (the platform under it crumbled/moved away): ground
+            // contact cancels the gravity step each frame, so sustained fall speed = airborne.
+            if (state == ChunkState.Resting
+                && Vector2.Dot(rb.linearVelocity, gravity.normalized) > 1.5f)
+            {
+                state = ChunkState.Flying;
+            }
+
+            if (state == ChunkState.Flying)
+            {
+                airborneTime += dt;
+                if (airborneTime >= s.severedMaxAirTime)
+                {
+                    Resolve(absorbed: false, contactDir: Vector2.zero);   // pit — gone forever
+                    return;
+                }
+            }
+
+            // Absorption arms only after the piece has genuinely left the body (it spawns at
+            // the slime's center — without this it would be re-swallowed the same frame).
+            if (slime != null)
+            {
+                float dist = (slime.Position - rb.position).magnitude;
+                if (!armed && airTime >= s.absorbArmDelay
+                    && dist > slime.SlimeRadius + ChunkWorldRadius())
+                {
+                    armed = true;
+                }
+                if (armed && dist <= s.absorbPullRadius)
+                    state = ChunkState.Attracting;
+            }
         }
 
         private void Update()
@@ -116,183 +228,103 @@ namespace SlimeJumping.Effects
             if (s == null) return;
             float dt = Time.deltaTime;
 
-            if (!melting)
+            jiggleEnv *= Mathf.Exp(-s.jiggleDecay * dt);
+            jigglePhase += dt * s.jiggleFrequency * 2f * Mathf.PI;
+            float j = Mathf.Sin(jigglePhase) * s.jiggleAmplitude * jiggleEnv;
+
+            // Surface-tension un-squash: flat sliver (along local Y = cut normal) → round
+            // ball. NOT fully volume-preserving: true preservation expands the perpendicular
+            // axes by 1/√flatY (×2.9 at flatten 0.12) — a long thin blade, reads as the piece
+            // smearing into a streak at spawn. The piece was a patch of the body's surface,
+            // so its width is clamped near the droplet's own (piecePerpExpandMax).
+            float rt = Mathf.Clamp01((airTime - s.pieceSharpBeat) / Mathf.Max(0.001f, s.pieceRoundUpDuration));
+            float rc = (s.pieceRoundUpCurve != null && s.pieceRoundUpCurve.length > 1)
+                ? s.pieceRoundUpCurve.Evaluate(rt) : rt;
+            float flatY = Mathf.Lerp(s.pieceFlatten, 1f, rc);
+            float perp = Mathf.Min(1f / Mathf.Sqrt(Mathf.Max(0.01f, flatY)), s.piecePerpExpandMax);
+            roundUpGate = rc;
+
+            // Idle breathing while waiting on the ground — alive, not parked.
+            float bx = 0f;
+            if (state == ChunkState.Resting)
             {
-                jiggleEnv *= Mathf.Exp(-s.jiggleDecay * dt);
-                jigglePhase += dt * s.jiggleFrequency * 2f * Mathf.PI;
-                float j = Mathf.Sin(jigglePhase) * s.jiggleAmplitude * jiggleEnv;
+                breathPhase += dt * s.restBreathFreq * 2f * Mathf.PI;
+                bx = Mathf.Sin(breathPhase) * s.restBreathAmp;
+            }
 
-                // Surface-tension un-squash: flat sliver (along local Y = cut normal) → round
-                // ball. Volume-preserving (the two perpendicular axes expand as Y flattens).
-                float rt = Mathf.Clamp01((airTime - s.pieceSharpBeat) / Mathf.Max(0.001f, s.pieceRoundUpDuration));
-                float rc = (s.pieceRoundUpCurve != null && s.pieceRoundUpCurve.length > 1)
-                    ? s.pieceRoundUpCurve.Evaluate(rt) : rt;
-                float flatY = Mathf.Lerp(s.pieceFlatten, 1f, rc);
-                float perp = 1f / Mathf.Sqrt(Mathf.Max(0.01f, flatY));
+            Vector3 sc;
+            sc.x = baseMeshScale.x * perp * (1f + j + bx);
+            sc.y = baseMeshScale.y * flatY * (1f - j - bx * 0.7f);
+            sc.z = baseMeshScale.z * perp;
+            meshTf.localScale = sc;
 
-                Vector3 sc;
-                sc.x = baseMeshScale.x * perp * (1f + j);
-                sc.y = baseMeshScale.y * flatY * (1f - j);
-                sc.z = baseMeshScale.z * perp;
-                meshTf.localScale = sc;
+            UpdateCutFace(dt, rc);
+            PushVelocityStretch();
+        }
 
-                // Once round, drop the cut-normal frame so wobble + melt run upright. Seamless
-                // because the droplet is a symmetric ball at this point.
-                if (!roundUpDone && rt >= 1f)
-                {
-                    roundUpDone = true;
-                    meshTf.localRotation = Quaternion.identity;
-                }
+        // The cut face heals shut with the same meniscus spring as the body wound: the
+        // membrane target follows the round-up curve, the spring adds welling overshoot.
+        private void UpdateCutFace(float dt, float roundUpProgress)
+        {
+            if (faceDone || meshRenderer == null) return;
 
-                PushVelocityStretch();
+            float sdt = Mathf.Min(dt, 0.05f);
+            float target = Mathf.Clamp01(roundUpProgress);
+            faceWVel += (s.meniscusSpringK * (target - faceW)
+                         - s.meniscusSpringDamping * faceWVel) * sdt;
+            faceW += faceWVel * sdt;
+
+            meshRenderer.GetPropertyBlock(mpb);
+            if (faceW >= 0.997f)
+            {
+                faceDone = true;
+                mpb.SetFloat(SliceCountID, 0f);
             }
             else
             {
-                meltTimer += dt;
-                float t = Mathf.Clamp01(meltTimer / Mathf.Max(0.001f, s.meltDuration));
-
-                // Flatten + spread: a melting puddle, NOT a uniform shrink.
-                Vector3 sc = baseMeshScale;
-                sc.y = baseMeshScale.y * (1f - t);
-                sc.x = baseMeshScale.x * (1f + s.meltSpread * t);
-                meshTf.localScale = sc;
-
-                if (groundAnchored && meshRenderer != null)
-                {
-                    // Pin the VISIBLE puddle's bottom-center to the landing spot on the ground,
-                    // measured from the live world AABB, so the bottom sits EXACTLY on the
-                    // ground (no float, no sink) and never slides.
-                    Bounds wb = meshRenderer.bounds;
-                    Vector3 wp = meshTf.position;
-                    wp.x += anchorX - wb.center.x;
-                    wp.y += groundY - wb.min.y;
-                    meshTf.position = wp;
-                }
-                else
-                {
-                    // No ground beneath it (fell into a pit): melt in place via the local sink.
-                    float sink = meshLocalExtentY * baseMeshScale.y * t * s.meltSinkFactor;
-                    meshTf.localPosition = baseMeshLocalPos + Vector3.down * sink;
-                }
-
-                // Widen the stain with the spreading puddle.
-                stampTimer += dt;
-                if (s.meltStampInterval > 0f && stampTimer >= s.meltStampInterval && s.meltStampRadius > 0f)
-                {
-                    stampTimer = 0f;
-                    Stamp(meltPoint, s.meltStampRadius * (1f + s.meltSpread * t), s.meltStampStrength);
-                }
-
-                if (t >= 1f) { Destroy(gameObject); return; }
+                planeScratch[0] = new Vector4(0f, -1f, 0f, faceOff);
+                meniscusScratch[0] = new Vector4(faceW * faceCapH * 1.06f, faceRho2, 0f, 0f);
+                sealScratch[0] = Mathf.Clamp01(faceW);
+                healScratch[0] = 0f;   // fresh-goo glow band removed
+                mpb.SetFloat(SliceCountID, 1f);
+                mpb.SetVectorArray(SlicePlaneOSID, planeScratch);
+                mpb.SetFloatArray(SliceSealID, sealScratch);
+                mpb.SetFloatArray(SliceHealID, healScratch);
+                mpb.SetVectorArray(SliceMeniscusID, meniscusScratch);
             }
+            meshRenderer.SetPropertyBlock(mpb);
         }
 
         private void OnCollisionEnter2D(Collision2D c)
         {
             if (s == null) return;
             jiggleEnv = Mathf.Min(1.5f, jiggleEnv + s.landingJiggleBoost);
-            // Don't melt on the spawn-overlap contact — only after the piece has flown for
-            // the grace period and genuinely lands.
-            if (!melting && airTime >= s.meltContactGrace)
-            {
-                Vector2 point = c.contactCount > 0 ? c.GetContact(0).point : rb.position;
-                StartMelt(c, point, c.collider);
-            }
+            airborneTime = 0f;
+            if (state == ChunkState.Flying) state = ChunkState.Resting;
         }
 
-        private void StartMelt(Collision2D contact, Vector2 fallbackPoint, Collider2D fallbackSurface)
+        private void OnCollisionStay2D(Collision2D c)
         {
-            melting = true;
-            meltTimer = 0f;
-            stampTimer = 0f;
-            rb.linearVelocity = Vector2.zero;
-            rb.angularVelocity = 0f;
-            rb.bodyType = RigidbodyType2D.Kinematic;
-
-            // Reset to an upright, un-wobbled round ball so the melt flattens vertically and the
-            // bottom-center we measure is the piece at rest (handles melting mid-round-up too).
-            meshTf.localRotation = Quaternion.identity;
-            meshTf.localScale = baseMeshScale;
-            meshTf.localPosition = baseMeshLocalPos;
-
-            groundAnchored = TryResolveGround(contact, out groundY, out var surf);
-            if (groundAnchored)
-            {
-                meltSurface = surf;
-                anchorX = meshRenderer != null ? meshRenderer.bounds.center.x : rb.position.x;
-                meltPoint = new Vector2(anchorX, groundY);   // stain lands ON the ground
-            }
-            else
-            {
-                meltSurface = fallbackSurface;
-                meltPoint = fallbackPoint;                   // pit/air: stain where it floats
-            }
-
-            if (s.meltStampRadius > 0f)
-                Stamp(meltPoint, s.meltStampRadius, s.meltStampStrength);   // initial stain
+            airborneTime = 0f;
         }
 
-        // Finds the surface the puddle should melt onto: cast along the slime's gravity from
-        // the piece's center to the first non-trigger collider (so the spinning saw, a trigger,
-        // is ignored). Falls back to a real landing contact, else reports "no ground" (a pit).
-        private bool TryResolveGround(Collision2D contact, out float gY, out Collider2D surf)
+        // Single exit point: hands the carried volume back to the sequence exactly once.
+        private void Resolve(bool absorbed, Vector2 contactDir)
         {
-            gY = 0f;
-            surf = null;
-
-            Vector2 down = gravity.sqrMagnitude > 1e-4f ? gravity.normalized : Vector2.down;
-            Bounds b = meshRenderer != null
-                ? meshRenderer.bounds
-                : new Bounds((Vector3)rb.position, Vector3.one * 0.1f);
-            Vector2 origin = b.center;
-            float reach = b.extents.magnitude + Mathf.Max(0f, s.meltGroundProbe);
-
-            // Unset mask (0) → everything except the chunk's own (slime) layer, so the ray
-            // never self-hits and never anchors to the slime.
-            int mask = s.groundMask.value != 0
-                ? s.groundMask.value
-                : (Physics2D.AllLayers & ~(1 << gameObject.layer));
-
-            var filter = new ContactFilter2D { useTriggers = false };
-            filter.SetLayerMask(mask);
-
-            int n = Physics2D.Raycast(origin, down, filter, groundHits, reach);
-            float best = float.PositiveInfinity;
-            int bestI = -1;
-            for (int i = 0; i < n; i++)
+            if (resolved) return;
+            resolved = true;
+            if (sequence != null)
             {
-                if (groundHits[i].collider == null) continue;
-                if (groundHits[i].distance < best) { best = groundHits[i].distance; bestI = i; }
+                if (absorbed) sequence.NotifyChunkAbsorbed(contactDir, lostVolume);
+                else sequence.NotifyChunkLost(lostVolume);
             }
-            if (bestI >= 0)
-            {
-                gY = groundHits[bestI].point.y;
-                surf = groundHits[bestI].collider;
-                return true;
-            }
-
-            // Ray missed (e.g. started inside a collider it had penetrated) but we DID land —
-            // anchor to the contact surface so a real landing never melts in mid-air.
-            if (contact != null && contact.contactCount > 0)
-            {
-                gY = contact.GetContact(0).point.y;
-                surf = contact.collider;
-                return true;
-            }
-            return false;
+            Destroy(gameObject);
         }
 
-        // Routes a trail stamp to the surface's local trail RT, else the world RT —
-        // same routing TrailStamper uses for the slime's landing marks.
-        private void Stamp(Vector2 worldPos, float radius, float strength)
+        private float ChunkWorldRadius()
         {
-            if (meltSurface != null && TrailColliderRegistry.TryGet(meltSurface, out var local) && local != null)
-            {
-                local.StampAt(worldPos, radius, strength);
-                return;
-            }
-            var mgr = WorldTrailManager.Instance;
-            if (mgr != null) mgr.Stamp(worldPos, radius, strength);
+            if (circle == null) return 0.1f;
+            return circle.radius * Mathf.Abs(transform.lossyScale.x);
         }
 
         private void PushVelocityStretch()
@@ -303,9 +335,19 @@ namespace SlimeJumping.Effects
             float speedNorm = Mathf.Clamp01(speed / Mathf.Max(0.01f, s.wobbleSpeedRef));
             Vector2 dir = speed > 0.01f ? v / speed : Vector2.zero;
 
+            // Gated by the round-up: the spawn-frame sliver is already extreme (flatten ×
+            // perp expansion + high inherited speed) — letting the shader stretch pile on
+            // top read as the piece smearing into a long streak. Stretch grows in as the
+            // droplet forms, full once round.
+            float stretch = speedNorm * s.velocityStretchScale * roundUpGate;
+            // Reeling in: extra elongation toward the body — viscous goo being drawn, not a
+            // rigid pellet flying.
+            if (state == ChunkState.Attracting)
+                stretch += speedNorm * s.absorbStretchBoost;
+
             meshRenderer.GetPropertyBlock(mpb);
             mpb.SetVector(VelocityDirWSID, new Vector4(dir.x, dir.y, 0f, speedNorm));
-            mpb.SetFloat(VelocityStretchAmountID, speedNorm * s.velocityStretchScale);
+            mpb.SetFloat(VelocityStretchAmountID, stretch);
             mpb.SetVector(SurfaceNormalWSID, Vector3.up);
             mpb.SetVector(DipDirWSID, Vector3.up);
             meshRenderer.SetPropertyBlock(mpb);
