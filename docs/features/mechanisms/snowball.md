@@ -65,6 +65,14 @@ Active        — 굴러감 / 날아감
 | Spawn Clip | None | spawn 시 단발 SFX |
 | Spawn VFX | None | spawn 시 instantiate 할 ParticleSystem prefab |
 
+### Prefab / 씬 인스턴스
+`mode` 는 prefab 측에 직렬화되고 `Initialize` 는 이를 안 바꾼다 — 모드별 prefab 필요.
+
+| Prefab | Mode | 용도 |
+|--------|------|------|
+| `Snowball_Rolling.prefab` | Rolling | 발판 추종 굴러가는 눈덩이. 스포너 `Spawner_LeftRolling` (씬) |
+| `Snowball_Flying.prefab` | Flying | Rolling 의 **Prefab Variant**, `mode`만 override. 등속 직진 (중력 X). 스포너 `Spawner_AirFlying` (씬, `initialAngleDegrees=180` → 수평 좌향 직진) |
+
 풀 동작:
 - `createFunc`: `Instantiate(prefab, transform)` 후 `SetActive(false)`, `s.OnDespawn += HandleDespawn` 영구 구독.
 - `actionOnGet/Release`: `SetActive(true/false)`.

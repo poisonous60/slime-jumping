@@ -50,6 +50,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Bamboo](features/platforms/bamboo.md) — 수직 대나무. SpringyBranch 물리 식 + vertical 적용, N-segment collider polyline + single shader-bent cylinder visual (sub-pixel coincident). 기본적으로 visible node frequency를 physics `segmentCount`에 동기화해 보이는 마디/구간 경계가 물리 segment와 일치. 마디 bulge + sheath scar 지오메트리, Quibli-style 2-tone + height gradient color. `BambooSettings.enableTipGrab` / `enableSideReboundV2` 독립 bool 2개 (예전 상호배타 `interactionMode` enum 제거 — 둘 다 켜면 옆구리 V2 반동 + 꼭대기 tip-grab 동시 동작, 스프링 계수 우선순위 grab>v2>기본). V2는 측면 충돌을 더 크게 휘게 한 뒤 Space charging release 방향을 따라 보너스를 더한다. V2 launch-release 반작용은 전용 접촉 높이 보정 노브를 받아 아래쪽 점프는 덜 흔들리고 위쪽 점프는 더 크게 흔들린다. 대나무 하강 jitter 원인 추적용 `BambooSurfaceJitterDebugger`를 슬라임에 붙여 segment switch / normal jump / carry residual / probe churn을 관측한다.
 - [Deformable Mud](features/platforms/deformable-mud.md) — 진흙/찰흙 소성 변형
 - [Rope](features/platforms/rope.md) — Verlet + 반동 Launch (v1 = sag-based, [v2 = timing-based](features/platforms/rope-v2.md), [v3 = trampoline-coupled](features/platforms/rope-v3.md))
+- [Piano Keyboard](features/platforms/piano-keyboard.md) — 연주 가능한 업라이트 피아노. 슬라임이 흰 건반 착지 시 속도 비례 dip + 댐핑 스프링 복귀(출렁) + 셈여림 적용 CC0 피아노 음 재생. 흰 건반만 collider(검은 건반 비주얼만), 건반별 독립 판정으로 seam 끼면 2건반 동시. Unity-MIDI-Piano FBX/CC0 샘플 추출, `PianoSettings` 그래프 튜닝(velocity→volume/depth, spring stiffness/damping).
 
 ## 메커니즘
 
