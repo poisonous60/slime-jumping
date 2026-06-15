@@ -41,6 +41,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 ## 플랫폼
 
 - [Common (PlatformMotor / Carrier)](features/platforms/common-platform.md)
+- [Waypoint v2](features/platforms/waypoint-v2.md) — 사각형. SmoothDamp 댐핑 follow(탑승 시 더 묵직) + 수직 sag 흔들림/반동 + 가장자리 틸트 + 얼음(`OverrideSurfaceMaterial`) + idle-tip로 중심 불안정화해 가만히 있으면 미끄러져 떨어짐(재점프 강제). F1 = 탑승 트리거 1회 왕복 + 도착 범위 유지/이탈 시 복귀(ThinIce식). F2 = leader/partner 샌드위치, 압착 시 기존 depenetration + `AddExternalVelocity`로 슬라임을 옆으로 부드럽게 압출(SlimeController 미수정).
 - [Crumbling](features/platforms/crumbling.md) — 무너지는 플랫폼
 - [Thin Ice](features/platforms/thin-ice.md) — Crumbling 확장 (SFX + 파티클 + 부드러운 재생성)
 - [Thin Ice v2](features/platforms/thin-ice-v2.md) — Quibli toon lighting + 절차적 Voronoi 크랙 셰이더 + 공유 generic shard 라이브러리 + `ThinIceV2Config` 단일 설정 자산 (Resources auto-load) + 점프-즉시-shatter + 그룹 단위 respawn zone. U자처럼 여러 ThinIce child collider로 만든 표면도 별도 guide anchor 없이 기존 `SurfaceProbe` snap을 사용한다.
@@ -67,6 +68,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Push Door v1/v2/v3](features/mechanisms/push-door.md) — 밀어서 여는 문 (v2: 살롱 도어 충격량 모델, v3: 표준 FBX 각도 모델)
 - [Jump Pad](features/mechanisms/jump-pad.md)
 - [Jump Ball](features/mechanisms/jump-ball.md) — 트리거 자동 점프, 보빙 비주얼
+- [Hammer](features/mechanisms/hammer.md) — 폴대 꼭대기 피벗 좌우 진자 스윙 망치, `speedProfile` 곡선으로 속도 형상(끝에서 정지/최저점 최속) + 닿으면 머리 접선속도(`ω×반경`)로 발사
 - [Conveyor Belt](features/mechanisms/conveyor-belt.md)
 - [Spike Hazard](features/mechanisms/spike-hazard.md)
 - [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect + [Slime Split](features/mechanisms/slime-split.md)(잘림=작아진 둥근 슬라임 + 자크식 회수: collider.radius 실제 축소(BodyScale) · 상처=메니스커스 막이 림→중심 동심 봉합(스프링 차오름+타격 퀴버, 평면 후퇴 없음) · 손실 부피만큼 조각 사출(sliver→droplet→바닥 잔존, melt/얼룩 폐기) · 조각은 근접 시 자석 흡인→합체 벌지로 흡수 · heal=흡수 게이트(분실 시 느린 자연 회복) · 점프력=몸집 파생 · 지속 단면/클립 없음)

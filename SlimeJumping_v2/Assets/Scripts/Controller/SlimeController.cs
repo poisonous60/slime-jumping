@@ -29,6 +29,12 @@ namespace SlimeJumping.Controller
         public Vector2 SurfaceNormal => surfaceNormal;
         public Vector2 Position => rb.position;
         public Vector2 Velocity => velocity;
+        /// Pinch state for SlimeVisual (set by SlimeController.Pinch.cs). PinchActive = caught
+        /// between two platforms; PinchCompression01 = gap-driven squeeze (0..1 of diameter);
+        /// PinchAxis = world compression axis. 0 / false when not pinched.
+        public bool PinchActive { get; private set; }
+        public float PinchCompression01 { get; private set; }
+        public Vector2 PinchAxis { get; private set; } = Vector2.up;
         /// Tangential component of the platform-relative impact velocity recorded at the most
         /// recent landing. Already computed for the energy-conversion logic (Charging/Attached
         /// slide decay); OnLanded subscribers can read this to drive impact-scaled effects
@@ -591,6 +597,10 @@ namespace SlimeJumping.Controller
             ApplyExternalDeltaV();
 
             OutputVelocity(dt);
+
+            // Pinch hold/extrude OWNS the slime's position last — after OutputVelocity (and its
+            // Phase A depenetration) so it overrides the lateral squirt. See SlimeController.Pinch.cs.
+            UpdatePinch(dt);
         }
 
         // Computes the effective gravity direction (gravityUp/gravityRight) from the

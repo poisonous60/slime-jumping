@@ -77,6 +77,12 @@ MonoBehaviour:
   groundLayer:
     serializedVersion: 2
     m_Bits: 128
+  pinchEscapeEnabled: 1
+  pinchOpposingDot: -0.5
+  pinchMinPenetration: 0.03
+  pinchMaxStep: 0.0005
+  pinchPressTime: 0.45
+  pinchSlideRampTime: 0.25
   surfaceProbeMode: 1
   surfaceProbeSamples: 4
   surfaceProbeRingScale: 0.8

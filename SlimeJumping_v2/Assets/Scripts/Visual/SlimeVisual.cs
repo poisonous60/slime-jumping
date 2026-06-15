@@ -250,7 +250,8 @@ public class SlimeVisual : MonoBehaviour
         Vector2 surfSq = ComputeSurfaceSquash();
         Vector2 velStr = ComputeVelocityStretch();
         Vector2 chargeSq = ComputeChargingSquash();
-        Vector2 targetScale = Vector2.one + surfSq + velStr + chargeSq;
+        Vector2 pinchSq = ComputePinchSquash();
+        Vector2 targetScale = Vector2.one + surfSq + velStr + chargeSq + pinchSq;
         smoothedScale = SmoothDampV2(smoothedScale, targetScale, ref scaleVelocity, settings.deformSmoothTime);
         // Parallel-smooth the velStr contribution alone at the same rate; used
         // to subtract velStr from body3d's applied scale below. Linear because
@@ -780,6 +781,37 @@ public class SlimeVisual : MonoBehaviour
     {
         float squash = smoothedSquashStrength * settings.surfaceSquashIntensity;
         return new Vector2(squash, -squash);
+    }
+
+    // --- Pinch squash (squeezed between two opposing surfaces) ---
+
+    private float pinchCompSmoothed;
+    private float pinchCompVel;
+
+    private Vector2 ComputePinchSquash()
+    {
+        float target = slimeController.PinchActive ? Mathf.Clamp01(slimeController.PinchCompression01) : 0f;
+        pinchCompSmoothed = Mathf.SmoothDamp(pinchCompSmoothed, target, ref pinchCompVel, settings.pinchSquashSmoothTime);
+        if (pinchCompSmoothed < 1e-4f) return Vector2.zero;
+
+        // GAP-DRIVEN, no intensity: the body flattens to the actual gap. Scale along the pinch axis
+        // = thickness ratio (= 1 − compression, floored); perpendicular bulges to preserve the
+        // cross-section area. The pinch subsystem holds the slime centered in the gap, so this scale
+        // conforms to the plates and never reaches past them.
+        float along = Mathf.Max(settings.pinchMinThickness, 1f - pinchCompSmoothed);
+        float perp = 1f / Mathf.Sqrt(along);
+
+        // Express the anisotropic scale (along, perp) in the body-local (X = right, Y = up) frame.
+        Vector2 axis = slimeController.PinchAxis;
+        if (axis.sqrMagnitude < 1e-6f) return Vector2.zero;
+        axis = axis.normalized;
+        Vector2 up = ((Vector2)body.up).normalized;
+        Vector2 right = new Vector2(up.y, -up.x);
+        float ax = Vector2.Dot(axis, right);
+        float ay = Vector2.Dot(axis, up);
+        float sRight = along * ax * ax + perp * ay * ay;
+        float sUp    = along * ay * ay + perp * ax * ax;
+        return new Vector2(sRight - 1f, sUp - 1f);   // delta from rest scale (1,1)
     }
 
     // --- Gravity sag offset (C-5) ---

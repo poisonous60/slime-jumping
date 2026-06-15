@@ -7,6 +7,9 @@
 - `Piano.fbx` (업라이트 피아노, 건반 88개 분리, `PianoKey.001`~`.088`) → `Assets/_PianoImportTest/Piano.fbx`. 루트 transform 깨끗(scale 1 / rot 0). FBX mesh 자체 라이선스는 repo에 별도 명시 없음 (MIT 우산 가정) — **상용 전 확인 필요**.
 - 음 샘플: Beskhu(Freesound) **CC0** 업라이트 피아노 `.aiff` 88개 → `Assets/Audio/Piano/`. 파일명 prefix = MIDI 노트번호 (예 `..__21-a0` = MIDI 21 = A0). 커버리지 MIDI 9–96.
 
+## 오디오 임포트 (타격 히치 방지)
+88개 건반 샘플 + `piano_pedal.wav` 임포트 설정: **Compression Format = PCM**, **Preload Audio Data = ON**, **Load Type = Decompress On Load**. 이전 설정(Vorbis + Preload OFF)은 각 건반 **첫 타격** 때 디스크 동기 로드 + Vorbis 디코드를 메인 스레드에서 수행해 "잠깐 렉"이 발생했음 → PCM(디코드 0) + Preload(씬 로드 시 선적재)로 게임플레이 중 히치 제거. 짧은 원샷 SFX라 메모리 부담 작음.
+
 ## 건반 매핑
 - `PianoKey.00N` 은 x 정렬 = 음 오름차순. **MIDI = 20 + N** (N=1 → A0/21 … N=88 → C8/108).
 - **흰/검 분류:** 흰 건반 `localPos.y ≈ 5.639`, 검은 건반 `≈ 5.584`. 52 흰 / 36 검. **흰 건반만** collider/스크립트 부여 (검은 건반은 비주얼만, 충돌 없음 — 요구사항).

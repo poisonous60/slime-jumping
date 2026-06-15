@@ -5,8 +5,16 @@ namespace SlimeJumping.Platforms
     [DisallowMultipleComponent]
     public class WaypointPlatform : PlatformMotor
     {
+        public enum TimingMode { Speed, Duration }
+
         [SerializeField] Vector2[] localWaypoints;
-        [SerializeField] float speed = 2f;
+        [SerializeField] TimingMode timingMode = TimingMode.Speed;
+        [SerializeField] float speed = 2f;      // Speed mode: units/sec (travel time varies with leg length)
+        // Duration mode: seconds to traverse each leg. Index = lower endpoint, so a
+        // ping-pong reuses the same entry both directions. Need (waypoints - 1) entries;
+        // missing/zero entries fall back to defaultSegmentDuration.
+        [SerializeField] float[] segmentDurations;
+        [SerializeField] float defaultSegmentDuration = 1f;
         [SerializeField] float waitTime = 0.5f;
         [SerializeField] bool loop = true;      // false = ping-pong
         [SerializeField] AnimationCurve easeCurve = AnimationCurve.Linear(0, 0, 1, 1);
@@ -53,6 +61,7 @@ namespace SlimeJumping.Platforms
                 return (rb.position, rb.rotation);
 
             int nextIndex = currentIndex + direction;
+            int legIndex = Mathf.Min(currentIndex, nextIndex);
             Vector2 from = worldWaypoints[currentIndex];
             Vector2 to = worldWaypoints[nextIndex];
             float dist = Vector2.Distance(from, to);
@@ -60,8 +69,15 @@ namespace SlimeJumping.Platforms
             if (journeyProgress == 0f && dist > 0.0001f)
                 LastDirection = (to - from) / dist;
 
-            if (dist > 0.001f)
+            if (timingMode == TimingMode.Duration)
+            {
+                float dur = GetLegDuration(legIndex);
+                journeyProgress += dur > 0.0001f ? dt / dur : 1f;
+            }
+            else if (dist > 0.001f)
+            {
                 journeyProgress += (speed * dt) / dist;
+            }
 
             if (journeyProgress >= 1f)
             {
@@ -83,6 +99,14 @@ namespace SlimeJumping.Platforms
             float easedT = easeCurve.Evaluate(journeyProgress);
             Vector2 pos = Vector2.Lerp(from, to, easedT);
             return (pos, rb.rotation);
+        }
+
+        float GetLegDuration(int legIndex)
+        {
+            if (segmentDurations != null && legIndex >= 0 && legIndex < segmentDurations.Length
+                && segmentDurations[legIndex] > 0f)
+                return segmentDurations[legIndex];
+            return defaultSegmentDuration;
         }
 
         void OnDrawGizmos()

@@ -6,7 +6,8 @@ PlatformMotor + PlatformCarrier 패턴. 플랫폼은 자신의 움직임만 책�
 | 스크립트 | 역할 |
 |---------|------|
 | `PlatformMotor.cs` | 추상 베이스. Kinematic Rigidbody2D, MovePosition/MoveRotation. Delta/Velocity 노출. `ApplyRiderInfluence(bool isCharging, Vector2 riderVelocity)` 가상 메서드 |
-| `WaypointPlatform.cs` | 웨이포인트 이동. localWaypoints, speed, easing, loop/ping-pong |
+| `WaypointPlatform.cs` | 웨이포인트 이동. localWaypoints, timingMode(Speed/Duration), speed 또는 segmentDurations[], easing, loop/ping-pong |
+| `WaypointPlatformV2.cs` | 사각형 v2. SmoothDamp 댐핑 follow + sag 흔들림/반동 + 틸트/얼음 내장 + 탑승 트리거 왕복(범위 유지·복귀) + leader/partner 샌드위치 압출 |
 | `RotatingPlatform.cs` | 연속 회전 또는 sin 기반 oscillate |
 | `TiltPlatform.cs` | 스프링-댐퍼 기반 좌우 기울기. 라이더 localX → targetTilt |
 | `PlatformCarrier.cs` | 슬라임에 부착. `[DefaultExecutionOrder(-200)]`로 PlatformMotor(-100)보다 먼저 실행되어 `ApplyRiderInfluence`가 `ComputeMotion`에 앞서 라이더 상태 갱신 |
@@ -28,6 +29,7 @@ rb.linearVelocity = velocity + platformVelocity * carrierFriction
 PlatformCarrier가 `ApplyRiderInfluence` 호출 → PlatformMotor가 MovePosition 큐잉 → SlimeController가 Velocity 읽어서 linearVelocity에 합산 → 물리 스텝에서 동시 이동.
 
 ## 개별 플랫폼 종류
+- [waypoint-v2.md](waypoint-v2.md) — 사각형 v2 (댐핑 follow + 흔들림/반동 + 틸트/얼음 + 탑승 트리거 왕복 + 샌드위치)
 - [crumbling.md](crumbling.md) — 무너지는 플랫폼
 - [rolling-disk.md](rolling-disk.md) — 360° 회전 원형
 - [pendulum.md](pendulum.md) — 매달린 진자

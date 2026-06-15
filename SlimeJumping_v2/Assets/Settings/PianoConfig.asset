@@ -78,15 +78,15 @@ MonoBehaviour:
   pedalPressSound: {fileID: 8300000, guid: e065c783cfe729946a4d7c9ce8df79bb, type: 3}
   pedalSoundVolume: 1
   pedalMinImpactSpeed: 1
-  pedalMaxImpactSpeed: 10
+  pedalMaxImpactSpeed: 25
   pedalVelocityToVolume:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
       time: 0
-      value: 0.3
-      inSlope: 0
-      outSlope: 0.7
+      value: 0
+      inSlope: 2
+      outSlope: 2
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
@@ -94,7 +94,7 @@ MonoBehaviour:
     - serializedVersion: 3
       time: 1
       value: 1
-      inSlope: 0.7
+      inSlope: 0
       outSlope: 0
       tangentMode: 0
       weightedMode: 0

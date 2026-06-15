@@ -137,6 +137,16 @@ namespace SlimeJumping.Settings
         public float airborneCheckMultiplier = 1f;
         public LayerMask groundLayer;
 
+        [Header("Pinch (caught between two platforms — explicit hold/extrude, driven by WaypointPlatformV2)")]
+        [Tooltip("Compression (0..1 of diameter) the press phase waits for before holding. The platform's pinchPressDepth should reach at least this.")]
+        public float pinchPressTargetComp = 0.5f;
+        [Tooltip("Safety cap (s) on the press phase if the target compression is never reached.")]
+        public float pinchPressMaxTime = 1.2f;
+        [Tooltip("How long (s) the slime stays fully squashed before it starts extruding out.")]
+        public float pinchHoldTime = 0.35f;
+        [Tooltip("Sideways extrude speed (m/s) while squeezed out. The ONLY thing moving the slime laterally during a pinch — fully controllable.")]
+        public float pinchExtrudeSpeed = 1.5f;
+
         [Header("Surface Probe")]
         [Tooltip("Contact detector. Single = per-collider ClosestPoint 1회 (기존). Multi = N-probe 샘플링 (multi-path polygon 대응).")]
         public SurfaceProbeMode surfaceProbeMode = SurfaceProbeMode.Single;
