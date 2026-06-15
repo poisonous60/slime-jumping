@@ -126,6 +126,16 @@ public class SlimeVisual : MonoBehaviour
     // Pushing the result (instead of raw speed + curve) keeps the shader
     // simple: just one scalar, no piecewise math in HLSL.
     private static readonly int VelocityStretchAmountID = Shader.PropertyToID("_VelocityStretchAmount");
+    // Generalized pinch squash: per-contact face normals + compression, consumed by SlimeDeform.hlsl
+    // section 3.5. Arrays are fixed-length PinchMax (must match the shader's PINCH_MAX and stay
+    // constant across SetVectorArray calls).
+    private const int PinchMax = 3;
+    private static readonly int PinchCountID = Shader.PropertyToID("_PinchCount");
+    private static readonly int PinchNormalWSID = Shader.PropertyToID("_PinchNormalWS");
+    private static readonly int PinchCompID = Shader.PropertyToID("_PinchComp");
+    private static readonly int PinchDisplaceScaleID = Shader.PropertyToID("_PinchDisplaceScale");
+    private readonly Vector4[] pinchNormalBuf = new Vector4[PinchMax];
+    private readonly float[] pinchCompBuf = new float[PinchMax];
     private float smoothedSquashStrength;
     private float squashStrengthVel;
 
@@ -250,8 +260,9 @@ public class SlimeVisual : MonoBehaviour
         Vector2 surfSq = ComputeSurfaceSquash();
         Vector2 velStr = ComputeVelocityStretch();
         Vector2 chargeSq = ComputeChargingSquash();
-        Vector2 pinchSq = ComputePinchSquash();
-        Vector2 targetScale = Vector2.one + surfSq + velStr + chargeSq + pinchSq;
+        // Pinch is NO LONGER a whole-body localScale term — it is a genuine per-contact, local
+        // vertex deform pushed to the GPU (mesh MPB block below → SlimeDeform.hlsl section 3.5).
+        Vector2 targetScale = Vector2.one + surfSq + velStr + chargeSq;
         smoothedScale = SmoothDampV2(smoothedScale, targetScale, ref scaleVelocity, settings.deformSmoothTime);
         // Parallel-smooth the velStr contribution alone at the same rate; used
         // to subtract velStr from body3d's applied scale below. Linear because
@@ -466,6 +477,14 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetVector(DipDirWSID, dipDirWS);
             mpb.SetVector(VelocityDirWSID, velocityDirWS);
             mpb.SetFloat(VelocityStretchAmountID, velocityStretchAmount);
+
+            // Generalized pinch squash — per-contact local flatten against each closing wall.
+            int pinchCount = BuildPinchDeform();
+            mpb.SetFloat(PinchCountID, pinchCount);
+            mpb.SetVectorArray(PinchNormalWSID, pinchNormalBuf);
+            mpb.SetFloatArray(PinchCompID, pinchCompBuf);
+            mpb.SetFloat(PinchDisplaceScaleID, settings.pinchDisplaceScale);
+
             bodyMeshRenderer.SetPropertyBlock(mpb);
         }
 
@@ -788,30 +807,35 @@ public class SlimeVisual : MonoBehaviour
     private float pinchCompSmoothed;
     private float pinchCompVel;
 
-    private Vector2 ComputePinchSquash()
+    // Fills the pinch deform MPB buffers from the controller's reported contacts and returns the
+    // active contact count (0 = no squeeze → shader section 3.5 is a no-op). The master compression
+    // is SmoothDamped so the dents ease in on catch and out on release instead of popping. Each
+    // active contact's world face normal + compression flatten the slime locally against that wall
+    // in SlimeDeform.hlsl section 3.5 — genuine, per-contact, local; no whole-body scale.
+    private int BuildPinchDeform()
     {
         float target = slimeController.PinchActive ? Mathf.Clamp01(slimeController.PinchCompression01) : 0f;
         pinchCompSmoothed = Mathf.SmoothDamp(pinchCompSmoothed, target, ref pinchCompVel, settings.pinchSquashSmoothTime);
-        if (pinchCompSmoothed < 1e-4f) return Vector2.zero;
 
-        // GAP-DRIVEN, no intensity: the body flattens to the actual gap. Scale along the pinch axis
-        // = thickness ratio (= 1 − compression, floored); perpendicular bulges to preserve the
-        // cross-section area. The pinch subsystem holds the slime centered in the gap, so this scale
-        // conforms to the plates and never reaches past them.
-        float along = Mathf.Max(settings.pinchMinThickness, 1f - pinchCompSmoothed);
-        float perp = 1f / Mathf.Sqrt(along);
-
-        // Express the anisotropic scale (along, perp) in the body-local (X = right, Y = up) frame.
-        Vector2 axis = slimeController.PinchAxis;
-        if (axis.sqrMagnitude < 1e-6f) return Vector2.zero;
-        axis = axis.normalized;
-        Vector2 up = ((Vector2)body.up).normalized;
-        Vector2 right = new Vector2(up.y, -up.x);
-        float ax = Vector2.Dot(axis, right);
-        float ay = Vector2.Dot(axis, up);
-        float sRight = along * ax * ax + perp * ay * ay;
-        float sUp    = along * ay * ay + perp * ax * ax;
-        return new Vector2(sRight - 1f, sUp - 1f);   // delta from rest scale (1,1)
+        int reported = slimeController.PinchActive ? Mathf.Min(slimeController.PinchContactCount, PinchMax) : 0;
+        int count = pinchCompSmoothed > 1e-3f ? reported : 0;
+        for (int i = 0; i < PinchMax; i++)
+        {
+            if (i < count)
+            {
+                Vector2 n = slimeController.GetPinchContactNormal(i);
+                pinchNormalBuf[i] = new Vector4(n.x, n.y, 0f, 0f);
+                // All contacts currently share one compression (comp01), so the smoothed master is
+                // the right per-contact value; revisit if walls ever report differing compression.
+                pinchCompBuf[i] = pinchCompSmoothed;
+            }
+            else
+            {
+                pinchNormalBuf[i] = Vector4.zero;
+                pinchCompBuf[i] = 0f;
+            }
+        }
+        return count;
     }
 
     // --- Gravity sag offset (C-5) ---

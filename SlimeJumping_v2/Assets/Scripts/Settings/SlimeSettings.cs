@@ -144,8 +144,17 @@ namespace SlimeJumping.Settings
         public float pinchPressMaxTime = 1.2f;
         [Tooltip("How long (s) the slime stays fully squashed before it starts extruding out.")]
         public float pinchHoldTime = 0.35f;
-        [Tooltip("Sideways extrude speed (m/s) while squeezed out. The ONLY thing moving the slime laterally during a pinch — fully controllable.")]
+        [Tooltip("Squeeze-out speed gain (m/s). Lateral speed = pinchExtrudeSpeed * comp/(1−comp), so the more compressed the gap, the faster the slime shoots out (slow→fast, like a pinched seed). Pure tangent — no axial drive into the walls.")]
         public float pinchExtrudeSpeed = 1.5f;
+        [Tooltip("Hard cap (m/s) on the squeeze-out speed so a near-closed gap can't fling the slime.")]
+        public float pinchMaxExtrudeSpeed = 4f;
+        [Tooltip("How small the slime's collider may shrink while squeezed (× full radius). The collider shrinks to FIT the gap so it never overlaps the plates (no solver fling); the plates' reaction stops them near this scale. 0.4 = down to 40% radius.")]
+        [Range(0.25f, 1f)] public float pinchSqueezeMinScale = 0.4f;
+        [Tooltip("Extra clearance (units) the collider shrinks below the raw gap fit, so minor drift never re-overlaps a plate. ~0.04.")]
+        public float pinchSqueezeFitMargin = 0.04f;
+        // DEAD (kept for .asset compat): pinchMaxLateralStep / pinchPressTargetComp / pinchPressMaxTime
+        // / pinchHoldTime were earlier pinch models. Pinch is now the collider-shrink squeeze model.
+        public float pinchMaxLateralStep = 0.04f;
 
         [Header("Surface Probe")]
         [Tooltip("Contact detector. Single = per-collider ClosestPoint 1회 (기존). Multi = N-probe 샘플링 (multi-path polygon 대응).")]

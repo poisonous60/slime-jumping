@@ -25,6 +25,8 @@ namespace SlimeJumping.Settings
         [Range(0.02f, 1f)] public float pinchMinThickness = 0.15f;
         [Tooltip("SmoothDamp time (s) for the squash, for soft press/release. Responsiveness only, not magnitude.")]
         [Min(0f)] public float pinchSquashSmoothTime = 0.05f;
+        [Tooltip("Vertex displacement scale for the per-contact pinch dent (SlimeDeform.hlsl 3.5). Decoupled from the material's global _VertexDisplaceScale (0 here) so the pinch shows without re-enabling the other mesh deforms. ~0.3 ≈ 30% local flatten at full compression.")]
+        [Min(0f)] public float pinchDisplaceScale = 0.3f;
 
         [Header("Impact Squash (C-2)")]
         public float impactSquashIntensity = 0.25f;
