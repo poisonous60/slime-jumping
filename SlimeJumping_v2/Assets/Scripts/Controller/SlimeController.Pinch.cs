@@ -32,7 +32,22 @@ namespace SlimeJumping.Controller
         float pinchHalfSpanReport;   // plate half-width along the tangent
 
         int pinchExtrudeSign = 1;    // which way along the tangent the slime squirts (chosen at catch)
-        float pinchPrevBodyScale = 1f;   // BodyScaleRatio before the squeeze, restored on release
+
+        // Pinch-only collider shrink — decoupled from BodyScaleRatio so the VISUAL stays full-size and is
+        // flattened to the gap by the shader (SlimeDeform.hlsl 3.5) instead of shrinking down ("작아짐").
+        // Combined multiplicatively with bodyScaleRatio in ApplyBodyScale (SlimeController.BodyScale.cs).
+        // Deliberately NOT folded into the SlimeRadius property — that stays the logical (cut-only) radius
+        // the platform reads to derive fullR, so the squeeze geometry is unaffected by this shrink.
+        float pinchColliderScale = 1f;
+        const float MinPinchColliderScale = 0.05f;   // a transient pinned squeeze may shrink far below the cut floor
+
+        void SetPinchColliderScale(float scale)
+        {
+            scale = Mathf.Clamp(scale, MinPinchColliderScale, 1f);
+            if (scale == pinchColliderScale) return;
+            pinchColliderScale = scale;
+            ApplyBodyScale();
+        }
 
         // Per-contact face normals (world) + compression for the generalized visual squash — the
         // platform reports one per closing wall each frame; SlimeVisual reads them and the GPU deform
@@ -44,6 +59,10 @@ namespace SlimeJumping.Controller
         public int PinchContactCount => pinchContactCount;
         public Vector2 GetPinchContactNormal(int i) => pinchContactNormals[i];
         public float GetPinchContactComp(int i) => pinchContactComps[i];
+        // World gap-center (midpoint between the two plate faces). The visual clamps the squeeze planes
+        // to THIS, not the mesh origin — the body3d mesh drifts off-center via the visual offset pipeline
+        // (velocity lean / sag / rest), which would otherwise shift the carved slab off the real plates.
+        public Vector2 PinchCenter => pinchCenterReport;
 
         /// <summary>Reported by the pressing platform once per closing wall each FixedUpdate (after
         /// SetPinch, which resets the list). normalWorld = the wall's face normal pointing toward the
@@ -93,7 +112,6 @@ namespace SlimeJumping.Controller
                 // reactive deck tilt breaks symmetry in practice).
                 float lat0 = Vector2.Dot(rb.position - pinchCenterReport, pinchTangentReport);
                 pinchExtrudeSign = Mathf.Abs(lat0) > 0.02f ? (int)Mathf.Sign(lat0) : 1;
-                pinchPrevBodyScale = BodyScaleRatio;
                 // Only Airborne integrates applied velocity (Attached/Charging are teleport-driven
                 // and strip it). A pinch-launch is an exit, not a Charging→Attached revert.
                 if (currentState == SlimeState.Attached || currentState == SlimeState.Charging)
@@ -104,13 +122,14 @@ namespace SlimeJumping.Controller
             float comp = Mathf.Clamp01((2f * fullR - pinchGapReport) / (2f * fullR));
             PinchCompression01 = comp;
 
-            // NO-PENETRATION via collider SHRINK: the circle collider shrinks to FIT the gap (minus a
-            // small margin) — so it never overlaps the plates → the solver has nothing to fling. This
-            // is the existing cut-system path (SetBodyScale shrinks the real collider + probe reach).
-            // Down to pinchSqueezeMinScale, where the plates' reaction stops them (WaypointPlatformV2).
-            float fit = Mathf.Clamp((pinchGapReport - settings.pinchSqueezeFitMargin) / (2f * fullR),
-                                    settings.pinchSqueezeMinScale, pinchPrevBodyScale);
-            SetBodyScale(fit);
+            // NO-PENETRATION via COLLIDER-ONLY shrink: the circle collider shrinks to FIT the gap (minus
+            // a small margin) so it never overlaps the plates → the solver has nothing to fling. The
+            // VISUAL is NOT shrunk (pinchColliderScale is decoupled from BodyScaleRatio) — it stays full
+            // size and the shader flattens it to the gap. With the deck stalled at pinchSqueezeGapMin the
+            // gap stays above the shrunken collider's diameter, so overlap is 0 and the lateral exit is
+            // driven purely by pinchExtrudeSpeed (no solver squirt).
+            float desiredColliderR = 0.5f * (pinchGapReport - settings.pinchSqueezeFitMargin);
+            SetPinchColliderScale(desiredColliderR / Mathf.Max(1e-4f, SlimeRadius));
 
             // Squeeze-out velocity from COMPRESSION: the harder the squeeze, the faster it shoots out
             // (slow→fast), independent of the wall's instantaneous speed — like a pinched seed. Pure
@@ -131,7 +150,7 @@ namespace SlimeJumping.Controller
             PinchActive = false;
             PinchCompression01 = 0f;
             pinchContactCount = 0;
-            SetBodyScale(pinchPrevBodyScale);   // grow the collider back to its pre-squeeze size
+            SetPinchColliderScale(1f);   // grow the collider back to full (the visual was never shrunk)
             // Residual lockout so the final separation frames finish before attach re-enables.
             attachLockoutTimer = settings.attachLockoutDuration;
         }

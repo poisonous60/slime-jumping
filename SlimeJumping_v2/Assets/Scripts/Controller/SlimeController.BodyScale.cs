@@ -38,14 +38,18 @@ namespace SlimeJumping.Controller
 
         private void ApplyBodyScale()
         {
+            // pinchColliderScale (SlimeController.Pinch.cs) shrinks ONLY the collider + probe during a
+            // squeeze, decoupled from the visual (which reads BodyScaleRatio). 1f outside a pinch, so
+            // normal play and the cut path are byte-for-byte unchanged.
+            float effective = bodyScaleRatio * pinchColliderScale;
             if (circleCollider != null)
             {
                 float s = transform.localScale.x;
-                float r = settings.slimeRadius * bodyScaleRatio;
+                float r = settings.slimeRadius * effective;
                 circleCollider.radius = s > 0.001f ? r / s : r;
             }
             if (surfaceProbe != null)
-                surfaceProbe.SetRadiusScale(bodyScaleRatio);
+                surfaceProbe.SetRadiusScale(effective);
         }
     }
 }

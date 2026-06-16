@@ -29,29 +29,35 @@
 > 재설계 이유: 이전 3개 시도는 pinch를 **generic collision depenetration**(Phase A)에 의존 → off-center 슬라임의 대각선 normal 합이 1~2프레임에 옆으로 사출(시간/step 게이트 우회), kinematic 플랫폼이 dynamic 슬라임을 그냥 통과, localScale·intensity squash는 cheat(플랫폼 안으로 파고듦)라 다 실패. 해결: pinch를 **명시적 opt-in 상호작용**(bamboo-grab/rope 패턴)으로 — 플랫폼이 슬라임을 잡고 명시적으로 hold/extrude.
 
 - 페어링: `partner`+`isLeader`. leader 탑승 → leader Departing + `partner.TriggerFromLeader()`. 반대 이동은 각 waypoints가 결정.
+- **복귀 = 트리거 박스 zone (ThinIce RespawnZone 모델, 2026-06-16)**: 각 데크가 자기 dest 원으로 복귀 판정하면 partner dest(낮은 쪽)에 압출 슬라임이 머물러 partner만 Holding에 갇힘. 대신 별도 컴포넌트 **`WaypointReturnZone`**(`ThinIceRespawnZone`와 동일 구조: isTrigger BoxCollider2D + Kinematic Rigidbody2D)이 멤버 데크들을 소유. 슬라임이 박스 **enter/exit를 카운트**(`slimeOverlapCount`), **exit→0 시 `ReturnAllMembers()`**가 멤버 전원에 `RequestReturn()` 호출 → leader+partner 동시 복귀. 데크는 `RegisterParentZone`로 zone 등록되면 holdRange 자가복귀를 끄고 zone 명령만 따름(`parentZone != null` 게이트). **출발은 그대로 탑승 트리거**(zone은 복귀만 담당). 멤버십: zone 자식 자동수집 + `explicitMembers`(샌드위치는 leader/partner 둘 다 등록). zone 미배치 시 데크는 legacy holdRange 자가복귀(F1 기본).
 
-### A. 플랫폼: catch → stall → tilt → report (`WaypointPlatformV2.UpdateSandwich`, leader만)
-- leader가 두 plate face 사이 gap 계산. `gap < 2R` & 슬라임이 axis 사이 & |lateral| ≤ halfSpan → **catch**.
-- catch 시: `slime.SetPinch(axisN, tangent, gapCenter, gap, halfSpan)`로 매 프레임 보고. `gap ≤ 2R − pinchPressDepth`면 **stall**(자신+partner `pinchStall=true` → `AdvanceRigidTarget`에서 `pathParam` freeze → 더 안 밀고 멈춤). 슬라임 쪽으로 **scissor tilt**(comp01 비례, 기존 spring).
-- 슬라임이 release되면(보고 끊김) stall 해제 → 정상 이동 재개.
+> **현재 모델 (2026-06-16): FORCE + 콜라이더 축소 디커플 + 데크 reaction-stall + 셰이더 평면 clamp.**
+> 이전 "rb.position 소유 / Press-Hold-Extrude / localScale squash" 모델은 폐기. 충돌은 끄지 않는다 —
+> 진짜로 부딪히되 콜라이더를 gap에 맞게 줄여 솔버 fling을 0으로 만들고, 비주얼은 풀사이즈로 두고 셰이더가 gap에 평면 clamp.
 
-### B. 슬라임: held + extrude (`SlimeController.Pinch.cs` partial)
-핵심: **Phase A의 양면 cancel이 이미 슬라임을 중앙에 잡아둠**(=예전 burial). 그걸 원하는 상태로 쓰고, lateral만 명시적으로 소유 → collider ignore도, lateral-squirt resolver도 불필요.
-- `SetPinch(...)` 보고 → pinch hold 진입/갱신(매 프레임 갱신, 안 오면 자동 release).
-- `UpdatePinch`(FixedUpdate 맨 끝, OutputVelocity 후): 위치를 **소유** — `rb.position = gapCenter + tangent·pinchLateral`(두 plate 사이 중앙 + 제어된 lateral), `velocity/linearVelocity = 0`. Phase A의 옆 사출을 덮어씀 → `pinchExtrudeSpeed`가 유일한 가로 이동.
-- gap-driven `PinchCompression01 = clamp01((2R−gap)/2R)`(intensity 없음).
-- **Phase**: Press(플랫폼이 depth까지 누름, comp ≥ `pinchPressTargetComp` 또는 `pinchPressMaxTime`) → Hold(`pinchHoldTime` 동안 눌린 채) → Extrude(`pinchExtrudeSpeed`로 가까운 열린 쪽 이동) → |lateral| ≥ halfSpan이면 edge 너머로 R만큼 밀어 release(재pinch 방지).
-- 노브: `SlimeSettings` → `pinchPressTargetComp(0.5)/pinchPressMaxTime(1.2)/pinchHoldTime(0.35)/pinchExtrudeSpeed(1.5)`; `WaypointPlatformV2.pinchPressDepth(0.45)`.
+### A. 플랫폼: catch → reaction-stall → tilt → report (`WaypointPlatformV2.UpdateSandwich`, leader만)
+- leader가 두 plate face 사이 gap 계산(`NominalExtentAlong`, 틸트 무시). `gap < 2R` & 슬라임 axis 사이 & |lateral| ≤ halfSpan → **catch**.
+- catch 시: `slime.SetPinch(...)` + 각 벽의 face normal `AddPinchContact` 매 프레임 보고.
+- **reaction-stall(연속, 플래그 아님)**: `pinchReactionFactor = clamp01((gap − pinchSqueezeGapMin)/(2R − pinchSqueezeGapMin))` (1=자유 → 0=gapMin에서 정지). 이걸 partner에도 미러(`SetSandwichReaction`). `AdvanceRigidTarget`에서 **닫는 advance(`dParam`)를 rf로 스케일** → `rigidTarget` 자체가 gapMin에서 멈춤(SmoothDamp가 over-travel 타깃을 끝까지 쫓아 닫는 문제 해결). `ComputeMotion`은 추가로 `smoothPos`의 닫는 성분도 (1−rf)만큼 제거(미세 settle).
+- **open tilt = reaction torque**: `(1−rf)·off·openTiltTorqueGain`으로 데크가 탈출 쪽으로 벌어짐(기존 spring 복원).
+- 보고 끊김(슬라임이 옆으로 빠짐) → `caught=false` → rf=1 → 정상 이동 재개.
 
-### C. 비주얼: gap-driven conform squash (`SlimeVisual.ComputePinchSquash`)
-- `PinchActive`/`PinchCompression01`/`PinchAxis` controller에서 pull(기존 패턴). **intensity 없음** — 두께비 = 실제 gap.
-- 축방향 scale = `max(pinchMinThickness, 1 − comp01)`, 수직 scale = `1/sqrt(along)`(면적보존 bulge). 압착축을 body-local로 분해해 anisotropic localScale로 합성. 슬라임이 gap 중앙에 held라 plate에 conform(파고들지 않음). SmoothDamp(`pinchSquashSmoothTime`)로 부드럽게. 노브: `SlimeVisualSettings.pinchMinThickness(0.15)/pinchSquashSmoothTime(0.05)`.
-- ※ flat-face conform(stadium 실루엣)은 shader 작업 필요 — 현재는 gap-driven 타원 squash(ShaderGraph+Quibli 변종 2개라 shader 수술 회피). 필요하면 후속.
+### B. 슬라임: force exit + 콜라이더 축소(비주얼 디커플) (`SlimeController.Pinch.cs` partial)
+- `SetPinch(...)` 보고 → pinch 진입/갱신(안 오면 자동 release). 진입 시 한 번 **Airborne 강제**(applied velocity가 적분되는 유일 상태).
+- gap-driven `PinchCompression01 = clamp01((2R−gap)/2R)`.
+- **옆 배출 = 압축비례 속도**: `velocity = tangent · sign · min(pinchExtrudeSpeed·comp/(1−comp), pinchMaxExtrudeSpeed)` (순수 tangent, 축방향 0). 매 step `RegisterLaunchClearance` + `attachLockout`으로 재부착 차단.
+- **무관통 = 콜라이더만 축소**: `SetPinchColliderScale(((gap−pinchSqueezeFitMargin)/2)/SlimeRadius)`. `pinchColliderScale`는 `bodyScaleRatio`와 **분리**(ApplyBodyScale에서 곱) → 콜라이더+probe만 줄고, `SlimeRadius`(플랫폼이 fullR 계산에 쓰는 논리 반경)·**비주얼**은 안 줄음. 데크가 gapMin에서 멈추므로 gap > 줄어든 콜라이더 지름 → 겹침 0 → 솔버 squirt 없음. floor = code const `MinPinchColliderScale(0.05)`.
+- 노브: `SlimeSettings` → `pinchExtrudeSpeed(1.5)/pinchMaxExtrudeSpeed(4)/pinchSqueezeFitMargin(0.04)`; `WaypointPlatformV2.pinchSqueezeGapMin(0.12)/openTiltTorqueGain/openTiltMax`. (DEAD: `pinchSqueezeMinScale`, `pinchPress*`/`pinchHold*`.)
+
+### C. 비주얼: 풀사이즈 유지 + 셰이더 평면 clamp + 부피보존 bulge (`SlimeVisual.BuildPinchDeform` → `SlimeDeform.hlsl` 3.5)
+- 비주얼 스케일은 **1 유지**(BodyScaleRatio 미변경) — "작아짐"이 아니라 "납작". per-contact face normal + comp + **world half-gap**(`(1−comp)·R`) + **gap-center**(`_PinchCenterWS`)를 MPB로 push.
+- 셰이더 3.5: **월드공간 평면 clamp** — 각 벽 face plane(**gap-center**에서 halfGap)을 넘는 버텍스를 plane 위로 투영 → gap에 정확히 맞는 진짜 평평한 면(plate 관통 없음). 메시의 -90°X·flatten 스케일에 안 휘게 world space. **기준점은 메시 원점 아님 → gap-center**(body3d가 visual offset으로 드리프트 → 메시 원점 쓰면 슬랩이 판에서 밀려 떠 보임). 그 뒤 지배 압착축 기준 **부피보존 측면 bulge**(`perp ×= 1/sqrt(1−comp)`, 한 번만 — 양면 contact 같은 축 공유).
+- comp는 `pinchSquashSmoothTime` smooth → pop 없이 ease. 치수: `slimeRadius=0.2` → 2R=0.4, gap 0.12 = 30% 두께. (DEAD: `pinchDisplaceScale`/`pinchMinThickness` — 평면 clamp가 gap에 직접 맞춰 불필요.)
 
 ## 배치 체크리스트
 - **공통/F1**: Rigidbody2D(Kinematic) + BoxCollider2D + `WaypointPlatformV2`, waypoint 2개. 탑승 → 흔들림+sag+댐핑 이동→도착, `holdRange` 밖으로 점프 → 복귀+재무장.
 - **틸트/얼음**: `iceMaterial`=Ice.asset, `enableTilt`, `idleTipBias>0`. 가만히 있는 슬라임 → 플랫폼 기울어 미끄러져 떨어짐 → 재점프 강제.
-- **샌드위치**: v2 2개, leader.`partner`=상대, `isLeader` 체크, waypoints 반대(위/아래). leader 탑승 → 둘이 수렴 → 두 데크가 슬라임 쪽으로 벌어지며(scissor) 슬라임이 코어 pinch-resolver로 열린 옆으로 압출(wedge·관통 없이). `riderLayers`는 슬라임 레이어로. `SurfaceProbeModeOverride(Multi)`는 자동 부착됨.
+- **샌드위치**: v2 2개, leader.`partner`=상대, `isLeader` 체크, waypoints 반대(위/아래). leader 탑승 → 둘이 수렴 → 슬라임이 `pinchSqueezeGapMin`에서 데크를 멈추고(reaction-stall) 압축비례 속도로 열린 옆으로 압출, 데크는 탈출 쪽으로 벌어짐(reaction torque). 비주얼은 풀사이즈 그대로 gap에 평면 clamp(납작). `riderLayers`는 슬라임 레이어로. `SurfaceProbeModeOverride(Multi)`는 자동 부착됨.
 
 ## 기존 `WaypointPlatform` 과 차이
 | | v1 (`WaypointPlatform`) | v2 (`WaypointPlatformV2`) |

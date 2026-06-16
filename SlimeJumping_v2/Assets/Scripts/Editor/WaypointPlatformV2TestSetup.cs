@@ -43,8 +43,10 @@ namespace SlimeJumping.Editor
             Debug.Log("WaypointPlatformV2 Test setup complete!\n" +
                 "A (x≈-16) Mount trip: step on → rides to destination, holds while you stay in range, returns + rearms when you leave.\n" +
                 "B (x≈0)   Tilt+Ice: stand still → platform tips, ice slides you off → keep jumping.\n" +
-                "C (x≈+14) Sandwich: mount the orange leader → both converge → slime extrudes out the open side.\n" +
-                "Set each platform's riderLayers to the slime layer if hold/return misfires. Tweak waypoint heights so the sandwich final gap ≈ slime size.");
+                "C (x≈+14) Sandwich: mount the orange leader → both converge → slime extrudes out the open side → " +
+                "leaves the C_ReturnZone trigger box → BOTH decks retract together (ThinIce RespawnZone model).\n" +
+                "Set each platform's riderLayers to the slime layer if hold/return misfires. Tweak waypoint heights so the sandwich final gap ≈ slime size. " +
+                "Resize C_ReturnZone so the slime is inside while squeezed and outside once extruded.");
         }
 
         // --- Cluster A: mount-trigger trip + range hold ---
@@ -114,6 +116,41 @@ namespace SlimeJumping.Editor
             pso.FindProperty("holdRange").floatValue = 2.5f;
             if (ice != null) pso.FindProperty("iceMaterial").objectReferenceValue = ice;
             pso.ApplyModifiedProperties();
+
+            // Return zone (ThinIce RespawnZone model): the slime extrudes out the SIDE (tangent),
+            // so the box wraps the squeeze region — slime inside while pinched, outside once it
+            // pops past the deck edge → exit fires ReturnAllMembers → both decks retract together.
+            // Centered on the two decks' vertical midpoint; X ≈ deck span so a side-extrude exits.
+            CreateReturnZone("C_ReturnZone", parent, c + new Vector3(0f, 3.4f, 0f),
+                new Vector2(5f, 6f), leader, partner);
+        }
+
+        // Builds a WaypointReturnZone wrapping the given member platforms (added as explicitMembers
+        // since they are siblings, not children). Trigger box + kinematic body so OnTriggerExit fires.
+        static void CreateReturnZone(string name, Transform parent, Vector3 pos, Vector2 size,
+                                     params WaypointPlatformV2[] members)
+        {
+            var go = new GameObject(name);
+            go.transform.parent = parent;
+            go.transform.position = pos;
+
+            var rb = go.AddComponent<Rigidbody2D>();
+            rb.bodyType = RigidbodyType2D.Kinematic;
+            rb.gravityScale = 0f;
+            rb.useFullKinematicContacts = true;
+
+            var box = go.AddComponent<BoxCollider2D>();
+            box.isTrigger = true;
+            box.size = size;
+
+            var zone = go.AddComponent<WaypointReturnZone>();
+            var zso = new SerializedObject(zone);
+            zso.FindProperty("autoCollectChildren").boolValue = false; // members are siblings
+            var em = zso.FindProperty("explicitMembers");
+            em.arraySize = members.Length;
+            for (int i = 0; i < members.Length; i++)
+                em.GetArrayElementAtIndex(i).objectReferenceValue = members[i];
+            zso.ApplyModifiedProperties();
         }
 
         // --- helpers ---

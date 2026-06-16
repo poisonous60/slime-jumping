@@ -134,8 +134,15 @@ public class SlimeVisual : MonoBehaviour
     private static readonly int PinchNormalWSID = Shader.PropertyToID("_PinchNormalWS");
     private static readonly int PinchCompID = Shader.PropertyToID("_PinchComp");
     private static readonly int PinchDisplaceScaleID = Shader.PropertyToID("_PinchDisplaceScale");
+    // World-space half-gap per contact (= distance from slime center to that wall's face). The shader
+    // plane-clamps every vertex past it back onto the plane → a genuine flat face exactly at the gap.
+    private static readonly int PinchHalfGapID = Shader.PropertyToID("_PinchHalfGap");
+    // World gap-center the plane-clamp measures from (the true midpoint between the plates, NOT the
+    // drifting mesh origin) so the carved slab aligns to both real plate faces.
+    private static readonly int PinchCenterWSID = Shader.PropertyToID("_PinchCenterWS");
     private readonly Vector4[] pinchNormalBuf = new Vector4[PinchMax];
     private readonly float[] pinchCompBuf = new float[PinchMax];
+    private readonly float[] pinchHalfGapBuf = new float[PinchMax];
     private float smoothedSquashStrength;
     private float squashStrengthVel;
 
@@ -483,6 +490,9 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetFloat(PinchCountID, pinchCount);
             mpb.SetVectorArray(PinchNormalWSID, pinchNormalBuf);
             mpb.SetFloatArray(PinchCompID, pinchCompBuf);
+            mpb.SetFloatArray(PinchHalfGapID, pinchHalfGapBuf);
+            Vector2 pinchCenter = slimeController.PinchCenter;
+            mpb.SetVector(PinchCenterWSID, new Vector4(pinchCenter.x, pinchCenter.y, 0f, 0f));
             mpb.SetFloat(PinchDisplaceScaleID, settings.pinchDisplaceScale);
 
             bodyMeshRenderer.SetPropertyBlock(mpb);
@@ -819,6 +829,11 @@ public class SlimeVisual : MonoBehaviour
 
         int reported = slimeController.PinchActive ? Mathf.Min(slimeController.PinchContactCount, PinchMax) : 0;
         int count = pinchCompSmoothed > 1e-3f ? reported : 0;
+        // World half-gap from the smoothed compression: gap/2 = (1 − comp)·R. Derived from the same
+        // smoothed comp the dent uses, so the plane-clamp eases in/out in lock-step (no pop), and R is
+        // the slime's full (visual) radius — the mesh is full-size, the shader flattens it to this plane.
+        float fullR = slimeSettings != null ? slimeSettings.slimeRadius : 0.4f;
+        float halfGap = Mathf.Max(0f, (1f - pinchCompSmoothed) * fullR);
         for (int i = 0; i < PinchMax; i++)
         {
             if (i < count)
@@ -828,11 +843,13 @@ public class SlimeVisual : MonoBehaviour
                 // All contacts currently share one compression (comp01), so the smoothed master is
                 // the right per-contact value; revisit if walls ever report differing compression.
                 pinchCompBuf[i] = pinchCompSmoothed;
+                pinchHalfGapBuf[i] = halfGap;
             }
             else
             {
                 pinchNormalBuf[i] = Vector4.zero;
                 pinchCompBuf[i] = 0f;
+                pinchHalfGapBuf[i] = 0f;
             }
         }
         return count;

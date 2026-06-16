@@ -108,6 +108,11 @@ namespace SlimeJumping.Platforms
         float pinchOff;
         Vector2 pinchAxisN;        // world closing axis, leader→partner (same value on both decks)
         Vector2 prevSmoothPos;     // to scale this frame's axial closing by the reaction factor
+        // HARD gap floor. The soft reaction/rf-scaling alone can't stop the deck (rigidTarget over-travels
+        // ahead of the lagging smoothPos, and Holding then pins pathParam to full-close), so each deck
+        // also clamps its own face to stay ≥ gapMin/2 from this shared gap-center along the axis — a
+        // guaranteed, defined minimum thickness. Leader computes it from both faces; mirrored to partner.
+        float pinchCenterAxisProj;
 
         // rider tracking — set by ApplyRiderInfluence (carrier, order -200),
         // consumed in ComputeMotion (motor, order -100) the same FixedUpdate.
@@ -122,6 +127,12 @@ namespace SlimeJumping.Platforms
         Vector2 boxHalf = new Vector2(1f, 0.25f);
         bool triggeredByLeader;
         SlimeController cachedSlime;
+
+        // Optional authored trigger box that drives return (ThinIce RespawnZone model — one zone,
+        // the whole group returns together when the slime leaves it). Set by RegisterParentZone.
+        // When non-null, the platform stays out (Departing/Holding) until the zone calls
+        // RequestReturn; null = legacy holdRange proximity auto-return.
+        WaypointReturnZone parentZone;
 
         ContactFilter2D holdFilter;
         readonly List<Collider2D> overlapBuf = new List<Collider2D>(8);
@@ -242,6 +253,10 @@ namespace SlimeJumping.Platforms
                 if (axialDelta * closingDir > 0f)
                     smoothPos += pinchAxisN * (axialDelta * (pinchReactionFactor - 1f)); // remove the slowed part
             }
+            // HARD floor on the state itself: the slime holds the decks gapMin apart. Clamping smoothPos
+            // (not just the output) also keeps it short of wp[last], so the phase never flips to Holding
+            // (which would pin pathParam to full-close) — the deck genuinely stalls on the slime.
+            smoothPos = ClampPinchGap(smoothPos);
             prevSmoothPos = smoothPos;
 
             // Vertical sag spring — dip on mount, recoil overshoot on leave.
@@ -262,9 +277,37 @@ namespace SlimeJumping.Platforms
 
             prevRiderOnTop = riderOnTop;
 
-            Vector2 outPos = smoothPos + new Vector2(0f, sagY);
+            Vector2 outPos = ClampPinchGap(smoothPos + new Vector2(0f, sagY));   // re-clamp so sag can't sink past the floor
             float outRot = baseRotation + (enableTilt ? currentTilt : 0f) + sandwichOpen;
             return (outPos, outRot);
+        }
+
+        // Hard gap floor: clamp this deck's leading face to stay at least gapMin/2 from the shared
+        // gap-center along the pinch axis. Both decks reference the same center, so the resulting gap is
+        // exactly pinchSqueezeGapMin — a defined minimum the squeeze can never exceed, independent of the
+        // SmoothDamp lag / phase logic that the soft reaction couldn't beat. Inert when no slime is caught
+        // (pinchReactionFactor == 1) or before the first catch (axis unset).
+        Vector2 ClampPinchGap(Vector2 pos)
+        {
+            if (pinchReactionFactor >= 1f || pinchAxisN.sqrMagnitude < 0.5f)
+                return pos;
+
+            float extent = NominalExtentAlong(pinchAxisN);
+            float half = 0.5f * pinchSqueezeGapMin;
+            // Leader sits on the −axisN side of the center, partner on the +axisN side.
+            if (isLeader)
+            {
+                float face = Vector2.Dot(pos, pinchAxisN) + extent;   // face toward the partner (+axisN side)
+                float maxFace = pinchCenterAxisProj - half;
+                if (face > maxFace) pos -= pinchAxisN * (face - maxFace);
+            }
+            else
+            {
+                float face = Vector2.Dot(pos, pinchAxisN) - extent;   // face toward the leader (−axisN side)
+                float minFace = pinchCenterAxisProj + half;
+                if (face < minFace) pos += pinchAxisN * (minFace - face);
+            }
+            return pos;
         }
 
         void UpdatePhase(bool mountRisingEdge)
@@ -290,7 +333,10 @@ namespace SlimeJumping.Platforms
                     break;
 
                 case Phase.Holding:
-                    if (!SlimeInHoldRange())
+                    // Zone-driven (ThinIce model): when an authored WaypointReturnZone owns this
+                    // platform, it commands the return via RequestReturn on slime-exit — don't
+                    // self-return on proximity. Only the zone-less legacy platform polls holdRange.
+                    if (parentZone == null && !SlimeInHoldRange())
                         phase = Phase.Returning;
                     break;
 
@@ -299,6 +345,18 @@ namespace SlimeJumping.Platforms
                         phase = Phase.Parked;
                     break;
             }
+        }
+
+        /// <summary>Registered as a member of a <see cref="WaypointReturnZone"/>. Switches this
+        /// platform from holdRange auto-return to zone-driven return.</summary>
+        public void RegisterParentZone(WaypointReturnZone zone) => parentZone = zone;
+
+        /// <summary>Zone → member: the slime has left the trigger box, so retract now. Acts only
+        /// while the platform is out (Departing/Holding); Parked/Returning ignore it.</summary>
+        public void RequestReturn()
+        {
+            if (phase == Phase.Departing || phase == Phase.Holding)
+                phase = Phase.Returning;
         }
 
         void AdvanceRigidTarget(float dt)
@@ -315,6 +373,14 @@ namespace SlimeJumping.Platforms
                 int legLo = Mathf.Clamp(Mathf.FloorToInt(dir > 0 ? pathParam : pathParam - 1e-4f), 0, N - 2);
                 float legLen = Vector2.Distance(worldWaypoints[legLo], worldWaypoints[legLo + 1]);
                 float dParam = legLen > 1e-4f ? (travelSpeed * dt) / legLen : 1f;
+                // Pinch stall: the caught (incompressible) slime decelerates the CLOSING advance to a
+                // stop at pinchSqueezeGapMin. Scaling the TARGET advance itself (not just smoothPos's
+                // closing component) is what actually halts the deck — otherwise SmoothDamp keeps chasing
+                // an over-travelled rigidTarget all the way shut. pinchReactionFactor: 1 = free, → 0 as
+                // the gap nears gapMin (set in UpdateSandwich, mirrored via SetSandwichReaction). Departing
+                // (dir > 0) is the converging/closing direction for a sandwich pair.
+                if (dir > 0 && pinchReactionFactor < 1f && pinchAxisN.sqrMagnitude > 0.5f)
+                    dParam *= pinchReactionFactor;
                 pathParam = Mathf.Clamp(pathParam + dir * dParam, 0f, N - 1);
             }
             else
@@ -433,7 +499,8 @@ namespace SlimeJumping.Platforms
                         // in ComputeMotion. Continuous, geometry-derived. Mirror to the partner.
                         float rf = Mathf.Clamp01((gap - pinchSqueezeGapMin) / Mathf.Max(1e-4f, 2f * fullR - pinchSqueezeGapMin));
                         pinchReactionFactor = rf; pinchOff = off; pinchAxisN = axisN;
-                        partner.SetSandwichReaction(rf, off, axisN);
+                        pinchCenterAxisProj = centerAxisProj;   // shared gap-center for the hard floor clamp
+                        partner.SetSandwichReaction(rf, off, axisN, centerAxisProj);
                     }
                 }
             }
@@ -441,17 +508,19 @@ namespace SlimeJumping.Platforms
             if (!caught)
             {
                 pinchReactionFactor = 1f; pinchOff = 0f;
-                partner.SetSandwichReaction(1f, 0f, pinchAxisN);
+                partner.SetSandwichReaction(1f, 0f, pinchAxisN, pinchCenterAxisProj);
             }
         }
 
-        /// <summary>Leader→partner: mirrors the reaction factor (+ off-centre load + axis) so the
-        /// partner decelerates its closing + tilts symmetrically in its own ComputeMotion.</summary>
-        public void SetSandwichReaction(float reactionFactor, float off, Vector2 axisN)
+        /// <summary>Leader→partner: mirrors the reaction factor (+ off-centre load + axis + shared
+        /// gap-center) so the partner decelerates its closing, tilts, and clamps to the hard gap floor
+        /// symmetrically in its own ComputeMotion.</summary>
+        public void SetSandwichReaction(float reactionFactor, float off, Vector2 axisN, float centerAxisProj)
         {
             pinchReactionFactor = reactionFactor;
             pinchOff = off;
             pinchAxisN = axisN;
+            pinchCenterAxisProj = centerAxisProj;
         }
 
         void OnDrawGizmos()

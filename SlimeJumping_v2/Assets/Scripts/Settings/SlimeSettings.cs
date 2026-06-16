@@ -148,7 +148,7 @@ namespace SlimeJumping.Settings
         public float pinchExtrudeSpeed = 1.5f;
         [Tooltip("Hard cap (m/s) on the squeeze-out speed so a near-closed gap can't fling the slime.")]
         public float pinchMaxExtrudeSpeed = 4f;
-        [Tooltip("How small the slime's collider may shrink while squeezed (× full radius). The collider shrinks to FIT the gap so it never overlaps the plates (no solver fling); the plates' reaction stops them near this scale. 0.4 = down to 40% radius.")]
+        [Tooltip("(DEAD — kept for .asset compat) The collider now shrinks to FIT the gap directly (radius = (gap−fitMargin)/2), floored by a code const MinPinchColliderScale in SlimeController.Pinch.cs, decoupled from the visual. This min-scale knob is no longer read.")]
         [Range(0.25f, 1f)] public float pinchSqueezeMinScale = 0.4f;
         [Tooltip("Extra clearance (units) the collider shrinks below the raw gap fit, so minor drift never re-overlaps a plate. ~0.04.")]
         public float pinchSqueezeFitMargin = 0.04f;
