@@ -135,3 +135,8 @@ Celeste식 "구름 발판"을 이 게임(Unity 6, URP, 2.5D 고정 카메라지�
 #   + per-particle dissolve(AgePercent+Smoothstep) + 점프 시 위/방사 velocity.
 #   → "구름 조각이 부드럽게 위로 흩어지며 소멸"하는지 스크린샷으로 유저에게 보여주고 keep/pivot 판정.
 ```
+
+## Session Closed
+**Closed at:** 2026-07-01
+**Commit:** d22ff94
+**Session status:** Handed off to next session
