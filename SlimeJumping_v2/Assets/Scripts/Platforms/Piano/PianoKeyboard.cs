@@ -13,7 +13,7 @@ namespace SlimeJumping.Platforms.Piano
     /// Runs before the key motors (lower execution order) so each key reads fresh contact this frame.
     [DefaultExecutionOrder(-150)]
     [AddComponentMenu("SlimeJumping/Platforms/Piano Keyboard")]
-    public class PianoKeyboard : MonoBehaviour
+    public partial class PianoKeyboard : MonoBehaviour
     {
         [SerializeField] private SlimeController slime;
         [SerializeField] private PianoConfig config;
@@ -55,6 +55,10 @@ namespace SlimeJumping.Platforms.Piano
             float overlapThreshold = config.overlapThreshold;
             float verticalTolerance = config.verticalTolerance;
 
+            bool harmonizeOn = config.harmonize.enabled;
+            bool anyContacting = false;
+            if (harmonizeOn) contactingKeys.Clear();
+
             for (int i = 0; i < keys.Count; i++)
             {
                 var key = keys[i];
@@ -65,8 +69,15 @@ namespace SlimeJumping.Platforms.Piano
                 bool contacting = overlap > overlapThreshold
                                   && Mathf.Abs(sBottom - b.max.y) < verticalTolerance;
 
+                if (contacting)
+                {
+                    anyContacting = true;
+                    if (harmonizeOn) contactingKeys.Add(key);
+                }
                 key.Drive(contacting, impact, s);
             }
+
+            HarmonizeStep(anyContacting, impact);   // no-op unless config.harmonize.enabled
         }
     }
 }

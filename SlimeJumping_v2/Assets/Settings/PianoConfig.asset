@@ -12,6 +12,425 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c7a2db422e4609848bf2d7bcd9cb6682, type: 3}
   m_Name: PianoConfig
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.Piano.PianoConfig
+  harmonize:
+    enabled: 1
+    tonicMidi: 60
+    scale: 0
+    snapMode: 0
+    progression:
+    - label: S1 I  C6/9
+      offsetsFromTonic: f4fffffffbffffff0400000009000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S1 V  G(add9)
+      offsetsFromTonic: effffffff6ffffffffffffff02000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S1 vi Am7
+      offsetsFromTonic: f1fffffff8fffffffbffffff00000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S1 IV Fmaj9
+      offsetsFromTonic: edfffffff4fffffffdffffff07000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions:
+      - stepIndex: 0
+        weight: 0.24
+      - stepIndex: 4
+        weight: 0.08
+      - stepIndex: 8
+        weight: 0.08
+      - stepIndex: 12
+        weight: 0.08
+      - stepIndex: 20
+        weight: 0.23
+      - stepIndex: 24
+        weight: 0.23
+      - stepIndex: 16
+        weight: 0.06
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S2 I  C6/9
+      offsetsFromTonic: f4fffffffbffffff0400000009000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S2 vi Am7
+      offsetsFromTonic: f1fffffff8fffffffbffffff00000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S2 IV Fmaj9
+      offsetsFromTonic: edfffffff4fffffffdffffff07000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S2 V  G(add9)
+      offsetsFromTonic: effffffff6ffffffffffffff02000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions:
+      - stepIndex: 4
+        weight: 0.24
+      - stepIndex: 0
+        weight: 0.08
+      - stepIndex: 8
+        weight: 0.08
+      - stepIndex: 12
+        weight: 0.08
+      - stepIndex: 20
+        weight: 0.23
+      - stepIndex: 24
+        weight: 0.23
+      - stepIndex: 16
+        weight: 0.06
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S3 vi Am7
+      offsetsFromTonic: f1fffffff8fffffffbffffff00000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S3 IV Fmaj9
+      offsetsFromTonic: edfffffff4fffffffdffffff07000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S3 I  C6/9
+      offsetsFromTonic: f4fffffffbffffff0400000009000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S3 V  G(add9)
+      offsetsFromTonic: effffffff6ffffffffffffff02000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions:
+      - stepIndex: 8
+        weight: 0.24
+      - stepIndex: 0
+        weight: 0.08
+      - stepIndex: 4
+        weight: 0.08
+      - stepIndex: 12
+        weight: 0.08
+      - stepIndex: 20
+        weight: 0.23
+      - stepIndex: 24
+        weight: 0.23
+      - stepIndex: 16
+        weight: 0.06
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S4 I  C6/9
+      offsetsFromTonic: f4fffffffbffffff0400000009000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S4 vi Am7
+      offsetsFromTonic: f1fffffff8fffffffbffffff00000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S4 ii Dm7
+      offsetsFromTonic: f6fffffffdffffff0000000005000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S4 V  G(add9)
+      offsetsFromTonic: effffffff6ffffffffffffff02000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions:
+      - stepIndex: 12
+        weight: 0.24
+      - stepIndex: 0
+        weight: 0.08
+      - stepIndex: 4
+        weight: 0.08
+      - stepIndex: 8
+        weight: 0.08
+      - stepIndex: 20
+        weight: 0.23
+      - stepIndex: 24
+        weight: 0.23
+      - stepIndex: 16
+        weight: 0.06
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S5 IV Fmaj9
+      offsetsFromTonic: edfffffff4fffffffdffffff07000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S5 V  G(add9)
+      offsetsFromTonic: effffffff6ffffffffffffff02000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: S5 bVI Ab
+      offsetsFromTonic: f0fffffff7fffffffcffffff00000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 1
+      snapMode: 1
+    - label: S5 bVII Bb
+      offsetsFromTonic: f2fffffff9fffffffeffffff02000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions:
+      - stepIndex: 0
+        weight: 0.2
+      - stepIndex: 4
+        weight: 0.2
+      - stepIndex: 8
+        weight: 0.15
+      - stepIndex: 12
+        weight: 0.15
+      - stepIndex: 20
+        weight: 0.15
+      - stepIndex: 24
+        weight: 0.15
+      overrideSnapMode: 1
+      snapMode: 1
+    - label: M1 i   Am
+      offsetsFromTonic: f1fffffff8fffffffdffffff00000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: M1 VI  Fmaj9
+      offsetsFromTonic: edfffffff4fffffffdffffff07000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: M1 VII G
+      offsetsFromTonic: effffffff6ffffffffffffff02000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: M1 i   Am
+      offsetsFromTonic: f1fffffff8fffffffdffffff00000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions:
+      - stepIndex: 0
+        weight: 0.13
+      - stepIndex: 4
+        weight: 0.13
+      - stepIndex: 8
+        weight: 0.13
+      - stepIndex: 12
+        weight: 0.13
+      - stepIndex: 20
+        weight: 0.21
+      - stepIndex: 24
+        weight: 0.21
+      - stepIndex: 16
+        weight: 0.06
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: M2 i   Am
+      offsetsFromTonic: f1fffffff8fffffffdffffff00000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: M2 v   Em
+      offsetsFromTonic: f8ffffffffffffff0400000007000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: M2 VI  Fmaj9
+      offsetsFromTonic: edfffffff4fffffffdffffff07000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions: []
+      overrideSnapMode: 0
+      snapMode: 1
+    - label: M2 VII G
+      offsetsFromTonic: effffffff6ffffffffffffff02000000
+      releaseSeconds: 0
+      leftNext: -1
+      centerNext: -1
+      rightNext: -1
+      nextOptions:
+      - stepIndex: 0
+        weight: 0.13
+      - stepIndex: 4
+        weight: 0.13
+      - stepIndex: 8
+        weight: 0.13
+      - stepIndex: 12
+        weight: 0.13
+      - stepIndex: 24
+        weight: 0.21
+      - stepIndex: 20
+        weight: 0.21
+      - stepIndex: 16
+        weight: 0.06
+      overrideSnapMode: 0
+      snapMode: 1
+    resetIdleSeconds: 1.6
+    velocityToVolume:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0.4
+        inSlope: 0
+        outSlope: 0.6
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 0.6
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    masterVolume: 0.8
+    voicePoolSize: 24
+    defaultReleaseSeconds: 1.2
+    minMelodyGap: 3
+    dyadVolumeScale: 1.1
+    visualSinkDepth: 0.09
+    visualHoldSeconds: 0.25
+    visualDepthVelocityScale: 1.5
+    branchingEnabled: 1
+    randomBranching: 1
+    zoneLeftMax: 0.33
+    zoneRightMin: 0.66
+    velocityDensity: 1
+    octaveDoubleVelocity: 0.7
+    reverbEnabled: 0
+    reverbWetParam: PianoReverbWet
+    velocityToReverb:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: -20
+        inSlope: 0
+        outSlope: 20
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 0
+        inSlope: 20
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
   keys:
     minImpactSpeed: 1
     maxImpactSpeed: 25

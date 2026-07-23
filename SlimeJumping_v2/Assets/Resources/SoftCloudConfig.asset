@@ -1,0 +1,102 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c4a1f6b9d2e4c3a8b5f0e1d6a7c2b93, type: 3}
+  m_Name: SoftCloudConfig
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.SoftCloudConfig
+  bodyRecoilDistance: 0
+  bodyRecoilRefSpeed: 8
+  bodySagDistance: 0.12
+  bodyFrequency: 1.6
+  bodyDamping: 0.35
+  bodyMaxOffset: 0.4
+  dentEnvelope:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.20809978
+      value: 0.4162929
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.32473004
+      value: 0.4164989
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.798729
+      value: -0.121965274
+      inSlope: -0.08063044
+      outSlope: -0.08063044
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 1
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.93289036
+      value: -0.12529169
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1.2914217
+      value: 0.18366511
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1.709062
+      value: 0.040505216
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  dentDuration: 0.4
+  dentBaseDepth: 0.63
+  dentDepthPerSpeed: 0.002
+  restDentDepth: 0.05
+  idleAmplitude: 0
+  idleFrequency: 1.3
+  radiusMult: 5
+  neighborCoupling: 0.4
+  maxDeflection: 1000
+  followSmoothTime: 0.03
+  maxSurfaceSpeed: 1000
+  visualInfluenceRadius: 0.6
+  restEpsilon: 0.0008

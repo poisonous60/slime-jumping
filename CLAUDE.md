@@ -38,9 +38,12 @@ echo 'var go = new GameObject("Marker"); go.tag = "EditorOnly"; return go.name;'
 
 Because exec compiles and runs real C#, it can do anything a custom tool can — inspect ECS entities, modify assets, call internal APIs, run editor utilities. For AI agents, this means zero-friction access to Unity's entire runtime without writing a single line of tool code. Piping via stdin avoids shell escaping headaches with complex code.
 
+unity-cli 확인은 `console` 컴파일 에러 뿐. 예상 못 한 출력 나와도 조사 금지, 한 줄 보고 후 정지. Play 모드 금지.
+
 
 
 ### Coding Convention
+- 요청 안 받은 산출물(테스트 파일, 헬퍼, 에디터 툴, 새 문서) 만들지 말고 물어본다.
 - Use `rb.position` instead of `transform.position`
 - If some feature add or change, update  `SlimeJumping_메커닉_설계_v6.md`, `프로토타입_구현_현황.md` document in /docs folder
 - Never use `??` or `?.` with UnityEngine.Object references (Component, GameObject, etc). C# null-coalescing operators bypass Unity's overloaded `==` and mis-handle "fake null" (destroyed-but-not-null) references.
