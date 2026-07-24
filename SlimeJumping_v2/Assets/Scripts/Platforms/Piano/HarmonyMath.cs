@@ -52,8 +52,8 @@ namespace SlimeJumping.Platforms.Piano
             }
 
             int[] scale = mode == MelodySnapMode.ScaleFull
-                ? (h.scale == ScaleType.Minor ? MinorScale : MajorScale)
-                : (h.scale == ScaleType.Minor ? MinorPenta : MajorPenta);   // Pentatonic (default)
+                ? (h.Scale == ScaleType.Minor ? MinorScale : MajorScale)
+                : (h.Scale == ScaleType.Minor ? MinorPenta : MajorPenta);   // Pentatonic (default)
             count = scale.Length;
             return scale;
         }
@@ -82,15 +82,15 @@ namespace SlimeJumping.Platforms.Piano
         public static int SnapMelody(int keyMidi, HarmonizeSettings h, int[] chordOffsets, MelodySnapMode mode)
         {
             int[] allowed = AllowedDegrees(h, chordOffsets, mode, out int count);
-            int relPc = Mod12(keyMidi - h.tonicMidi);
+            int relPc = Mod12(keyMidi - h.TonicMidi);
             int deg = NearestDegree(relPc, allowed, count);
-            int targetPc = Mod12(h.tonicMidi + deg);
+            int targetPc = Mod12(h.TonicMidi + deg);
 
             int diff = Mod12(targetPc - Mod12(keyMidi));   // 0..11 upward
             if (diff > 6) diff -= 12;                       // move to nearest direction
             int melody = keyMidi + diff;
 
-            int voicingTop = h.tonicMidi + MaxOffset(chordOffsets);
+            int voicingTop = h.TonicMidi + MaxOffset(chordOffsets);
             int floor = voicingTop + Mathf.RoundToInt(h.minMelodyGap);
             while (melody < floor) melody += 12;
             return melody;
@@ -236,7 +236,7 @@ namespace SlimeJumping.Platforms.Piano
             for (int d = 1; d <= 12; d++)
             {
                 int cand = midi + dir * d;
-                int rel = Mod12(cand - h.tonicMidi);
+                int rel = Mod12(cand - h.TonicMidi);
                 for (int i = 0; i < count; i++)
                     if (Mod12(allowed[i]) == rel) return cand;
             }

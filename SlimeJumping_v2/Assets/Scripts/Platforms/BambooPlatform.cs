@@ -172,6 +172,29 @@ namespace SlimeJumping.Platforms
         /// the grabbed slime above the tip cap so its CircleCollider doesn't penetrate
         /// the topmost capsule (which would cause the physics resolver to fight the
         /// per-FU position lock and produce visible jitter).</summary>
+        /// <summary>Rest axis of the stalk in world space (root local +Y). The root
+        /// rigidbody holds the authored tilt (baseRotation) and never rotates at runtime —
+        /// bend lives in the child segments — so this is the stalk's "vertical" whatever
+        /// Z rotation the designer gave it. Every up/side test uses this instead of world
+        /// gravityUp, otherwise a tilted bamboo looks leaned but behaves upright.</summary>
+        public Vector2 StalkUp
+        {
+            get
+            {
+                Vector2 up = transform.up;
+                return up.sqrMagnitude > 1e-6f ? up.normalized : Vector2.up;
+            }
+        }
+
+        /// <summary>Signed component of a world velocity perpendicular to the stalk axis.
+        /// For an upright bamboo (StalkUp = +Y) this reduces exactly to velocity.x, which
+        /// is what the slam guard and V2 bend pump used before tilt support.</summary>
+        float PerpendicularSpeed(Vector2 worldVelocity)
+        {
+            Vector2 up = StalkUp;
+            return worldVelocity.x * up.y - worldVelocity.y * up.x;
+        }
+
         public Vector2 GetTipUpDirection()
         {
             float rad = currentAngle * Mathf.Deg2Rad;
@@ -252,7 +275,21 @@ namespace SlimeJumping.Platforms
                 // applies on the launching frame.
                 float grabBoost = cachedSlime.CurrentBambooGrab == this ? settings.grabModeCarrierScale : 1f;
                 float v2Boost = cachedSlime.CurrentBambooV2Rebound == this ? settings.v2CarrierScale : 1f;
-                return (requested / carrierGives) * settings.velocityTransferScale * grabBoost * v2Boost;
+
+                // Boost-falloff gate — same model as SpringyBranchPlatform / TautLine.
+                // slime.Velocity here already holds aim power + hyperdash inheritance but
+                // NOT the bamboo's carrier contribution (that's what we're scaling), so a
+                // launch that is already fast gets progressively less stalk momentum piled
+                // on top. Together with maxTipSpeed this is the whole predictability
+                // budget: the most a stalk can ever give is
+                // maxTipSpeed * velocityTransferScale * (grab|v2 scale), and it fades to
+                // zero above boostFalloffEndSpeed.
+                float preBonusSpeed = cachedSlime.Velocity.magnitude;
+                float speedMul = settings.boostFalloffEndSpeed > settings.boostFalloffStartSpeed
+                    ? 1f - Mathf.Clamp01(Mathf.InverseLerp(settings.boostFalloffStartSpeed, settings.boostFalloffEndSpeed, preBonusSpeed))
+                    : (preBonusSpeed >= settings.boostFalloffStartSpeed ? 0f : 1f);
+
+                return (requested / carrierGives) * settings.velocityTransferScale * grabBoost * v2Boost * speedMul;
             }
         }
 
@@ -285,10 +322,10 @@ namespace SlimeJumping.Platforms
             return cachedSlime != null && cachedSlime.CurrentBambooGrab == this;
         }
 
-        public bool IsV2SideContact(Vector2 surfaceNormal, Vector2 gravityUp)
+        public bool IsV2SideContact(Vector2 surfaceNormal)
         {
             if (!UsesSideReboundV2) return false;
-            return Mathf.Abs(Vector2.Dot(surfaceNormal, gravityUp)) <= settings.v2SideNormalMaxUpDot;
+            return Mathf.Abs(Vector2.Dot(surfaceNormal, StalkUp)) <= settings.v2SideNormalMaxUpDot;
         }
 
         public float GetHeight01(Vector2 worldPos)
@@ -344,15 +381,6 @@ namespace SlimeJumping.Platforms
             Vector2 tangentWorld = new Vector2(-normalWorld.y, normalWorld.x);
             anchorInfo = new SurfaceAnchorInfo(anchorWorldPos, normalWorld, tangentWorld, true, name);
             return true;
-        }
-
-        public float EvaluateV2ChargedLaunchBonus(float chargePower)
-        {
-            return BambooV2Response.Evaluate(
-                settings.v2ResponseMode,
-                chargePower,
-                settings.v2ChargedLaunchBonusByChargePower,
-                settings.v2ChargedLaunchBonus);
         }
 
         public void ApplyV2LaunchReleaseKick(Vector2 riderWorldPos, Vector2 launchVelocity)
@@ -514,11 +542,12 @@ namespace SlimeJumping.Platforms
 
             Vector2 dv = hasPrevRiderVel ? (riderVelocity - previousRiderVel) : riderVelocity;
 
-            // Re-entry guard mirrors SpringyBranchPlatform's slam-suppress, but for vertical
-            // bamboo a "slam" is a fast lateral hit (not a downward fall), so gate on |vx|.
+            // Re-entry guard mirrors SpringyBranchPlatform's slam-suppress, but for a
+            // bamboo a "slam" is a fast hit across the stalk (not along it), so gate on
+            // the speed perpendicular to StalkUp — |vx| for an upright stalk.
             bool suppress = firstAttach
                             && (detachTimer < settings.slamReattachLockout)
-                            && (Mathf.Abs(riderVelocity.x) < settings.slamMinHorizontalSpeed);
+                            && (Mathf.Abs(PerpendicularSpeed(riderVelocity)) < settings.slamMinHorizontalSpeed);
 
             if (!suppress)
             {
@@ -535,7 +564,7 @@ namespace SlimeJumping.Platforms
                     Vector2 impulseP = dv * mass;
                     float pumpGain = settings.riderPumpGain * (isCharging ? settings.chargePumpScale : 1f);
                     if (UsesSideReboundV2)
-                        pumpGain *= EvaluateV2BendPumpGain(Mathf.Abs(riderVelocity.x)) * EvaluateV2BendHeightScale(riderHeight01);
+                        pumpGain *= EvaluateV2BendPumpGain(Mathf.Abs(PerpendicularSpeed(riderVelocity))) * EvaluateV2BendHeightScale(riderHeight01);
                     var (_, _, ITotal) = ComputeSpringCoeffs();
                     if (ITotal > 1e-6f)
                     {
@@ -1072,7 +1101,7 @@ namespace SlimeJumping.Platforms
             Gizmos.color = Color.green;
             Vector3 basePos = Application.isPlaying ? (Vector3)pivotWorldPos : transform.position;
             Gizmos.DrawSphere(basePos, 0.12f);
-            Gizmos.DrawLine(basePos, basePos + Vector3.up * bambooLength);
+            Gizmos.DrawLine(basePos, basePos + transform.up * bambooLength);
         }
     }
 }

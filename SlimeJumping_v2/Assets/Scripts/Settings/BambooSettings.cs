@@ -45,12 +45,18 @@ namespace SlimeJumping.Settings
         [Min(0f)] public float maxTipSpeed = 18f;
 
         [Header("Carrier (launch inheritance)")]
-        [Tooltip("Overall scale on inherited platform velocity at launch. 0 = pure visual, no boost.")]
+        [Tooltip("Overall scale on inherited platform velocity at launch. 0 = pure visual, no boost. This and maxTipSpeed together are the whole boost ceiling: a launch can never gain more than maxTipSpeed * velocityTransferScale from the stalk.")]
         [Range(0f, 2f)] public float velocityTransferScale = 0.2f;
         [Tooltip("Minimum inheritance fraction even at the base (t=0). Slime attached at base inherits this fraction of tip speed.")]
         [Range(0f, 1f)] public float carrierMinContribution = 0.3f;
         [Tooltip("Scales the height-dependent inheritance term (carrierMin + carrierDistanceScale * t).")]
         [Range(0f, 2f)] public float carrierDistanceScale = 1f;
+
+        [Header("Boost Falloff (pre-bonus speed gate)")]
+        [Tooltip("Below this pre-bonus launch speed (m/s) the bamboo transfers full velocityTransferScale. Pre-bonus speed = slime.Velocity.magnitude when carrier.GetLaunchVelocity is called — already includes charge power and hyperdash inheritance, but NOT the bamboo's own carrier contribution (that's what's being scaled). Mirrors SpringyBranchPlatform / TautLine so a bamboo can reward normal launches without stacking tip speed on top of an already-fast one.")]
+        [Min(0f)] public float boostFalloffStartSpeed = 12f;
+        [Tooltip("Above this pre-bonus launch speed (m/s) the bamboo transfers zero carrier velocity. Linear falloff between boostFalloffStartSpeed and boostFalloffEndSpeed. Set <= boostFalloffStartSpeed for a hard cutoff. The slime's own charge/hyperdash speed passes through unchanged — only the bamboo's inheritance is removed.")]
+        [Min(0f)] public float boostFalloffEndSpeed = 18f;
 
         [Header("Re-entry Guards")]
         [Min(0f)] public float slamMinHorizontalSpeed = 3f;
@@ -87,10 +93,14 @@ namespace SlimeJumping.Settings
         [Tooltip("Contact-height exponent for V2 bend pump. Higher values make low contacts affect the stalk much less.")]
         [Min(0.1f)] public float v2BendHeightPower = 1.75f;
         [Header("Side-Rebound V2 - Launch")]
-        [Tooltip("Extra speed added to a charged launch from a V2 bamboo in Additive mode.")]
-        [Min(0f)] public float v2ChargedLaunchBonus = 3f;
-        [Tooltip("Extra speed added to a charged launch in SpeedCurve mode, evaluated by the charge launch power.")]
-        public AnimationCurve v2ChargedLaunchBonusByChargePower = AnimationCurve.Linear(0f, 0f, 18f, 7f);
+        // The raw charge-power launch bonus (v2ChargedLaunchBonus /
+        // v2ChargedLaunchBonusByChargePower) was removed 2026-07-24. It added speed keyed
+        // to charge power alone, so the player got the same boost whether the stalk was
+        // bent hard or barely at all — nothing on screen predicted it, and it stacked on
+        // top of the carrier inheritance. V2 launch boost is now purely the physical
+        // swing the player can see (ω × arm), exactly like SpringyBranchPlatform, bounded
+        // by maxTipSpeed × velocityTransferScale × v2CarrierScale and faded out by the
+        // boostFalloff gate above.
         [Tooltip("Extra multiplier on inherited bamboo velocity for V2 rebound launches.")]
         [Min(0f)] public float v2CarrierScale = 1f;
         [Tooltip("Launch-time recoil kick for Bamboo V2. Converts the slime's tangential launch speed at the contact height into bamboo angular velocity. 1 = bamboo surface tries to move at the same tangential speed as the slime launch.")]

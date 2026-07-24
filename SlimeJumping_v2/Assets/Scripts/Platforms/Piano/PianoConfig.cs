@@ -13,6 +13,10 @@ namespace SlimeJumping.Platforms.Piano
         [Tooltip("꺼면 밟은 건반의 원음만 재생(현행). 켜면 착지마다 코드 진행이 전진하며 화음을 낸다.")]
         public HarmonizeSettings harmonize = new HarmonizeSettings();
 
+        [Header("Auto-play (idle → the piano plays a recorded piece by itself)")]
+        [Tooltip("슬라임이 건반을 몇 번 밟은 뒤 피아노를 떠나면, 녹음된 곡이 재생되고 그 곡의 노트대로 건반이 스스로 눌린다.")]
+        public AutoPlaySettings autoPlay = new AutoPlaySettings();
+
         [Header("Keys — dynamics & feel")]
         public PianoSettings keys = new PianoSettings();
 
@@ -176,9 +180,39 @@ namespace SlimeJumping.Platforms.Piano
         public bool enabled = false;
 
         [Header("Key / scale")]
-        [Tooltip("으뜸음 MIDI. 60 = C4. 바꾸면 진행 전체가 전조된다.")]
+        [Tooltip("으뜸음 MIDI. 60 = C4. 바꾸면 진행 전체가 전조된다. ※ 자동 연주 곡이 선택되면 그 곡의 조성이 런타임에 덮어쓴다(에셋은 안 바뀜) — 실효값은 TonicMidi.")]
         public int tonicMidi = 60;
         public ScaleType scale = ScaleType.Major;
+
+        // ── Runtime-only key / ornament override ────────────────────────────────────────────────
+        // The auto-play song in rotation decides what key the slime is playing in, so the slime's
+        // own chords already belong to the piece before it starts. That has to be a RUNTIME value:
+        // writing tonicMidi/scale/ornaments on the ScriptableObject would persist into the .asset the
+        // moment it happens in the editor and silently overwrite the designer's tuning.
+        // [NonSerialized] is what keeps it off disk; the inspector still edits the real fields live.
+        [System.NonSerialized] private bool hasKeyOverride;
+        [System.NonSerialized] private int overrideTonicMidi;
+        [System.NonSerialized] private ScaleType overrideScale;
+        [System.NonSerialized] private OrnamentSettings overrideOrnaments;
+
+        /// The key everything harmonic must actually use — the song's if one is in rotation.
+        public int TonicMidi => hasKeyOverride ? overrideTonicMidi : tonicMidi;
+        public ScaleType Scale => hasKeyOverride ? overrideScale : scale;
+
+        /// The ornament preset actually in force — the song's if it authored one.
+        public OrnamentSettings Ornaments => overrideOrnaments != null ? overrideOrnaments : ornaments;
+
+        public void SetKeyOverride(int midi, ScaleType s)
+        {
+            hasKeyOverride = true; overrideTonicMidi = midi; overrideScale = s;
+        }
+
+        public void SetOrnamentOverride(OrnamentSettings o) => overrideOrnaments = o;
+
+        public void ClearOverrides()
+        {
+            hasKeyOverride = false; overrideOrnaments = null;
+        }
         [Tooltip("착지 건반 → 멜로디 음 스냅 방식. Pentatonic = 가장 안전(안 틀림).")]
         public MelodySnapMode snapMode = MelodySnapMode.Pentatonic;
 
@@ -283,8 +317,8 @@ namespace SlimeJumping.Platforms.Piano
         [Range(1f, 1.5f)] public float dyadVolumeScale = 1.1f;
 
         [Header("Visual — 울린 음마다 그 건반이 내려간다 (흰/검은 건반 88개 전부)")]
-        [Tooltip("건반이 시각적으로 눌리는 기준 깊이(로컬 단위).")]
-        public float visualSinkDepth = 0.09f;
+        [Tooltip("건반이 시각적으로 눌리는 기준 깊이(**world 단위**). 흰 건반 메시는 KeyMotor(scale 1) 자식, 검은 건반 메시는 Piano 루트(scale 2) 직속이라 로컬로 쓰면 검은 건반만 2배 내려간다 — PianoKeyVisual이 부모 스케일로 나눠 world로 통일한다.")]
+        public float visualSinkDepth = 0.12f;
         [Tooltip("시각 눌림 최소 유지 시간(초). 실제 유지 = clamp(릴리즈 × visualHoldScale, 이 값, visualMaxHoldSeconds).")]
         public float visualHoldSeconds = 0.25f;
         [Tooltip("건반이 완전히 눌린 채 버티는 시간 = 그 음의 릴리즈 × 이 배수. 1이면 소리 길이와 일치.")]
@@ -330,5 +364,76 @@ namespace SlimeJumping.Platforms.Piano
         public string reverbWetParam = "PianoReverbWet";
         [Tooltip("착지 속도(0..1) → wet(dB). 믹서 파라미터로 전달.")]
         public AnimationCurve velocityToReverb = AnimationCurve.Linear(0f, -20f, 1f, 0f);
+    }
+
+    /// Idle auto-play: after the slime has actually played the piano and then left it alone, the
+    /// instrument plays a recorded piece by itself. The AUDIO is the recording (so it sounds like a
+    /// real performance, not a sampler); the KEYS are driven from a transcription of that same
+    /// recording, clocked off the clip's own playhead so picture and sound cannot drift apart.
+    ///
+    /// Key visuals deliberately reuse HarmonizeSettings' Visual block — same instrument, same look —
+    /// so there is only ever one place to tune how a sounding key reads.
+    /// One piece in the auto-play rotation. The song is the harmonic authority: the moment it is
+    /// selected (the slime steps onto the piano) the whole progression transposes into its key and its
+    /// ornament preset takes over, so everything the slime plays already belongs to the piece that is
+    /// going to start when it walks away.
+    [System.Serializable]
+    public class PianoSong
+    {
+        [Tooltip("끄면 로테이션에서 제외된다. 리스트에서 지우지 않고 잠깐 빼둘 때.")]
+        public bool enabled = true;
+
+        [Tooltip("인스펙터 표시용 이름. 비워도 동작.")]
+        public string label = "";
+
+        [Tooltip("재생할 녹음. 소리는 전적으로 이 클립에서 나온다(샘플러 아님).")]
+        public AudioClip clip;
+
+        [Tooltip("위 클립을 전사한 노트 이벤트 JSON(TextAsset). 건반은 이 노트대로 눌리고, 조성도 여기서 읽는다.")]
+        public TextAsset scoreJson;
+
+        [Tooltip("-1 = scoreJson이 추정한 조성을 그대로 쓴다(권장). 0 이상이면 그 값으로 강제하고 아래 scale도 함께 쓴다. 보이싱 최저음이 F2(41) 밑으로 안 내려가려면 60 이상이어야 한다.")]
+        public int tonicMidi = -1;
+
+        [Tooltip("tonicMidi를 직접 지정했을 때만 쓰인다.")]
+        public ScaleType scale = ScaleType.Major;
+
+        [Tooltip("이 곡이 선택된 동안 쓸 연주 장식 프리셋. 곡 성격에 맞게 손으로 켠다(잔잔한 곡=롤드+페달포인트, 빠른 곡=알베르티 등).")]
+        public OrnamentSettings ornaments = new OrnamentSettings();
+    }
+
+    [System.Serializable]
+    public class AutoPlaySettings
+    {
+        [Tooltip("★ 온/오프.")]
+        public bool enabled = false;
+
+        [Tooltip("로테이션에 들어가는 곡들. 슬라임이 피아노에 올라탈 때마다 다음 곡으로 넘어가면서 조성·장식이 그 곡에 맞춰진다. 각 항목의 체크박스로 개별 on/off.")]
+        public System.Collections.Generic.List<PianoSong> songs = new System.Collections.Generic.List<PianoSong>();
+
+        [Tooltip("켜면 무작위(직전 곡은 제외), 끄면 리스트 순서대로. 꺼진 곡은 어느 쪽이든 건너뛴다.")]
+        public bool shuffle = true;
+
+        [Header("Trigger")]
+        [Tooltip("자동연주가 걸리려면 그 전에 건반을 이만큼 밟았어야 한다. 지나가기만 한 슬라임에겐 안 걸린다.")]
+        [Min(1)] public int minPresses = 3;
+        [Tooltip("마지막으로 건반에서 떨어진 뒤 이 시간이 지나면 시작(초).")]
+        [Min(0.1f)] public float idleSeconds = 3f;
+        [Tooltip("한 번 끝나거나 중단된 뒤 다시 걸리기까지의 최소 대기(초).")]
+        [Min(0f)] public float cooldownSeconds = 8f;
+
+        [Header("Audio")]
+        [Range(0f, 1f)] public float volume = 0.7f;
+        public bool loop = false;
+        [Min(0f)] public float fadeInSeconds = 0.6f;
+        [Tooltip("슬라임이 건반에 돌아오면 이 시간에 걸쳐 페이드아웃하며 피아노를 돌려준다(초).")]
+        [Min(0f)] public float fadeOutSeconds = 0.35f;
+
+        [Header("Visual")]
+        [Tooltip("건반 눌림 깊이 배수. 나머지 시각 파라미터는 Harmonize의 Visual 블록을 그대로 쓴다.")]
+        [Range(0f, 2f)] public float visualDepthScale = 1f;
+
+        [Tooltip("곡이 바뀔 때 콘솔에 어느 곡·조성·장식으로 넘어갔는지 찍는다. 로테이션이 도는지 눈으로 확인용.")]
+        public bool logSongChange = true;
     }
 }

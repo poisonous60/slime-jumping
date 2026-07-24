@@ -18,6 +18,9 @@ namespace SlimeJumping.Platforms
         [SerializeField] float slimeMass = 1f;
 
         public bool IsOnPlatform => currentPlatform != null;
+        /// <summary>The motor the rider is currently attached to, or null. Read-only; lets a
+        /// diagnostic tell "attached to THIS platform" apart from "attached to something".</summary>
+        public PlatformMotor CurrentPlatform => currentPlatform;
 
         void Awake()
         {

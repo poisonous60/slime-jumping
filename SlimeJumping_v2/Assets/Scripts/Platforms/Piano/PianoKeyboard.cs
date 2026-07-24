@@ -31,6 +31,19 @@ namespace SlimeJumping.Platforms.Piano
 
         void Awake() => ResolveSlime();
 
+        // Lifecycle orchestration lives here; each subsystem gets its own hook in its own partial.
+        void Update()
+        {
+            HarmonizeUpdate();
+            AutoPlayUpdate();
+        }
+
+        void OnDisable()
+        {
+            HarmonizeDisable();
+            AutoPlayDisable();
+        }
+
         private void ResolveSlime()
         {
             if (slime == null) slime = FindAnyObjectByType<SlimeController>();
@@ -77,6 +90,11 @@ namespace SlimeJumping.Platforms.Piano
                 key.Drive(contacting, impact, s);
             }
 
+            // ORDER MATTERS. Auto-play goes first because arriving at the piano is what picks the next
+            // piece and transposes the progression into its key — and harmonize plays the landing chord
+            // on this very same rising edge. Run harmonize first and the first chord of every visit
+            // sounds in the PREVIOUS piece's key, which is exactly the seam this feature exists to hide.
+            AutoPlayStep(anyContacting);            // no-op unless config.autoPlay.enabled
             HarmonizeStep(anyContacting, impact);   // no-op unless config.harmonize.enabled
         }
     }

@@ -105,7 +105,6 @@ namespace SlimeJumping.Controller
             {
                 power *= currentBambooGrab.GrabLaunchPowerScale;
             }
-            TryApplyBambooV2ChargedLaunch(ref dir, ref power);
             velocity = dir * power;
 
             // Hyper dash: inherit pre-launch tangent inertia (above the deadzone), blended per surface.

@@ -1,4 +1,6 @@
-# 대나무 (Bamboo)
+# 대나무 (Bamboo) — v1
+
+> **신규 게임플레이 대나무는 [Bamboo V3](bamboo-v3.md)를 쓴다.** V3는 물리 기반 점프대(세게 박으면 자동으로 튕겨나가고 약하게 닿으면 발판)이고 노브가 5개다. 이 문서의 v1은 씬의 기존 대나무 9개가 계속 쓰므로 **그대로 유지**된다 — tip-grab(매달림/그네 펌핑)이 필요하면 여전히 v1이다. V3가 v1의 어떤 보정을 왜 걷어냈는지는 [bamboo-v3.md](bamboo-v3.md#v1에서-걷어낸-것) 참조.
 
 수직 대나무 한 그루. 슬라임이 옆구리에 attach하면 측면 lateral 충격으로 가지가 휘어짐 → 스프링 복원으로 진동. SpringyBranch의 horizontal cantilever를 vertical 대나무로 재해석, **N-segment collider polyline + 단일 vertex-bend shader visual** 하이브리드로 collider 곡선과 visual 곡선이 sub-pixel 일치.
 
@@ -127,6 +129,31 @@ base attach(t≈0)도 minimum 비율 inherit. tip attach 가까울수록 큰 비
 | `carrierMinContribution` | 0.3 | 모든 위치 최소 비율 |
 | `carrierDistanceScale` | 1.0 | t-비례 추가 비율 |
 
+### Boost falloff 게이트 (SpringyBranch / TautLine 과 동일)
+
+`VelocityTransferScale` getter 마지막에 pre-bonus 속도 게이트가 곱해진다. `preBonusSpeed = slime.Velocity.magnitude` — 이 시점에 charge power + hyperdash 는 이미 들어있고 **대나무 carrier 기여분만 아직 안 들어있다** (그게 지금 스케일하는 대상).
+
+```
+speedMul = 1 - InverseLerp(boostFalloffStartSpeed, boostFalloffEndSpeed, preBonusSpeed)   // clamp01
+         = (End <= Start) ? (preBonusSpeed >= Start ? 0 : 1)                              // hard cutoff
+```
+
+| 파라미터 | 기본 | 의미 |
+|---|---|---|
+| `boostFalloffStartSpeed` | 12 | 이 속도 미만이면 carrier 100% 전달 |
+| `boostFalloffEndSpeed` | 18 | 이 속도 이상이면 carrier 0. 사이는 선형. `≤ Start` 로 두면 하드 컷오프 |
+
+이미 빠른 발사(높은 곳에서 떨어져 EnergyConversion 된 발사 등) 위에 대나무 tip speed 가 통째로 얹히는 스택을 막는다. 슬라임 자신의 속도는 그대로 통과 — 지워지는 건 대나무 기여분뿐.
+
+**부스트 천장 (설계 계약).** 대나무가 줄 수 있는 최대 속도는 두 숫자로 완전히 결정된다:
+
+```
+max boost = maxTipSpeed × velocityTransferScale × (grabModeCarrierScale | v2CarrierScale)
+기본값:      18        × 0.2                   × 1.0                                    = 3.6 m/s
+```
+
+그리고 `preBonusSpeed ≥ boostFalloffEndSpeed` 면 0. 그래프 없음, 숨은 항 없음 — 플레이어가 보는 건 화면의 휨/스윙뿐이고 그게 곧 `ω × arm` 이다.
+
 ## 오브젝트 계층
 
 ```
@@ -200,8 +227,35 @@ Multi probe의 `OutputVelocity` teleport branch도 반드시 `SlimeController.Sn
 - 단일 라이더 가정.
 - `pivotWorldPos` Awake 캡처 — 런타임 이동 불가.
 - bambooLength/segmentCount 런타임 변경 시 mesh/collider 재생성 안 됨 (Rebuild Segments 필요).
-- 수직 정렬 가정 — 비스듬한 base rotation 미지원 (필요 시 baseRotation 응용).
+- ~~수직 정렬 가정 — 비스듬한 base rotation 미지원~~ → **해결.** 아래 "기울어진 대나무" 참조.
 - Shadow side render에서 light 받는 방향에 따라 stalk 명암 split 위치가 바뀜 — `lightDirWS` 인스펙터 조정 필요.
+
+## 기울어진 대나무 (Tilted stalk)
+
+루트 Transform의 **Z 회전**이 기울기다. 별도 필드 없음 — 인스펙터에서 루트를 돌리면 된다.
+
+기하는 원래부터 따라온다: `Segment_XX` collider와 `Visual`이 모두 루트 child이고, `ComputeMotion`이 Awake에 캡처한 `baseRotation`(= `rb.rotation`)을 매 FU 그대로 되돌려주므로 루트는 기울기를 유지한 채 회전하지 않는다. 휨(`currentAngle`)은 child segment의 localRotation에만 산다.
+
+기울여도 겉모습만 기울던 이유는 **게임플레이 판정이 world up(`gravityUp`)을 기준으로 했기 때문**이다. 이제 전부 대나무 자신의 rest 축을 쓴다:
+
+```csharp
+public Vector2 StalkUp => transform.up (2D normalize)   // 루트 local +Y = 기울기 반영된 줄기 축
+float PerpendicularSpeed(v) => v.x * up.y - v.y * up.x  // 줄기 가로 방향 속도
+```
+
+| 판정 | 이전 | 현재 |
+|---|---|---|
+| Tip-grab 진입 (`SlimeController.BambooGrab.cs`) | `dot(surfaceNormal, gravityUp) ≥ grabEnterDot` | `dot(surfaceNormal, bamboo.StalkUp) ≥ grabEnterDot` |
+| V2 side-contact (`IsV2SideContact`) | `|dot(normal, gravityUp)| ≤ v2SideNormalMaxUpDot` (param) | `|dot(normal, StalkUp)| ≤ v2SideNormalMaxUpDot` (param 제거) |
+| Slam re-entry guard | `|riderVelocity.x| < slamMinHorizontalSpeed` | `|PerpendicularSpeed(riderVelocity)| < slamMinHorizontalSpeed` |
+| V2 bend pump gain 입력 속도 | `|riderVelocity.x|` | `|PerpendicularSpeed(riderVelocity)|` |
+| `OnDrawGizmos` 축 선 | `Vector3.up * L` | `transform.up * L` |
+
+수직 대나무(`StalkUp = (0,1)`)에서는 네 식이 모두 이전과 **수치적으로 동일**하다 — 기존 씬 튜닝값 그대로 유효.
+
+이미 대나무 local frame이라 손댈 필요 없던 것들: `GetHeight01` / `TryGetAnalyticSurfaceAnchor`(`InverseTransformPoint`), `GetTipUpDirection`(`TransformDirection`), 중력 토크와 impulse 펌프의 `r × p`(world cross product), `BambooV2Response.SignedPerpendicularSpeed`(`arm` 기준).
+
+남은 한계: `grabEnterDot`은 **rest 축** 기준이라 크게 휜 상태에서 tip에 새로 붙는 경우 판정이 약간 보수적이다 (기존 grab은 sticky라 유지됨).
 
 ## Debugging
 
@@ -228,7 +282,7 @@ Multi probe의 `OutputVelocity` teleport branch도 반드시 `SlimeController.Sn
 
 `BambooSettings.enableSideReboundV2 = true` 인 bamboo는 기존 절차 cylinder visual, N-segment collider polyline, `BambooBend.shader`를 그대로 사용한다. 슬라임이 측면으로 부딪히면 bamboo가 더 크게 휜다. 자동 발사는 없고, Space를 눌러 기존 Charging 상태로 들어간 뒤 release할 때 플레이어 aim 방향 그대로 bamboo V2 보너스를 더한다.
 
-> **`enableTipGrab` / `enableSideReboundV2` 는 독립 bool** (예전 `interactionMode` enum 의 상호배타 제거). 둘 다 켜면 한 대나무가 옆구리 충돌엔 V2 반동, 꼭대기 착지엔 tip-grab 으로 동시에 반응한다. 트리거 면이 다르고(side normal vs `dot(normal, gravityUp) ≥ grabEnterDot`) 스프링 계수 선택이 `grabActive > v2Active > 기본` 우선순위라 충돌 없음. `BambooV2Settings.asset` 기본값 = 둘 다 ON.
+> **`enableTipGrab` / `enableSideReboundV2` 는 독립 bool** (예전 `interactionMode` enum 의 상호배타 제거). 둘 다 켜면 한 대나무가 옆구리 충돌엔 V2 반동, 꼭대기 착지엔 tip-grab 으로 동시에 반응한다. 트리거 면이 다르고(side normal vs `dot(normal, StalkUp) ≥ grabEnterDot`) 스프링 계수 선택이 `grabActive > v2Active > 기본` 우선순위라 충돌 없음. `BambooV2Settings.asset` 기본값 = 둘 다 ON.
 
 구현 위치:
 - `BambooPlatform` — V2 여부, side-contact 판정, V2 spring/max deflection, bend pump gain, auto/charged launch 값을 제공.
@@ -242,7 +296,8 @@ Multi probe의 `OutputVelocity` teleport branch도 반드시 `SlimeController.Sn
 |---|---|---|
 | `v2BendPumpGain` / `v2BendPumpGainByImpactSpeed` | 측면 충돌 pump gain 고정 배율 | 측면 충돌 속도별 bend pump gain |
 | `v2BendImpactSpeedScale` / `v2BendTipTravelByImpactSpeed` | 첫 충돌: 접선 충돌 속도 → tip 각속도 배율 | 첫 충돌: **직각 충돌 속도(m/s) → 목표 끝 이동거리(m)** 그래프, 길이 정규화(θ=2·travel/L) |
-| `v2ChargedLaunchBonus` / `v2ChargedLaunchBonusByChargePower` | Charging release 발사 power에 더할 고정 보너스 | charge launch power별 추가 보너스 |
+
+> `v2ResponseMode` 는 **bend(휨) 전용**이다. 발사 부스트에는 모드 분기가 없다 — 아래 참조.
 
 **첫 충돌 휨 (impact bend) — 모드별 2가지 (`ApplyV2ImpactKick`).** 슬라임이 처음 측면에 닿는 프레임에서 대나무 tip angular velocity를 설정한다. 빠르게 부딪힐수록 더 크게 흔들리는 점은 두 모드 공통이고, 첫 충돌에 한해 `v2BendPumpGain`/`v2BendPumpGainByImpactSpeed` impulse 펌프를 대체한다. 접촉 높이 보정(`v2BendMinHeightScale`, `v2BendHeightPower`)은 두 모드 모두 그대로 곱해진다. `v2BendPumpGain`/curve는 첫 충돌 이후의 sustained/charge 프레임에만 영향 (대개 ~0).
 
@@ -253,7 +308,25 @@ Multi probe의 `OutputVelocity` teleport branch도 반드시 `SlimeController.Sn
 
 **끝 이동거리 천장.** 호는 포화한다 — 끝의 가로 이동은 `θ=130°` 부근에서 `~0.72·L`로 최대가 되고 그 이상 못 간다. 따라서 그래프 Y를 `0.36·L`(= 계수 2 적용 후 `0.72·L`) 넘게 그리면 죽은 구간이다. X도 실제 측면 충돌 속도 범위(대략 0–15 m/s)에 맞춰야 하며, 그보다 넓게 잡으면 그래프의 가장 완만한 앞 1/5만 쓰게 된다.
 
-Charging release는 플레이어가 aim한 방향을 그대로 사용하고, `base charge power + v2ChargedLaunchBonus`만 적용한다. `v2ChargedLaunchBonus`는 “차징 점프 방향을 따라가는 추가 속도”이고, `v2CarrierScale`은 “슬라임이 bamboo에서 받는 스윙 속도 상속 배율”이다. 발사 직후 bamboo 자체도 `v2LaunchReleaseVelocityScale`만큼 반작용 kick을 받는다. `v2LaunchReleaseUseHeightScale`이 켜져 있으면 이 kick에 별도 접촉 높이 보정(`v2LaunchReleaseMinHeightScale`, `v2LaunchReleaseHeightPower`)을 곱한다. 따라서 아래쪽에서 점프하면 같은 launch velocity라도 덜 흔들리고, 위쪽/끝에 가까운 접촉일수록 접선 속도에 가까운 큰 반작용이 난다. 즉 차징을 더 세게 만들고 싶으면 `v2ChargedLaunchBonus`/`v2ChargedLaunchBonusByChargePower`, 슬라임이 스윙에서 받는 보상을 키우고 싶으면 `v2CarrierScale`, 슬라임이 떨어져나간 뒤 bamboo가 더 빠르게 튕기게 만들고 싶으면 `v2LaunchReleaseVelocityScale`을 올린다.
+### 발사 부스트 — 물리 상속만 (2026-07-24 개편)
+
+이전에는 발사 시 **raw charge-power 보너스** 채널(`v2ChargedLaunchBonus` / `v2ChargedLaunchBonusByChargePower` 그래프)이 `power` 에 속도를 직접 더했다. 문제: 그 보너스는 **대나무 상태를 전혀 안 봤다** — 줄기가 꽉 휘었든 거의 안 휘었든 charge power 만 같으면 같은 +m/s 가 나왔고, carrier 상속 위에 그대로 스택됐다. 화면에 예고가 없으니 플레이어가 예측할 수 없고, 그래프라 디자이너 쪽 천장도 불명확했다.
+
+**채널 삭제.** V2 발사 부스트는 이제 SpringyBranch 와 같은 모델 — **플레이어가 화면에서 보는 스윙(`ω × arm`) 의 carrier 상속뿐**이다.
+
+```
+boost = ω × arm × VelocityTransferScale × v2CarrierScale × speedMul(preBonusSpeed)
+```
+
+- 안 휜 대나무에서 발사 → 부스트 ≈ 0 (ω≈0). 크게 스윙 중 발사 → 최대. 화면과 1:1.
+- 천장 = `maxTipSpeed × velocityTransferScale × v2CarrierScale` (기본 18 × 0.2 × 1.0 = 3.6 m/s).
+- `preBonusSpeed` 가 `boostFalloffEndSpeed` 이상이면 0 — 이미 빠른 발사에 스택 불가.
+
+세게 만들고 싶으면 `v2CarrierScale`(스윙 상속) 또는 `velocityTransferScale`(전역), 천장을 올리려면 `maxTipSpeed`, 고속 발사에도 부스트를 주려면 `boostFalloffStart/EndSpeed`. 그래프 없음.
+
+삭제된 것: `BambooSettings.v2ChargedLaunchBonus`, `v2ChargedLaunchBonusByChargePower`, `BambooPlatform.EvaluateV2ChargedLaunchBonus`, `SlimeController.TryApplyBambooV2ChargedLaunch` + `Launch.cs` 호출부. `v2ResponseMode` 는 bend 쪽에서 계속 쓰인다.
+
+Charging release는 플레이어가 aim한 방향과 base charge power 를 그대로 사용한다. `v2CarrierScale`은 “슬라임이 bamboo에서 받는 스윙 속도 상속 배율”이다. 발사 직후 bamboo 자체도 `v2LaunchReleaseVelocityScale`만큼 반작용 kick을 받는다. `v2LaunchReleaseUseHeightScale`이 켜져 있으면 이 kick에 별도 접촉 높이 보정(`v2LaunchReleaseMinHeightScale`, `v2LaunchReleaseHeightPower`)을 곱한다. 따라서 아래쪽에서 점프하면 같은 launch velocity라도 덜 흔들리고, 위쪽/끝에 가까운 접촉일수록 접선 속도에 가까운 큰 반작용이 난다. 즉 슬라임이 스윙에서 받는 보상을 키우고 싶으면 `v2CarrierScale`, 슬라임이 떨어져나간 뒤 bamboo가 더 빠르게 튕기게 만들고 싶으면 `v2LaunchReleaseVelocityScale`을 올린다.
 
 시간/형상 노브:
 - `v2BendImpactSpeedScale` — (**Additive 모드**) 첫 측면 충돌 시 슬라임 접선 충돌 속도 → tip angular velocity 변환 배율. 빠른 충돌일수록 자동으로 더 크게 흔들리게 하는 단일 노브 (위 "첫 충돌 휨" 참조). 0이면 기존 impulse 펌프로 폴백.
@@ -322,7 +395,7 @@ softCapTorque = -sign(currentAngle) * grabCapPenaltyGain * normAbs^4 * stiffness
 
 - `SlimeController.BambooGrab.cs` (신규 partial).
 - 필드: `BambooPlatform currentBambooGrab`.
-- **진입 감지** — `UpdateSurfaceContact` 직후 `surfaceCollider.GetComponentInParent<BambooPlatform>()` + dot 조건 검사. 충족 → `currentBambooGrab` set. 미충족 → unset.
+- **진입 감지** — `UpdateSurfaceContact` 직후 `surfaceCollider.GetComponentInParent<BambooPlatform>()` + `dot(surfaceNormal, bamboo.StalkUp) ≥ grabEnterDot` 검사. 충족 → `currentBambooGrab` set. 미충족 → unset.
 - **Pre-probe lock** — `SlimeController.cs:533-536` rope 블록 옆에 `LockBambooGrabPosition()` 추가. 매 FU `rb.position = currentBambooGrab.GetTipWorldPos()` (BambooPlatform가 `ApplySegmentTransforms` 직후 캐시한 tip world pos getter 제공).
 - **입력 게이트** — `SlimeController.cs:608` inputX 가공부에서 `currentBambooGrab != null` 이면 `inputX = 0` (crawl 차단) + `currentBambooGrab.ApplyTiltTorque(rawInputX)` 호출. `inputReader.AimInput` 은 별도 필드라 charging aim 영향 0.
 - **Snap skip** — surfaceProbe.SnapToSurface 호출부 (`Attached.cs`, `Charging.cs`, `OutputVelocity` Multi-probe 분기) 에 `currentBambooGrab != null` 가드. Tip-lock이 진실의 원천.
@@ -376,7 +449,7 @@ finalCarrierVel = ω × arm * VelocityTransferScale * (currentBambooGrab == this
 ### 알려진 한계 / 미해결
 
 - 단일 라이더 가정 (기존 BambooPlatform 한계 그대로)
-- bamboo가 비-수직(`baseRotation ≠ 0`) 일 때 `gravityUp` dot 임계가 의도와 어긋날 수 있음 — bamboo local up 기준으로 비교하도록 일반화 필요 (현재 수직 정렬 가정으로 충분)
+- ~~bamboo가 비-수직(`baseRotation ≠ 0`) 일 때 `gravityUp` dot 임계가 의도와 어긋남~~ → **해결.** `bamboo.StalkUp` 기준으로 비교 (위 "기울어진 대나무" 참조)
 - "tilt 가 maxDeflectionDeg 캡에 닿은 뒤 추가 입력은 무의미" — 디자인상 정상 (캡에서 추가 펌핑 차단 = 그네 펌핑 기교 강제)
 - Multi-bamboo 클러스터 — 인접 bamboo로 점프하면 자연스레 그랩 핸들 갱신 (별도 처리 불필요로 평가, 첫 구현 후 검증)
 

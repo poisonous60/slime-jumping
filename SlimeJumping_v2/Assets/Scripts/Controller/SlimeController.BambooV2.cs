@@ -22,7 +22,7 @@ namespace SlimeJumping.Controller
 
             var bamboo = surfaceCollider.GetComponentInParent<BambooPlatform>();
             if (bamboo == null) return false;
-            if (!bamboo.IsV2SideContact(surfaceNormal, gravityUp)) return false;
+            if (!bamboo.IsV2SideContact(surfaceNormal)) return false;
             if (!bamboo.CanArmV2ReboundAt(rb.position)) return false;
 
             currentBambooV2Rebound = bamboo;
@@ -31,13 +31,9 @@ namespace SlimeJumping.Controller
             return true;
         }
 
-        private void TryApplyBambooV2ChargedLaunch(ref Vector2 dir, ref float power)
-        {
-            if (currentBambooV2Rebound == null) return;
-
-            power += currentBambooV2Rebound.EvaluateV2ChargedLaunchBonus(power);
-        }
-
+        // No charge-power launch bonus: a V2 launch's whole boost is the carrier
+        // inheritance of the swing the player can see (BambooPlatform.VelocityTransferScale
+        // → ω × arm × v2CarrierScale, speed-gated), matching SpringyBranchPlatform.
         private void TryApplyBambooV2LaunchReleaseKick(Vector2 launchVelocity)
         {
             if (currentBambooV2Rebound == null) return;

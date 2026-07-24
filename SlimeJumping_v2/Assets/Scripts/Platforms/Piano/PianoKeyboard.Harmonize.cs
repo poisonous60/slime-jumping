@@ -50,7 +50,7 @@ namespace SlimeJumping.Platforms.Piano
             anyContactingPrev = anyContacting;
         }
 
-        private void Update()
+        private void HarmonizeUpdate()
         {
             harmonizePool?.Tick(Time.deltaTime);
 
@@ -62,12 +62,13 @@ namespace SlimeJumping.Platforms.Piano
                 harmonizeIndex = Mathf.Clamp(harmonizeLoopStart, 0, Mathf.Max(0, config.harmonize.progression.Count - 1));
         }
 
-        void OnDisable()
+        private void HarmonizeDisable()
         {
             // Avoid leaking the voice pool / NotePlayed subscription when the component is disabled or
             // the scene unloads. Without this, Update() (and its pool Tick) stops while notes are still
             // mid-release, freezing them at their last volume and leaving the AudioSources alive.
             if (harmonizePoolBuilt) TeardownHarmonize();
+            ReleaseKeyVisuals();
         }
 
         private void SetupHarmonize(HarmonizeSettings h)
@@ -83,7 +84,7 @@ namespace SlimeJumping.Platforms.Piano
                 if (keys[i] != null) keys[i].SetMuted(true);
 
             pedals = transform.root.GetComponentsInChildren<PianoPedal>(true);
-            BuildKeyVisuals();
+            EnsureKeyVisuals();
 
             harmonizeIndex = 0;
             harmonizeLoopStart = 0;
@@ -100,10 +101,10 @@ namespace SlimeJumping.Platforms.Piano
             harmonizePool?.Dispose();
             harmonizePool = null;
 
+            // Snap keys back up, but KEEP the map: auto-play drives the same 88 visuals and may be
+            // running (or about to) while harmonize is off. It is released in HarmonizeDisable.
             foreach (var kv in keyVisuals)
                 if (kv.Value != null) kv.Value.ResetNow();
-            keyVisuals.Clear();
-            keyMidis.Clear();
 
             harmonizeMixer = null;
             for (int i = 0; i < keys.Count; i++)
@@ -125,10 +126,10 @@ namespace SlimeJumping.Platforms.Piano
             float melodyVol = baseVol * (isDyad ? h.dyadVolumeScale : 1f);   // melody = lead, stays full
             float chordVol = baseVol;
             float release = step.releaseSeconds > 0f ? step.releaseSeconds : h.defaultReleaseSeconds;
-            release *= SustainMultiplier(h.ornaments);   // damper up while the slime stands on a pedal
+            release *= SustainMultiplier(h.Ornaments);   // damper up while the slime stands on a pedal
 
             // chord voicing (absolute MIDI)
-            HarmonyMath.BuildChord(step, h.tonicMidi, chordScratch);
+            HarmonyMath.BuildChord(step, h.TonicMidi, chordScratch);
 
             // melody note(s) from the landed key(s); bump a colliding dyad up an octave so both ring
             melodyScratch.Clear();
@@ -143,7 +144,7 @@ namespace SlimeJumping.Platforms.Piano
 
             // Voice leading first (it re-octaves the authored voicing), then density — otherwise the
             // octave-doubled note would get re-octaved right back down.
-            var orn = h.ornaments;
+            var orn = h.Ornaments;
             if (orn.voiceLeading)
             {
                 int authoredTop = chordScratch[0];
@@ -183,7 +184,7 @@ namespace SlimeJumping.Platforms.Piano
             PlayChordFigure(orn, chordVol, release, vel);
 
             if (orn.pedalPoint && harmonizeIndex == harmonizeLoopStart)   // first chord of a schema
-                harmonizePool.Play(h.tonicMidi + orn.pedalOffsetFromTonic,
+                harmonizePool.Play(h.TonicMidi + orn.pedalOffsetFromTonic,
                                    baseVol * orn.pedalVolume, orn.pedalReleaseSeconds * SustainMultiplier(orn));
 
             if (orn.resonance && chordScratch.Count > 0)
@@ -217,11 +218,14 @@ namespace SlimeJumping.Platforms.Piano
         // One PianoKeyVisual per key MESH, covering all 88 — the 52 white ones ride their KeyMotor, the
         // 36 black ones are inert meshes under the piano root. MIDI comes from the mesh name using the
         // builder's own rule (PianoKey.001 = 21), so accidentals light up the real black key instead of
-        // the nearest white one. Built once per harmonize setup; components are added at runtime so the
-        // scene and PianoKeyboardBuilder stay untouched.
-        private void BuildKeyVisuals()
+        // the nearest white one. Components are added at runtime so the scene and PianoKeyboardBuilder
+        // stay untouched.
+        //
+        // Shared: both harmonize and auto-play press these, and either may be on without the other, so
+        // this is idempotent and the map outlives a harmonize teardown.
+        private void EnsureKeyVisuals()
         {
-            keyVisuals.Clear();
+            if (keyVisuals.Count > 0) return;
             keyMidis.Clear();
 
             var meshes = transform.root.GetComponentsInChildren<Transform>(true);
@@ -239,6 +243,14 @@ namespace SlimeJumping.Platforms.Piano
                 keyMidis.Add(midi);
             }
             keyMidis.Sort();
+        }
+
+        private void ReleaseKeyVisuals()
+        {
+            foreach (var kv in keyVisuals)
+                if (kv.Value != null) kv.Value.ResetNow();
+            keyVisuals.Clear();
+            keyMidis.Clear();
         }
 
         // Notes can legitimately fall outside the 88 keys — a low pedal point, an octave-doubled top,
@@ -275,7 +287,7 @@ namespace SlimeJumping.Platforms.Piano
             // Pedal down = dampers off: the string keeps ringing after the key comes back up, so the
             // key must NOT stay pinned for the (now much longer) tail. Gated on the same toggle that
             // lengthens the audio — otherwise a pedal that doesn't sustain would still shorten the key.
-            float hold = (h.ornaments.sustainPedal && AnyPedalPressed())
+            float hold = (h.Ornaments.sustainPedal && AnyPedalPressed())
                 ? h.visualPedaledHoldSeconds
                 : Mathf.Clamp(releaseSeconds * h.visualHoldScale, h.visualHoldSeconds, h.visualMaxHoldSeconds);
 

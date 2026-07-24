@@ -50,7 +50,9 @@ namespace SlimeJumping.Controller
             var bamboo = surfaceCollider.GetComponentInParent<BambooPlatform>();
             if (bamboo == null) return;
             if (!bamboo.UsesTipGrab) return;
-            if (Vector2.Dot(surfaceNormal, gravityUp) < bamboo.GrabEnterDot) return;
+            // Compare against the stalk's own rest axis, not world up — a bamboo the
+            // designer tilted with a Z rotation still enters grab on its own tip cap.
+            if (Vector2.Dot(surfaceNormal, bamboo.StalkUp) < bamboo.GrabEnterDot) return;
 
             currentBambooGrab = bamboo;
             // Snap to the offset anchor on entry so the slime doesn't sit at its detection

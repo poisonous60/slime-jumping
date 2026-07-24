@@ -396,7 +396,7 @@ MonoBehaviour:
     defaultReleaseSeconds: 1.2
     minMelodyGap: 3
     dyadVolumeScale: 1.1
-    visualSinkDepth: 0.09
+    visualSinkDepth: 0.12
     visualHoldSeconds: 0.25
     visualHoldScale: 1
     visualReleaseSeconds: 0.15
@@ -471,6 +471,437 @@ MonoBehaviour:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
+  autoPlay:
+    enabled: 1
+    songs:
+    - enabled: 0
+      label: ADarkBluePiano
+      clip: {fileID: 8300000, guid: d3896a8fa6b71634eb1913c38d86cc26, type: 3}
+      scoreJson: {fileID: 4900000, guid: dba9153d2d411ff43b14b7dde930e319, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 0
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 0
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 1
+        appoggiaturaSeconds: 0.11
+        suspension: 0
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 0
+        pedalReleaseMultiplier: 3.5
+        resonance: 0
+        resonanceVolume: 0.12
+        glissando: 0
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: AFlintGreyPiano
+      clip: {fileID: 8300000, guid: 648a4b5553831c64ca1e286294a37481, type: 3}
+      scoreJson: {fileID: 4900000, guid: 1b347c56db56eb842880b1e88c88d6bc, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 0
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 0
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 0
+        appoggiaturaSeconds: 0.11
+        suspension: 0
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 0
+        pedalReleaseMultiplier: 3.5
+        resonance: 1
+        resonanceVolume: 0.12
+        glissando: 0
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: APositiveMediumPiano
+      clip: {fileID: 8300000, guid: 0df33908d4c8b8a4bbc303b6c65da19c, type: 3}
+      scoreJson: {fileID: 4900000, guid: 9c8e126e179da8641bfb8890867d4205, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 1
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 0
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 0
+        appoggiaturaSeconds: 0.11
+        suspension: 0
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 0
+        pedalReleaseMultiplier: 3.5
+        resonance: 0
+        resonanceVolume: 0.12
+        glissando: 0
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: APositiveMediumPiano2
+      clip: {fileID: 8300000, guid: 1f0bbdf083cd31a4fb76e48cb87e761f, type: 3}
+      scoreJson: {fileID: 4900000, guid: 83c1a61938eacc34481643267f389314, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 1
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 0
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 0
+        appoggiaturaSeconds: 0.11
+        suspension: 0
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 1
+        pedalReleaseMultiplier: 3.5
+        resonance: 0
+        resonanceVolume: 0.12
+        glissando: 0
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: APositiveMediumPianoFULL
+      clip: {fileID: 8300000, guid: 066bfcdfd55bb2e45832059d1e85bcd1, type: 3}
+      scoreJson: {fileID: 4900000, guid: 357df0a9fe7aa264283047999c1f93b4, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 0
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 0
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 0
+        appoggiaturaSeconds: 0.11
+        suspension: 1
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 0
+        pedalReleaseMultiplier: 3.5
+        resonance: 0
+        resonanceVolume: 0.12
+        glissando: 1
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: ASpringGreenPiano
+      clip: {fileID: 8300000, guid: 2badf3ccd0f1b7d4dbe75c7fc2e3c5d9, type: 3}
+      scoreJson: {fileID: 4900000, guid: ad16194b34ff47f41a7678be509ec3f1, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 0
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 0
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 1
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 0
+        appoggiaturaSeconds: 0.11
+        suspension: 0
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 1
+        pedalReleaseMultiplier: 3.5
+        resonance: 0
+        resonanceVolume: 0.12
+        glissando: 1
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: AWarmBluePiano
+      clip: {fileID: 8300000, guid: 27f713836fcdc184a8de9c7c8c9033a2, type: 3}
+      scoreJson: {fileID: 4900000, guid: 32a7990cbed5f594e85bcd512e2664fe, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 0
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 0
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 1
+        appoggiaturaSeconds: 0.11
+        suspension: 0
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 1
+        pedalReleaseMultiplier: 3.5
+        resonance: 0
+        resonanceVolume: 0.12
+        glissando: 0
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: DramaticSensitivePiano
+      clip: {fileID: 8300000, guid: d184079b97cfac545a488cd175ddf6f7, type: 3}
+      scoreJson: {fileID: 4900000, guid: cb8518018a8a97d419547eda8fd00ef3, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 1
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 1
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 0
+        appoggiaturaSeconds: 0.11
+        suspension: 0
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 0
+        pedalReleaseMultiplier: 3.5
+        resonance: 1
+        resonanceVolume: 0.12
+        glissando: 0
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: MelancholyPiano
+      clip: {fileID: 8300000, guid: 5a0f92e5b5d487a4ea9212501b44f54f, type: 3}
+      scoreJson: {fileID: 4900000, guid: 269b432ce7d8ce44c9590070724c0109, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 1
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 0
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 0
+        appoggiaturaSeconds: 0.11
+        suspension: 1
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 1
+        pedalReleaseMultiplier: 3.5
+        resonance: 0
+        resonanceVolume: 0.12
+        glissando: 0
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: OpenAndAiryAnswerPiano
+      clip: {fileID: 8300000, guid: 88ecb3da3c7ee974294a9f66b4195d6c, type: 3}
+      scoreJson: {fileID: 4900000, guid: 4efb51e0ffc889041825c84a16a3bf12, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 0
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 0
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 0
+        appoggiaturaSeconds: 0.11
+        suspension: 0
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 0
+        pedalReleaseMultiplier: 3.5
+        resonance: 0
+        resonanceVolume: 0.12
+        glissando: 0
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: OpenAndAiryPiano
+      clip: {fileID: 8300000, guid: bcb16404daca4304c88ec9ed387de62b, type: 3}
+      scoreJson: {fileID: 4900000, guid: 7cea3758c1069574abe2583af6298587, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 0
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 1
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 0
+        appoggiaturaSeconds: 0.11
+        suspension: 0
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 1
+        pedalReleaseMultiplier: 3.5
+        resonance: 0
+        resonanceVolume: 0.12
+        glissando: 1
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    shuffle: 1
+    minPresses: 3
+    idleSeconds: 3
+    cooldownSeconds: 8
+    volume: 0.7
+    loop: 0
+    fadeInSeconds: 0.6
+    fadeOutSeconds: 0.35
+    visualDepthScale: 1
+    logSongChange: 1
   keys:
     minImpactSpeed: 1
     maxImpactSpeed: 25

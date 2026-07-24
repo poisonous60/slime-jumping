@@ -105,9 +105,111 @@ sensor(`BoxCollider2D`)는 정적 자식 GO, dip 애니는 건반 mesh transform
 - 결론: **자동 반주는 이 게임에서 하지 않는다.** 곡을 흐르게 하려면 사람이 쓴 곡이 필요하고, 그건 이 메커닉(불규칙 착지)과 별개 문제. 코드/에셋 전량 삭제(`AccompanimentMath`, `PianoKeyboard.Accompaniment.cs`, `SongMath`, `PianoKeyboard.Song.cs`, `AccompanimentSettings`/`SongSettings`/`GrooveLayer`/`PercTrack`). `Assets/Audio/Perc/vcsl_*.wav` 3개는 미사용으로 남아 있음.
 - 리서치 자체는 유효하게 남음 — 아래 확률 분기가 그 결론(`"작가가 미리 승인한 안전한 분기 > 무작위 생성"`)의 직접 구현.
 
+## 유휴 자동 연주 — 녹음 재생 + 건반 동기 (2026-07-24) — `PianoConfig.autoPlay`
+**위 "자동 반주"와 다른 것이다.** 폐기된 쪽은 *생성된* 반주였고 반려 사유가 "자동 생성 음악의 퀄리티"였다. 이쪽은 **사람이 작곡·연주한 녹음을 그대로 트는 것**이라 그 반려 사유가 원천적으로 없다. 생성 요소 0.
+
+**핵심 = 곡이 화성의 주인이다.** 슬라임이 피아노에 **올라타는 순간** 다음 곡이 뽑히고 그 곡의 조성으로 진행 전체가 전조된다 → 슬라임이 치는 화음이 이미 그 곡에 속해 있다 → 떠나서 곡이 시작되면 **이어서 들린다**. 이게 "방금 누른 음이랑 곡이 이어져야 한다"의 구현이다.
+
+동작 순서:
+1. **도착**(건반 접촉 rising edge, 직전에 away였을 때) → `SelectNextSong` → 다음 곡 선택 + 조성/장식 override 적용 + 진행 인덱스 리셋
+2. 슬라임이 `minPresses`(기본 3)회 이상 착지 — 이 동안의 화음은 전부 그 곡의 조성
+3. `idleSeconds`(기본 3s) 동안 건반 미접촉 → 녹음 재생 + **88건반이 그 곡의 노트대로 스스로 눌림**
+4. 슬라임이 건반에 복귀 → `fadeOutSeconds` 페이드아웃 후 반환
+
+**호출 순서가 계약이다**: `PianoKeyboard.FixedUpdate`에서 `AutoPlayStep`이 `HarmonizeStep`보다 **먼저** 돌아야 한다. 둘 다 같은 rising edge에 반응하는데 harmonize가 먼저 돌면 **매 방문의 첫 화음이 이전 곡의 조성으로 울린다**(Codex 리뷰 적발). 순서 바꾸지 말 것.
+
+- **소리는 전적으로 녹음(mp3)에서 나온다. 샘플러 아님.** 실연 녹음이라 샘플러 재연주보다 음질이 좋고, 아래 라이선스 제약도 이 구조라야 통과한다.
+- **클립의 재생 헤드가 유일한 클럭**: `TickAutoPlay`가 매 프레임 `AudioSource.time`을 읽어 그 시점까지의 노트를 소비한다. deltaTime 누적도, 자체 타이머도 없다 → 프레임 히칭·루프·일시정지 어느 경우에도 건반과 소리가 어긋날 수 없다. (폐기된 자동 반주 1차 실패가 정확히 "두 리듬이 각자 클럭을 가져서" 발생했음)
+- **건반 시각은 harmonize와 완전히 같은 경로**: `ResolveKeyVisual(midi)` → `PianoKeyVisual.Press`. 시각 튜닝 파라미터도 `harmonize.visual*`를 그대로 재사용한다(같은 악기 = 한 곳에서만 조절). `autoPlay.visualDepthScale`로 깊이 배수만 따로 준다.
+- 눌림 유지 시간 = **전사된 실제 음 길이**(`ScoreNote.dur`)를 `visualHoldSeconds`~`visualMaxHoldSeconds`로 clamp.
+
+### 전사 파이프라인 (오프라인, 1회성)
+곡 → 노트 이벤트는 **로컬 오프라인** 도구로 뽑는다.
+
+| 단계 | 도구 | 비고 |
+|---|---|---|
+| audio → MIDI | **[transkun](https://github.com/yujia-yan/transkun) 2.0.1** (MIT, ISMIR 2024) | MAESTRO V3 note+offset+velocity **F1 0.9505**, 벨로시티·서스테인 페달 출력 |
+| MIDI → score JSON | `midi_to_score.py` (scratchpad) | pretty_midi 파싱 + librosa로 키/코드 추정 |
+
+- **Windows 설치 함정**: `transkun` 의존성 `ncls`는 최신(0.0.70)에 win_amd64 wheel이 없어 MSVC 빌드로 넘어가 실패한다. Python **3.11** venv + **`ncls==0.0.39` 핀**을 같은 resolve에 넣어야 함 (`uv pip install transkun "ncls==0.0.39"`). 3.13에서는 어느 조합으로도 안 됨.
+- **자작 DSP는 폐기했다.** onset + CQT 하모닉 억제 방식을 직접 구현했으나 객관 지표에서 실패:
+
+  | | 자작 DSP | transkun |
+  |---|---|---|
+  | chord-tone agreement (우연=0.25) | 0.303 | **0.409** |
+  | semitone clash rate (버그 지표, 낮을수록 좋음) | **0.597** | **0.000** |
+  | diatonic fit | 0.716 | **0.821** |
+  | 키 추정 | D# major r=0.62 (코드열과 모순) | **G minor r=0.74** (pc 히스토그램과 일치) |
+
+  실패 원인: CQT 빈이 이웃 반음으로 새서 **동시 음정의 43%가 "반음"** — 실제 피아노곡에 있을 수 없는 분포. 이미 풀린 문제를 더 나쁘게 다시 푼 것이라 중단.
+- **온라인 전사 서비스(Klangio/Songscription 등)는 쓰지 않는다** — 품질 이점이 검증되지 않은 데다, 아래 라이선스가 제3자 업로드를 금지한다.
+
+### 라이선스 — 이 구조를 강제한 이유
+현재 곡 `Assets/Audio/Music/OpenAndAiryPiano.mp3` = *"Open and Airy Piano"* (album "Solo Piano", 작곡 Doug Frantz(BMI), 퍼블리셔 Sounds Incredible Publishing(SOCAN), 라이선싱 **AudioHero**, SourceAudio ID 16916260, 2017). ID3 태그에 전부 박혀 있음.
+
+[AudioHero EULA](https://www.audiohero.com/end-user-license-agreement) 기준:
+- ✅ **게임에서 이 녹음을 트는 것** — `"You may create copies of the Production for distribution without limitations"`, 허용 용도에 `computer games` 명시. 길이/피치/포맷 변형도 허용.
+- ✅ **녹음에 맞춰 화면 요소(건반)를 움직이는 것** — 권리 범위가 `"synchronization rights only"`이고 이게 정확히 싱크다.
+- ❌ **전사해서 샘플러로 재연주** — 새 녹음을 만드는 것이라 mechanical right 영역. 싱크권에 없다. 추가로 `"Add new instruments, melody or lyrics to an original music composition ... without the prior consent of the owner"` 금지.
+- ⚠️ **AI/ML 조항**: `"Use AudioHero royalty free producto in an AI (Artificial Intelligence), Machine Learning or Neural Network system, app or program for any purpose"` 금지 — LIMITATIONS 섹션, 제품 구분 없음. transkun은 뉴럴넷이므로 **문자 그대로는 걸린다**. 조항 취지는 학습 데이터/생성 클로닝 방지이고 오프라인 1회 전사에 대한 현실 적발 가능성은 사실상 0이지만, **계약서에 있는 건 사실**. 상용 출시 전 `support@audiohero.com`에 사용 형태를 밝히고 confirm 받는 것을 권장(금지 문구가 `without the prior consent of the owner`라 허락 경로가 열려 있음).
+
+→ **결론: 소리는 mp3, 건반은 전사 데이터.** 샘플러 재연주 경로를 택하지 않은 것은 취향이 아니라 라이선스 제약이다. PD 곡(사티·쇼팽·바흐 등)으로 바꾸면 그 제약이 전부 사라진다.
+
+### 조성 일치 — 자동, 그리고 **나란한장조 규칙**
+곡 선택 시 전사 결과의 `score.key`에서 조성을 읽어 **자동 적용**한다. 단 그냥 tonic을 넣으면 틀린다:
+
+> **단조 곡은 tonic을 자기 으뜸음이 아니라 나란한장조(pitch class +3)에 놓는다.**
+
+이유: authored 단조 스키마 M1/M2는 `ChordAmTonic = {-15,-8,-3,0}` 으로 **tonic의 나란한단조**를 만든다(C장조 tonic=60 → Am). 그래서 G단조 곡에 tonic 67(G)을 주면 M1/M2가 **E단조**에 떨어져 곡과 3도 어긋난다. tonic 70(B♭)을 주면 M1/M2 = G단조 ✓, 장조 스키마 = B♭장조 ✓ — 스키마가 원래 설계한 장↔단 교대가 그대로 곡의 조성 안에서 돈다.
+
+`scale`은 그 경로에서 **Major로 강제**한다. tonic이 이미 나란한장조라 그 위의 장조 펜타토닉 = 곡 으뜸음의 단조 펜타토닉(같은 음집합, 위 하모나이즈 항목의 "C장조 펜타 = A단조 펜타"와 같은 근거). Minor로 두면 B♭단조 펜타가 되어 곡에 없는 음이 나온다.
+
+실측(현재 로테이션 11곡):
+```
+Dm  -> tonic 65 (F)      Am -> tonic 60 (C)      Fm -> tonic 68 (A♭)     Gm -> tonic 70 (B♭)
+C   -> tonic 60 (C)      D  -> tonic 62 (D)      B♭ -> tonic 70 (B♭)     C# -> tonic 61 (C#)
+```
+tonic은 항상 `[60,71]`에 놓는다 — authored 보이싱 최저 오프셋이 `-19`라 최저음이 `41..52`가 되어 "최저음 F2(41) 이상" 규칙을 정확히 만족한다(Codex가 전 조성 × 전 스키마로 검산).
+
+`PianoSong.tonicMidi`에 0 이상을 넣으면 자동 추정 대신 그 값 + `PianoSong.scale`을 쓴다(-1 = 자동, 기본값).
+
+### 런타임 override — 에셋을 절대 안 건드린다
+`HarmonizeSettings`에 `[System.NonSerialized]` 필드 4개(`hasKeyOverride`/`overrideTonicMidi`/`overrideScale`/`overrideOrnaments`)와 읽기용 프로퍼티 `TonicMidi`/`Scale`/`Ornaments`를 뒀다. `tonicMidi`/`scale`/`ornaments`를 직접 쓰면 **에디터에서 그 즉시 `.asset`에 영구 저장되어 디자이너 튜닝이 소리 없이 파괴**되기 때문. `[NonSerialized]`가 디스크로 새는 걸 막고, 인스펙터 라이브 튜닝은 원래 필드로 그대로 살아있다.
+
+`HarmonyMath`와 `PianoKeyboard.Harmonize.cs`의 **모든** 읽기가 프로퍼티로 전환됐다 — 한 곳이라도 raw 필드로 남으면 멜로디와 화음이 서로 다른 조성으로 갈린다(Codex가 잔여 raw read 0건 확인).
+
+### 곡 추가 방법
+`sound/music/` 에 솔로 피아노 오디오를 넣고 배치 스크립트를 돌리면 `Assets/Audio/Music/` 에 `<Name>.mp3` + `<Name>_score.json` 쌍이 생긴다. 그 다음 Unity에서 `PianoConfig.autoPlay.songs` 에 등록.
+
+판정 기준(스크립트가 표로 출력): **key confidence ≥ 0.6** + 노트 수가 귀로 들은 것과 맞을 것. n/s가 비정상적으로 높은데 confidence가 낮으면 솔로 피아노가 아니었다는 뜻.
+
+곡별 임포트 설정은 자동으로 잡아준다 — 60초 이하 `CompressedInMemory`, 초과 `Streaming`, 둘 다 `preloadAudioData`+`loadInBackground` ON. 기본값(`DecompressOnLoad`+preload OFF)은 30초 클립을 재생 프레임에 통째로 디코드해 히치를 만든다.
+
+### 파일 / 설정
+- **`PianoKeyboard.AutoPlay.cs`** (신규 partial) — 상태머신 전부. `AutoPlayStep(anyContacting)`은 FixedUpdate에서 도착·착지·복귀를 처리, `AutoPlayUpdate()`는 Update에서 트리거 판정 + 재생 tick.
+- **`PianoScoreData.cs`** (신규) — `PianoScoreData`/`ScoreNote`/`ScorePedalSpan`/`ScoreKey`. JsonUtility DTO. JSON의 `chords` 필드는 런타임 미사용이라 무시됨(오디오 크로마 추정이라 신뢰도 낮음 — chordToneAgreement 0.41. 조성만 쓰는 현 설계에선 불필요).
+- **`PianoConfig.PianoSong`** (신규) — `label`/`clip`/`scoreJson`/`tonicMidi`(-1=자동)/`scale`/`ornaments`.
+- **`PianoConfig.AutoPlaySettings`** — `enabled`/`songs`/`minPresses`/`idleSeconds`/`cooldownSeconds`/`volume`/`loop`/`fadeInSeconds`/`fadeOutSeconds`/`visualDepthScale`.
+- **에셋**: `Assets/Audio/Music/` 에 11곡 (30초 10곡 + 167초 1곡), 각각 mp3 + `_score.json`.
+
+### 하드 게인 — 두 번의 적대적 리뷰에서 나온 것
+Claude 워크플로우(5렌즈) + Codex 리뷰가 잡은 실제 결함들. 재발 방지용으로 기록:
+1. **호출 순서** — `AutoPlayStep`이 `HarmonizeStep`보다 먼저여야 함(위 참조). 이 기능의 존재 이유를 정면으로 깨던 버그.
+2. **페이드 중 스코어 교체** — 슬라임 복귀 시 다음 곡이 선택되며 스코어 캐시가 갈리는데 이전 곡은 아직 페이드 중 → A의 재생 헤드로 B의 악보를 읽음. **재생 중인 스코어는 `autoPlayingScore`로 별도 고정**(캐시 `autoPlayScore`와 분리).
+3. **`JsonUtility.FromJson`은 손상된 JSON에서 null이 아니라 throw** → Update 전체가 죽음. try/catch 필수.
+4. **클립 디코드 히치** — 위 임포트 설정 항목.
+5. **루프 감지 오작동** — 페이드아웃 중 non-loop 클립이 자연 종료하면 `AudioSource.time`이 0으로 읽혀 "루프됨"으로 오인, 커서가 되감겨 무음인데 건반이 눌림. 종료 판정을 페이드 분기 **앞**으로 올리고 "실제 재생된 적 있음"(`autoPlayHeard`) 게이트를 둠.
+6. **검은 건반 2배 이동** — `PianoKeyVisual`이 localPosition을 쓰는데 흰 건반 메시는 `KeyMotor`(scale 1), 검은 건반 메시는 `Piano` 루트(scale 2) 자식이라 같은 depth가 2배로 나갔음. `ToLocal(world)`로 통일, `visualSinkDepth`는 이제 **world 단위**.
+- **라이프사이클 이동**: `Update()`/`OnDisable()`이 `PianoKeyboard.cs`(메인)로 올라가 `HarmonizeUpdate()`+`AutoPlayUpdate()` / `HarmonizeDisable()`+`AutoPlayDisable()`을 dispatch. CLAUDE.md의 "메인 파일엔 라이프사이클 orchestration만" 규약.
+- **`keyVisuals` 공유화**: `BuildKeyVisuals()` → **`EnsureKeyVisuals()`**(멱등, 이미 있으면 early-return) + 신규 `ReleaseKeyVisuals()`. harmonize가 꺼져 있어도 자동 연주가 88건반 시각을 써야 하므로, `TeardownHarmonize`는 이제 맵을 지우지 않고 `ResetNow()`만 하고 실제 해제는 `HarmonizeDisable`에서 한다.
+- 자동 연주 `AudioSource`는 런타임 생성(`PianoAutoPlay` 자식)이며 **건반과 같은 믹서 그룹**으로 라우팅한다(같은 악기가 소리내는 것이므로 피아노 볼륨/FX가 그대로 적용).
+
 ## 한계 / TODO
 - **머티리얼 미적용** — repo `.mat`(텍스처 없는 단색, 파이프라인 불일치 가능) 생략. 키 URP 기본(회색)로 렌더. 흰/검/우드 머티리얼 부여는 후속.
 - **배치는 테스트용** — 기존 terrain 과 비주얼 겹침. 최종 위치는 `Piano` 루트 이동/스케일로 조정(감지·sensor 가 transform 따라가 robust).
 - FBX mesh 라이선스 확인.
 - 검은 건반은 **밟을 수 없음**(콜라이더 없음, 의도) — 단 2026-07-23부터 소리에 맞춰 **시각적으로는 눌림**(차용화음 A♭/B♭ 등).
 - `Assets/Audio/Perc/vcsl_*.wav` 3개는 폐기된 자동 반주용으로 받아둔 것 — 현재 미사용.
+- **자동 연주 곡의 라이선스** — 현재 곡은 AudioHero 싱크권이라 "mp3 재생 + 건반 싱크"까지만 가능하고 샘플러 재연주는 불가. AI 전사 조항도 문자상 걸림(위 참조). 상용 전 confirm 또는 PD 곡 교체 필요.
+- **전사 스크립트가 repo에 없음** — `midi_to_score.py`는 scratchpad에만 있다. 다른 곡을 추가하려면 스크립트를 repo로 옮겨야 함(현재는 요청 범위 밖이라 보류).
+- 자동 연주 중 `harmonize.enabled`가 켜져 있고 슬라임이 착지하면 두 시스템이 같은 건반 시각을 겹쳐 누를 수 있다 — `PianoKeyVisual.Press`가 깊이·시간 모두 `max` 누적이라 깨지진 않지만, 복귀 직후 ~fadeOut 동안 자동 연주가 누른 건반이 남아 있다(의도: 급정지로 지우면 슬라임이 방금 친 건반의 dip까지 지워짐).

@@ -106,8 +106,9 @@ namespace SlimeJumping.Platforms.Piano
                 return;
             }
 
-            // How far down this key should read overall, this frame.
-            float targetDip = depth * DipFactor(timer, rise) * (1f - LiftFactor(liftTimer, liftFall, lift));
+            // How far down this key should read overall, this frame. `depth` is a WORLD distance, so
+            // it has to come back into this mesh's parent space before it can be written — see ToLocal.
+            float targetDip = ToLocal(depth) * DipFactor(timer, rise) * (1f - LiftFactor(liftTimer, liftFall, lift));
 
             // The motor may already be holding this key down under the slime's weight. Compose against
             // that instead of ignoring it: subtracting the physical sink both prevents double travel AND
@@ -116,12 +117,23 @@ namespace SlimeJumping.Platforms.Piano
             transform.localPosition = restLocalPos + new Vector3(0f, MeshLocalY(targetDip, PhysicalSinkLocal()), 0f);
         }
 
+        /// World distance -> this mesh's parent space. Every distance that reaches this component is
+        /// a world one (the motor's sink, and the configured cosmetic depth), but the only thing this
+        /// component may write is a localPosition, and the two families of key mesh do NOT share a
+        /// parent scale: a white key's mesh hangs off its KeyMotor (scale 1) while a black key's mesh
+        /// hangs off the piano root (scale 2). Writing the raw value moved black keys exactly twice as
+        /// far as white ones for the same note.
+        private float ToLocal(float world)
+        {
+            float scale = transform.parent != null ? Mathf.Abs(transform.parent.lossyScale.y) : 1f;
+            return world / Mathf.Max(1e-4f, scale);
+        }
+
         // The motor's sink is in world units; this mesh moves in its parent's local space.
         private float PhysicalSinkLocal()
         {
             if (owner == null) return 0f;
-            float scale = transform.parent != null ? Mathf.Abs(transform.parent.lossyScale.y) : 1f;
-            return owner.PhysicalSink / Mathf.Max(1e-4f, scale);
+            return ToLocal(owner.PhysicalSink);
         }
 
         /// Local Y for the mesh so the key reads `targetDip` below rest in total, given the motor has
