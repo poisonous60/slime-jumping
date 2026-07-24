@@ -366,7 +366,7 @@ MonoBehaviour:
         weight: 0.06
       overrideSnapMode: 0
       snapMode: 1
-    resetIdleSeconds: 1.6
+    resetIdleSeconds: 10
     velocityToVolume:
       serializedVersion: 2
       m_Curve:
@@ -398,11 +398,51 @@ MonoBehaviour:
     dyadVolumeScale: 1.1
     visualSinkDepth: 0.09
     visualHoldSeconds: 0.25
+    visualHoldScale: 1
+    visualReleaseSeconds: 0.15
+    visualMaxHoldSeconds: 2
+    visualPedaledHoldSeconds: 0.25
+    visualMinDepthScale: 0.35
+    visualMinVolume: 0
+    visualRearticulateLift: 0.55
+    visualRearticulateSeconds: 0.05
     visualDepthVelocityScale: 1.5
     branchingEnabled: 1
     randomBranching: 1
     zoneLeftMax: 0.33
     zoneRightMin: 0.66
+    ornaments:
+      rolledChord: 1
+      rollStepSeconds: 0.045
+      rollLowToHigh: 1
+      voiceLeading: 1
+      voiceLeadingKeepLow: 2
+      pedalPoint: 0
+      pedalOffsetFromTonic: -24
+      pedalVolume: 0.35
+      pedalReleaseSeconds: 4
+      alberti: 0
+      albertiVelocity: 0.6
+      albertiStepSeconds: 0.09
+      chiptuneArp: 0
+      chiptuneNotes: 6
+      chiptuneStepSeconds: 0.04
+      chiptuneOctaveUp: 1
+      chiptuneVolume: 0.5
+      appoggiatura: 0
+      appoggiaturaSeconds: 0.11
+      suspension: 0
+      suspensionResolveSeconds: 0.18
+      dropTwo: 0
+      sustainPedal: 0
+      pedalReleaseMultiplier: 3.5
+      resonance: 0
+      resonanceVolume: 0.12
+      glissando: 0
+      glissMinSemitones: 10
+      glissMaxNotes: 5
+      glissStepSeconds: 0.035
+      glissVolume: 0.4
     velocityDensity: 1
     octaveDoubleVelocity: 0.7
     reverbEnabled: 0

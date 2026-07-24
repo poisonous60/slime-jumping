@@ -35,22 +35,22 @@ MonoBehaviour:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 0.10673523
-      value: -0.010134876
-      inSlope: 0.1913344
-      outSlope: 0.1913344
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
-      outWeight: 0.063670024
+      outWeight: 0.33333334
     - serializedVersion: 3
-      time: 14.905823
-      value: 0.0050372696
-      inSlope: -0.16082315
-      outSlope: -0.16082315
+      time: 15
+      value: 0
+      inSlope: 0
+      outSlope: 0
       tangentMode: 0
       weightedMode: 0
-      inWeight: 0.07993012
+      inWeight: 0.33333334
       outWeight: 0
     m_PreInfinity: 2
     m_PostInfinity: 2
@@ -62,17 +62,17 @@ MonoBehaviour:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 0.16666667
-      outSlope: 0.16666667
+      inSlope: 0.26666667
+      outSlope: 0.26666667
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 39.321228
-      value: 25.370987
-      inSlope: 0.16666667
-      outSlope: 0.16666667
+      time: 15
+      value: 4
+      inSlope: 0.26666667
+      outSlope: 0.26666667
       tangentMode: 0
       weightedMode: 0
       inWeight: 0.33333334
@@ -84,8 +84,8 @@ MonoBehaviour:
   v2DampingRatio: 0.12
   v2MaxDeflectionDeg: 130
   v2ReboundMinContactHeight01: 0.25
-  v2BendMinHeightScale: 0
-  v2BendHeightPower: 1.75
+  v2BendMinHeightScale: 0.45
+  v2BendHeightPower: 1
   v2ChargedLaunchBonus: 3
   v2ChargedLaunchBonusByChargePower:
     serializedVersion: 2
@@ -114,8 +114,8 @@ MonoBehaviour:
   v2CarrierScale: 1.2
   v2LaunchReleaseVelocityScale: 0.85
   v2LaunchReleaseUseHeightScale: 1
-  v2LaunchReleaseMinHeightScale: 0
-  v2LaunchReleaseHeightPower: 1.75
+  v2LaunchReleaseMinHeightScale: 0.45
+  v2LaunchReleaseHeightPower: 1
   v2LaunchReleaseMaxTipSpeed: 24
   v2SideNormalMaxUpDot: 0.45
   grabEnterDot: 0.8

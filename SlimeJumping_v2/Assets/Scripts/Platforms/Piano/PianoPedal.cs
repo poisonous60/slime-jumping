@@ -52,6 +52,10 @@ namespace SlimeJumping.Platforms.Piano
 
         public override void RemoveRider() => hasRider = false;
 
+        /// Is the slime standing on this pedal right now? Read by PianoKeyboard's harmonize layer to
+        /// lengthen note tails (damper up = strings ring on), the way a real sustain pedal works.
+        public bool IsPressed => hasRider;
+
         protected override (Vector2 position, float rotation) ComputeMotion(float dt)
         {
             if (config == null) return (restPos, restRot);

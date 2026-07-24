@@ -30,15 +30,19 @@ namespace SlimeJumping.Platforms.Piano
 
         private bool muted;            // harmonize mode: the voice pool owns the audio, keys stay silent
 
-        // Cosmetic chord-key press: sinks the MESH only (collider/rb untouched) so it never carries a
-        // rider or fires a note — visual/collider stay divided. Driven in OnAfterMotion, not ComputeMotion.
-        private Transform meshVisual;
-        private Vector3 restMeshLocalPos;
-        private bool visualActive;
-        private float visualDepth, visualHold, visualTimer;
-
         public int MidiNote => midiNote;
         public Collider2D Contact => contact;
+
+        /// Is the slime standing on this key right now?
+        public bool IsPhysicallyPressed => contacting;
+
+        /// How far the motor has already sunk this key (world units, positive = down). PianoKeyVisual
+        /// subtracts it so a note's dip composes with the slime's weight instead of doubling it — and
+        /// so a re-strike while the slime stands here can still pop the key up.
+        public float PhysicalSink => -offset;
+
+        /// The key mesh (parented under this motor by PianoKeyboardBuilder). PianoKeyVisual rides it.
+        public Transform Mesh => transform.childCount > 0 ? transform.GetChild(0) : null;
 
         // Pool access (harmonize voice pool builds a midi->clip map from the keys).
         public AudioClip Clip => source != null ? source.clip : null;
@@ -47,17 +51,6 @@ namespace SlimeJumping.Platforms.Piano
 
         /// Silence this key's own strike/damper (harmonize mode plays the voiced chord via the pool).
         public void SetMuted(bool m) => muted = m;
-
-        /// Cosmetic press for a chord's constituent key: dip the MESH for `hold` seconds — no collider
-        /// movement, no rider carry, no sound. Decays in OnAfterMotion.
-        public void VisualPress(float depth, float hold)
-        {
-            if (meshVisual == null) return;
-            visualDepth = depth;
-            visualHold = Mathf.Max(0.0001f, hold);
-            visualTimer = visualHold;
-            visualActive = true;
-        }
 
         public void Init(int midiNote, AudioSource source, float pitch, Collider2D contact)
         {
@@ -73,12 +66,6 @@ namespace SlimeJumping.Platforms.Piano
             restPos = rb.position;
             restRot = rb.rotation;
             if (contact == null) contact = GetComponent<Collider2D>();
-            // the key mesh is parented under this motor (see PianoKeyboardBuilder) — dip it for cosmetics
-            if (transform.childCount > 0)
-            {
-                meshVisual = transform.GetChild(0);
-                restMeshLocalPos = meshVisual.localPosition;
-            }
         }
 
         /// Called by PianoKeyboard every FixedUpdate (it runs earlier than this motor).
@@ -112,21 +99,6 @@ namespace SlimeJumping.Platforms.Piano
             }
 
             return (restPos + new Vector2(0f, offset), restRot);
-        }
-
-        // Cosmetic mesh dip only (collider stays put) — runs after the base rigidbody move. Zero cost
-        // unless a VisualPress is active, so the OFF path (no harmonize) never touches the mesh.
-        protected override void OnAfterMotion(float dt)
-        {
-            if (!visualActive) return;
-            visualTimer -= dt;
-            float k = Mathf.Clamp01(visualTimer / visualHold);
-            meshVisual.localPosition = restMeshLocalPos + new Vector3(0f, -visualDepth * k, 0f);
-            if (visualTimer <= 0f)
-            {
-                meshVisual.localPosition = restMeshLocalPos;
-                visualActive = false;
-            }
         }
 
         private void Strike()

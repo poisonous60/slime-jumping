@@ -26,25 +26,43 @@ namespace SlimeJumping.Platforms.Piano
                 outMidis.Add(tonic + step.offsetsFromTonic[i]);
         }
 
-        /// The allowed melody pitch-classes (relative to tonic) for the snap mode.
-        static int[] AllowedDegrees(HarmonizeSettings h, int[] chordOffsets, MelodySnapMode mode)
+        // Scratch for the ChordTones mode. Reused so the per-landing path (and every note of a
+        // glissando run) allocates nothing in FixedUpdate — the result is consumed immediately by the
+        // caller and never stored.
+        static readonly int[] chordToneScratch = new int[12];
+
+        /// The allowed melody pitch-classes (relative to tonic) for the snap mode; `count` says how
+        /// many entries of the returned array are valid.
+        static int[] AllowedDegrees(HarmonizeSettings h, int[] chordOffsets, MelodySnapMode mode, out int count)
         {
             if (mode == MelodySnapMode.ChordTones && chordOffsets != null && chordOffsets.Length > 0)
             {
-                var set = new SortedSet<int>();
-                for (int i = 0; i < chordOffsets.Length; i++) set.Add(Mod12(chordOffsets[i]));
-                var arr = new int[set.Count]; set.CopyTo(arr); return arr;
+                count = 0;
+                for (int i = 0; i < chordOffsets.Length; i++)   // insertion sort + dedupe, zero-alloc
+                {
+                    int v = Mod12(chordOffsets[i]);
+                    int j = 0;
+                    while (j < count && chordToneScratch[j] < v) j++;
+                    if (j < count && chordToneScratch[j] == v) continue;
+                    for (int k = count; k > j; k--) chordToneScratch[k] = chordToneScratch[k - 1];
+                    chordToneScratch[j] = v;
+                    count++;
+                }
+                return chordToneScratch;
             }
-            if (mode == MelodySnapMode.ScaleFull)
-                return h.scale == ScaleType.Minor ? MinorScale : MajorScale;
-            return h.scale == ScaleType.Minor ? MinorPenta : MajorPenta;   // Pentatonic (default)
+
+            int[] scale = mode == MelodySnapMode.ScaleFull
+                ? (h.scale == ScaleType.Minor ? MinorScale : MajorScale)
+                : (h.scale == ScaleType.Minor ? MinorPenta : MajorPenta);   // Pentatonic (default)
+            count = scale.Length;
+            return scale;
         }
 
         // Degree in `allowed` (assumed ascending) nearest (circular) to relPc; ties keep the lower.
-        static int NearestDegree(int relPc, int[] allowed)
+        static int NearestDegree(int relPc, int[] allowed, int count)
         {
             int best = allowed[0], bestDist = 99;
-            for (int i = 0; i < allowed.Length; i++)
+            for (int i = 0; i < count; i++)
             {
                 int dist = Mod12(relPc - allowed[i]);
                 dist = Mathf.Min(dist, 12 - dist);
@@ -63,9 +81,9 @@ namespace SlimeJumping.Platforms.Piano
         /// (A natural over an Ab triad is a minor 9th above the root: the textbook avoid note).
         public static int SnapMelody(int keyMidi, HarmonizeSettings h, int[] chordOffsets, MelodySnapMode mode)
         {
-            int[] allowed = AllowedDegrees(h, chordOffsets, mode);
+            int[] allowed = AllowedDegrees(h, chordOffsets, mode, out int count);
             int relPc = Mod12(keyMidi - h.tonicMidi);
-            int deg = NearestDegree(relPc, allowed);
+            int deg = NearestDegree(relPc, allowed, count);
             int targetPc = Mod12(h.tonicMidi + deg);
 
             int diff = Mod12(targetPc - Mod12(keyMidi));   // 0..11 upward
@@ -156,6 +174,90 @@ namespace SlimeJumping.Platforms.Piano
             for (int i = 1; i < midis.Count; i++) if (midis[i] > top) top = midis[i];
             int doubled = top + 12;
             if (!midis.Contains(doubled)) midis.Add(doubled);
+        }
+
+        /// Re-octave a chord's upper voices so they sit as close as possible to the previous chord —
+        /// the "smallest hand movement" rule. The bottom `keepLow` notes stay exactly as authored so the
+        /// wide bass spacing (Low Interval Limit) survives, and no voice is allowed above the chord's own
+        /// original top, which is what the melody floats over.
+        /// `ceiling` is the highest MIDI a chord tone may occupy — the caller keeps it below the melody
+        /// so the player's note stays on top.
+        public static void VoiceLead(List<int> chord, List<int> prev, int keepLow, int ceiling)
+        {
+            if (chord.Count == 0 || prev == null || prev.Count == 0) return;
+            chord.Sort();
+
+            int keep = Mathf.Clamp(keepLow, 0, chord.Count);
+            int floor = keep > 0 ? chord[keep - 1] : int.MinValue;
+
+            for (int i = keep; i < chord.Count; i++)
+            {
+                int best = chord[i], bestDist = NearestDistance(best, prev);
+                for (int shift = -24; shift <= 24; shift += 12)
+                {
+                    if (shift == 0) continue;
+                    int cand = chord[i] + shift;
+                    if (cand <= floor || cand > ceiling) continue;
+                    if (Contains(chord, cand, i)) continue;              // don't collapse two voices onto one note
+                    int d = NearestDistance(cand, prev);
+                    if (d < bestDist) { bestDist = d; best = cand; }
+                }
+                chord[i] = best;
+            }
+            chord.Sort();
+        }
+
+        /// Drop-2: take the second note from the top down an octave, turning a close voicing into an
+        /// open one. "Closed-position voicings are dense because the chord tones packed close together
+        /// sound cluttered" — the drop opens the spacing so the chord rings instead of clumping.
+        public static void DropTwo(List<int> chord)
+        {
+            if (chord.Count < 4) return;
+            chord.Sort();
+            int i = chord.Count - 2;
+            int dropped = chord[i] - 12;
+            if (dropped <= 0 || chord.Contains(dropped)) return;
+            chord[i] = dropped;
+            chord.Sort();
+        }
+
+        /// Nearest allowed melody pitch strictly above `midi` (the scale/chord step up). Used by the
+        /// appoggiatura (lean from above) and the glissando run.
+        public static int NeighborAbove(int midi, HarmonizeSettings h, int[] chordOffsets, MelodySnapMode mode)
+            => Neighbor(midi, h, chordOffsets, mode, 1);
+
+        /// Nearest allowed melody pitch strictly below `midi`.
+        public static int NeighborBelow(int midi, HarmonizeSettings h, int[] chordOffsets, MelodySnapMode mode)
+            => Neighbor(midi, h, chordOffsets, mode, -1);
+
+        static int Neighbor(int midi, HarmonizeSettings h, int[] chordOffsets, MelodySnapMode mode, int dir)
+        {
+            int[] allowed = AllowedDegrees(h, chordOffsets, mode, out int count);
+            for (int d = 1; d <= 12; d++)
+            {
+                int cand = midi + dir * d;
+                int rel = Mod12(cand - h.tonicMidi);
+                for (int i = 0; i < count; i++)
+                    if (Mod12(allowed[i]) == rel) return cand;
+            }
+            return midi;
+        }
+
+        static bool Contains(List<int> list, int value, int skipIndex)
+        {
+            for (int i = 0; i < list.Count; i++) if (i != skipIndex && list[i] == value) return true;
+            return false;
+        }
+
+        static int NearestDistance(int midi, List<int> notes)
+        {
+            int best = int.MaxValue;
+            for (int i = 0; i < notes.Count; i++)
+            {
+                int d = Mathf.Abs(notes[i] - midi);
+                if (d < best) best = d;
+            }
+            return best;
         }
 
         static readonly string[] Names = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };

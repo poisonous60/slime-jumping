@@ -97,8 +97,8 @@ namespace SlimeJumping.Tests.EditMode
             float shortStalk = BambooV2Response.PeakBendDegForTipTravel(travel, 2f);
 
             Assert.That(longStalk, Is.LessThan(shortStalk));
-            // θ = travel / L (rad). Short stalk (L=2) → 1 rad.
-            Assert.That(shortStalk, Is.EqualTo(Mathf.Rad2Deg).Within(1e-2f));
+            // Cantilever arc: θ = 2 * travel / L (rad). Short stalk (L=2) → 2 rad.
+            Assert.That(shortStalk, Is.EqualTo(2f * Mathf.Rad2Deg).Within(1e-2f));
         }
 
         [Test]

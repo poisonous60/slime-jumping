@@ -127,11 +127,11 @@ namespace SlimeJumping.Tests.EditMode
         }
 
         [Test]
-        public void DefaultProgression_IsFourSchemasOfFour()
+        public void DefaultProgression_IsSevenSchemasOfFour()
         {
             var h = Default();
             int n = h.progression.Count;
-            Assert.AreEqual(16, n, "4 authored schemas x 4 chords");
+            Assert.AreEqual(28, n, "7 authored schemas x 4 chords (S1-S5 + M1, M2)");
 
             for (int i = 0; i < n; i++)
             {
@@ -152,19 +152,43 @@ namespace SlimeJumping.Tests.EditMode
         }
 
         [Test]
-        public void DefaultProgression_LoopEndsRepeatTheirOwnSchemaMostOften()
+        public void DefaultProgression_EveryLoopEndCanReachEverySchema()
         {
             var h = Default();
+            int schemas = h.progression.Count / 4;
+
             for (int i = 3; i < h.progression.Count; i += 4)
             {
-                int ownSchemaStart = i - 3;
                 var opts = h.progression[i].nextOptions;
+                float total = 0f;
+                var reached = new HashSet<int>();
+                foreach (var o in opts) { total += o.weight; reached.Add(o.stepIndex / 4); }
 
-                float own = 0f, total = 0f;
-                foreach (var o in opts) { total += o.weight; if (o.stepIndex == ownSchemaStart) own += o.weight; }
+                Assert.AreEqual(1f, total, 0.01f, $"step {i}: weights are authored as a probability split");
 
-                // 0.60 repeat → mean run 2.5 loops = 10 bars, inside the 8–16 bar section length
-                Assert.AreEqual(0.60f, own / total, 0.01f, $"step {i} repeat probability");
+                // S5 (the rare borrowed colour) is entered from everywhere but never repeats itself —
+                // a borrowed chord is a one-off colour, not a place to sit. Everything else may repeat.
+                int ownSchema = i / 4;
+                bool isBorrowed = ownSchema == 4;
+                Assert.AreEqual(!isBorrowed, reached.Contains(ownSchema), $"step {i}: self-repeat option");
+                Assert.That(reached.Count, Is.GreaterThanOrEqualTo(4), $"step {i}: reaches several schemas");
+            }
+        }
+
+        [Test]
+        public void DefaultProgression_MajorLoopsFlipToMinorAboutHalfTheTime()
+        {
+            var h = Default();
+            // schemas 0..3 are major, 4 is the borrowed colour, 5..6 are the relative-minor ones
+            for (int i = 3; i < 16; i += 4)
+            {
+                float total = 0f, changed = 0f;
+                foreach (var o in h.progression[i].nextOptions)
+                {
+                    total += o.weight;
+                    if (o.stepIndex / 4 >= 4) changed += o.weight;   // borrowed or minor = mode change
+                }
+                Assert.AreEqual(0.52f, changed / total, 0.02f, $"step {i}: chance of leaving major");
             }
         }
 

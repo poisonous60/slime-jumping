@@ -413,7 +413,8 @@ namespace SlimeJumping.Platforms
             {
                 // Graph-driven impact bend: the curve maps perpendicular impact speed (m/s) to
                 // a target TIP TRAVEL (metres). Length-normalise that travel to a bend angle
-                // (θ = travel / bambooLength) so one graph reads the same on every stalk — a
+                // (θ = 2*travel / bambooLength — the arc-cantilever inversion, see
+                // PeakBendDegForTipTravel) so one graph reads the same on every stalk — a
                 // long bamboo reaches the travel at a smaller angle, a short one at a larger
                 // angle. Then convert the target peak angle into the tip angular velocity the
                 // V2 spring needs to reach it. Contact-height shaping still scales the travel.

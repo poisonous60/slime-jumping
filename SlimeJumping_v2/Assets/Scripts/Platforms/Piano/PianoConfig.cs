@@ -82,6 +82,89 @@ namespace SlimeJumping.Platforms.Piano
         public MelodySnapMode snapMode = MelodySnapMode.ChordTones;
     }
 
+    /// Per-landing performance ornaments. Every one of these fires FROM the landing (the first note is
+    /// always instant — only the notes after it are offset), so nothing here runs on a clock and nothing
+    /// can drift out of sync with the player. Each is an independent on/off for A/B listening.
+    ///
+    /// When several chord figures are on at once the precedence is: chiptune > Alberti > rolled > block.
+    [System.Serializable]
+    public class OrnamentSettings
+    {
+        [Header("① 롤드 코드 (아르페지아토)")]
+        [Tooltip("화음을 동시타 대신 낮은음→높은음으로 흩뿌린다. 첫 음은 착지 순간 그대로.")]
+        public bool rolledChord = false;
+        [Tooltip("음 사이 간격(초). 0.02~0.04 권장. 크면 뚜렷한 아르페지오, 작으면 '손으로 친' 뉘앙스.")]
+        [Min(0f)] public float rollStepSeconds = 0.03f;
+        [Tooltip("끄면 높은음→낮은음(하행 롤).")]
+        public bool rollLowToHigh = true;
+
+        [Header("② 보이스리딩 (전위 자동 선택)")]
+        [Tooltip("직전 화음에서 가장 적게 움직이는 옥타브로 윗성부를 재배치. 화음 연결이 매끄러워진다.")]
+        public bool voiceLeading = false;
+        [Tooltip("아래 N개 음은 authored 보이싱 그대로 둔다(저역 간격 규칙 보존).")]
+        [Min(0)] public int voiceLeadingKeepLow = 2;
+
+        [Header("③ 페달 포인트")]
+        [Tooltip("스키마의 첫 코드에서 낮은 으뜸음 하나를 긴 테일로 깐다. 클럭 아님(착지에 물림).")]
+        public bool pedalPoint = false;
+        [Tooltip("으뜸 기준 오프셋. -24 = 2옥타브 아래.")]
+        public int pedalOffsetFromTonic = -24;
+        [Range(0f, 1f)] public float pedalVolume = 0.35f;
+        [Min(0.1f)] public float pedalReleaseSeconds = 4f;
+
+        [Header("④ 알베르티 (강한 착지에만)")]
+        [Tooltip("화음을 low-high-middle-high 순서로 펼친다(알베르티 베이스). 강착지에서만 발동.")]
+        public bool alberti = false;
+        [Tooltip("정규화 착지 속도가 이 값 이상일 때만.")]
+        [Range(0f, 1f)] public float albertiVelocity = 0.6f;
+        [Min(0.01f)] public float albertiStepSeconds = 0.09f;
+
+        [Header("⑤ 칩튠 아르페지오 버스트")]
+        [Tooltip("코드톤을 아주 빠르게 순환시켜 초기 게임기의 '가짜 화음'을 흉내낸다.")]
+        public bool chiptuneArp = false;
+        [Min(2)] public int chiptuneNotes = 6;
+        [Min(0.005f)] public float chiptuneStepSeconds = 0.04f;
+        [Tooltip("버스트를 올릴 옥타브 수.")]
+        public int chiptuneOctaveUp = 1;
+        [Range(0f, 1f)] public float chiptuneVolume = 0.5f;
+
+        [Header("⑥ 아포자투라 (기대는 꾸밈음)")]
+        [Tooltip("착지 순간엔 한 음 위를 치고, 잠시 뒤 진짜 멜로디 음으로 미끄러진다. 첫 음은 여전히 즉시.")]
+        public bool appoggiatura = false;
+        [Tooltip("꾸밈음이 본음으로 해결되기까지(초). 0.08~0.15 권장.")]
+        [Min(0.01f)] public float appoggiaturaSeconds = 0.11f;
+
+        [Header("⑦ 서스펜션 (4-3)")]
+        [Tooltip("직전 화음의 음을 새 화음 위에 붙들고 있다가 한 음 아래로 해결. 화음이 바뀌는 순간에만 발동.")]
+        public bool suspension = false;
+        [Tooltip("붙든 음이 해결되기까지(초). 0.15~0.3 권장.")]
+        [Min(0.02f)] public float suspensionResolveSeconds = 0.18f;
+
+        [Header("⑨ Drop-2 오픈 보이싱")]
+        [Tooltip("위에서 두 번째 음을 한 옥타브 내려 화음 간격을 벌린다. 닫힌 보이싱의 탁함을 줄임.")]
+        public bool dropTwo = false;
+
+        [Header("⑩ 서스테인 페달 연동")]
+        [Tooltip("슬라임이 피아노 페달을 밟고 있으면 모든 음의 테일이 길어진다(댐퍼가 올라간 상태).")]
+        public bool sustainPedal = false;
+        [Tooltip("페달을 밟는 동안 릴리즈 테일 배수.")]
+        [Min(1f)] public float pedalReleaseMultiplier = 3.5f;
+
+        [Header("⑪ 심퍼세틱 레조넌스")]
+        [Tooltip("화음 최저음의 옥타브·12도 위를 아주 작게 같이 울려 울림통을 흉내낸다.")]
+        public bool resonance = false;
+        [Range(0f, 0.5f)] public float resonanceVolume = 0.12f;
+
+        [Header("⑬ 글리산도 런 (점프 거리 → 음악)")]
+        [Tooltip("직전 착지에서 멀리 건너뛰었을 때, 진행 방향으로 짧은 런을 흘린다.")]
+        public bool glissando = false;
+        [Tooltip("이 반음 거리 이상 건너뛰어야 발동.")]
+        [Min(1)] public int glissMinSemitones = 10;
+        [Min(1)] public int glissMaxNotes = 5;
+        [Min(0.005f)] public float glissStepSeconds = 0.035f;
+        [Range(0f, 1f)] public float glissVolume = 0.4f;
+    }
+
     /// Opt-in "progression harmonize" tuning. When disabled the keyboard plays each key's literal
     /// note (current behavior). When enabled, every landing advances the progression one step, plays
     /// that chord's voicing through a voice pool, snaps the landed key(s) to a melody note on top,
@@ -181,8 +264,8 @@ namespace SlimeJumping.Platforms.Piano
         static NextOption Opt(int index, float weight) => new NextOption { stepIndex = index, weight = weight };
 
         [Header("Reset")]
-        [Tooltip("이 시간 동안 새 착지가 없으면(쉬거나 발판 이탈) 진행을 으뜸으로 리셋.")]
-        [Min(0.1f)] public float resetIdleSeconds = 1.6f;
+        [Tooltip("이 시간 동안 새 착지가 없으면(쉬거나 발판 이탈) 현재 스키마의 첫 코드로 리셋. 높이 점프했다 내려오는 동안 끊기지 않게 넉넉히.")]
+        [Min(0.1f)] public float resetIdleSeconds = 10f;
 
         [Header("Dynamics / audio")]
         [Tooltip("착지 속도(0..1) → 화음 음량.")]
@@ -199,12 +282,28 @@ namespace SlimeJumping.Platforms.Piano
         [Tooltip("이음새 2건반 착지 시 두 멜로디 음의 음량 배수(살짝 두껍게).")]
         [Range(1f, 1.5f)] public float dyadVolumeScale = 1.1f;
 
-        [Header("Visual sink (chord keys)")]
-        [Tooltip("코드 구성 흰 건반이 시각적으로 눌리는 깊이(월드).")]
+        [Header("Visual — 울린 음마다 그 건반이 내려간다 (흰/검은 건반 88개 전부)")]
+        [Tooltip("건반이 시각적으로 눌리는 기준 깊이(로컬 단위).")]
         public float visualSinkDepth = 0.09f;
-        [Tooltip("시각 눌림 유지 시간(초).")]
+        [Tooltip("시각 눌림 최소 유지 시간(초). 실제 유지 = clamp(릴리즈 × visualHoldScale, 이 값, visualMaxHoldSeconds).")]
         public float visualHoldSeconds = 0.25f;
-        [Tooltip("강한 착지일수록 시각 눌림 깊이 배수(1..this).")]
+        [Tooltip("건반이 완전히 눌린 채 버티는 시간 = 그 음의 릴리즈 × 이 배수. 1이면 소리 길이와 일치.")]
+        [Min(0f)] public float visualHoldScale = 1f;
+        [Tooltip("유지가 끝난 뒤 원위치로 올라오는 시간(초).")]
+        [Min(0.01f)] public float visualReleaseSeconds = 0.15f;
+        [Tooltip("긴 테일이 건반을 영원히 붙잡지 않게 하는 상한(초).")]
+        [Min(0.1f)] public float visualMaxHoldSeconds = 2f;
+        [Tooltip("페달을 밟는 동안의 유지 시간(초). 실제 피아노처럼 건반은 곧 올라오고 소리만 남는다.")]
+        [Min(0.02f)] public float visualPedaledHoldSeconds = 0.25f;
+        [Tooltip("가장 여린 음의 깊이 배수. 여린 장식음은 살짝, 센 음은 깊게.")]
+        [Range(0f, 1f)] public float visualMinDepthScale = 0.35f;
+        [Tooltip("음량이 이보다 작으면 건반을 움직이지 않는다. 기본 0 = 울린 음은 전부 움직이고 깊이만 음량에 비례.")]
+        [Range(0f, 1f)] public float visualMinVolume = 0f;
+        [Tooltip("이미 눌린 건반을 다시 칠 때 튕겨 올라오는 비율(재타격이 보이게). 실제 피아노도 이스케이프먼트까지 올라와야 다시 소리남. 0이면 재타격이 안 보임.")]
+        [Range(0f, 1f)] public float visualRearticulateLift = 0.55f;
+        [Tooltip("튕겨 올라온 뒤 다시 내려앉는 시간(초). 칩튠 버스트(40ms 간격)에서도 보이려면 짧게.")]
+        [Min(0.005f)] public float visualRearticulateSeconds = 0.05f;
+        [Tooltip("큰 음량일수록 시각 눌림 깊이 배수(visualMinDepthScale..this).")]
         public float visualDepthVelocityScale = 1.5f;
 
         [Header("Branching (landing zone → next chord)")]
@@ -214,6 +313,9 @@ namespace SlimeJumping.Platforms.Piano
         public bool randomBranching = true;
         [Range(0f, 0.5f)] public float zoneLeftMax = 0.33f;
         [Range(0.5f, 1f)] public float zoneRightMin = 0.66f;
+
+        [Header("Ornaments (per-landing performance figures)")]
+        public OrnamentSettings ornaments = new OrnamentSettings();
 
         [Header("Velocity density")]
         [Tooltip("켜면 강한 착지에 옥타브 더블링으로 두껍게.")]

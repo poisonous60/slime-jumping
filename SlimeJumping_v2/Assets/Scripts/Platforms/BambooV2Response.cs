@@ -79,15 +79,24 @@ namespace SlimeJumping.Platforms
 
         /// <summary>
         /// Length normalisation: a target tip travel (metres) on a stalk of length
-        /// <paramref name="bambooLength"/> maps to bend angle θ = travel / L (arc relation),
-        /// returned in degrees. The same travel therefore needs a SMALLER angle on a long
-        /// stalk and a LARGER angle on a short one, so one tip-travel graph reads consistently
-        /// across every bamboo length.
+        /// <paramref name="bambooLength"/> maps to bend angle θ ≈ 2·travel / L, returned in
+        /// degrees. The same travel therefore needs a SMALLER angle on a long stalk and a
+        /// LARGER angle on a short one, so one tip-travel graph reads consistently across
+        /// every bamboo length.
+        ///
+        /// The factor 2 comes from the bamboo being a circular-arc CANTILEVER, not a rigid
+        /// rod on a hinge. ComputeCenterlinePoint/BambooBend.shader put the tip at
+        /// x = (L/θ)(cos θ − 1), so its lateral travel is L·(1−cos θ)/θ ≈ L·θ/2 — half what a
+        /// rigid rod (L·θ) would give. Inverting the small-angle form yields θ ≈ 2·travel/L,
+        /// which is exact as θ→0 and ~15% optimistic near 90°.
+        ///
+        /// Note the arc saturates: lateral tip travel peaks at ~0.72·L (around θ=130°) and
+        /// cannot exceed it, so authoring travel beyond ~0.36·L in the curve is wasted range.
         /// </summary>
         public static float PeakBendDegForTipTravel(float tipTravel, float bambooLength)
         {
             if (bambooLength < 1e-4f) return 0f;
-            return (tipTravel / bambooLength) * Mathf.Rad2Deg;
+            return (2f * tipTravel / bambooLength) * Mathf.Rad2Deg;
         }
 
         /// <summary>
