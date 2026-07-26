@@ -114,7 +114,7 @@ a > adhesionBreakAccel  →  slime.ForceAirborneWithVelocity(ω × arm)
 
 **튜닝 규칙:** 약해도 튕기면 `adhesionBreakAccel`을 **올리고**, 세게 박아도 안 튕기면 **내린다.** 다른 노브는 안 건드려도 된다 — 그게 이 설계의 목적이다.
 
-carrier 상속은 `VelocityTransferScale = 1`(`PlatformMotor` 기본값). 전송 배율도, falloff 게이트도, 높이별 분율도 없다. 부스트 천장은 `maxTipSpeed` 하나.
+carrier 상속은 `VelocityTransferScale` override로 처리한다: `launchBoostScale`(기본 1.5) 배율에, SpringyBranch/TautLine과 동일한 **boost-falloff 게이트**(`boostFalloffStartSpeed` 12 / `boostFalloffEndSpeed` 18, 2026-07-26 추가)를 곱한다. 발사 순간 슬라임의 pre-bonus 속도(EnergyConversion·하이퍼대시 포함, carrier 기여 제외)가 start 이하면 풀 부스트, end 이상이면 0, 사이는 선형 falloff — 이미 높게 뛸 수 있는 발사 위에는 줄기 부스트가 스택되지 않는다. 슬라임 자신의 속도는 그대로 통과. 부스트 천장은 `maxTipSpeed × launchBoostScale`.
 
 per-stalk 인스펙터 필드(길이·segment 수·반지름·색·마디·툰·테셀레이션·`backgroundOnly`)는 컴포넌트에 남아 있어서, 같은 settings 에셋을 공유해도 대나무마다 다르게 보일 수 있다.
 

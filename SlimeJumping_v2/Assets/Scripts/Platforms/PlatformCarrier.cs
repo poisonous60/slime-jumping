@@ -32,14 +32,18 @@ namespace SlimeJumping.Platforms
 
         public void Attach(Collider2D surfaceCollider)
         {
+            PlatformMotor nextPlatform = surfaceCollider
+                ? surfaceCollider.GetComponentInParent<PlatformMotor>()
+                : null;
+
+            if (nextPlatform == currentPlatform) return;
+
             if (currentPlatform != null) currentPlatform.RemoveRider();
             // Pop the previous platform's override before resolving the new one so a
             // chain of springy-branch hops doesn't leak overrides onto the stack.
             PopSurfaceOverride();
 
-            currentPlatform = surfaceCollider
-                ? surfaceCollider.GetComponentInParent<PlatformMotor>()
-                : null;
+            currentPlatform = nextPlatform;
 
             if (currentPlatform != null)
             {

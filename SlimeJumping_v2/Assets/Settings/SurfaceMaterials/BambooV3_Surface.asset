@@ -17,34 +17,19 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
-  crawlSpeedMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  crawlAccelerationMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  crawlDecelerationMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
   crawlOverspeedDecelerationMultiplier:
     baseValue: 4
     fullValue: 4
     angleMin: 0
     angleMax: 90
   slideResistanceMultiplier:
-    baseValue: 4
-    fullValue: 4
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   slideGravityMultiplier:
-    baseValue: 0
-    fullValue: 0
+    baseValue: 1
+    fullValue: 1
     angleMin: 0
     angleMax: 90
   slideRampUpTime:
@@ -52,14 +37,41 @@ MonoBehaviour:
     fullValue: 0
     angleMin: 0
     angleMax: 90
+  slideLinearDrag:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  slideDownhillGain:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  slideUphillBrake:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
   landingVelocityRetention:
     baseValue: 0
     fullValue: 0
     angleMin: 0
     angleMax: 90
-  stickDurationMultiplier:
+  landingExcessGain:
     baseValue: 1
     fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  enableLandingTangentSpeedRemap: 0
+  landingTangentSpeedRemapCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  stickDurationMultiplier:
+    baseValue: 1.4
+    fullValue: 1.4
     angleMin: 0
     angleMax: 90
   impactRedirectRatio:
@@ -72,3 +84,20 @@ MonoBehaviour:
     fullValue: 0
     angleMin: 0
     angleMax: 90
+  useInertialSlide: 0
+  launchInertiaBlendMode: 0
+  launchInertiaLerpFactor: 0.5
+  launchInertiaPNorm: 2
+  landHardClip: {fileID: 0}
+  landSoftClip: {fileID: 0}
+  launchClip: {fileID: 0}
+  hopClip: {fileID: 0}
+  landHardVolume: 0
+  landSoftVolume: 0
+  launchVolume: 0
+  hopVolume: 0
+  overrideCeilingAngle: 1
+  ceilingAngle: 180
+  ceilingReattachAngle: 180
+  overrideEnergyConversionCoyoteTime: 0
+  energyConversionCoyoteTime: 0.12

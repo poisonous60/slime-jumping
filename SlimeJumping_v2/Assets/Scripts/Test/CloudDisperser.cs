@@ -1,24 +1,22 @@
 using UnityEngine;
+using SlimeJumping.Platforms;
 
 // 구름 발판 소멸 비주얼 (low-poly + 캐주얼).
-// 구름 = 단일 prefab(유저 스타일). 조각 = 별개 prefab(구름을 쪼갠 것, 조립 시 구름과 동일).
-// 평소: cloudPrefab 표시, piecesPrefab 은 조립 상태로 숨김(같은 위치).
-// Disperse(): 구름 숨김 + 조각 표시(동일 위치 = seam 없음) + 각 조각 "캐주얼 팝"
-//   (바깥+위로 빠르게 튐 + 빠른 spin + 초반 살짝 pop 후 scale→0, 짧은 lifetime, 약간 stagger).
-// dissolve/알파 페이드 없음(홀로그램 금지). 조각 매칭은 CloudFractureTool 로 생성.
+// 비주얼 = 씬에 이미 있는 메시(sceneCloud, 자식). prefab instantiate 없음 → 에디터에서도 항상 보임.
+// 조각 = 같은 메시를 CloudFractureTool 로 쪼갠 prefab(조립 시 원본과 픽셀 단위 동일).
+// 평소: sceneCloud 표시, 조각 숨김. Disperse(): sceneCloud 숨김 + 조각 표시(동일 위치 = seam 없음)
+//   + 각 조각 "캐주얼 팝"(바깥+위로 빠르게 튐 + 빠른 spin + 초반 살짝 pop 후 scale→0, 짧은 lifetime, 약간 stagger).
+// dissolve/알파 페이드 없음(홀로그램 금지).
 public class CloudDisperser : MonoBehaviour
 {
-    [Header("Prefabs")]
-    public GameObject cloudPrefab;    // 단일 low-poly 구름(유저 스타일).
+    [Header("Config")]
+    public CloudPlatformConfig configOverride;   // 비우면 Assets/Resources/CloudPlatformConfig.asset 공유 튜닝.
+
+    [Header("Visual")]
+    public GameObject sceneCloud;     // 씬 메시 비주얼(자식). intact 상태.
     public GameObject piecesPrefab;   // 매칭 조각(CloudFractureTool 출력, 조립=구름).
 
-    [Header("캐주얼 팝")]
-    public float spread = 1.0f;       // 바깥으로 튀는 거리.
-    public float rise = 0.9f;         // 위로.
-    public float life = 0.42f;        // 조각 수명(짧고 snappy).
-    [Range(0f, 0.25f)] public float stagger = 0.06f; // 조각별 시작 지연 폭.
-    public float spin = 220f;         // deg/s 빠른 회전.
-    [Range(1f, 1.6f)] public float popScale = 1.25f; // 초반 살짝 부풀기.
+    CloudPlatformConfig cfg;
 
     class Piece
     {
@@ -31,7 +29,6 @@ public class CloudDisperser : MonoBehaviour
         public float t;
     }
 
-    GameObject cloud;
     GameObject piecesRoot;
     Piece[] pieces;
     bool dispersing;
@@ -44,25 +41,30 @@ public class CloudDisperser : MonoBehaviour
     [ContextMenu("Build")]
     public void Build()
     {
+        if (cfg == null) cfg = CloudPlatformConfig.Resolve(configOverride);
         // 정리.
-        var oc = transform.Find("Cloud"); if (oc != null) DestroyImmediate(oc.gameObject);
         var op = transform.Find("Pieces"); if (op != null) DestroyImmediate(op.gameObject);
-        cloud = null; piecesRoot = null; pieces = null;
-
-        if (cloudPrefab != null)
-        {
-            cloud = Instantiate(cloudPrefab, transform);
-            cloud.name = "Cloud";
-            cloud.transform.localPosition = Vector3.zero;
-            cloud.transform.localRotation = Quaternion.identity;
-        }
+        piecesRoot = null; pieces = null;
 
         if (piecesPrefab != null)
         {
             piecesRoot = Instantiate(piecesPrefab, transform);
             piecesRoot.name = "Pieces";
-            piecesRoot.transform.localPosition = Vector3.zero;
-            piecesRoot.transform.localRotation = Quaternion.identity;
+            if (sceneCloud != null)
+            {
+                // 조각 = sceneCloud 메시의 mesh-local 좌표. sceneCloud 와 world 변환을 일치시켜야
+                // 조립 위치가 정확히 겹침 (sceneCloud 가 collider wrapper 등으로 더 깊이 nested 여도 동작).
+                var st = sceneCloud.transform;
+                var pt = piecesRoot.transform;
+                pt.SetPositionAndRotation(st.position, st.rotation);
+                Vector3 ps = pt.parent.lossyScale, ss = st.lossyScale;
+                pt.localScale = new Vector3(ss.x / ps.x, ss.y / ps.y, ss.z / ps.z);
+            }
+            else
+            {
+                piecesRoot.transform.localPosition = Vector3.zero;
+                piecesRoot.transform.localRotation = Quaternion.identity;
+            }
 
             var childCount = piecesRoot.transform.childCount;
             pieces = new Piece[childCount];
@@ -89,7 +91,7 @@ public class CloudDisperser : MonoBehaviour
                     restScale = ct.localScale,
                     dir = outDir,
                     spinAxis = Random.onUnitSphere,
-                    delay = Random.Range(0f, stagger),
+                    delay = Random.Range(0f, cfg.stagger),
                 };
             }
         }
@@ -101,7 +103,7 @@ public class CloudDisperser : MonoBehaviour
     public void ResetToRest()
     {
         dispersing = false;
-        SetActiveSafe(cloud, true);
+        SetActiveSafe(sceneCloud, true);
         if (pieces != null)
             foreach (var p in pieces)
             {
@@ -118,7 +120,7 @@ public class CloudDisperser : MonoBehaviour
     {
         if (pieces == null) Build();
         // 스왑: 구름 숨김, 조각 표시(동일 위치 = seamless).
-        SetActiveSafe(cloud, false);
+        SetActiveSafe(sceneCloud, false);
         if (pieces == null || pieces.Length == 0) return;
         dispersing = true;
         foreach (var p in pieces)
@@ -138,15 +140,15 @@ public class CloudDisperser : MonoBehaviour
         {
             if (p.t < 0f) { p.t += Time.deltaTime; anyAlive = true; continue; }
             p.t += Time.deltaTime;
-            float u = Mathf.Clamp01(p.t / life);
+            float u = Mathf.Clamp01(p.t / cfg.life);
             float ease = 1f - (1f - u) * (1f - u);                   // easeOut = 초반 빠르게 튐.
 
-            p.tr.localPosition = p.restPos + (p.dir * spread + Vector3.up * rise) * refSize * ease;
+            p.tr.localPosition = p.restPos + (p.dir * cfg.spread + Vector3.up * cfg.rise) * refSize * ease;
             // 초반 살짝 pop(부풀기) 후 빠르게 scale→0.
-            float pop = 1f + (popScale - 1f) * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.7f));
+            float pop = 1f + (cfg.popScale - 1f) * Mathf.Sin(Mathf.PI * Mathf.Clamp01(u * 1.7f));
             float shrink = 1f - Mathf.SmoothStep(0.45f, 1f, u);
             p.tr.localScale = p.restScale * (pop * shrink);
-            p.tr.Rotate(p.spinAxis, spin * Time.deltaTime, Space.Self);
+            p.tr.Rotate(p.spinAxis, cfg.spin * Time.deltaTime, Space.Self);
 
             if (u >= 1f) p.tr.gameObject.SetActive(false);
             else anyAlive = true;

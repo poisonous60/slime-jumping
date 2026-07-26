@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a93748274b6938c4987a74639465d804, type: 3}
+  m_Name: CloudPlatformConfig
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.CloudPlatformConfig
+  sinkDepth: 0.3
+  sinkTime: 0.14
+  launchDelay: 0.05
+  baseHopSpeed: 4.5
+  maxLaunchSpeed: 14
+  timingWindow: 0.16
+  jumpKey: 32
+  riseVisualHeight: 1.1
+  riseVisualTime: 0.9
+  respawn: 1
+  respawnDelay: 1.5
+  spread: 1
+  rise: 0.9
+  life: 0.42
+  stagger: 0.25
+  spin: 220
+  popScale: 1.25

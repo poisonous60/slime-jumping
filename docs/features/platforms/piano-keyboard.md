@@ -130,6 +130,7 @@ sensor(`BoxCollider2D`)는 정적 자식 GO, dip 애니는 건반 mesh transform
 |---|---|---|
 | audio → MIDI | **[transkun](https://github.com/yujia-yan/transkun) 2.0.1** (MIT, ISMIR 2024) | MAESTRO V3 note+offset+velocity **F1 0.9505**, 벨로시티·서스테인 페달 출력 |
 | MIDI → score JSON | `midi_to_score.py` (scratchpad) | pretty_midi 파싱 + librosa로 키/코드 추정 |
+| score JSON → `preview` 필드 | **`tools/extract_preview.py`** (repo, stdlib only) | 곡 도입부 코드 진행 + 반주 음형 추출(아래 "곡별 미리보기" 참조). `--dry-run` 표만 / `--selftest` 자체 검증 |
 
 - **Windows 설치 함정**: `transkun` 의존성 `ncls`는 최신(0.0.70)에 win_amd64 wheel이 없어 MSVC 빌드로 넘어가 실패한다. Python **3.11** venv + **`ncls==0.0.39` 핀**을 같은 resolve에 넣어야 함 (`uv pip install transkun "ncls==0.0.39"`). 3.13에서는 어느 조합으로도 안 됨.
 - **자작 DSP는 폐기했다.** onset + CQT 하모닉 억제 방식을 직접 구현했으나 객관 지표에서 실패:
@@ -155,8 +156,26 @@ sensor(`BoxCollider2D`)는 정적 자식 GO, dip 애니는 건반 mesh transform
 
 → **결론: 소리는 mp3, 건반은 전사 데이터.** 샘플러 재연주 경로를 택하지 않은 것은 취향이 아니라 라이선스 제약이다. PD 곡(사티·쇼팽·바흐 등)으로 바꾸면 그 제약이 전부 사라진다.
 
+### 곡별 미리보기 — 진행·음형 override (2026-07-25)
+조성·장식만 곡별로 바꾸던 초기 구현은 **모든 곡이 같은 스키마 진행**을 돌아서 같은 조성 곡이 구분되지 않았다(장식도 기성 카탈로그를 곡에 끼워맞춘 것). 지금은 곡 전사에서 **그 곡 자체**를 뽑아 착지가 곡의 미리보기가 된다:
+
+- **`tools/extract_preview.py`** (오프라인, stdlib only)가 각 `*_score.json`의 notes에서 ①**도입부 4~8코드 루프** ②**texture = 도입부 연주 형태의 연속 측정치**를 추출해 같은 JSON에 `preview` 필드로 굽는다.
+  - 코드 추출 = **HarmAn** (Pardo & Birmingham, *Algorithms for Chordal Analysis*, CMJ 26:2, 2002) 자작 구현: partition point(음 시작/끝에서만 화성 변화 — **비트 그리드 불필요**라 rubato 연주 전사에 그대로 적용) + 템플릿 스코어 `S = P − (M + N)`(가중치 = 노트가 걸치는 minimal segment 수) + DAG 최적 세그멘테이션. 템플릿은 원저 6종 + **min7/maj7 추가**(원저는 "It is simple to add new templates" — pop 계열 m7가 min7 템플릿 없이는 hdim7로 오인됨, 실측으로 확인). 연주 온셋 흩어짐(~40ms)은 60ms ε-클러스터로 흡수.
+  - **texture는 토글이 아니라 전부 측정값** (기성 장식 카탈로그를 곡에 배정하는 방식은 반려되어 폐기): `spreadSeconds`/`rollUp` = 화음을 펼치는 폭·방향(다중 온셋 attack의 중앙값 — 24ms 롤이면 24ms 그대로, 블록 곡은 ~3ms로 측정되어 자연히 동시타. 임계값·그리드 뭉갬 없음) · `releaseSeconds` = 잔향(반주 음길이 p75) · `bassReleaseSeconds`/`bassVolumeScale` = 저역 드론(MIDI<55에서 2s+ 지속음의 중앙값 — OpenAndAiry 5.5s가 그대로 나옴) · `chordVolumeScale` = 반주/탑보이스 음량비.
+  - **착지 1회 = 발음 제스처 1회 (유저 계약, 2026-07-25)**: 착지가 시간차로 재타격하면 안 된다 — 곡의 오스티나토를 충실히 베끼더라도 금지. 이 계약으로 attack 간 `pattern` 재생(한 착지가 0.3~0.9s 뒤 3~4회 재타격)은 **도입 당일 폐기**했다. 펼침(수십 ms)·링잉·드론은 한 번의 발음으로 침.
+  - **성부 수 = 스텝별 타건 제스처** (2026-07-26 교체): 각 코드 세그먼트 안에서 **가장 큰 온셋 클러스터 크기**(`gesture_size`) = 곡이 그 코드를 선언할 때 실제로 한 번에 치는 음 수가 그 스텝의 보이싱 상한. 이전의 전역 동시발음 밀도(`measure_density` — attack 시점에 *울리고 있는* 노트 수 중앙값)는 잔잔한 브로큰코드 곡(AFlintGrey: 타건 1~2음, 서스테인 겹침으로 4~5음 울림)을 5음 블록코드로 과밀 재생시켜 폐기. sounding 기반 수직 측정은 화성 라벨용(chordify/jSymbolic 관행), 제스처는 온셋 동기 기반(Huron 1989 텍스처 분류 축) — 조사 근거로 분리. 보이싱은 **그 구간에서 곡이 실제 친 음만**(안 친 템플릿 톤을 지어내지 않음 — 그게 "곡보다 건반이 많이 눌리는" 원인이었음), 곡이 실제 친 옥타브에 배치(dur×vel 가중 최빈, 근음 더블링도 곡이 하면 따라함), 제스처 초과분은 베이스 제외 최저 가중치부터 탈락. 유일한 보정 = F2(41) 하한·상한 76(멜로디 레인). 결과: 브로큰코드 곡은 착지당 화음 2~3성(+멜로디 1), 진짜 블록코드 곡(ADarkBlue 타건 5~7)만 4~5성, DramaticSensitive는 오프닝 강타 스텝(5성)만 두껍고 이후 얇음.
+- **런타임**: `HarmonizeSettings`에 기존 key/ornament와 같은 `[NonSerialized]` override — `Progression`/`Texture` 프로퍼티 + `SetProgressionOverride`/`SetTextureOverride`, `ClearOverrides()`가 함께 해제. `SelectNextSong`이 preview 유효 시 ChordStep 리스트를 빌드해 밀어 넣고, 곡의 잔향은 `ChordStep.releaseSeconds`로 스텝마다 베이크(기존 필드라 착지 경로 무수정). **선형 루프는 데이터로 성립** — `new ChordStep()`의 leftNext=-1/nextOptions 빈 배열이 `NextIndex`를 자동으로 `(i+1)%count`로 떨어뜨리고, `wasLoopEnd`가 절대 참이 안 돼 `harmonizeLoopStart`=0 고정(리셋 = 도입부 첫 코드 복귀). branching 끄는 코드 없음.
+- **texture 재생**: `PlayChordFigure` 최우선 분기(texture 있으면 기성 음형 전부 무시). 측정된 spread·방향대로 화음을 펼치고, 드론이 있으면 베이스 성부(정렬 후 index 0)만 측정 길이·음량으로 링잉. `PianoVoicePool.Play(…, delaySeconds)` 경유라 클럭 없음(첫 음 즉시: k=0 delay 0), 건반 시각은 `NotePlayed` 경로로 공짜. 서스펜션은 texture와 동시 사용 안 함(칩튠·알베르티와 같은 사유).
+- **곡별 장식 프리셋 폐기**: `PianoSong.ornaments`의 카탈로그 장식(rolled/alberti/chiptune/pedalPoint/suspension/dropTwo/resonance/**appoggiatura/glissando**)은 전곡 off — "있는 장식을 곡에 적용"이 반려된 방식이라서. 남는 건 **voiceLeading**(화음 연결 품질 기구, 장식 아님)과 **sustainPedal**(실제 페달 오브젝트 밟기 물리, duty 실측 기반 배정)뿐. 장식 코드 자체는 존치(로테이션 밖 수동 harmonize용).
+- **유효성 판정은 내용 기반**(`PreviewUsable`): steps ≥ 2 + tonicMidi ∈ [60,71]. JsonUtility는 JSON에 `preview`가 없어도 기본 인스턴스를 만들 수 있어 null 체크만으론 안 된다. 같은 이유로 JSON을 ChordStep으로 **직접 역직렬화하지 않는다**(leftNext가 -1 대신 0이 되면 전 코드가 스텝 0으로 분기).
+- **폴백**: preview 없음/부실 → 기존 스키마 + 나란한장조 규칙 경로 그대로(변화 0).
+- **수정 워크플로**(유저 확정): 스크립트 리포트(`--dry-run` 곡별 Roman 진행 표 + 음형 요약 + 커버리지) 보고 파라미터 조정 후 재실행. 인스펙터 편집 필드 없음. 콘솔 확인은 `logSongChange` 로그의 `| preview N chords+figure` / `| schema` 표기.
+- **라이선스**: 진행(코드열)과 반주 리듬 패턴은 저작권 보호 대상이 아니고, 보이싱·샘플은 자작이라 기존 "샘플러 재연주 금지"와 충돌하지 않는다. **멜로디 인용은 계속 금지**(멜로디 층은 그대로 착지 X 스냅).
+
 ### 조성 일치 — 자동, 그리고 **나란한장조 규칙**
 곡 선택 시 전사 결과의 `score.key`에서 조성을 읽어 **자동 적용**한다. 단 그냥 tonic을 넣으면 틀린다:
+
+> **(예외) preview 진행을 쓰는 곡은 이 규칙을 타지 않는다.** 진행이 곡 자체 조성으로 voiced되어 있어 tonic = `preview.tonicMidi`(단조면 실제 으뜸음 + Minor). 아래 +3 우회는 **스키마 폴백 경로 전용**이다 — 스키마가 tonic 상대라서 생긴 우회이므로. 멜로디 스냅 안전성은 동일(단조 펜타 = 나란한장조 펜타, 같은 음집합).
 
 > **단조 곡은 tonic을 자기 으뜸음이 아니라 나란한장조(pitch class +3)에 놓는다.**
 
@@ -187,7 +206,7 @@ tonic은 항상 `[60,71]`에 놓는다 — authored 보이싱 최저 오프셋�
 
 ### 파일 / 설정
 - **`PianoKeyboard.AutoPlay.cs`** (신규 partial) — 상태머신 전부. `AutoPlayStep(anyContacting)`은 FixedUpdate에서 도착·착지·복귀를 처리, `AutoPlayUpdate()`는 Update에서 트리거 판정 + 재생 tick.
-- **`PianoScoreData.cs`** (신규) — `PianoScoreData`/`ScoreNote`/`ScorePedalSpan`/`ScoreKey`. JsonUtility DTO. JSON의 `chords` 필드는 런타임 미사용이라 무시됨(오디오 크로마 추정이라 신뢰도 낮음 — chordToneAgreement 0.41. 조성만 쓰는 현 설계에선 불필요).
+- **`PianoScoreData.cs`** — `PianoScoreData`/`ScoreNote`/`ScorePedalSpan`/`ScoreKey` + **`ScorePreview`/`ScorePreviewStep`/`ScoreFigureNote`**(곡별 미리보기). JsonUtility DTO. JSON의 `chords` 필드는 런타임 미사용이라 무시됨(오디오 크로마 추정이라 신뢰도 낮음 — chordToneAgreement 0.41; 심볼릭 재추출인 `preview.steps`가 그 자리를 대체).
 - **`PianoConfig.PianoSong`** (신규) — `label`/`clip`/`scoreJson`/`tonicMidi`(-1=자동)/`scale`/`ornaments`.
 - **`PianoConfig.AutoPlaySettings`** — `enabled`/`songs`/`minPresses`/`idleSeconds`/`cooldownSeconds`/`volume`/`loop`/`fadeInSeconds`/`fadeOutSeconds`/`visualDepthScale`.
 - **에셋**: `Assets/Audio/Music/` 에 11곡 (30초 10곡 + 167초 1곡), 각각 mp3 + `_score.json`.
@@ -211,5 +230,5 @@ Claude 워크플로우(5렌즈) + Codex 리뷰가 잡은 실제 결함들. 재�
 - 검은 건반은 **밟을 수 없음**(콜라이더 없음, 의도) — 단 2026-07-23부터 소리에 맞춰 **시각적으로는 눌림**(차용화음 A♭/B♭ 등).
 - `Assets/Audio/Perc/vcsl_*.wav` 3개는 폐기된 자동 반주용으로 받아둔 것 — 현재 미사용.
 - **자동 연주 곡의 라이선스** — 현재 곡은 AudioHero 싱크권이라 "mp3 재생 + 건반 싱크"까지만 가능하고 샘플러 재연주는 불가. AI 전사 조항도 문자상 걸림(위 참조). 상용 전 confirm 또는 PD 곡 교체 필요.
-- **전사 스크립트가 repo에 없음** — `midi_to_score.py`는 scratchpad에만 있다. 다른 곡을 추가하려면 스크립트를 repo로 옮겨야 함(현재는 요청 범위 밖이라 보류).
+- **전사 스크립트가 repo에 없음** — `midi_to_score.py`(audio→score JSON)는 scratchpad에만 있다. 다른 곡을 추가하려면 스크립트를 repo로 옮겨야 함(현재는 요청 범위 밖이라 보류). `extract_preview.py`(score JSON→preview)는 2026-07-25부터 `tools/`에 있음.
 - 자동 연주 중 `harmonize.enabled`가 켜져 있고 슬라임이 착지하면 두 시스템이 같은 건반 시각을 겹쳐 누를 수 있다 — `PianoKeyVisual.Press`가 깊이·시간 모두 `max` 누적이라 깨지진 않지만, 복귀 직후 ~fadeOut 동안 자동 연주가 누른 건반이 남아 있다(의도: 급정지로 지우면 슬라임이 방금 친 건반의 dip까지 지워짐).

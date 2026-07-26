@@ -498,7 +498,7 @@ MonoBehaviour:
         chiptuneStepSeconds: 0.04
         chiptuneOctaveUp: 1
         chiptuneVolume: 0.5
-        appoggiatura: 1
+        appoggiatura: 0
         appoggiaturaSeconds: 0.11
         suspension: 0
         suspensionResolveSeconds: 0.18
@@ -543,7 +543,7 @@ MonoBehaviour:
         dropTwo: 0
         sustainPedal: 0
         pedalReleaseMultiplier: 3.5
-        resonance: 1
+        resonance: 0
         resonanceVolume: 0.12
         glissando: 0
         glissMinSemitones: 10
@@ -557,7 +557,7 @@ MonoBehaviour:
       tonicMidi: -1
       scale: 0
       ornaments:
-        rolledChord: 1
+        rolledChord: 0
         rollStepSeconds: 0.045
         rollLowToHigh: 1
         voiceLeading: 1
@@ -595,7 +595,7 @@ MonoBehaviour:
       tonicMidi: -1
       scale: 0
       ornaments:
-        rolledChord: 1
+        rolledChord: 0
         rollStepSeconds: 0.045
         rollLowToHigh: 1
         voiceLeading: 1
@@ -652,14 +652,14 @@ MonoBehaviour:
         chiptuneVolume: 0.5
         appoggiatura: 0
         appoggiaturaSeconds: 0.11
-        suspension: 1
+        suspension: 0
         suspensionResolveSeconds: 0.18
         dropTwo: 0
         sustainPedal: 0
         pedalReleaseMultiplier: 3.5
         resonance: 0
         resonanceVolume: 0.12
-        glissando: 1
+        glissando: 0
         glissMinSemitones: 10
         glissMaxNotes: 5
         glissStepSeconds: 0.035
@@ -680,7 +680,7 @@ MonoBehaviour:
         pedalOffsetFromTonic: -24
         pedalVolume: 0.35
         pedalReleaseSeconds: 4
-        alberti: 1
+        alberti: 0
         albertiVelocity: 0.6
         albertiStepSeconds: 0.09
         chiptuneArp: 0
@@ -697,7 +697,7 @@ MonoBehaviour:
         pedalReleaseMultiplier: 3.5
         resonance: 0
         resonanceVolume: 0.12
-        glissando: 1
+        glissando: 0
         glissMinSemitones: 10
         glissMaxNotes: 5
         glissStepSeconds: 0.035
@@ -726,7 +726,7 @@ MonoBehaviour:
         chiptuneStepSeconds: 0.04
         chiptuneOctaveUp: 1
         chiptuneVolume: 0.5
-        appoggiatura: 1
+        appoggiatura: 0
         appoggiaturaSeconds: 0.11
         suspension: 0
         suspensionResolveSeconds: 0.18
@@ -747,45 +747,7 @@ MonoBehaviour:
       tonicMidi: -1
       scale: 0
       ornaments:
-        rolledChord: 1
-        rollStepSeconds: 0.045
-        rollLowToHigh: 1
-        voiceLeading: 1
-        voiceLeadingKeepLow: 2
-        pedalPoint: 1
-        pedalOffsetFromTonic: -24
-        pedalVolume: 0.35
-        pedalReleaseSeconds: 4
-        alberti: 0
-        albertiVelocity: 0.6
-        albertiStepSeconds: 0.09
-        chiptuneArp: 0
-        chiptuneNotes: 6
-        chiptuneStepSeconds: 0.04
-        chiptuneOctaveUp: 1
-        chiptuneVolume: 0.5
-        appoggiatura: 0
-        appoggiaturaSeconds: 0.11
-        suspension: 0
-        suspensionResolveSeconds: 0.18
-        dropTwo: 0
-        sustainPedal: 0
-        pedalReleaseMultiplier: 3.5
-        resonance: 1
-        resonanceVolume: 0.12
-        glissando: 0
-        glissMinSemitones: 10
-        glissMaxNotes: 5
-        glissStepSeconds: 0.035
-        glissVolume: 0.4
-    - enabled: 1
-      label: MelancholyPiano
-      clip: {fileID: 8300000, guid: 5a0f92e5b5d487a4ea9212501b44f54f, type: 3}
-      scoreJson: {fileID: 4900000, guid: 269b432ce7d8ce44c9590070724c0109, type: 3}
-      tonicMidi: -1
-      scale: 0
-      ornaments:
-        rolledChord: 1
+        rolledChord: 0
         rollStepSeconds: 0.045
         rollLowToHigh: 1
         voiceLeading: 1
@@ -804,7 +766,45 @@ MonoBehaviour:
         chiptuneVolume: 0.5
         appoggiatura: 0
         appoggiaturaSeconds: 0.11
-        suspension: 1
+        suspension: 0
+        suspensionResolveSeconds: 0.18
+        dropTwo: 0
+        sustainPedal: 0
+        pedalReleaseMultiplier: 3.5
+        resonance: 0
+        resonanceVolume: 0.12
+        glissando: 0
+        glissMinSemitones: 10
+        glissMaxNotes: 5
+        glissStepSeconds: 0.035
+        glissVolume: 0.4
+    - enabled: 1
+      label: MelancholyPiano
+      clip: {fileID: 8300000, guid: 5a0f92e5b5d487a4ea9212501b44f54f, type: 3}
+      scoreJson: {fileID: 4900000, guid: 269b432ce7d8ce44c9590070724c0109, type: 3}
+      tonicMidi: -1
+      scale: 0
+      ornaments:
+        rolledChord: 0
+        rollStepSeconds: 0.045
+        rollLowToHigh: 1
+        voiceLeading: 1
+        voiceLeadingKeepLow: 2
+        pedalPoint: 0
+        pedalOffsetFromTonic: -24
+        pedalVolume: 0.35
+        pedalReleaseSeconds: 4
+        alberti: 0
+        albertiVelocity: 0.6
+        albertiStepSeconds: 0.09
+        chiptuneArp: 0
+        chiptuneNotes: 6
+        chiptuneStepSeconds: 0.04
+        chiptuneOctaveUp: 1
+        chiptuneVolume: 0.5
+        appoggiatura: 0
+        appoggiaturaSeconds: 0.11
+        suspension: 0
         suspensionResolveSeconds: 0.18
         dropTwo: 0
         sustainPedal: 1
@@ -866,7 +866,7 @@ MonoBehaviour:
         rollLowToHigh: 1
         voiceLeading: 1
         voiceLeadingKeepLow: 2
-        pedalPoint: 1
+        pedalPoint: 0
         pedalOffsetFromTonic: -24
         pedalVolume: 0.35
         pedalReleaseSeconds: 4
@@ -887,7 +887,7 @@ MonoBehaviour:
         pedalReleaseMultiplier: 3.5
         resonance: 0
         resonanceVolume: 0.12
-        glissando: 1
+        glissando: 0
         glissMinSemitones: 10
         glissMaxNotes: 5
         glissStepSeconds: 0.035

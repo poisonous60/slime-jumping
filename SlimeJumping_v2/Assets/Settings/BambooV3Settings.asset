@@ -12,8 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 855f2ad22d3b41643ae3d8b1d17486c4, type: 3}
   m_Name: BambooV3Settings
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Settings.BambooV3Settings
-  naturalFreqHz: 1
+  naturalFreqHz: 1.3
   dampingRatio: 0.25
   maxDeflectionDeg: 90
   maxTipSpeed: 40
   ejectBendDeg: 15
+  impactSoftCap: 24
+  landingImpulseGain: 1
+  launchBoostScale: 0.5
+  boostFalloffStartSpeed: 12
+  boostFalloffEndSpeed: 18
+  relandLockoutTime: 0.3

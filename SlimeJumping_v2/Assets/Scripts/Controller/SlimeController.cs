@@ -1262,5 +1262,16 @@ namespace SlimeJumping.Controller
         {
             ignoredColliderList.Unregister(col);
         }
+
+        /// <summary>
+        /// Registers a collider as TimedReattachGuard — SurfaceProbe skips it for the full
+        /// duration (no separation early-out) but physics stays ON, so the collider shoves
+        /// the slime away instead of re-attaching it. For moving surfaces that can chase
+        /// the slime down after launch (BambooPlatformV3 whip-back).
+        /// </summary>
+        public void RegisterReattachGuard(Collider2D col, float duration)
+        {
+            ignoredColliderList.RegisterSingle(col, duration, IgnoreMode.TimedReattachGuard);
+        }
     }
 }

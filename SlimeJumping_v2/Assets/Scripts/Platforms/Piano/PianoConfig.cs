@@ -194,6 +194,8 @@ namespace SlimeJumping.Platforms.Piano
         [System.NonSerialized] private int overrideTonicMidi;
         [System.NonSerialized] private ScaleType overrideScale;
         [System.NonSerialized] private OrnamentSettings overrideOrnaments;
+        [System.NonSerialized] private List<ChordStep> overrideProgression;
+        [System.NonSerialized] private ScoreTexture overrideTexture;
 
         /// The key everything harmonic must actually use — the song's if one is in rotation.
         public int TonicMidi => hasKeyOverride ? overrideTonicMidi : tonicMidi;
@@ -202,6 +204,16 @@ namespace SlimeJumping.Platforms.Piano
         /// The ornament preset actually in force — the song's if it authored one.
         public OrnamentSettings Ornaments => overrideOrnaments != null ? overrideOrnaments : ornaments;
 
+        /// The progression actually in force — the rotation song's own opening loop if it brought
+        /// one, else the authored schemas. Landing code must read THIS, never the field, so the
+        /// shared asset's progression is never mutated.
+        public List<ChordStep> Progression =>
+            overrideProgression != null && overrideProgression.Count > 0 ? overrideProgression : progression;
+
+        /// The rotation song's measured texture (how IT sounds a chord: spread, ring, drone,
+        /// dynamics), or null (= no song in force; ornament figures / block apply).
+        public ScoreTexture Texture => overrideTexture;
+
         public void SetKeyOverride(int midi, ScaleType s)
         {
             hasKeyOverride = true; overrideTonicMidi = midi; overrideScale = s;
@@ -209,9 +221,14 @@ namespace SlimeJumping.Platforms.Piano
 
         public void SetOrnamentOverride(OrnamentSettings o) => overrideOrnaments = o;
 
+        public void SetProgressionOverride(List<ChordStep> p) => overrideProgression = p;
+
+        public void SetTextureOverride(ScoreTexture t) => overrideTexture = t;
+
         public void ClearOverrides()
         {
             hasKeyOverride = false; overrideOrnaments = null;
+            overrideProgression = null; overrideTexture = null;
         }
         [Tooltip("착지 건반 → 멜로디 음 스냅 방식. Pentatonic = 가장 안전(안 틀림).")]
         public MelodySnapMode snapMode = MelodySnapMode.Pentatonic;

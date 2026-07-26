@@ -66,11 +66,8 @@ namespace SlimeJumping.Editor
                 new Vector3(-12f, 1f, 0f), tiltZ: -30f, length: 6f, segments: 14, settings, surface);
 
             CreatePedestal(root.transform, "Pedestal_Tilt50", -2f, topY: 3f);
-            var instrumented = CreateBamboo(root.transform, "V3_Tilt50",
+            CreateBamboo(root.transform, "V3_Tilt50",
                 new Vector3(-2f, 3f, 0f), tiltZ: -50f, length: 7f, segments: 16, settings, surface);
-            // One stalk carries the chain diagnostic so the on-screen panel names the first
-            // broken link instead of us guessing which one it is.
-            instrumented.AddComponent<SlimeJumping.Debugging.BambooV3ChainDebug>();
 
             // Nearly horizontal — the strongest "hit the underside straight on" case, and the
             // largest rider-weight sag.
@@ -85,6 +82,12 @@ namespace SlimeJumping.Editor
             CreateBamboo(root.transform, "V3_Long",
                 new Vector3(19f, 0f, 0f), tiltZ: -40f, length: 13f, segments: 26, settings, surface);
 
+            // The chain diagnostic now lives on the SLIME: it follows the slime and resolves,
+            // each fixed step, whichever V3 stalk the slime is on or nearest to. This way it
+            // also sees the impulse the rider injects while charging — the "pressing jump kicks
+            // the stalk" signal — regardless of which stalk is involved.
+            AttachChainDebugToSlime();
+
             EditorSceneManager_MarkActiveDirty();
 
             Selection.activeGameObject = root;
@@ -96,7 +99,7 @@ namespace SlimeJumping.Editor
                 "1. Hit a tilted stalk's underside hard from below → it visibly bends. (v1 produced literally zero here: it used only the impact component perpendicular to the stalk.)\n" +
                 "2. Stay off Space and wait → the slime is thrown off automatically as the stalk springs back.\n" +
                 "3. Land on one gently → it sags a little and does NOT throw; the stalk is just a perch.\n" +
-                "4. While attached, charge and launch → the stalk recoils the other way right after (Newton's third law).\n" +
+                "4. While attached, charge and launch → the stalk KEEPS its natural swing; pressing jump must NOT kick it.\n" +
                 "5. Return speed → back to rest inside ~0.5 s, two or three swings, then still.\n" +
                 "6. Right after being thrown → it does not immediately re-stick to the same stalk.\n" +
                 "\n" +
@@ -105,10 +108,10 @@ namespace SlimeJumping.Editor
                 "V3_Vertical is the control: rider weight makes no torque on a vertical stalk, so any sag there means something else is acting.\n" +
                 "V3_Long shares the same settings asset — it should feel consistent with the short stalks, not dead.\n" +
                 "\n" +
-                "DIAGNOSTIC: V3_Tilt50 carries BambooV3ChainDebug. Its on-screen panel names the FIRST broken link of\n" +
+                "DIAGNOSTIC: BambooV3ChainDebug is on the SLIME. Its on-screen panel names the FIRST broken link of\n" +
                 "  overlap a segment -> SurfaceProbe picks it -> slime Attached -> carrier on this stalk -> ApplyRiderInfluence ran -> bend.\n" +
-                "It also prints the approach speed next to the resulting peak bend, which is the number that decides whether\n" +
-                "'it does not bend enough' is a tuning problem or a broken link. F7 dumps the last ~90 FixedUpdates.\n" +
+                "It also shows the impulse the rider injects each step (kind: landing / coupled) and whether the rider is charging,\n" +
+                "so a coupled impulse during Charging is the 'jump kicks the stalk' smoking gun. F7 dumps the last ~90 FixedUpdates.\n" +
                 "\n" +
                 "Right-click the BambooPlatformV3 header → 'Rebuild Segments' after changing length / segmentCount / segmentRadius / colliderShape / visual tessellation.");
         }
@@ -148,6 +151,19 @@ namespace SlimeJumping.Editor
 
             bamboo.RebuildSegments();
             return go;
+        }
+
+        static void AttachChainDebugToSlime()
+        {
+            var slime = Object.FindFirstObjectByType<SlimeJumping.Controller.SlimeController>();
+            if (slime == null)
+            {
+                Debug.LogWarning("[BambooPlatformV3TestSetup] No SlimeController in the scene — chain diagnostic not attached. " +
+                                 "Add SlimeJumping/Debug/Bamboo V3 Chain Debug to the slime manually.");
+                return;
+            }
+            if (slime.GetComponent<SlimeJumping.Debugging.BambooV3ChainDebug>() == null)
+                Undo.AddComponent<SlimeJumping.Debugging.BambooV3ChainDebug>(slime.gameObject);
         }
 
         // Thin column from the floor up to the stalk's base, so the tilted stalk has open

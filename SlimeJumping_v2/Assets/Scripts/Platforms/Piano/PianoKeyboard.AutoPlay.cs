@@ -179,28 +179,57 @@ namespace SlimeJumping.Platforms.Piano
             int tonic = song.tonicMidi;
             ScaleType scale = song.scale;
 
-            if (tonic < 0 && EnsureScore(song) && autoPlayScore.key != null)
+            // The song's own opening loop (+ accompaniment figure), baked offline into its score
+            // JSON by tools/extract_preview.py. When usable it replaces the shared schemas, so the
+            // slime's landings play THIS piece; songs without it keep the authored-schema path below
+            // completely unchanged.
+            bool hasScore = EnsureScore(song);
+            ScorePreview preview = hasScore ? autoPlayScore.preview : null;
+            var previewProg = PreviewUsable(preview) ? BuildPreviewProgression(preview) : null;
+
+            if (previewProg != null)
             {
-                int pc = ((autoPlayScore.key.tonicPc % 12) + 12) % 12;
+                if (tonic < 0)
+                {
+                    // The preview steps are voiced in the piece's own key — minor pieces included.
+                    // The relative-major detour in the else-branch exists only because the shared
+                    // schemas are tonic-relative; a progression extracted from the piece is not.
+                    // Melody snap stays safe: the minor pentatonic on the piece's real tonic is the
+                    // same note set the old detour produced (G minor penta = B♭ major penta).
+                    tonic = preview.tonicMidi;
+                    scale = preview.minor ? ScaleType.Minor : ScaleType.Major;
+                }
+                h.SetProgressionOverride(previewProg);
+                h.SetTextureOverride(TextureUsable(preview.texture) ? preview.texture : null);
+            }
+            else
+            {
+                h.SetProgressionOverride(null);
+                h.SetTextureOverride(null);
 
-                // A MINOR piece is tuned to its RELATIVE MAJOR, not to its own tonic. The authored
-                // minor schemas (M1/M2) are built as the relative minor OF the tonic — ChordAmTonic
-                // sits at -15..0, which from C4 is A minor. So a G minor piece needs tonic B♭ (+3) for
-                // M1/M2 to land on G minor; feeding it G would put them on E minor, a third away from
-                // the recording. The major schemas then sit on the relative major, which is exactly the
-                // major/minor alternation those schemas were designed around.
-                if (autoPlayScore.key.mode == "minor") pc = (pc + 3) % 12;
+                if (tonic < 0 && hasScore && autoPlayScore.key != null)
+                {
+                    int pc = ((autoPlayScore.key.tonicPc % 12) + 12) % 12;
 
-                // Placed in [60, 71]: the authored voicings reach 19 semitones below the tonic and the
-                // low-interval-limit rule wants that bass at F2 (41) or above, so the tonic must not sit
-                // below C4 — an octave lower would muddy every progression.
-                tonic = 60 + pc;
+                    // A MINOR piece is tuned to its RELATIVE MAJOR, not to its own tonic. The authored
+                    // minor schemas (M1/M2) are built as the relative minor OF the tonic — ChordAmTonic
+                    // sits at -15..0, which from C4 is A minor. So a G minor piece needs tonic B♭ (+3) for
+                    // M1/M2 to land on G minor; feeding it G would put them on E minor, a third away from
+                    // the recording. The major schemas then sit on the relative major, which is exactly the
+                    // major/minor alternation those schemas were designed around.
+                    if (autoPlayScore.key.mode == "minor") pc = (pc + 3) % 12;
 
-                // Major, deliberately, even for a minor piece: the tonic is now the relative major, and
-                // a major pentatonic on it is the SAME note set as the minor pentatonic on the piece's
-                // own tonic (B♭ major penta = G minor penta). Forcing Minor here would snap the melody
-                // to B♭ minor instead, which is not in the recording's key at all.
-                scale = ScaleType.Major;
+                    // Placed in [60, 71]: the authored voicings reach 19 semitones below the tonic and the
+                    // low-interval-limit rule wants that bass at F2 (41) or above, so the tonic must not sit
+                    // below C4 — an octave lower would muddy every progression.
+                    tonic = 60 + pc;
+
+                    // Major, deliberately, even for a minor piece: the tonic is now the relative major, and
+                    // a major pentatonic on it is the SAME note set as the minor pentatonic on the piece's
+                    // own tonic (B♭ major penta = G minor penta). Forcing Minor here would snap the melody
+                    // to B♭ minor instead, which is not in the recording's key at all.
+                    scale = ScaleType.Major;
+                }
             }
 
             if (tonic >= 0) h.SetKeyOverride(tonic, scale);
@@ -213,7 +242,16 @@ namespace SlimeJumping.Platforms.Piano
             {
                 var o = song.ornaments;
                 Debug.Log($"[Piano] song {autoPlaySongIndex + 1}/{list.Count} '{song.label}' "
-                          + $"tonic={h.TonicMidi} {h.Scale} | orn:"
+                          + $"tonic={h.TonicMidi} {h.Scale} | "
+                          + (previewProg != null
+                              ? $"preview {previewProg.Count} chords"
+                                + (h.Texture != null
+                                    ? $" tex[spread {h.Texture.spreadSeconds * 1000f:F0}ms ring {h.Texture.releaseSeconds:F2}s"
+                                      + (h.Texture.bassReleaseSeconds > 0f ? $" drone {h.Texture.bassReleaseSeconds:F1}s" : "")
+                                      + "]"
+                                    : " (no texture)")
+                              : "schema")
+                          + " | orn:"
                           + (o.rolledChord ? " rolled" : "") + (o.voiceLeading ? " voiceLead" : "")
                           + (o.pedalPoint ? " pedalPoint" : "") + (o.alberti ? " alberti" : "")
                           + (o.chiptuneArp ? " chiptune" : "") + (o.appoggiatura ? " appogg" : "")
@@ -228,6 +266,47 @@ namespace SlimeJumping.Platforms.Piano
             prevChordScratch.Clear();
             prevLandingMidi = -1;
             lastAdvanceTime = Time.time;
+        }
+
+        /// Content-based validity for a song's preview block. Never judge by null alone: JsonUtility
+        /// can materialize a default ScorePreview instance when the JSON has no "preview" field at
+        /// all, so the shape of the data is the only trustworthy signal.
+        private static bool PreviewUsable(ScorePreview p)
+        {
+            return p != null && p.steps != null && p.steps.Length >= 2
+                   && p.tonicMidi >= 60 && p.tonicMidi <= 71;
+        }
+
+        /// Content-based validity for the measured texture block (same JsonUtility caveat as
+        /// PreviewUsable: a default instance has releaseSeconds 0, which no real song measures).
+        private static bool TextureUsable(ScoreTexture t) => t != null && t.releaseSeconds > 0f;
+
+        /// The JSON steps as runtime ChordSteps. Deliberately built with object initializers over
+        /// `new ChordStep()` — never deserialized straight into ChordStep — so leftNext/centerNext/
+        /// rightNext keep their -1 defaults and nextOptions stays empty. That data shape is what
+        /// makes HarmonyMath.NextIndex walk the song's loop linearly and wrap, with zone branching
+        /// and weighted dice naturally inert; no branching flags to manage.
+        /// The song's measured ring (texture.releaseSeconds) is baked into every step here — the
+        /// landing path already honors ChordStep.releaseSeconds, so chords ring as long as the
+        /// piece lets its own chords ring.
+        private static System.Collections.Generic.List<ChordStep> BuildPreviewProgression(ScorePreview p)
+        {
+            float ring = TextureUsable(p.texture) ? p.texture.releaseSeconds : 0f;   // 0 = defaultReleaseSeconds
+            var steps = new System.Collections.Generic.List<ChordStep>(p.steps.Length);
+            for (int i = 0; i < p.steps.Length; i++)
+            {
+                var s = p.steps[i];
+                if (s == null || s.offsetsFromTonic == null || s.offsetsFromTonic.Length == 0) continue;
+                steps.Add(new ChordStep
+                {
+                    label = s.label,
+                    offsetsFromTonic = s.offsetsFromTonic,
+                    releaseSeconds = ring,
+                    overrideSnapMode = s.chordTones,   // borrowed chords force chord-tone melody snap (S5 rule)
+                    snapMode = MelodySnapMode.ChordTones,
+                });
+            }
+            return steps.Count >= 2 ? steps : null;
         }
 
         // ── Playback ────────────────────────────────────────────────────────────────────────────────

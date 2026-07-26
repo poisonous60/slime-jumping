@@ -6,7 +6,114 @@
 
 ---
 
-## 1. 지금 상태 (내일 여기서 시작)
+## 0. 업데이트 2026-07-25 (미검증)
+
+유저 인게임 테스트 후 2건 수정. 둘 다 컴파일 통과, **인게임 미검증.**
+
+### (A) 플레이어 발사 반동 제거 — 요구 6번 재해석
+
+증상: 착지 후 가만히 두면 자동발사 잘 됨. 근데 평지처럼 **점프 버튼 누르면** 대나무 움직임이 이상해짐.
+
+원인: `HandleSlimeLaunch`(OnLaunch 구독 = 플레이어 차지 발사 시 Newton 3법칙 반동)가 플레이어가 조준한 발사속도의 반작용을 대나무에 대입 → 자연 스윙을 걷어참. 자동발사(`ForceAirborneWithVelocity`)는 OnLaunch 안 raise → 그 경로는 멀쩡했음(유저가 본 그대로).
+
+수정: **launch recoil 전체 제거.** 대나무는 착지 임펄스 + 무게 + 스프링 ODE로만 움직임. detach = 관성 커플링만 풀림, `I*omega` 유지 → 점프 누르든 말든 원래 반동. 딸린 기계(OnLaunch 구독/`recoil*` 스냅샷/`selfEjecting`/`EnsureLaunchSubscription`/OnEnable·OnDisable) 전부 정리. **이 접근(launch recoil)은 폐기 — 재도입 금지.**
+
+**(A2) launch recoil 제거로 부족 — 진짜 범인은 `ApplyRiderInfluence` else 분기 (coupled 임펄스). 07-25 2차 수정.**
+
+유저: 점프 눌렀을 때 대나무 영향받는 거 여전히 안 고쳐짐. 지시대로 계측 후 확정.
+
+계측: `BambooPlatformV3`에 임펄스 노출 getter 추가(`LastRiderImpulseDeg/Kind`, `LastRiderCharging`, `LastWeightTorque`). carrier(-200)가 motor(-100)보다 먼저 도는 실행순서 때문에 ComputeMotion 리셋은 carrier 값을 덮음 → `Time.fixedTime` 스탬프로 staleness 처리. `BambooV3ChainDebug`를 **슬라임 부착**으로 재작성(유저 지시) + stalk 동적해석 + coupled 임펄스/상태전이 로그. 테스트 셋업도 슬라임 부착으로.
+
+로그 확정: **coupled(kind 2) 임펄스가 charging=Y 프레임마다 대나무에 주입**(예 V3_Long `COUPLED 6.2°/s Charging=Y`, `-2.4`, `-3.3`...). else 분기 `Δω=(riderVel−prevRiderVel)·mass/ITotal`가 슬라임 per-frame velocity(carry 아티팩트 + 차징/조준 입력)를 스프링으로 되먹임 = 점프 입력이 대나무 움직임.
+
+수정: **else 분기 전체 제거.** 대나무 = 착지 임펄스(firstAttach) + 무게 + ODE만 → 라이더 velocity 무관 → 점프 누르든 말든 **동일한** 스윙. `previousRiderVel` 필드 제거. carry 이중계산도 같이 제거(라이더 carried velocity = 대나무 자신의 ω×arm이라 대나무가 자기를 미는 항이었음). **이 접근(coupled per-frame 임펄스)도 폐기 — 재도입 금지.**
+
+미검증(07-25). 검증법: 계측 남겨둠 — 재테스트 시 `kind 2`(coupled) 로그가 아예 안 떠야 정상. 남은 리스크: 무게 토크가 arm(위치) 의존이라 차징 중 슬라임 드리프트로 arm 변하면 2차 섭동 가능(작음). 그래도 이상하면 다음 용의자.
+
+**(A3) 진범 = 차지 버튼 누르는 순간의 같은-플랫폼 재-Attach. 07-25 정적 audit으로 확정.**
+
+(A2)의 freeze 분기가 안 먹은 이유: [SlimeController.Input.cs](../SlimeJumping_v2/Assets/Scripts/Controller/SlimeController.Input.cs) `HandleSurfaceChargeEntry`가 점프 버튼 누르는 프레임에 `ChangeState(Charging)` 직후 **같은 대나무로 `carrier.Attach(surfaceCollider)`를 다시 호출**. `PlatformCarrier.Attach`가 무조건 `RemoveRider()`(→`riderAttached=false`) 후 `ApplyRiderInfluence` 호출 → `firstAttach=true`로 위장 → freeze 분기(`!firstAttach` 조건) 우회 → **착지 임펄스 분기 재발화**. 이때 attached 슬라임 velocity≈0이고 대나무 표면속도는 큼 → 상대속도 임펄스 `(0−surfaceVel)·mass/I_stalk` = 스윙을 즉시 꺾는 브레이크 킥 + `peakBendSinceAttach`/`returningFromPeak` 리셋(던짐 게이트 이력 소거). 매 차지 press마다 재현 = "점프 누르면 대나무가 이상해진다"의 실체.
+
+수정(1줄, [PlatformCarrier.cs](../SlimeJumping_v2/Assets/Scripts/Platforms/PlatformCarrier.cs) `Attach`): `nextPlatform == currentPlatform`이면 early-return — 같은 플랫폼 재-Attach는 no-op. 다른 플랫폼 전이/최초 착지는 기존 그대로. audit 판정: 이전 3개 수정(recoil 제거·coupled 제거·freeze)은 전부 유지, 이 가드가 마지막 퍼즐.
+
+검증법: Play → 대나무 위에서 차지 press → 그 순간 `kind 1`(landing) 임펄스 로그가 안 떠야 하고, `Attached -> Charging` 전이에서 angVel이 연속(급브레이크 없음), peak 이력 유지로 자동 던짐도 정상 발화.
+
+**(A4) 약점프 재착지 버그 + 발사 보너스. 07-25 노브 5→7개.**
+
+증상(유저): 약하게 점프하면 되돌아오는 대나무가 슬라임보다 빨라서 쫓아와 잡음 → 즉시 재착지. 기존 launch clearance(`ReattachGuard`)는 슬라임이 분리되는 순간 조기 해제라, **쫓아오는 표면**에는 무력.
+
+수정 2건 (BambooV3Settings 노브 추가):
+1. `launchBoostScale` (기본 1.5, 0~3) — `VelocityTransferScale` override. 발사 시 상속되는 ω×arm에 배수. 스윙 셀수록 보너스 큼, 죽은 perch면 0.
+2. `relandLockoutTime` (기본 0.3s, 0~1) — `RemoveRider`에서 `slime.RegisterReattachGuard(segCol, t)`. **관통 금지(유저 지시)**: 처음 Passthrough(물리 무시)로 구현했다가 반려 — 어떤 경우에도 관통 없이 **밀어내야** 함. `IgnoreMode.TimedReattachGuard` 신설(IgnoredColliderList): probe만 풀 타이머로 스킵(분리 조기해제 없음) + **물리 ON** → 되돌아오는 줄기가 슬라임을 치면 물리로 밀어내고, 재부착만 차단. `RegisterSingle`에 ReattachGuard→TimedReattachGuard 업그레이드 추가(Launch가 먼저 등록한 clearance 엔트리가 분리해제를 유지하는 구멍 방지). SlimeController에 `RegisterReattachGuard` 공개 wrapper 추가.
+
+주의: `RemoveRider`는 모든 이탈에서 발화(발사/자동던짐/hazard/다른 플랫폼 전이) — 전부 0.3s 가드. 의도된 동작. **Passthrough 재도입 금지.**
+
+**(A5) 갇힘 루프 — 0속도 가짜 던짐. 07-25 로그 확정.**
+
+증상: 슬라임이 점프 못하고 대나무에 갇힘. 로그: `rider left ... slime speed 0.2` 반복 — 던짐인데 0.2 m/s.
+
+원인: `peakBendSinceAttach`가 **high-water mark**. 수직 줄기 옆면 부착의 정적 sag 평형(~34.8°) > 게이트(15°)라, 스윙이 평형으로 감쇠한 뒤에도 게이트 통과 상태 유지 → 평형 근처 ω 지터(±4°/s)의 반전+turnover가 던짐 발화 → `ω×arm ≈ 0.3 m/s`로 던짐 → 언로드된 줄기가 315°/s로 채찍 → 0.3s 락아웃 뒤 근처의 느린 슬라임을 잡음(impact 6.7, 임펄스 450) → 재휨 → 무한 루프. 차징 중에도 가짜 던짐이 `ForceAirborneWithVelocity`로 차지를 지움 = "점프 못함".
+
+수정: `MinEjectSpeed = 2f` (상수, 노브 아님) — `CheckSpringThrow`에서 `|ejectVel| < 2`면 던지지 않고 rearm(스윙 소진 처리). 정상 던짐은 ~6+ m/s라 영향 없음. 게이트가 high-water mark인 건 유지(착지 스윙 판정엔 필요), 현재 ω가 실제 운반 능력을 검증.
+
+**(A6) 약타 감도 노브. 07-25, 노브 7→8개.**
+
+유저: 느린 접근/아슬아슬한 접촉도 쉽게 휘고 부스트 받게. 수정: `landingImpulseGain` (기본 2, 0.5~4) — 착지 임펄스 `(v_rel × mass)`에 flat 배수. 커브/임계값 아님(V1 병 금지): **`maxTipSpeed` 클램프가 하드 히트를 천장으로 눌러주므로 flat 게인은 실질 약타 전용 감도**가 됨. 상대속도 형태 유지 = 표면 동속 착지는 여전히 임펄스 0(공짜 에너지 없음).
+
+**(A9) 착지 임펄스 0.1s 램프 주입. 07-25.**
+
+(A8) 압축만으론 부착 실패 미해결(유저 지적) — 진짜 원인은 임펄스가 **순간 Δω**라 착지 프레임에 표면이 0→수십 m/s로 점프, 아직 부착 중인 슬라임 밑에서 표면이 순간이동 → probe 이탈. 수정: 임펄스를 `LandingImpulseRampTime = 0.1s`(상수) 동안 일정 속도로 스프링에 주입(`rampOmegaRemainingDeg`/`rampOmegaRateDeg`, ComputeMotion에서 드레인). 총 주입량 동일, 시작만 부드러움 → 슬라임이 먼저 안착하고 줄기가 태운 채 휨. `ApplyContactImpulse` 메서드는 유일 호출처가 램프로 대체돼 제거.
+
+**(A8) 고속 임팩트 로그 압축. 07-25, 노브 9개.**
+
+증상(유저): 빠르게 날아와 붙으면 대나무가 아주 크게 출렁이고 슬라임이 제대로 안 붙음(채찍백이 부착 전에 털어냄). 지시: 속도 크면 반동 줄이기, 로그함수처럼.
+
+수정: `impactSoftCap` (기본 8 m/s, 0~30, 0=off) — 착지 상대속도에 `v_eff = cap·ln(1+v/cap)` 적용, **팁 보너스 게인보다 먼저**. 기울기 1@0이라 약타 무변화, 고속만 압축: 3→2.6, 10→6.5, 22→10.6, 40→14.4. 순서 = 압축(물리 완충) → heightT² 게인(스위트스팟 보상).
+
+**(A10) 발사 부스트 상한 — boost-falloff 게이트 이식. 07-26, 노브 9→11개.**
+
+유저: 이미 그만큼 높게 뛸 수 있으면(pre-bonus 속도가 이미 큼) 부스트를 안 주게. SpringyBranch/TautLine과 동일한 pre-bonus speed gate를 이식.
+
+수정: `BambooV3Settings`에 `boostFalloffStartSpeed`(기본 12)/`boostFalloffEndSpeed`(기본 18) 추가. `BambooPlatformV3.VelocityTransferScale` getter가 발사 순간 `slime.Velocity.magnitude`(= EnergyConversion + 하이퍼대시 상속 포함, carrier 기여 **제외**)를 읽어 `launchBoostScale × speedMul` 반환 — start 이하 풀 부스트, end 이상 0, 사이 선형 falloff (end ≤ start면 하드 컷오프). SpringyBranchPlatform.cs:102의 게이트와 같은 식. 슬라임 자신의 속도는 그대로 통과, 줄기의 carrier 상속분만 깎임.
+
+**(A7) 던짐 발화점 |ω| turnover → 리턴 절반 지점 + Charging 중 자동던짐 금지. 07-25.**
+
+증상 2건(유저): ① 대나무가 되돌아올 때 자동 발사가 잘 안 남 ② 차징 조준 방향이 안 먹음.
+
+로그 원인: ① turnover(평형 통과) = 표면 최고 속도 순간 = SurfaceProbe가 채찍 줄기를 놓치는 순간 → 던짐 전에 라이더가 임의 시점 자연 셰드(어중간한 속도로 이탈). ② turnover가 차징 중에도 발화 → `ForceAirborneWithVelocity`가 조준 발사를 ω×arm 방향으로 덮어씀.
+
+수정(`CheckSpringThrow`): ① 발화점 = **리턴 절반** — `|θ−θ_eq| ≤ 0.5·|θ_peak−θ_eq|`, θ_eq = weightTorque/stiffness(기울임 무게 평형 반영). ω² = ωₙ²(A²−x²)에서 x=A/2 → **세기 87% 유지**, 표면 아직 느려 probe 생존. `peakAngleSigned` 필드 추가. ② 상태 체크 **Attached 전용** — 차징 = 플레이어 소유, 스윙 속도는 발사 시 carrier 상속으로 전달. |ω| turnover 스테이지2는 폐기(prevAngularVel은 정점 감지에 계속 사용).
+
+**(A6b) 07-25 후속 — flat → 높이 가중.** 유저: 하부 착지에 위쪽이 흔들리는 게 어색, 정확한 위치(팁 근처) 착지에만 보너스. 게인 적용을 `lerp(1, landingImpulseGain, heightT²)` (heightT = |arm|/length)로 변경 — 밑동 = 물리 그대로(짧은 arm이라 원래 거의 안 휨), 팁 = 풀 보너스, 2차 곡선이라 상단 1/4가 스위트스팟. 새 노브 없음. V1의 contact-height shaping과 다름: V1은 moment arm이 이미 인코딩한 높이 위에 또 얹은 이중 보정이었고, 이건 **보너스 게인만** 높이 게이트(물리 성분은 arm 그대로).
+
+### (B) 아랫면 매달림 — surface tag stick-then-slide
+
+증상: 슬라임이 아랫면에 붙으면 **영원히 매달림.** 유저는 surface tag 탓으로 추측했으나 → 매달림 자체는 sticky 코어("sticks to all surfaces"), tag 아님. 기존 `slideGravityMultiplier=0`이 **모든 슬라이드**를 막아서 밑으로 미끄러져 떨어지지도 못한 것.
+
+유저 확정 모델: 착지 시 **stick으로 프리즈**(휨/발사 동안 위치 고정 = 원래 흘러내림-during-jump 문제의 진짜 해결책) → 이후 **슬라이드 재개** → 윗면=플랫폼 슬라이드, 아랫면=밑으로 미끄러져 떨어짐.
+
+`BambooV3_Surface.asset` 3개 값 변경 (코드 무수정):
+
+| 노브 | 이전 | 이후 | 이유 |
+|---|---|---|---|
+| `slideGravityMultiplier` | 0 | **1** | 슬라이드 복원 |
+| `slideResistanceMultiplier` | 4 | **1** | 마찰 8→2 m/s² < 중력접선 ~6 → 실제로 미끄러짐 (4는 슬라이드 완전 차단) |
+| `stickDurationMultiplier` | 1 | **1.4** | stick 창(~0.5·1.4=0.7s) ≥ 발사 창(~0.5s) 보장 → 하드히트 자동발사가 프리즈된 위치에서 나감 |
+
+`carrierFriction`=1 유지(필수). 근거: `stickSlopeThreshold=0.7`, Tilt50 윗면 surfaceUp≈cos50°≈0.64<0.7 → stick 발동. base stick=CalculateStickDuration(0.3~0.6s). Charging 중 `stickTimer>0`이면 velocity=0(프리즈).
+
+**남은 리스크 (반드시 테스트):**
+- 아랫면은 gravity-tangent가 **밑동 방향**(tip-up). 밑동까지 미끄러진 뒤 실제로 **떨어지는지**(segment 0 끝 이탈→airborne) vs 밑동에 **눌러앉는지**는 씬 밑동 지오메트리 의존. 안 떨어지면 → 아랫면 전용 detach 별도 추가 필요.
+- 윗면 소프트 perch가 50° 경사라 stick 만료 후 **미끄러져 내려감** = 물리적으로 정상이나, 플랫폼으로 너무 빨리 흘러내리면 `slideResistanceMultiplier` 상향.
+- stick 창 < 실제 발사 타이밍이면 프리즈 풀린 뒤 발사 = 위치 드리프트. 그러면 `stickDurationMultiplier` 더 상향.
+
+내일 첫 할 일: Play → 점프 버튼 눌러도 대나무 자연 스윙 유지되나(A), 아랫면 붙으면 미끄러져 떨어지나(B), 윗면 착지-휨 중 위치 고정되나.
+
+아래 §1~§9는 07-24 시점 기록(launch recoil 관련 §5·§6은 위 (A)로 폐기됨).
+
+---
+
+## 1. 지금 상태 (07-24 시점)
 
 ### 마지막 수정 — 미검증
 

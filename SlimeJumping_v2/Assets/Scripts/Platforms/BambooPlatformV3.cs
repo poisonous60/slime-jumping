@@ -22,12 +22,16 @@ namespace SlimeJumping.Platforms
     // stalk's swing energy because the deflection cap collapsed from 130 deg to 30 deg the
     // instant riderAttached went false.
     //
-    // V3 keeps ONE honest ODE and three real impulses:
+    // V3 keeps ONE honest ODE and two real impulses:
     //   weight   tau = r x (m*g)                 every frame the rider is on
     //   landing  dOmega = (r x m*v_impact) / I   the slime's momentum is absorbed
-    //   push-off dOmega = (r x -m*v_launch) / I  Newton's third law
     // No projections, no gain curves, no height shaping — the cross product already knows
     // the angle of incidence and the moment arm already knows the contact height.
+    //
+    // A player launch off the stalk deliberately applies NO reaction impulse. The throw is
+    // meant to look identical whether or not the player pressed jump, so pressing it must not
+    // kick the stalk off its natural swing. When the rider detaches its inertia simply stops
+    // being coupled and the stalk keeps its own I*omega.
     //
     // The one non-physical rule is adhesion: a sticky slime would never be thrown off a
     // spring, so the stalk breaks its grip when the surface acceleration at the contact
@@ -98,6 +102,24 @@ namespace SlimeJumping.Platforms
         // this only guards the adhesion test itself. Not a designer knob.
         const float PostEjectLockout = 0.15f;
 
+        // The landing impulse is fed into the spring over this window instead of in one
+        // frame. An instantaneous delta-omega snaps the surface from rest to full whip
+        // speed on the very frame the slime touches down — SurfaceProbe loses a surface
+        // that teleports out from under a rider that has not even finished attaching, so
+        // fast arrivals bounced off instead of sticking. Ramped, the stalk visibly starts
+        // to yield while the slime seats itself, then carries it into the bend. The total
+        // injected omega is unchanged. Not a designer knob.
+        const float LandingImpulseRampTime = 0.1f;
+
+        // A throw slower than this is not a throw. peakBendSinceAttach is a high-water
+        // mark, so once a landing swing has decayed to its (possibly weight-shifted)
+        // equilibrium, omega jitter around zero can still pass the peak gate and "throw"
+        // the slime at ~0.3 m/s — straight into the unloading whip-back, which catches it,
+        // re-bends, and re-throws forever, eating the player's charge each cycle. Genuine
+        // spring-back throws at the 15 deg gate run ~6 m/s and clear this easily.
+        // Not a designer knob.
+        const float MinEjectSpeed = 2f;
+
         Vector2 pivotWorldPos;
         float baseRotation;
         float currentAngle;      // deg, tangent angle at the tip of the arc
@@ -110,31 +132,35 @@ namespace SlimeJumping.Platforms
         // stopped bending outward); prevAngularVel is the previous frame's value, used to
         // spot the |omega| turnover that marks maximum tip speed.
         float peakBendSinceAttach;
+        float peakAngleSigned;   // signed angle at the peak — the throw's return-fraction reference
         bool returningFromPeak;
         float prevAngularVel;
+
+        // Landing-impulse ramp state (see LandingImpulseRampTime).
+        float rampOmegaRemainingDeg;
+        float rampOmegaRateDeg;
 
         bool riderAttached;
         float currentRiderMass;
         float currentRiderArmSqr;
         Vector2 lastRiderWorldPos;
-        Vector2 previousRiderVel;
-
-        // Departure snapshot, armed by RemoveRider and cashed in by HandleSlimeLaunch if
-        // SlimeController.OnLaunch fires in the SAME frame. recoilFrame = -1 means unarmed.
-        int recoilFrame = -1;
-        Vector2 recoilArm;
-        float recoilMass;
-        Vector2 recoilRiderVel;
-        float recoilOmegaRad;
 
         float ejectLockoutTimer;
-        // True only while WE are calling ForceAirborneWithVelocity. The RemoveRider that
-        // call triggers must not also apply the Newton-third-law recoil: an adhesion break
-        // hands the slime the surface velocity it was already moving at, it does not push.
-        bool selfEjecting;
+
+        // Diagnostic only (read-only view for BambooV3ChainDebug). Records what the most recent
+        // rider influence did to the spring: the angular impulse it injected, which branch, and
+        // whether the rider was charging. The carrier (order -200) calls ApplyRiderInfluence
+        // BEFORE this motor (order -100) ticks, so we cannot zero these in ComputeMotion without
+        // clobbering the same step's value — instead each write stamps lastImpulseFixedTime and
+        // the getters report zero on any step whose fixedTime does not match. Kind: 0 none,
+        // 1 landing (firstAttach), 2 coupled (per-frame momentum change).
+        float lastRiderImpulseDeg;
+        int lastRiderImpulseKind;
+        bool lastRiderChargingFlag;
+        float lastImpulseFixedTime = -1f;
+        float lastWeightTorque;
 
         SlimeController cachedSlime;
-        SlimeController launchSubscribedSlime;
 
         Transform[] segmentTransforms;
         MeshRenderer visualRenderer;
@@ -191,6 +217,17 @@ namespace SlimeJumping.Platforms
         /// given impact impulse actually bends it.</summary>
         public float StalkInertiaDebug => rb != null ? StalkInertia() : 0f;
 
+        /// <summary>Angular impulse (deg/s of omega) the most recent rider influence injected
+        /// this fixed step. 0 on steps with no influence. This is the signal for "does pressing
+        /// jump kick the stalk" — a non-zero value while the rider is charging is the smoking gun.</summary>
+        public float LastRiderImpulseDeg => lastImpulseFixedTime == Time.fixedTime ? lastRiderImpulseDeg : 0f;
+        /// <summary>Which branch produced LastRiderImpulseDeg: 0 none, 1 landing (firstAttach), 2 coupled (per-frame momentum change).</summary>
+        public int LastRiderImpulseKind => lastImpulseFixedTime == Time.fixedTime ? lastRiderImpulseKind : 0;
+        /// <summary>isCharging flag the carrier passed on the most recent rider influence this step.</summary>
+        public bool LastRiderCharging => lastImpulseFixedTime == Time.fixedTime && lastRiderChargingFlag;
+        /// <summary>Rider-weight torque applied on the previous fixed step (constant-ish; not the jump kick).</summary>
+        public float LastWeightTorque => lastWeightTorque;
+
         /// <summary>Rest axis of the stalk in world space (root local +Y). The root
         /// rigidbody holds the authored tilt and never rotates at runtime — bend lives in
         /// the child segments — so this is the stalk's "vertical" whatever Z rotation the
@@ -208,11 +245,30 @@ namespace SlimeJumping.Platforms
         {
             base.Awake();
             EnsureSettings();
+            EnsureSurfaceTag();
             pivotWorldPos = rb.position;
             baseRotation = rb.rotation;
             currentAngle = 0f;
             angularVel = 0f;
             CacheChildren();
+        }
+
+        /// <summary>
+        /// The stalk's SurfaceMaterial must be visible to the LANDING decision, not just to
+        /// the ride: SlimeController resolves the ceiling-attach arc from a SurfaceTag on
+        /// the collider's parents at the moment of touchdown, BEFORE the carrier attaches
+        /// and pushes OverrideSurfaceMaterial. Without the tag, the underside of a tilted
+        /// stalk reads as an ordinary ceiling (normal > ~101 deg from up) — the slime's
+        /// velocity is cancelled and it falls off "like hitting a wall", and since it never
+        /// attaches, NO impulse ever reaches the spring. BambooV3_Surface overrides the
+        /// ceiling arc to 180 deg so a hit from below attaches, bends, and throws.
+        /// </summary>
+        void EnsureSurfaceTag()
+        {
+            if (bambooSurfaceMaterial == null) return;
+            var tag = GetComponent<SurfaceTag>();
+            if (tag == null) tag = gameObject.AddComponent<SurfaceTag>();
+            if (tag.material == null) tag.material = bambooSurfaceMaterial;
         }
 
         void EnsureSettings()
@@ -243,40 +299,6 @@ namespace SlimeJumping.Platforms
             return cachedSlime;
         }
 
-        /// <summary>
-        /// Subscribes to OnLaunch the first time a rider actually shows up, rather than in
-        /// OnEnable: a stalk that never carries anyone never needs the event, and this way
-        /// the slime is guaranteed to exist by the time we look for it (no scene-load
-        /// ordering assumption). Same pattern ThinIcePlatformV2 uses for the launch cue.
-        /// </summary>
-        void EnsureLaunchSubscription()
-        {
-            if (launchSubscribedSlime != null) return;
-
-            var slime = ResolveSlime();
-            if (slime == null) return;
-
-            slime.OnLaunch += HandleSlimeLaunch;
-            launchSubscribedSlime = slime;
-        }
-
-        void OnEnable()
-        {
-            // riderAttached survives a disable, so restore the subscription right away
-            // instead of waiting for the next carrier tick to call EnsureLaunchSubscription.
-            if (riderAttached) EnsureLaunchSubscription();
-        }
-
-        void OnDisable()
-        {
-            if (launchSubscribedSlime != null)
-            {
-                launchSubscribedSlime.OnLaunch -= HandleSlimeLaunch;
-                launchSubscribedSlime = null;
-            }
-            recoilFrame = -1;
-        }
-
         // --- Carrier contract -------------------------------------------------------
 
         // Pivot is fixed; all motion is the child segments bending, so the base rigidbody
@@ -284,10 +306,30 @@ namespace SlimeJumping.Platforms
         public override Vector2 Velocity { get => Vector2.zero; protected set { } }
         public override float AngularVelocity { get => angularVel; protected set { } }
 
-        // Unscaled: a launch inherits exactly the surface velocity at the contact point.
-        // The boost ceiling is therefore maxTipSpeed and nothing else — no transfer scale,
-        // no falloff gate, no per-height fraction. PlatformMotor's base returns 1f, so no
-        // override is needed here; this comment is the record that the omission is intentional.
+        // Launch boost knob. PlatformCarrier.GetLaunchVelocity multiplies the inherited
+        // surface velocity (omega x arm) by this at the launch moment, so the bonus scales
+        // with how hard the stalk is actually swinging — a dead perch gives nothing extra,
+        // a loaded whip gives launchBoostScale times its tip velocity. Added because a weak
+        // jump off a swinging stalk could be outrun and recaught by the whip-back.
+        //
+        // Mirrors SpringyBranchPlatform / TautLine's boost-falloff gate: queried at the
+        // launch moment, when slime.Velocity already contains aim power x charge ratio +
+        // hyperdash inheritance but NOT the carrier contribution being scaled here. The
+        // falloff multiplier deletes the stalk's tip-speed transfer when the slime is
+        // already fast (e.g. big EnergyConversion of a high fall) so the stalk can't
+        // stack extra height on top of an already-converted launch.
+        public override float VelocityTransferScale
+        {
+            get
+            {
+                var slime = ResolveSlime();
+                float preBonusSpeed = slime != null ? slime.Velocity.magnitude : 0f;
+                float speedMul = settings.boostFalloffEndSpeed > settings.boostFalloffStartSpeed
+                    ? 1f - Mathf.Clamp01(Mathf.InverseLerp(settings.boostFalloffStartSpeed, settings.boostFalloffEndSpeed, preBonusSpeed))
+                    : (preBonusSpeed >= settings.boostFalloffStartSpeed ? 0f : 1f);
+                return settings.launchBoostScale * speedMul;
+            }
+        }
 
         public override Vector2 GetRiderCarryDelta(Vector2 riderWorldPos, float dt)
         {
@@ -316,26 +358,11 @@ namespace SlimeJumping.Platforms
             return (stiffness, damping, ITotal);
         }
 
-        /// <summary>
-        /// Applies a linear impulse delivered at world offset <paramref name="arm"/> from the
-        /// pivot. dOmega = (arm x J) / I — the whole of V3's "how hard does this bend the
-        /// stalk" logic. The cross product handles the angle of incidence (a hit running
-        /// along the stalk genuinely should barely bend it, a broadside hit should bend it a
-        /// lot) and |arm| handles the contact height, so neither needs a separate knob.
-        ///
-        /// <paramref name="inertia"/> is explicit because it differs by case: while the rider
-        /// stays coupled to the stalk the pair rotate together (rider inertia included), but
-        /// an impulse that separates them leaves the stalk moving alone (stalk inertia only).
-        /// </summary>
-        void ApplyContactImpulse(Vector2 arm, Vector2 impulse, float inertia)
-        {
-            if (inertia <= 1e-6f) return;
-
-            float deltaOmegaRad = (arm.x * impulse.y - arm.y * impulse.x) / inertia;
-            angularVel += deltaOmegaRad * Mathf.Rad2Deg;
-            ClampAngularVel();
-        }
-
+        // dOmega = (arm x J) / I is the whole of V3's "how hard does this bend the stalk"
+        // logic — the cross product handles the angle of incidence and |arm| the contact
+        // height, so neither needs a knob. Computed inline in the firstAttach branch of
+        // ApplyRiderInfluence (the only impulse source) and fed to the spring via the
+        // landing ramp rather than as an instantaneous kick.
         void ClampAngularVel()
         {
             float maxAngularVelDeg = (settings.maxTipSpeed / Mathf.Max(bambooLength, 1e-4f)) * Mathf.Rad2Deg;
@@ -345,19 +372,47 @@ namespace SlimeJumping.Platforms
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity, bool isCharging)
         {
             Vector2 arm = riderWorldPos - pivotWorldPos;
+
+            bool firstAttach = !riderAttached;
+            riderAttached = true;
+            lastRiderChargingFlag = isCharging;
+            lastImpulseFixedTime = Time.fixedTime;
+            lastRiderImpulseDeg = 0f;   // overwritten by the firstAttach landing branch only
+            lastRiderImpulseKind = 0;   // stays 0 unless the landing impulse fires below
+
+            // Charging must not move the stalk. Charging is a slime-internal action — aiming,
+            // drifting off the surface, expanding the charge radius — and none of it is a force
+            // on the bamboo. Two things leaked the charge into the spring even after the per-frame
+            // impulse was removed:
+            //   * refreshing currentRiderArmSqr from the drifting slime wobbled ITotal in
+            //     ComputeSpringCoeffs, and a moment of inertia that changes mid-swing
+            //     PARAMETRICALLY PUMPS the oscillation — the diagnostic showed peak bend GROWING
+            //     across a charge with ZERO impulse (angVel 77 -> -29, peak 3.7 -> 6.4);
+            //   * simply dropping the rider weight during the charge would release the static sag
+            //     and lurch the stalk the instant the player pressed jump.
+            // So while an already-attached slime charges, freeze the coupling at its pre-charge
+            // value and re-apply the SAME weight torque from the frozen arm. The stalk then runs
+            // its free damped swing on the inertia and sag it had when charging began — identical
+            // to the slime just sitting on it. Landing while already charging (firstAttach &&
+            // isCharging) still takes its impact below; that is the launch/impact the stalk IS
+            // meant to feel.
+            if (!firstAttach && isCharging)
+            {
+                Vector2 frozenArm = lastRiderWorldPos - pivotWorldPos;
+                Vector2 frozenWeight = Physics2D.gravity * currentRiderMass;
+                pendingRiderTorque += frozenArm.x * frozenWeight.y - frozenArm.y * frozenWeight.x;
+                return;
+            }
+
             currentRiderMass = mass;
             currentRiderArmSqr = arm.sqrMagnitude;
             lastRiderWorldPos = riderWorldPos;
 
-            bool firstAttach = !riderAttached;
-            riderAttached = true;
-            EnsureLaunchSubscription();
-
             if (firstAttach)
             {
-                // Landing impulse. RELATIVE velocity against STALK inertia — deliberately the
-                // exact same form as the push-off recoil in HandleSlimeLaunch, so arriving at
-                // a given speed bends the stalk as hard as leaving at that speed does.
+                lastRiderImpulseKind = 1;
+                // Landing impulse. RELATIVE velocity against STALK inertia, so arriving at a
+                // given speed bends the stalk as hard as the spring later throws at that speed.
                 //
                 // The first version conserved angular momentum into the combined inertia,
                 // w' = (I_stalk*w + arm x m*v) / (I_stalk + m*arm^2). That is the textbook
@@ -379,7 +434,40 @@ namespace SlimeJumping.Platforms
                 // velocity (SlimeController.Airborne.cs), so riderVelocity here is the real
                 // impact velocity.
                 Vector2 surfaceVel = new Vector2(-arm.y, arm.x) * (angularVel * Mathf.Deg2Rad);
-                ApplyContactImpulse(arm, (riderVelocity - surfaceVel) * mass, StalkInertia());
+                // landingImpulseGain is HEIGHT-WEIGHTED: quadratic in the contact height
+                // fraction, so a base landing stays purely physical (gain 1 — and with a
+                // short arm that is already almost nothing, which keeps the tip from
+                // waving when the slime touches down low) while a landing near the tip
+                // gets the full bonus. Rewards hitting the sweet spot rather than any
+                // contact anywhere. The maxTipSpeed clamp still compresses hard hits, and
+                // matching the surface still injects exactly zero (gain times zero).
+                float heightT = Mathf.Clamp01(arm.magnitude / bambooLength);
+                float landingGain = Mathf.Lerp(1f, settings.landingImpulseGain, heightT * heightT);
+
+                // Logarithmic soft cap on the impact speed, BEFORE the tip bonus. A fast
+                // dive used to slam the stalk into its deflection cap and the whip-back
+                // shook the slime off before it could attach. ln(1+x) has slope 1 at zero,
+                // so gentle landings pass through unchanged; only the tail is compressed.
+                Vector2 relVel = riderVelocity - surfaceVel;
+                float relSpeed = relVel.magnitude;
+                if (settings.impactSoftCap > 0f && relSpeed > 1e-4f)
+                {
+                    float compressed = settings.impactSoftCap * Mathf.Log(1f + relSpeed / settings.impactSoftCap);
+                    relVel *= compressed / relSpeed;
+                }
+
+                // Armed as a RAMP, not applied instantly — see LandingImpulseRampTime.
+                // The surface must not teleport out from under a slime that is still
+                // in the middle of attaching.
+                Vector2 impulse = relVel * (mass * landingGain);
+                float inertia = StalkInertia();
+                if (inertia > 1e-6f)
+                {
+                    float dOmegaDeg = (arm.x * impulse.y - arm.y * impulse.x) / inertia * Mathf.Rad2Deg;
+                    lastRiderImpulseDeg = dOmegaDeg;   // diagnostic: total armed this landing
+                    rampOmegaRemainingDeg += dOmegaDeg;
+                    rampOmegaRateDeg = rampOmegaRemainingDeg / LandingImpulseRampTime;
+                }
 
                 // Fresh swing: this landing's bend is what the throw gate measures, not
                 // whatever the stalk was already doing before the slime arrived.
@@ -387,18 +475,13 @@ namespace SlimeJumping.Platforms
                 returningFromPeak = false;
                 prevAngularVel = angularVel;
             }
-            else
-            {
-                // Already coupled: only the rider's frame-to-frame momentum change is an
-                // impulse, and the pair rotate together, so the combined inertia responds.
-                var (_, _, ITotal) = ComputeSpringCoeffs();
-                ApplyContactImpulse(arm, (riderVelocity - previousRiderVel) * mass, ITotal);
-            }
-
-            // Baseline from zero after a first attach: the slime's velocity is about to be
-            // zeroed, and measuring that as a phantom -v next tick would cancel the landing
-            // impulse we just applied.
-            previousRiderVel = firstAttach ? Vector2.zero : riderVelocity;
+            // A non-charging attached ride (perch / slide) injects NO per-frame impulse either —
+            // the landing impulse is the only momentum the rider ever hands the stalk. What used
+            // to be here, dOmega = (riderVel - prevRiderVel) * mass / ITotal, fed the slime's
+            // frame-to-frame velocity back into the spring, but that velocity is mostly the stalk
+            // CARRYING the rider (its own omega x arm, so the stalk pushing itself) plus input —
+            // the diagnostic caught it as coupled (kind 2) impulses on every ride. Only weight
+            // and the spring ODE act while the rider sits here.
 
             // Rider weight. Zero on a vertical stalk (arm.x = 0), a real static sag on a
             // tilted one — which is exactly the "it droops a little when I stand on it"
@@ -409,59 +492,45 @@ namespace SlimeJumping.Platforms
 
         public override void RemoveRider()
         {
-            // No impulse is applied here, deliberately.
+            // No impulse on detach, by design. However the rider leaves — player launch,
+            // automatic throw, slide onto a neighbour, hazard, teleport — the stalk keeps its
+            // own I*omega: its swing is unchanged the instant the rider's inertia stops being
+            // coupled.
             //
-            // An attached slime's `velocity` field does NOT include the surface velocity the
-            // carrier is moving it at — carry is positional (PlatformCarrier.ApplyPositionCarry
-            // / GetRiderCarryDelta), and the tangent slide is what lands in `velocity`
-            // (SlimeController.Attached.cs). Momentum bookkeeping taken at detach time is
-            // therefore lossy, and worse, it cannot tell a player launch apart from an
-            // ordinary decouple: sliding onto a neighbouring surface, a hazard hit (which
-            // detaches BEFORE assigning knockback), a teleport. Guessing from the velocity
-            // magnitude gets it wrong in both directions — it either bleeds most of the swing
-            // on every launch or feeds the swing on every slide-off, which is free energy.
-            //
-            // So we only snapshot here, and let SlimeController.OnLaunch decide. That event is
-            // raised only by the player's charge launch (SlimeController.Launch.cs) and never
-            // by ForceAirborneWithVelocity, so an ordinary decouple simply never fires it and
-            // the stalk correctly keeps its omega: when the rider's inertia stops being
-            // coupled, the stalk's own I*omega is unchanged.
-            if (!selfEjecting && riderAttached && currentRiderMass > 0f)
-            {
-                recoilFrame = Time.frameCount;
-                recoilArm = lastRiderWorldPos - pivotWorldPos;
-                recoilMass = currentRiderMass;
-                recoilRiderVel = previousRiderVel;
-                recoilOmegaRad = angularVel * Mathf.Deg2Rad;
-            }
-
+            // A player launch used to add a Newton-third-law recoil here (snapshot at detach,
+            // cashed in by SlimeController.OnLaunch). It was removed: the reaction to a
+            // player-aimed jump kicked the stalk off its natural swing, and the throw is meant
+            // to look identical whether or not the player pressed jump.
             riderAttached = false;
+
+            RegisterRelandLockout();
         }
 
         /// <summary>
-        /// Newton's third law for a player launch off this stalk. Raised from Launch() after
-        /// carrier.Detach(), in the same frame RemoveRider armed the snapshot — the frame
-        /// check is what keeps a later launch off some other platform from cashing in a stale
-        /// one.
+        /// After the rider leaves, guard this stalk's colliders for relandLockoutTime:
+        /// SurfaceProbe skips them for the FULL duration (timer-only, no separation
+        /// early-out) but physics stays ON — if the whip-back catches the slime it shoves
+        /// it away instead of re-attaching it. Never pass-through: the slime must always
+        /// be pushed out, not tunnel through the stalk. The stock launch clearance is not
+        /// enough here because it releases as soon as the slime separates, and a springing
+        /// stalk can MOVE FASTER than a weak jump and chase the slime down after that.
         /// </summary>
-        void HandleSlimeLaunch(Vector2 launchPos, Vector2 launchVel, bool wasHop)
+        void RegisterRelandLockout()
         {
-            if (Time.frameCount != recoilFrame) return;
-            recoilFrame = -1;
-            if (recoilMass <= 0f) return;
+            if (backgroundOnly) return;
+            if (settings.relandLockoutTime <= 0f) return;
 
-            // The rider's TRUE pre-launch velocity is its tangent slide plus the surface
-            // velocity it was being carried at. Only the difference is the player's push:
-            // Launch hands the omega x arm term back as carrier inheritance, and charging the
-            // stalk for momentum that was already its own would take a large bite out of the
-            // swing on every launch (about 75% on a 5 m stalk) — the same "launching kills
-            // the recoil" failure V3 exists to remove, just arriving by another route.
-            Vector2 riderVelBefore = recoilRiderVel + new Vector2(-recoilArm.y, recoilArm.x) * recoilOmegaRad;
-            Vector2 impulse = -(launchVel - riderVelBefore) * recoilMass;
-            // Stalk inertia only: this impulse is what SEPARATES the two, so the stalk is
-            // moving alone the instant after. Using the combined inertia would understate the
-            // recoil by I_stalk / I_total.
-            ApplyContactImpulse(recoilArm, impulse, StalkInertia());
+            var slime = ResolveSlime();
+            if (slime == null) return;
+
+            if (segmentTransforms == null || segmentTransforms.Length != segmentCount) CacheChildren();
+            for (int i = 0; i < segmentCount; i++)
+            {
+                var seg = segmentTransforms[i];
+                if (seg == null) continue;
+                var col = seg.GetComponent<Collider2D>();
+                if (col != null) slime.RegisterReattachGuard(col, settings.relandLockoutTime);
+            }
         }
 
         // --- ODE --------------------------------------------------------------------
@@ -469,6 +538,18 @@ namespace SlimeJumping.Platforms
         protected override (Vector2, float) ComputeMotion(float dt)
         {
             if (ejectLockoutTimer > 0f) ejectLockoutTimer -= dt;
+
+            // Drain the landing-impulse ramp: the armed delta-omega enters the spring at a
+            // constant rate over LandingImpulseRampTime, so the surface accelerates under
+            // the freshly-landed slime instead of teleporting away from it.
+            if (rampOmegaRemainingDeg != 0f)
+            {
+                float step = rampOmegaRateDeg * dt;
+                if (Mathf.Abs(step) >= Mathf.Abs(rampOmegaRemainingDeg)) step = rampOmegaRemainingDeg;
+                angularVel += step;
+                rampOmegaRemainingDeg -= step;
+                ClampAngularVel();
+            }
 
             var (stiffness, damping, ITotal) = ComputeSpringCoeffs();
 
@@ -492,7 +573,11 @@ namespace SlimeJumping.Platforms
             // Swing bookkeeping for the throw detector. Tracked here rather than in the
             // detector so it stays correct on frames with no rider.
             float absAngle = Mathf.Abs(currentAngle);
-            if (absAngle > peakBendSinceAttach) peakBendSinceAttach = absAngle;
+            if (absAngle > peakBendSinceAttach)
+            {
+                peakBendSinceAttach = absAngle;
+                peakAngleSigned = currentAngle;
+            }
             // Stage 1 of the throw: the tip has stopped bending outward and started coming
             // back. Angular velocity reversing sign IS the peak of the bend.
             if (!returningFromPeak && angularVel * prevAngularVel < 0f) returningFromPeak = true;
@@ -509,6 +594,7 @@ namespace SlimeJumping.Platforms
                 if (angularVel < 0f) angularVel = 0f;
             }
 
+            lastWeightTorque = pendingRiderTorque;   // diagnostic snapshot before reset
             pendingRiderTorque = 0f;
 
             // Pivot and root rotation are both fixed — the authored tilt lives in
@@ -533,11 +619,21 @@ namespace SlimeJumping.Platforms
         /// Two stages, matching what a trampoline actually does:
         ///   1. the stalk bends out and reaches its peak — detected as angular velocity
         ///      reversing sign;
-        ///   2. it springs back and the tip reaches MAXIMUM SPEED — detected as |omega|
-        ///      turning over, which is the instant it passes its loaded equilibrium.
-        /// The throw fires at (2), and the slime leaves with the surface velocity it is
-        /// already being carried at, omega x arm. That instant is by construction the
-        /// largest throw the stalk can give.
+        ///   2. it springs back — the throw fires at the HALF-RETURN point, when the bend
+        ///      has closed half the distance from the peak back to the loaded equilibrium.
+        /// The slime leaves with the surface velocity it is already being carried at,
+        /// omega x arm.
+        ///
+        /// Half-return, not the |omega| turnover (the previous design): the turnover is the
+        /// equilibrium pass, which is when the tip moves FASTEST — and that is precisely
+        /// when SurfaceProbe is most likely to lose the whipping stalk and shed the rider
+        /// before the throw can fire. The logs showed riders leaving mid-return at whatever
+        /// speed the shed happened to give them. At half-return the swing already carries
+        /// ~87% of its maximum angular velocity (omega^2 = omega_n^2 (A^2 - x^2), x = A/2),
+        /// so the throw keeps nearly all its strength but fires while the surface is still
+        /// slow enough for the probe to hold on. The equilibrium is computed from the
+        /// current rider weight torque over the spring stiffness, so a tilted stalk's
+        /// weight-shifted center is handled without a zero-crossing assumption.
         ///
         /// Gate: the peak bend reached in (1) must exceed ejectBendDeg. A hard hit bends far
         /// and throws; a soft landing never gets there and the stalk stays a platform. The
@@ -550,9 +646,11 @@ namespace SlimeJumping.Platforms
         /// the threshold it fires on the landing frame before anything visibly bends, under it
         /// it never fires. There is no middle. Detecting the peak explicitly fixes both ends.
         ///
-        /// Stage 2 uses the |omega| turnover rather than a zero-crossing of the angle because
-        /// a tilted stalk carrying a rider oscillates about a weight-shifted equilibrium, not
-        /// about zero — a small swing might never cross zero at all.
+        /// Attached ONLY — never while Charging. A charging player owns the exit: an
+        /// auto-throw mid-charge would ForceAirborne over the aimed launch and replace its
+        /// direction with omega x arm, which played as "I can't control where I launch".
+        /// The stalk keeps swinging under the charging slime and hands its surface velocity
+        /// to the player's own launch via carrier inheritance instead.
         ///
         /// Runs at PlatformMotor's execution order (-100), before SlimeController's own
         /// FixedUpdate (0), so the slime spends this frame already Airborne with the throw
@@ -566,10 +664,6 @@ namespace SlimeJumping.Platforms
             if (settings.ejectBendDeg <= 0f) return;
             if (!returningFromPeak) return;
 
-            // Stage 2: |omega| turned over, i.e. the tip just passed its fastest point.
-            if (Mathf.Abs(angularVel) >= Mathf.Abs(prevAngularVel)) return;
-            if (Mathf.Abs(prevAngularVel) < 1e-4f) return;
-
             // Gate on how far it actually bent. Below the threshold this swing is spent, so
             // rearm and let the stalk keep oscillating as an ordinary platform.
             if (peakBendSinceAttach < settings.ejectBendDeg)
@@ -579,40 +673,50 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
+            // Half-return fire point (see summary). Equilibrium from the rider-on spring:
+            // theta_eq = weight torque / stiffness.
+            var (stiffness, _, _) = ComputeSpringCoeffs();
+            float eqDeg = stiffness > 1e-4f ? (lastWeightTorque / stiffness) * Mathf.Rad2Deg : 0f;
+            float swingRange = Mathf.Abs(peakAngleSigned - eqDeg);
+            if (swingRange < 1e-3f) return;
+            if (Mathf.Abs(currentAngle - eqDeg) > swingRange * 0.5f) return;
+
             Vector2 arm = lastRiderWorldPos - pivotWorldPos;
             float armLen = arm.magnitude;
             if (armLen < 1e-3f) return;
 
             var slime = ResolveSlime();
             if (slime == null) return;
-            if (slime.CurrentState != SlimeController.SlimeState.Attached
-                && slime.CurrentState != SlimeController.SlimeState.Charging) return;
+            if (slime.CurrentState != SlimeController.SlimeState.Attached) return;
+            // The throw targets the slime, so it must actually be riding THIS stalk —
+            // rider state alone can be held by a non-slime rider (fallen-pole coupling).
+            var slimeSurf = slime.SurfaceCollider;
+            if (slimeSurf == null || !slimeSurf.transform.IsChildOf(transform)) return;
 
             float omega = angularVel * Mathf.Deg2Rad;
             Vector2 ejectVel = new Vector2(-arm.y, arm.x) * omega;
+
+            // Spent swing: the peak gate passed on the high-water mark, but the CURRENT
+            // angular velocity cannot actually carry the slime away. Rearm and stay a
+            // platform — see MinEjectSpeed. Without this the stalk "throws" at ~0 m/s,
+            // whips back, catches the slime, and loops forever (also aborting any charge
+            // the player had started, which reads as "I can't jump off this thing").
+            if (ejectVel.magnitude < MinEjectSpeed)
+            {
+                returningFromPeak = false;
+                peakBendSinceAttach = 0f;
+                return;
+            }
 
             returningFromPeak = false;
             peakBendSinceAttach = 0f;
 
             ejectLockoutTimer = PostEjectLockout;
-            selfEjecting = true;
-            try
-            {
-                // Clears the carrier (which calls back into RemoveRider), registers the
-                // launch-clearance collider ignore so the slime does not re-stick to the
-                // stalk it is leaving, and flips the state machine to Airborne. Same public
-                // entry point JumpPad / HammerPlatform / JumpBall use.
-                //
-                // finally, not a plain reset: ForceAirborneWithVelocity fans out to
-                // IPlatformEffect.OnSlimeDetach listeners, so a throw anywhere in that tree
-                // would otherwise leave selfEjecting stuck true and silently kill every
-                // future launch recoil on this stalk.
-                slime.ForceAirborneWithVelocity(ejectVel);
-            }
-            finally
-            {
-                selfEjecting = false;
-            }
+            // Clears the carrier (which calls back into RemoveRider), registers the
+            // launch-clearance collider ignore so the slime does not re-stick to the stalk it
+            // is leaving, and flips the state machine to Airborne. Same public entry point
+            // JumpPad / HammerPlatform / JumpBall use.
+            slime.ForceAirborneWithVelocity(ejectVel);
         }
 
         // --- Centerline (must match BambooBend.shader exactly) -----------------------
@@ -841,6 +945,7 @@ namespace SlimeJumping.Platforms
         public void RebuildSegments()
         {
             EnsureSettings();
+            EnsureSurfaceTag();
             EnsureRigidbody();
             DestroyExistingChildren();
             BuildColliderSegments();

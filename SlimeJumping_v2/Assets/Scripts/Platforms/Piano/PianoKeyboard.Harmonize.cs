@@ -59,7 +59,7 @@ namespace SlimeJumping.Platforms.Piano
             // pin the piano to schema 1 forever.
             if (config != null && harmonizePoolBuilt && config.harmonize.enabled
                 && Time.time - lastAdvanceTime > config.harmonize.resetIdleSeconds)
-                harmonizeIndex = Mathf.Clamp(harmonizeLoopStart, 0, Mathf.Max(0, config.harmonize.progression.Count - 1));
+                harmonizeIndex = Mathf.Clamp(harmonizeLoopStart, 0, Mathf.Max(0, config.harmonize.Progression.Count - 1));
         }
 
         private void HarmonizeDisable()
@@ -115,10 +115,11 @@ namespace SlimeJumping.Platforms.Piano
 
         private void OnHarmonizePress(HarmonizeSettings h, float impact)
         {
-            if (harmonizePool == null || h.progression == null || h.progression.Count == 0) return;
+            var prog = h.Progression;   // the song's own loop while one is in rotation
+            if (harmonizePool == null || prog == null || prog.Count == 0) return;
 
-            harmonizeIndex = Mathf.Clamp(harmonizeIndex, 0, h.progression.Count - 1);
-            ChordStep step = h.progression[harmonizeIndex];
+            harmonizeIndex = Mathf.Clamp(harmonizeIndex, 0, prog.Count - 1);
+            ChordStep step = prog[harmonizeIndex];
 
             float vel = config.keys.NormalizedImpact(impact);
             float baseVol = Mathf.Clamp01(h.velocityToVolume.Evaluate(vel)) * h.masterVolume;
@@ -210,7 +211,7 @@ namespace SlimeJumping.Platforms.Piano
             LandingZone zone = h.branchingEnabled ? HarmonyMath.Zone(NormalizedLandingX(), h) : LandingZone.Center;
             float roll = h.randomBranching ? Random.value : -1f;   // < 0 disables the weighted path
             bool wasLoopEnd = step.nextOptions != null && step.nextOptions.Length > 0;
-            harmonizeIndex = HarmonyMath.NextIndex(step, zone, harmonizeIndex, h.progression.Count, roll);
+            harmonizeIndex = HarmonyMath.NextIndex(step, zone, harmonizeIndex, prog.Count, roll);
             if (wasLoopEnd) harmonizeLoopStart = harmonizeIndex;   // a loop end always lands on a schema start
             lastAdvanceTime = Time.time;
         }
@@ -320,6 +321,7 @@ namespace SlimeJumping.Platforms.Piano
             susIndex = -1;
             if (!o.suspension || prevChordScratch.Count == 0 || chordScratch.Count < 2) return;
             if (o.chiptuneArp || o.alberti) return;   // those figures re-play every tone; a held voice would double
+            if (config.harmonize.Texture != null) return;   // same reason: the song texture re-plays its voices
 
             for (int i = chordScratch.Count - 1; i >= 1; i--)      // upper voices only — never the bass
             {
@@ -370,6 +372,31 @@ namespace SlimeJumping.Platforms.Piano
                 if (playedScratch.Add(susNote)) harmonizePool.Play(susNote, vol, release);
                 harmonizePool.Play(chordScratch[susIndex], vol, release, o.suspensionResolveSeconds);
                 playedScratch.Add(chordScratch[susIndex]);   // the block/roll loop must not double it
+            }
+
+            // The rotation song's measured texture — it outranks every generic ornament figure
+            // because it reproduces how THIS piece sounds a chord: its own note spread and
+            // direction, its own ring, its own low drone, its own accompaniment level. All values
+            // were measured from the transcription offline; nothing here is a preset. One landing
+            // = ONE sounding gesture (user-set contract): the whole chord unfolds inside the
+            // measured spread (tens of ms) and only RINGS after that — no re-strikes later.
+            var tex = config.harmonize.Texture;
+            if (tex != null)
+            {
+                float chordVol = vol * (tex.chordVolumeScale > 0f ? tex.chordVolumeScale : 1f);
+                bool drone = tex.bassReleaseSeconds > 0f;   // chordScratch is sorted: index 0 = bass
+
+                int n = chordScratch.Count;
+                for (int k = 0; k < n; k++)
+                {
+                    int idx = tex.rollUp ? k : n - 1 - k;
+                    float delay = n > 1 ? tex.spreadSeconds * k / (n - 1) : 0f;   // k=0 instant — landing contract
+                    bool isBass = idx == 0;
+                    float rel = drone && isBass ? tex.bassReleaseSeconds : release;
+                    float vs = drone && isBass && tex.bassVolumeScale > 0f ? tex.bassVolumeScale : 1f;
+                    harmonizePool.Play(chordScratch[idx], chordVol * vs, rel, delay);
+                }
+                return;
             }
 
             if (o.chiptuneArp)

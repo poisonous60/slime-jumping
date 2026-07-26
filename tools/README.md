@@ -1,8 +1,15 @@
 # Tools
 
-Editor-time C# scripts run via `unity-cli exec` for profiler analysis and scene mutation.
-None of these are part of the Unity build — they live outside `SlimeJumping_v2/Assets/`
-and execute against the live Editor session.
+Editor-time C# scripts run via `unity-cli exec` for profiler analysis and scene mutation,
+plus standalone Python utilities. None of these are part of the Unity build — they live
+outside `SlimeJumping_v2/Assets/` and execute against the live Editor session (C#) or the
+repo files directly (Python).
+
+## Standalone Python
+
+| File | Purpose |
+|---|---|
+| [`extract_preview.py`](extract_preview.py) | Bakes each piano song's opening chord loop + accompaniment figure (`preview` field) into `Assets/Audio/Music/*_score.json` — HarmAn-style chord extraction, stdlib only. `--dry-run` report / `--selftest`. See `docs/features/platforms/piano-keyboard.md`. |
 
 ## Invocation
 

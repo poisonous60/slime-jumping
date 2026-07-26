@@ -6,25 +6,24 @@ using SlimeJumping.Platforms;
 namespace SlimeJumping.Debugging
 {
     /// <summary>
-    /// Attach to a BambooPlatformV3 GameObject to see which link of the springboard chain is
-    /// broken. The stalk can only bend if an impulse reaches its spring, and the ONLY route
-    /// for that is PlatformCarrier -> ApplyRiderInfluence, which requires the slime to
-    /// actually attach to this stalk. When the stalk sits inert while the slime visibly
-    /// bounces off it, the failure is somewhere in:
+    /// Attach to the SLIME to trace the Bamboo V3 springboard chain. The component follows the
+    /// slime and resolves, each fixed step, WHICH V3 stalk the slime is interacting with (the
+    /// one its carrier is on, or the nearest one when airborne). It then names the first broken
+    /// link and — the point of this pass — shows every angular impulse the rider injects into
+    /// that stalk, so "does pressing jump kick the stalk" is measured, not guessed.
     ///
     ///   overlapping a segment collider
     ///     -> SurfaceProbe picks that collider as the surface
     ///       -> slime enters Attached / Charging
-    ///         -> carrier.CurrentPlatform is THIS stalk
+    ///         -> carrier.CurrentPlatform is a V3 stalk
     ///           -> RiderAttached (ApplyRiderInfluence has run)
-    ///             -> impulse -> bend -> peak -> throw
+    ///             -> impulse (landing OR coupled) -> bend -> peak -> throw
     ///
-    /// This component names the first link that fails, live, on screen. It only reads public
-    /// state; nothing here writes to the stalk or the slime.
+    /// It only READS public state on the slime and the stalk; it never writes to either. The
+    /// impulse numbers come from BambooPlatformV3's own read-only diagnostic getters.
     /// </summary>
     [DefaultExecutionOrder(3000)]
     [DisallowMultipleComponent]
-    [RequireComponent(typeof(BambooPlatformV3))]
     [AddComponentMenu("SlimeJumping/Debug/Bamboo V3 Chain Debug")]
     public class BambooV3ChainDebug : MonoBehaviour
     {
@@ -35,21 +34,25 @@ namespace SlimeJumping.Debugging
         [SerializeField, Range(20, 240)] int samplesToDump = 90;
 
         [Header("Logging")]
-        [Tooltip("Log one line to the console every time the chain stage changes (contact gained, probe picked it up, attached, impulse reached, thrown). This is the cheapest way to see the sequence without reading the GUI mid-jump.")]
+        [Tooltip("Log one line whenever the chain stage changes (contact gained, probe picked it up, attached, impulse reached, thrown).")]
         [SerializeField] bool logStageChanges = true;
+        [Tooltip("Log one line whenever the slime's state changes while on/near a stalk (Airborne/Attached/Charging), with the stalk's angVel and bend — this is where a jump shows up.")]
+        [SerializeField] bool logSlimeStateChanges = true;
+        [Tooltip("Log one line whenever a COUPLED (per-frame) rider impulse of at least this magnitude hits the stalk. Coupled impulses during Charging are the 'pressing jump kicks the stalk' symptom. 0 disables.")]
+        [SerializeField, Min(0f)] float logCoupledImpulseAbove = 2f;
         [Tooltip("Log a line whenever the stalk throws the slime, with the peak bend and exit speed.")]
         [SerializeField] bool logThrows = true;
 
         [Header("Thresholds")]
-        [Tooltip("Gap (world units) from the slime circle to the nearest segment collider below which we call it contact. Collider2D.Distance returns negative while overlapping.")]
+        [Tooltip("Gap (world units) from the slime circle to the nearest segment collider below which we call it contact.")]
         [SerializeField, Min(0f)] float contactGapEpsilon = 0.02f;
 
         const int RingSize = 240;
 
         enum Stage
         {
-            NoSlime = 0,
-            NoContact = 1,          // slime is nowhere near this stalk
+            NoStalk = 0,            // no BambooPlatformV3 in the scene
+            NoContact = 1,          // slime is nowhere near the resolved stalk
             ContactNotProbed = 2,   // touching a segment, but SurfaceProbe did not select it
             ProbedNotAttached = 3,  // it IS the surface, but the slime is not Attached/Charging
             AttachedNoCarrier = 4,  // Attached, but the carrier is on a different platform (or none)
@@ -62,6 +65,7 @@ namespace SlimeJumping.Debugging
             public int frame;
             public float time;
             public Stage stage;
+            public string stalkName;
             public SlimeController.SlimeState slimeState;
             public float slimeSpeed;
             public float approachSpeed;      // last airborne speed before contact = impact speed
@@ -80,18 +84,26 @@ namespace SlimeJumping.Debugging
             public float tipSpeed;
             public int attachToggles;
             public float attachLockout;
+            // Impulse instrumentation (from the stalk's diagnostic getters).
+            public float impulseDeg;         // omega injected this step by rider influence
+            public int impulseKind;          // 0 none, 1 landing, 2 coupled
+            public bool riderCharging;       // isCharging flag the carrier passed
+            public float weightTorque;
         }
 
-        BambooPlatformV3 stalk;
         SlimeController slime;
         Collider2D slimeCollider;
-        Collider2D[] segments;
+
+        BambooPlatformV3[] allStalks;
+        BambooPlatformV3 stalk;          // resolved this step
+        Collider2D[] segments;           // child colliders of the resolved stalk
 
         readonly Snap[] ring = new Snap[RingSize];
         int ringHead;
         int ringCount;
 
-        Stage lastStage = Stage.NoSlime;
+        Stage lastStage = Stage.NoStalk;
+        SlimeController.SlimeState lastSlimeState = SlimeController.SlimeState.Airborne;
         float lastAirborneSpeed;
         bool prevRiderAttached;
         float peakSeenThisRide;
@@ -99,69 +111,115 @@ namespace SlimeJumping.Debugging
 
         void Awake()
         {
-            stalk = GetComponent<BambooPlatformV3>();
-            RefreshSegments();
+            slime = GetComponent<SlimeController>();
+            if (slime == null) slime = FindFirstObjectByType<SlimeController>();
+            if (slime != null) slimeCollider = slime.GetComponent<Collider2D>();
+            RefreshStalkList();
         }
 
-        void RefreshSegments()
+        void RefreshStalkList()
         {
-            var found = GetComponentsInChildren<Collider2D>(true);
+            allStalks = FindObjectsByType<BambooPlatformV3>(FindObjectsSortMode.None);
+        }
+
+        void RefreshSegments(BambooPlatformV3 forStalk)
+        {
+            if (forStalk == null) { segments = null; return; }
+            var found = forStalk.GetComponentsInChildren<Collider2D>(true);
             int n = 0;
             for (int i = 0; i < found.Length; i++)
-                if (found[i].transform != transform) n++;
+                if (found[i].transform != forStalk.transform) n++;
 
             segments = new Collider2D[n];
             int k = 0;
             for (int i = 0; i < found.Length; i++)
-                if (found[i].transform != transform) segments[k++] = found[i];
+                if (found[i].transform != forStalk.transform) segments[k++] = found[i];
         }
 
-        void ResolveSlime()
+        // The stalk the slime is interacting with: its carrier's platform if that is a V3, else
+        // the nearest V3 by pivot distance so the approach readout still has a target.
+        BambooPlatformV3 ResolveStalk()
         {
-            if (slime != null) return;
-            slime = FindFirstObjectByType<SlimeController>();
-            if (slime != null) slimeCollider = slime.GetComponent<Collider2D>();
+            if (slime == null) return null;
+            if (allStalks == null || allStalks.Length == 0) RefreshStalkList();
+            if (allStalks == null || allStalks.Length == 0) return null;
+
+            var carrier = slime.Carrier;
+            if (carrier != null)
+            {
+                var onIt = carrier.CurrentPlatform as BambooPlatformV3;
+                if (onIt != null) return onIt;
+            }
+
+            Vector2 p = slime.transform.position;
+            BambooPlatformV3 best = null;
+            float bestSqr = float.PositiveInfinity;
+            for (int i = 0; i < allStalks.Length; i++)
+            {
+                var st = allStalks[i];
+                if (st == null) continue;
+                float d = ((Vector2)st.PivotWorldPos - p).sqrMagnitude;
+                if (d < bestSqr) { bestSqr = d; best = st; }
+            }
+            return best;
         }
 
         void FixedUpdate()
         {
-            ResolveSlime();
-            if (segments == null || segments.Length == 0) RefreshSegments();
+            if (slime == null)
+            {
+                slime = GetComponent<SlimeController>();
+                if (slime == null) slime = FindFirstObjectByType<SlimeController>();
+                if (slime != null) slimeCollider = slime.GetComponent<Collider2D>();
+                if (slime == null) return;
+            }
+
+            var resolved = ResolveStalk();
+            if (resolved != stalk)
+            {
+                stalk = resolved;
+                RefreshSegments(stalk);
+            }
 
             var s = new Snap
             {
                 frame = Time.frameCount,
                 time = Time.time,
-                bendDeg = stalk.CurrentDeflectionDeg,
-                angVelDeg = stalk.AngularVelocity,
-                peakDeg = stalk.PeakBendSinceAttach,
-                returning = stalk.ReturningFromPeak,
-                riderAttached = stalk.RiderAttached,
-                tipSpeed = stalk.TipSpeed,
                 nearestGap = float.PositiveInfinity,
                 nearestSegment = "-",
                 surfaceName = "-",
+                stalkName = stalk != null ? stalk.name : "-",
             };
 
-            if (slime == null)
+            if (stalk == null)
             {
-                s.stage = Stage.NoSlime;
+                s.stage = Stage.NoStalk;
+                s.slimeState = slime.CurrentState;
                 Push(s);
+                LogStateChange(s);
                 return;
             }
+
+            s.bendDeg = stalk.CurrentDeflectionDeg;
+            s.angVelDeg = stalk.AngularVelocity;
+            s.peakDeg = stalk.PeakBendSinceAttach;
+            s.returning = stalk.ReturningFromPeak;
+            s.riderAttached = stalk.RiderAttached;
+            s.tipSpeed = stalk.TipSpeed;
+            s.impulseDeg = stalk.LastRiderImpulseDeg;
+            s.impulseKind = stalk.LastRiderImpulseKind;
+            s.riderCharging = stalk.LastRiderCharging;
+            s.weightTorque = stalk.LastWeightTorque;
 
             s.slimeState = slime.CurrentState;
             s.slimeSpeed = slime.Velocity.magnitude;
             s.attachToggles = slime.AttachToggleCount;
             s.attachLockout = slime.AttachLockoutTimer;
 
-            // Track the last airborne speed so the reported impact speed is the one the slime
-            // actually arrived with, not the post-landing zeroed value.
             if (slime.CurrentState == SlimeController.SlimeState.Airborne)
                 lastAirborneSpeed = s.slimeSpeed;
             s.approachSpeed = lastAirborneSpeed;
 
-            // Closest segment collider, so "did it even touch us" is measured, not guessed.
             if (slimeCollider != null && segments != null)
             {
                 for (int i = 0; i < segments.Length; i++)
@@ -186,8 +244,8 @@ namespace SlimeJumping.Debugging
                 s.surfaceIsOurs = surfaceCol.GetComponentInParent<BambooPlatformV3>() == stalk;
             }
 
-            var carrier = slime.Carrier;
-            s.carrierIsUs = carrier != null && carrier.CurrentPlatform == (PlatformMotor)stalk;
+            var carrier2 = slime.Carrier;
+            s.carrierIsUs = carrier2 != null && carrier2.CurrentPlatform == (PlatformMotor)stalk;
 
             Vector2 arm = stalk.LastRiderWorldPos - stalk.PivotWorldPos;
             s.armLen = arm.magnitude;
@@ -208,16 +266,40 @@ namespace SlimeJumping.Debugging
             else if (prevRiderAttached && logThrows)
             {
                 Debug.Log(
-                    $"[BambooV3 {name}] rider left — impact {impactSpeedThisRide:F1} m/s, " +
+                    $"[BambooV3 {s.stalkName}] rider left — impact {impactSpeedThisRide:F1} m/s, " +
                     $"peak bend {peakSeenThisRide:F1}° (gate {stalk.EjectBendDeg:F1}°), " +
                     $"tip speed now {s.tipSpeed:F1} m/s, slime state {s.slimeState}, slime speed {s.slimeSpeed:F1}", this);
             }
             prevRiderAttached = s.riderAttached;
 
+            // Smoking gun: a coupled per-frame impulse hitting the stalk. During Charging this is
+            // "pressing jump kicks the stalk"; during Attached/perch it is the else-branch feeding
+            // the slime's internal velocity bookkeeping back into the spring.
+            if (logCoupledImpulseAbove > 0f && s.impulseKind == 2 && Mathf.Abs(s.impulseDeg) >= logCoupledImpulseAbove)
+            {
+                Debug.Log(
+                    $"[BambooV3 {s.stalkName}] COUPLED impulse {s.impulseDeg:F1}°/s  slime={s.slimeState} " +
+                    $"charging={(s.riderCharging ? "Y" : "n")}  angVel {s.angVelDeg:F1}°/s  bend {s.bendDeg:F1}°  " +
+                    $"slimeSpd {s.slimeSpeed:F1}  arm {s.armLen:F2}", this);
+            }
+
             if (logStageChanges && s.stage != lastStage)
             {
-                Debug.Log($"[BambooV3 {name}] stage {lastStage} -> {s.stage} : {StageText(s)}", this);
+                Debug.Log($"[BambooV3 {s.stalkName}] stage {lastStage} -> {s.stage} : {StageText(s)}", this);
                 lastStage = s.stage;
+            }
+            LogStateChange(s);
+        }
+
+        void LogStateChange(in Snap s)
+        {
+            if (logSlimeStateChanges && s.slimeState != lastSlimeState)
+            {
+                Debug.Log(
+                    $"[BambooV3 {s.stalkName}] slime {lastSlimeState} -> {s.slimeState}  " +
+                    $"stalk angVel {s.angVelDeg:F1}°/s  bend {s.bendDeg:F1}°  peak {s.peakDeg:F1}°  " +
+                    $"lastImpulse {s.impulseDeg:F1}°/s (kind {s.impulseKind})", this);
+                lastSlimeState = s.slimeState;
             }
         }
 
@@ -237,16 +319,16 @@ namespace SlimeJumping.Debugging
         {
             switch (s.stage)
             {
-                case Stage.NoSlime:
-                    return "no SlimeController in the scene";
+                case Stage.NoStalk:
+                    return "no BambooPlatformV3 in the scene";
                 case Stage.NoContact:
-                    return $"slime not on this stalk (nearest {s.nearestSegment} gap {s.nearestGap:F3})";
+                    return $"slime not on stalk {s.stalkName} (nearest {s.nearestSegment} gap {s.nearestGap:F3})";
                 case Stage.ContactNotProbed:
                     return $"TOUCHING {s.nearestSegment} (gap {s.nearestGap:F3}) but SurfaceProbe picked '{s.surfaceName}' — " +
                            "this stalk is not being treated as a surface. Check the segment LAYER against SlimeSettings.groundLayer, " +
                            "and the attach-angle ceiling for this contact normal.";
                 case Stage.ProbedNotAttached:
-                    return $"this stalk IS the probed surface but slime is {s.slimeState} " +
+                    return $"stalk {s.stalkName} IS the probed surface but slime is {s.slimeState} " +
                            $"(toggles {s.attachToggles}, lockout {s.attachLockout:F2}) — landing is being rejected or debounced.";
                 case Stage.AttachedNoCarrier:
                     return "slime is Attached to this stalk but PlatformCarrier is NOT on it — " +
@@ -275,12 +357,12 @@ namespace SlimeJumping.Debugging
         void Dump()
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"=== BambooV3ChainDebug '{name}' — last {Mathf.Min(samplesToDump, ringCount)} FixedUpdates ===");
-            sb.AppendLine($"settings asset: {(stalk.HasSettingsAsset ? "assigned" : "MISSING (class defaults in use)")}, " +
-                          $"backgroundOnly {stalk.BackgroundOnly}, length {stalk.BambooLength:F2}, " +
-                          $"stalk inertia {stalk.StalkInertiaDebug:F2}, freq {stalk.NaturalFreqHz:F2} Hz, " +
-                          $"zeta {stalk.DampingRatio:F2}, gate {stalk.EjectBendDeg:F1}°, segments {(segments != null ? segments.Length : 0)}");
-            sb.AppendLine("frame | stage | slime | spd | gap(seg) | surface | ours car rider | bend | angVel | peak ret | arm");
+            sb.AppendLine($"=== BambooV3ChainDebug (on slime) — last {Mathf.Min(samplesToDump, ringCount)} FixedUpdates ===");
+            if (stalk != null)
+                sb.AppendLine($"resolved stalk: {stalk.name}, settings {(stalk.HasSettingsAsset ? "assigned" : "MISSING")}, " +
+                              $"length {stalk.BambooLength:F2}, stalk inertia {stalk.StalkInertiaDebug:F2}, " +
+                              $"freq {stalk.NaturalFreqHz:F2} Hz, zeta {stalk.DampingRatio:F2}, gate {stalk.EjectBendDeg:F1}°");
+            sb.AppendLine("frame | stage | slime | spd | gap(seg) | ours car rider | bend | angVel | peak ret | arm | imp(kind chg) | wTorque");
 
             int n = Mathf.Min(samplesToDump, ringCount);
             int start = (ringHead - n + RingSize) % RingSize;
@@ -289,9 +371,10 @@ namespace SlimeJumping.Debugging
                 var s = ring[(start + i) % RingSize];
                 sb.AppendLine(
                     $"{s.frame} | {s.stage} | {s.slimeState} | {s.slimeSpeed:F1} | " +
-                    $"{s.nearestGap:F3}({s.nearestSegment}) | {s.surfaceName} | " +
+                    $"{s.nearestGap:F3}({s.nearestSegment}) | " +
                     $"{(s.surfaceIsOurs ? 'Y' : 'n')} {(s.carrierIsUs ? 'Y' : 'n')} {(s.riderAttached ? 'Y' : 'n')} | " +
-                    $"{s.bendDeg:F2} | {s.angVelDeg:F1} | {s.peakDeg:F2} {(s.returning ? 'R' : '-')} | {s.armLen:F2}");
+                    $"{s.bendDeg:F2} | {s.angVelDeg:F1} | {s.peakDeg:F2} {(s.returning ? 'R' : '-')} | {s.armLen:F2} | " +
+                    $"{s.impulseDeg:F1}(k{s.impulseKind} {(s.riderCharging ? 'c' : '-')}) | {s.weightTorque:F1}");
             }
             Debug.Log(sb.ToString(), this);
         }
@@ -302,7 +385,7 @@ namespace SlimeJumping.Debugging
 
             var s = ring[(ringHead - 1 + RingSize) % RingSize];
             var sb = new StringBuilder();
-            sb.AppendLine($"<b>BambooV3 '{name}'</b>   [{dumpKey}] dump");
+            sb.AppendLine($"<b>BambooV3ChainDebug (on slime)</b>   stalk <b>{s.stalkName}</b>   [{dumpKey}] dump");
             sb.AppendLine($"stage <b>{s.stage}</b>");
             sb.AppendLine(StageText(s));
             sb.AppendLine();
@@ -310,13 +393,10 @@ namespace SlimeJumping.Debugging
             sb.AppendLine($"slime    {s.slimeState}  spd {s.slimeSpeed:F1}  approach {s.approachSpeed:F1}  toggles {s.attachToggles}  lockout {s.attachLockout:F2}");
             sb.AppendLine($"carrier  onThisStalk={(s.carrierIsUs ? "Y" : "n")}   riderAttached={(s.riderAttached ? "Y" : "n")}   arm {s.armLen:F2}");
             sb.AppendLine($"spring   bend {s.bendDeg:F1}°  angVel {s.angVelDeg:F0}°/s  tip {s.tipSpeed:F1} m/s");
-            sb.AppendLine($"throw    peak {s.peakDeg:F1}° / gate {stalk.EjectBendDeg:F1}°  {(s.returning ? "SPRINGING BACK" : "bending out")}  lockout {stalk.EjectLockoutTimer:F2}");
-            if (!stalk.HasSettingsAsset)
+            sb.AppendLine($"impulse  <b>{s.impulseDeg:F1}°/s</b>  kind {s.impulseKind} ({KindName(s.impulseKind)})  charging={(s.riderCharging ? "Y" : "n")}  weightTorque {s.weightTorque:F1}");
+            sb.AppendLine($"throw    peak {s.peakDeg:F1}° / gate {(stalk != null ? stalk.EjectBendDeg : 0f):F1}°  {(s.returning ? "SPRINGING BACK" : "bending out")}  lockout {(stalk != null ? stalk.EjectLockoutTimer : 0f):F2}");
+            if (stalk != null && !stalk.HasSettingsAsset)
                 sb.AppendLine("<b>WARNING: no BambooV3Settings asset assigned — running on class defaults.</b>");
-            if (stalk.BackgroundOnly)
-                sb.AppendLine("<b>WARNING: backgroundOnly is ON — no colliders, no rider physics.</b>");
-            if (segments == null || segments.Length == 0)
-                sb.AppendLine("<b>WARNING: no child colliders found — click 'Rebuild Segments'.</b>");
 
             var style = new GUIStyle(GUI.skin.box)
             {
@@ -325,14 +405,14 @@ namespace SlimeJumping.Debugging
                 richText = true,
                 padding = new RectOffset(8, 8, 6, 6),
             };
-            GUI.Box(new Rect(guiPos.x, guiPos.y, 640f, 170f), sb.ToString(), style);
+            GUI.Box(new Rect(guiPos.x, guiPos.y, 660f, 190f), sb.ToString(), style);
         }
+
+        static string KindName(int kind) => kind == 1 ? "landing" : kind == 2 ? "coupled" : "none";
 
         void OnDrawGizmosSelected()
         {
-            if (stalk == null) stalk = GetComponent<BambooPlatformV3>();
             if (stalk == null) return;
-
             Vector3 pivot = stalk.PivotWorldPos;
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(pivot, 0.15f);

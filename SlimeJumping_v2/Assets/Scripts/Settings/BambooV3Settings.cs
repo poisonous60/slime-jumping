@@ -3,10 +3,10 @@ using UnityEngine;
 namespace SlimeJumping.Settings
 {
     /// <summary>
-    /// Gameplay tuning for BambooPlatformV3. Five knobs, nothing else — every other
-    /// quantity the stalk uses (bend from an impact, sag under the rider's weight, the
-    /// recoil when the slime pushes off, how much velocity a launch inherits) is derived
-    /// from the cantilever ODE and the rider's own mass/position, not from a multiplier.
+    /// Gameplay tuning for BambooPlatformV3. Eleven knobs, nothing else — every other
+    /// quantity the stalk uses (bend from an impact, sag under the rider's weight) is
+    /// derived from the cantilever ODE and the rider's own mass/position, not from a
+    /// multiplier.
     ///
     /// Contrast with BambooSettings (v1), which carries 26 knobs because seven layers of
     /// non-physical correction sit on top of the same ODE: impact-speed curves, contact
@@ -39,5 +39,33 @@ namespace SlimeJumping.Settings
         [Header("Throw")]
         [Tooltip("Peak bend (degrees) a swing must reach before the stalk throws the slime off. The sequence is contact -> bend -> spring back -> released at maximum tip speed as it whips through toward the other side. A hard hit bends past this and launches with no input; a soft landing never gets there and the stalk stays an ordinary platform. The knob is an ANGLE because that is the thing the player can see on screen, which is what makes the outcome predictable. Raise it if soft landings are being thrown, lower it if hard hits refuse to launch — no other knob should need touching. 0 disables the throw entirely (pure springy platform).")]
         [Range(0f, 180f)] public float ejectBendDeg = 12f;
+
+        [Header("Landing")]
+        [Tooltip("Soft cap (m/s) on the relative impact speed the landing impulse sees, applied BEFORE the tip-bonus gain: v_eff = cap * ln(1 + v/cap). Slope is 1 at low speed, so gentle landings are untouched; a fast dive is compressed logarithmically (cap 8: 3->2.6, 10->6.5, 22->10.6, 40->14.4). Without this a fast arrival slams the stalk to its deflection cap and the violent whip-back shakes the slime off before it can even attach. 0 disables.")]
+        [Range(0f, 30f)] public float impactSoftCap = 8f;
+
+        [Tooltip("Landing bonus at the TIP of the stalk. The landing impulse is scaled by lerp(1, this, heightT^2) where heightT = contact height / length — a base landing stays purely physical (short arm, tip barely moves) and the bonus ramps in quadratically toward the tip, so hitting the sweet spot near the top is what earns the extra bend / throw / boost. At 2, a slow landing on the tip bends twice as far as physics alone. Hard hits still compress into the maxTipSpeed clamp, and matching the surface still injects zero (no free energy).")]
+        [Range(0.5f, 4f)] public float landingImpulseGain = 2f;
+
+        [Header("Launch")]
+        [Tooltip("Multiplier on the swing velocity (omega x arm) a player launch inherits from this stalk — PlatformMotor.VelocityTransferScale. 1 = physical inheritance only. Above 1 the stalk hands the jump a bonus proportional to how hard it is swinging, so launching off a loaded stalk clears the whip-back instead of being caught by it. Ceiling is still maxTipSpeed x this.")]
+        [Range(0f, 3f)] public float launchBoostScale = 1.5f;
+
+        [Tooltip("Below this pre-bonus launch speed (m/s) the stalk transfers full launchBoostScale. " +
+                 "Pre-bonus speed = slime.Velocity.magnitude when carrier.GetLaunchVelocity is called — " +
+                 "already includes EnergyConversion power and hyperdash inheritance, but NOT the stalk's " +
+                 "own carrier contribution (that's what's being scaled). Lets the stalk reward normal " +
+                 "launches without stacking extra tip-speed on top of a high-fall EnergyConversion launch.")]
+        [Min(0f)] public float boostFalloffStartSpeed = 12f;
+
+        [Tooltip("Above this pre-bonus launch speed (m/s) the stalk transfers zero carrier velocity. " +
+                 "Linear falloff between boostFalloffStartSpeed and boostFalloffEndSpeed. " +
+                 "Set <= boostFalloffStartSpeed for hard cutoff. The slime's own (EnergyConversion + " +
+                 "hyperdash) speed passes through unchanged — only the stalk's carrier inheritance is " +
+                 "removed, so a high-fall landing still launches with its full converted energy.")]
+        [Min(0f)] public float boostFalloffEndSpeed = 18f;
+
+        [Tooltip("Seconds after the rider leaves this stalk during which it cannot re-attach: SurfaceProbe skips the stalk's colliders for the full window (timer-only, no separation early-out) while physics stays ON — the whip-back shoves the slime away instead of catching it, and never passes through it. Needed because the springing stalk can move faster than a weak jump and chase the slime down mid-flight. 0 disables.")]
+        [Range(0f, 1f)] public float relandLockoutTime = 0.3f;
     }
 }
