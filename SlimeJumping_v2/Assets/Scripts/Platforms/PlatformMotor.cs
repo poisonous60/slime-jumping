@@ -32,6 +32,17 @@ namespace SlimeJumping.Platforms
             prevRotation = rb.rotation;
         }
 
+        // Re-seed the delta baseline on every activation. A motor that slept (SetActive false)
+        // skips FixedUpdate while its subclass state may still advance or be reset, so the first
+        // post-wake DeltaPosition would be the whole gap — a one-frame Velocity spike that
+        // PlatformCarrier would hand to a rider.
+        protected virtual void OnEnable()
+        {
+            if (rb == null) return;
+            prevPosition = rb.position;
+            prevRotation = rb.rotation;
+        }
+
         void FixedUpdate()
         {
             var (targetPos, targetRot) = ComputeMotion(Time.fixedDeltaTime);

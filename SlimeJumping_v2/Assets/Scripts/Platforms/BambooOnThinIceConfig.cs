@@ -63,6 +63,15 @@ namespace SlimeJumping.Platforms
                  "exit only.")]
         [Min(0f)] public float respawnDelaySeconds = 2f;
 
+        [Tooltip("Seconds the fallen pole may exist before it poofs, counted from the topple. " +
+                 "Independent of the respawn above — a shorter respawn simply means the new stalk " +
+                 "and the old pole coexist for a while. 0 = no age limit.")]
+        [Min(0f)] public float corpseMaxLifeSeconds = 4f;
+
+        [Tooltip("Seconds the fallen pole must stay at rest (asleep or settled Static) before it " +
+                 "poofs. 0 = never poof on rest, age limit and zone exit only.")]
+        [Min(0f)] public float corpseRestPoofSeconds = 2f;
+
         [Tooltip("Dust-puff prefab spawned along the pole when the corpse is removed (out of " +
                  "zone / ice regen). playOnAwake must be OFF; Play() is called explicitly. " +
                  "Null = the corpse just disappears with no effect.")]

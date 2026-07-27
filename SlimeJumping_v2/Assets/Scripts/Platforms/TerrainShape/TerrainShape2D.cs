@@ -88,6 +88,10 @@ namespace SlimeJumping.TerrainShape
 
         public bool doubleSidedFront = false;
 
+        // Texture tiles per world unit for the generated UVs (box projection).
+        [Min(0.001f)]
+        public float uvScale = 1f;
+
         public bool flatShaded = false;
 
         [Min(0f)]

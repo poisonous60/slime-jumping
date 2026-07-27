@@ -213,12 +213,14 @@ namespace SlimeJumping.TerrainShape.Editor
             int curvedSamples = Mathf.Max(newSubs, newSubs * Mathf.Max(1, newCurveMult));
             EditorGUILayout.LabelField($"   → straight: {newSubs} samples / segment, curved: {curvedSamples} samples / segment", EditorStyles.miniLabel);
             bool newDouble = EditorGUILayout.Toggle(new GUIContent("Double-sided front", "Render the front face from both sides — useful when forced edges or Z bumps make some triangles back-face the camera and look black."), src.doubleSidedFront);
+            float newUvScale = EditorGUILayout.FloatField(new GUIContent("UV scale (tiles / unit)", "Texture tiles per world unit on the generated UVs. Box projection: front/back faces use XY, side walls use ZY / XZ. Raise it to make the texture pattern smaller."), src.uvScale);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(src, "TerrainShape settings");
                 src.subdivisionsPerSegment = newSubs;
                 src.curveSubdivisionMultiplier = newCurveMult;
                 src.doubleSidedFront = newDouble;
+                src.uvScale = Mathf.Max(0.001f, newUvScale);
                 EditorUtility.SetDirty(src);
                 MarkDirty();
             }

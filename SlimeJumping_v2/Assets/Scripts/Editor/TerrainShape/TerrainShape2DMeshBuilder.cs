@@ -205,9 +205,27 @@ namespace SlimeJumping.TerrainShape.Editor
             }
 
             mesh.RecalculateNormals();
+            mesh.SetUVs(0, BuildBoxUVs(mesh.vertices, mesh.normals, src.uvScale));
             mesh.RecalculateBounds();
             result.mesh = mesh;
             return result;
+        }
+
+        // Box projection: each vertex takes the plane its normal faces most, so front/back faces
+        // read XY and side walls read ZY or XZ. Texel density stays uniform in world units no
+        // matter how big the shape is.
+        static Vector2[] BuildBoxUVs(Vector3[] verts, Vector3[] normals, float scale)
+        {
+            var uv = new Vector2[verts.Length];
+            for (int i = 0; i < verts.Length; i++)
+            {
+                Vector3 p = verts[i], n = normals[i];
+                float ax = Mathf.Abs(n.x), ay = Mathf.Abs(n.y), az = Mathf.Abs(n.z);
+                if (az >= ax && az >= ay) uv[i] = new Vector2(p.x, p.y) * scale;
+                else if (ax >= ay) uv[i] = new Vector2(p.z, p.y) * scale;
+                else uv[i] = new Vector2(p.x, p.z) * scale;
+            }
+            return uv;
         }
 
         // Triangulates a multi-loop face (outer + holes) using TriangleNet. Outer loops (CCW) are

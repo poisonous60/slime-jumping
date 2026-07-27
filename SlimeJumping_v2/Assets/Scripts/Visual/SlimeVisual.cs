@@ -154,6 +154,13 @@ public class SlimeVisual : MonoBehaviour
     private Vector3 body3dRestScale = Vector3.one;
     private Vector3 body3dRestPosition;
     private Quaternion body3dRestRotation = Quaternion.identity;
+    // body3d's single child (Slime/SlimeVisual3d/MeshBaseline). Carries the inverse of the
+    // surface-alignment rotation, so the composed matrix is R·S·R⁻¹ — a symmetric, pure
+    // directional scale: the squash still compresses along the surface normal while the mesh
+    // itself keeps its world orientation. Without it the whole body visibly spins 180° when
+    // the slime sticks to a ceiling.
+    private Transform meshBaseline;
+    private Quaternion meshBaselineRestRotation = Quaternion.identity;
     // Rest-only cached mesh height (world units) and SlimeVisual's rest lossyScale.y.
     // BodyNativeHeight divides these to produce a SlimeVisual-local value without
     // reading live-deformed state, avoiding a per-frame feedback loop with PushDeform.
@@ -236,6 +243,11 @@ public class SlimeVisual : MonoBehaviour
             body3dRestScale = body3d.localScale;
             body3dRestPosition = body3d.localPosition;
             body3dRestRotation = body3d.localRotation;
+            if (body3d.childCount > 0)
+            {
+                meshBaseline = body3d.GetChild(0);
+                meshBaselineRestRotation = meshBaseline.localRotation;
+            }
             if (bodyMeshFilter != null && bodyMeshFilter.sharedMesh != null)
             {
                 body3dNativeHeightRest = bodyMeshFilter.sharedMesh.bounds.size.y
@@ -404,11 +416,15 @@ public class SlimeVisual : MonoBehaviour
                 bulkScale.x - smoothedVelStr.x * displayedBodyScale,
                 bulkScale.y - smoothedVelStr.y * displayedBodyScale,
                 bulkScale.z * displayedBodyScale);
-            // Compose surface alignment (body.localRotation) over designer's rest
-            // rotation (body3dRestRotation). For p in mesh-local:
-            //   p_final = surfaceRot * (restRot * p_mesh) = (surfaceRot * restRot) * p_mesh.
+            // Surface alignment (body.localRotation) composed over the designer's rest
+            // rotation, then undone again on the child baseline. The mesh subtree ends up
+            // under R·S·R⁻¹ — the non-uniform scale still acts along the surface normal
+            // (squash points into the wall/ceiling), but the mesh keeps its world
+            // orientation instead of spinning with the surface.
             // Assumes SlimeVisual.transform.localRotation == identity (C-1 tenet).
             body3d.localRotation = body.localRotation * body3dRestRotation;
+            if (meshBaseline != null)
+                meshBaseline.localRotation = Quaternion.Inverse(body.localRotation) * meshBaselineRestRotation;
             body3d.localScale    = Vector3.Scale(body3dRestScale, bulkScale3D);
             // Depth shift lives on world Z; bulkPosition contributes only X/Y.
             body3d.localPosition = body3dRestPosition + Vector3.Scale(transform.localScale, bulkPosition);
@@ -649,6 +665,9 @@ public class SlimeVisual : MonoBehaviour
             body3d.localRotation = _externalRotationOverride.HasValue
                 ? _externalRotationOverride.Value * body3dRestRotation
                 : body3dRestRotation;
+            // External animators want their rotation SEEN (box-sleep tips the slime over),
+            // so the baseline holds no counter-rotation under the gate.
+            if (meshBaseline != null) meshBaseline.localRotation = meshBaselineRestRotation;
             body3d.localScale = Vector3.Scale(body3dRestScale, localScale);
             // Preserve existing localPosition.z so ApplySitDepthShift's world-Z
             // shift isn't wiped every frame. Only X/Y come from localPosition.
@@ -718,6 +737,7 @@ public class SlimeVisual : MonoBehaviour
             body3d.localScale = body3dRestScale;
             body3d.localPosition = body3dRestPosition;
             body3d.localRotation = body3dRestRotation;
+            if (meshBaseline != null) meshBaseline.localRotation = meshBaselineRestRotation;
         }
         // prevGravityUp freezes during the external gate (updated only inside
         // UpdateDeformAxis). Use the controller's live GravityUp as the fresh
@@ -787,6 +807,14 @@ public class SlimeVisual : MonoBehaviour
         {
             targetAxis = lastSurfaceNormal;
         }
+
+        // Every squash term is (a, -a) about body's local Y, so +axis and -axis describe the
+        // SAME deformation — the axis is a line, not a direction. Take whichever sign is
+        // nearest the current body.up, so a floor->ceiling flip costs 0 degrees of slerp
+        // instead of sweeping the whole blob's stretch axis through a visible 180 turn.
+        // Walls still turn the honest 90. The true (signed) normal stays in
+        // lastSurfaceNormal for the shader, which does care which side faces the surface.
+        if (Vector2.Dot((Vector2)body.up, targetAxis) < 0f) targetAxis = -targetAxis;
 
         lastDeformAxis = targetAxis;
         body.up = Vector3.Slerp(body.up, (Vector3)targetAxis,

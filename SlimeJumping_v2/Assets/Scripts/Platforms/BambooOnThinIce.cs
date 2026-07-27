@@ -69,7 +69,9 @@ namespace SlimeJumping.Platforms
         float collapsedAt;   // Time.time of the topple — drives the respawn timer
         ThinIcePlatformV2.IceState prevIceState = ThinIcePlatformV2.IceState.Idle;
         GameObject corpse;
+        Rigidbody2D corpseRb;
         Collider2D[] corpseColliders;
+        float corpseRestSeconds;
         Collider2D zoneCollider;   // ice's ThinIceRespawnZone shape; null = orphan (corpse never poofs)
         Renderer iceRenderer;
         MaterialPropertyBlock mpb;
@@ -147,8 +149,11 @@ namespace SlimeJumping.Platforms
             {
                 MaybeRegenOnTimer();
                 MaybeRegenOnSlimeLeft();
-                MaybePoofOutOfZone();
             }
+
+            // Outside the collapsed branch: the pole's lifetime is its own, so a fallen
+            // pole and the freshly respawned stalk can coexist.
+            TickCorpseLifetime();
         }
 
         // The stalk stands back up on its own respawnDelaySeconds after it fell, wherever the
@@ -377,6 +382,10 @@ namespace SlimeJumping.Platforms
 
         void Collapse()
         {
+            // A previous pole can still be lying around (its lifetime outlives the respawn).
+            // One corpse slot: clear the old one rather than orphaning it.
+            if (corpse != null) PoofCorpse("replaced by a new fall");
+
             collapsed = true;
             collapsedAt = Time.time;
 
@@ -457,12 +466,14 @@ namespace SlimeJumping.Platforms
 
             // Segment colliders carry the bent pose — zone-exit tests against these, not an AABB.
             corpseColliders = corpse.GetComponentsInChildren<Collider2D>();
+            corpseRestSeconds = 0f;
 
             // FallingTrainPlatform recipe: Dynamic, heavy, continuous collision so the
             // pole cannot tunnel through thin terrain. Seeding the rigidbody with the
             // spring's current angular velocity carries the visible swing straight
             // into the topple instead of starting the fall from a frozen pose.
             var rb = corpse.GetComponent<Rigidbody2D>();
+            corpseRb = rb;
             rb.bodyType = RigidbodyType2D.Dynamic;
             rb.mass = config.slimeMass;
             rb.gravityScale = config.corpseGravityScale;
@@ -477,14 +488,12 @@ namespace SlimeJumping.Platforms
 
         void Restore()
         {
-            // The old pole poofs into dust as the ice re-forms and the stalk stands
-            // back up — the burst covers the swap so it doesn't read as a pop-out.
-            if (corpse != null) PoofCorpse("ice regenerating");
-
             // The original was only deactivated, never mutated: still Kinematic, pivot
             // and serialized state untouched. Its spring resumes from the bend it had
             // at the moment of collapse and settles on its own damping.
             bamboo.gameObject.SetActive(true);
+            // Same dust burst the pole leaves behind, now covering the stalk popping in.
+            SpawnPuffs(bamboo.transform, bamboo.CurrentDeflectionDeg, bamboo.BambooLength);
             Debug.Log($"[BambooOnThinIce {name}] restore: stalk reactivated (ice {ice.State})", this);
 
             landingCount = 0;
@@ -493,6 +502,32 @@ namespace SlimeJumping.Platforms
         }
 
         // --- Corpse poof: dust puffs along the pole, corpse destroyed same frame ----
+
+        // Three independent exits, whichever comes first: too old, at rest long enough,
+        // or rolled out of the zone.
+        void TickCorpseLifetime()
+        {
+            if (corpse == null) return;
+
+            if (config.corpseMaxLifeSeconds > 0f && Time.time - collapsedAt >= config.corpseMaxLifeSeconds)
+            {
+                PoofCorpse($"{config.corpseMaxLifeSeconds}s since the fall");
+                return;
+            }
+
+            // "Stopped" = Box2D's own rest verdict (or the Static snap the motor does on
+            // ground), so no separate stillness threshold to tune.
+            bool atRest = corpseRb != null &&
+                          (corpseRb.bodyType == RigidbodyType2D.Static || corpseRb.IsSleeping());
+            corpseRestSeconds = atRest ? corpseRestSeconds + Time.fixedDeltaTime : 0f;
+            if (config.corpseRestPoofSeconds > 0f && corpseRestSeconds >= config.corpseRestPoofSeconds)
+            {
+                PoofCorpse($"at rest for {config.corpseRestPoofSeconds}s");
+                return;
+            }
+
+            MaybePoofOutOfZone();
+        }
 
         // Shape-exact both sides: real zone collider vs each segment collider, not bounds.
         void MaybePoofOutOfZone()
@@ -514,26 +549,28 @@ namespace SlimeJumping.Platforms
             Debug.Log($"[BambooOnThinIce {name}] corpse poof ({reason})", this);
 
             DetachSlimeFrom(corpse.transform);
-            SpawnPoofPuffs();
+            var motor = corpse.GetComponent<FallingBambooCorpseMotor>();
+            if (motor != null) SpawnPuffs(corpse.transform, motor.BendAngleDeg, motor.StalkLength);
 
             Destroy(corpse);
             corpse = null;
+            corpseRb = null;
             corpseColliders = null;
         }
 
-        void SpawnPoofPuffs()
+        // A row of dust puffs along a bent pole's centerline — used both when the fallen
+        // pole vanishes and when the stalk stands back up.
+        void SpawnPuffs(Transform root, float bendDeg, float length)
         {
             if (config.corpsePoofPrefab == null) return;
 
-            var motor = corpse.GetComponent<FallingBambooCorpseMotor>();
-            if (motor == null) return;
-
-            int puffs = Mathf.Max(2, Mathf.CeilToInt(motor.StalkLength / PoofSpacing) + 1);
+            int puffs = Mathf.Max(2, Mathf.CeilToInt(length / PoofSpacing) + 1);
             for (int i = 0; i < puffs; i++)
             {
                 float t = (float)i / (puffs - 1);
-                var go = Instantiate(config.corpsePoofPrefab,
-                    motor.CenterlineWorldPoint(t), Quaternion.identity);
+                Vector2 pos = root.TransformPoint(
+                    FallingBambooCorpseMotor.ArcLocalPoint(bendDeg, length, t));
+                var go = Instantiate(config.corpsePoofPrefab, pos, Quaternion.identity);
                 // Prefab contract: playOnAwake OFF (explicit Play), stopAction=Destroy.
                 var ps = go.GetComponent<ParticleSystem>();
                 if (ps != null) ps.Play();
@@ -635,6 +672,7 @@ namespace SlimeJumping.Platforms
         public override float AngularVelocity => rb.angularVelocity;
 
         public float StalkLength => stalkLength;
+        public float BendAngleDeg => bendAngleDeg;
 
         /// World-space point on the frozen bent centerline, t = 0 (base) .. 1 (tip).
         public Vector2 CenterlineWorldPoint(float t) => transform.TransformPoint(CenterlinePoint(t));
@@ -875,13 +913,17 @@ namespace SlimeJumping.Platforms
 
         // --- Analytic surface anchor (mirrors BambooPlatformV3's private math) ------
 
-        Vector2 CenterlinePoint(float t)
-        {
-            float bendRad = bendAngleDeg * Mathf.Deg2Rad;
-            if (Mathf.Abs(bendRad) < 1e-4f)
-                return new Vector2(0f, t * stalkLength);
+        Vector2 CenterlinePoint(float t) => ArcLocalPoint(bendAngleDeg, stalkLength, t);
 
-            float invK = stalkLength / bendRad;
+        /// Local-space point on a bamboo's bent centerline, t = 0 (base) .. 1 (tip).
+        /// Same arc as BambooBend.shader, so a live stalk and a frozen corpse share it.
+        public static Vector2 ArcLocalPoint(float bendDeg, float length, float t)
+        {
+            float bendRad = bendDeg * Mathf.Deg2Rad;
+            if (Mathf.Abs(bendRad) < 1e-4f)
+                return new Vector2(0f, t * length);
+
+            float invK = length / bendRad;
             float u = bendRad * t;
             return new Vector2(invK * (Mathf.Cos(u) - 1f), invK * Mathf.Sin(u));
         }

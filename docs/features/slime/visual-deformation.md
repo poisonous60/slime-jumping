@@ -13,7 +13,11 @@ Phase 1.5 — 코드 기반 squash/stretch/관성 변형. 물리(FixedUpdate)와
 | Attached/Charging | `surfaceNormal` | Slerp 보간 |
 | Airborne | `Vector2.up` (world up) | 축 분해 stretch가 world X/Y 기준이므로 world up 필수 |
 
-`deformAxisSlerpSpeed`(15)로 보간. 방사 대칭이라 회전 자체는 안 보임.
+`deformAxisSlerpSpeed`(15)로 보간.
+
+**축은 방향이 아니라 직선**: 모든 squash 항이 `(a, -a)` = 로컬 Y 대칭이라 `+n`과 `-n`이 동일한 변형. targetAxis는 현재 `body.up`과 부호가 맞는 쪽을 고름 → 바닥↔천장 전환 시 slerp 회전량 0. 벽은 정직하게 90° 회전. 셰이더용 `lastSurfaceNormal`은 부호 보존(어느 쪽 면이 표면에 닿는지 구분해야 함).
+
+**메쉬는 회전하지 않는다 (역회전 상쇄)**: `body`(비활성 2D 프레임)의 회전 `R`은 `body3d`에 그대로 실리지만, 자식 `MeshBaseline`이 `R⁻¹`를 들고 있어 합성 행렬이 `R·S·R⁻¹` — 대칭행렬 = 순수 방향성 스케일. squash는 여전히 표면 법선 방향으로 눌리는데(경사면 포함 정확), 메쉬 자체 방향은 월드 고정이라 천장 부착 시 몸이 180° 도는 모습이 안 보인다. 외부 애니(`SetExternalDeform`, box-sleep 등)는 회전을 의도적으로 보여주므로 baseline이 rest로 복귀.
 
 ## C-1. Face 추종
 **Face 위치 오프셋 (회전 아님)**:

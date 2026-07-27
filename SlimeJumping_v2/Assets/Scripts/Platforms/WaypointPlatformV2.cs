@@ -168,6 +168,48 @@ namespace SlimeJumping.Platforms
             holdFilter.useLayerMask = true;
         }
 
+        // A deck that gets deactivated mid-trip keeps its phase/pathParam frozen while the rest of
+        // the world moves on: the leader can park and re-depart (consuming its own mount trigger and
+        // setting triggeredByLeader on the sleeping partner) before the partner has finished
+        // returning, so the pair comes back a full leg out of step and both decks end up stacked on
+        // the same side. Waking always re-parks at the authored origin instead of resuming.
+        protected override void OnEnable()
+        {
+            ResetToPark();
+            base.OnEnable();
+        }
+
+        /// <summary>Snap back to the parked base pose and drop all in-flight trip / sandwich state.</summary>
+        public void ResetToPark(bool propagateToPartner = true)
+        {
+            if (worldWaypoints == null) return;   // pre-Awake enable, nothing to reset yet
+
+            phase = Phase.Parked;
+            pathParam = 0f;
+            triggeredByLeader = false;
+
+            rigidTarget = worldWaypoints[0];
+            smoothPos = worldWaypoints[0];
+            prevSmoothPos = smoothPos;
+            followVel = Vector2.zero;
+            curSmoothTime = followSmoothTime;
+
+            sagY = 0f; sagVel = 0f;
+            currentTilt = 0f; tiltVel = 0f; targetTilt = 0f;
+            sandwichOpen = 0f; sandwichOpenVel = 0f;
+            pinchReactionFactor = 1f; pinchOff = 0f;
+
+            riderInfluencedThisStep = false;
+            riderOnTop = false;
+            prevRiderOnTop = false;
+
+            rb.position = worldWaypoints[0];
+            rb.rotation = baseRotation;
+
+            // The pair only makes sense in lockstep — re-park the partner from the same wake.
+            if (propagateToPartner && partner != null) partner.ResetToPark(false);
+        }
+
         bool HasPath => worldWaypoints != null && worldWaypoints.Length >= 2;
 
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity, bool isCharging)
