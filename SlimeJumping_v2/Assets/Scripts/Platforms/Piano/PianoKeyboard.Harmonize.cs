@@ -31,6 +31,7 @@ namespace SlimeJumping.Platforms.Piano
         private int prevLandingMidi = -1;          // glissando: where the last landing was
         private int susIndex = -1, susNote = 0;    // suspension: which voice is held, and by what note
         private readonly List<int> melodyScratch = new List<int>();
+        private readonly List<int> pcsScratch = new List<int>();   // pitch classes the landed key may use
         private readonly HashSet<int> playedScratch = new HashSet<int>();
 
         // Called at the end of the FixedUpdate contact loop.
@@ -47,6 +48,8 @@ namespace SlimeJumping.Platforms.Piano
             if (!harmonizePoolBuilt) SetupHarmonize(h);
 
             if (anyContacting && !anyContactingPrev) OnHarmonizePress(h, impact); // aggregate rising edge = a landing
+            else if (!anyContacting && anyContactingPrev && harmonizePool != null)
+                harmonizePool.ReleaseSustained();   // left the keys = key up = damper down
             anyContactingPrev = anyContacting;
         }
 
@@ -129,6 +132,11 @@ namespace SlimeJumping.Platforms.Piano
             float release = step.releaseSeconds > 0f ? step.releaseSeconds : h.defaultReleaseSeconds;
             release *= SustainMultiplier(h.Ornaments);   // damper up while the slime stands on a pedal
 
+            // The note stops at the LATER of its measured length and the press: a measured few tens of
+            // ms (or a mis-detected one) must not cut it off while the slime is still standing there,
+            // and a long measured note must not be cut off by a quick jump either. Both paths.
+            harmonizePool.sustainNewNotes = h.sustainWhileStanding;
+
             harmonizePool.envelope = new PianoVoicePool.Envelope
             {
                 damperSeconds = h.damperSeconds,
@@ -163,7 +171,8 @@ namespace SlimeJumping.Platforms.Piano
             for (int i = 0; i < contactingKeys.Count; i++)
             {
                 if (contactingKeys[i] == null) continue;
-                MelodySnapMode snap = step.overrideSnapMode ? step.snapMode : h.snapMode;
+                MelodySnapMode snap = h.snapLandedKeyToChord ? MelodySnapMode.ChordTones
+                                    : step.overrideSnapMode ? step.snapMode : h.snapMode;
                 int m = HarmonyMath.SnapMelody(contactingKeys[i].MidiNote, h, step.offsetsFromTonic, snap);
                 while (melodyScratch.Contains(m)) m += 12;
                 melodyScratch.Add(m);
@@ -189,7 +198,8 @@ namespace SlimeJumping.Platforms.Piano
             // play: melody first (louder / dyad-scaled), then the chord as whatever figure is enabled;
             // dedupe so nothing double-triggers.
             playedScratch.Clear();
-            MelodySnapMode melSnap = step.overrideSnapMode ? step.snapMode : h.snapMode;
+            MelodySnapMode melSnap = h.snapLandedKeyToChord ? MelodySnapMode.ChordTones
+                                   : step.overrideSnapMode ? step.snapMode : h.snapMode;
             for (int i = 0; i < melodyScratch.Count; i++)
             {
                 int m = melodyScratch[i];
@@ -295,15 +305,40 @@ namespace SlimeJumping.Platforms.Piano
             float playerHold = HoldOf(lead || voiced == 0 ? step.melodyHold : holdSum / voiced, h);
             float playerFall = FallOf(lead || voiced == 0 ? step.melodyFall : fallSum / voiced, h, sustain);
 
+            // Which pitch classes the landed key is allowed to use. Chord-snap mode narrows that to the
+            // tones the figure itself strikes, so the pressed key can only ever be a note of the chord
+            // that is sounding — the song's melodic material (snapPcs also carries the line it sings,
+            // passing tones included) is what could still put the key a step outside the harmony.
+            pcsScratch.Clear();
+            if (h.snapLandedKeyToChord && support != null)
+                for (int i = 0; i < support.Length; i++)
+                {
+                    int pc = ((support[i].midi % 12) + 12) % 12;
+                    if (!pcsScratch.Contains(pc)) pcsScratch.Add(pc);
+                }
+            if (pcsScratch.Count == 0)
+            {
+                int[] pcs = lead ? step.melodyPcs : step.snapPcs;
+                if (pcs == null || pcs.Length == 0) pcs = lead ? step.snapPcs : step.melodyPcs;
+                if (pcs != null) pcsScratch.AddRange(pcs);
+            }
+
             melodyScratch.Clear();
             for (int i = 0; i < contactingKeys.Count; i++)
             {
                 if (contactingKeys[i] == null) continue;
-                int m = SnapLandedKey(contactingKeys[i].MidiNote, step, h, lead, supportTop);
+                int m = SnapLandedKey(contactingKeys[i].MidiNote, pcsScratch, h, lead, supportTop);
                 while (melodyScratch.Contains(m)) m += 12;
-                // Blending, the landed key often lands on a note the figure already strikes — then
-                // the pressed key IS sounding and doubling it would only make that one voice loud.
-                if (!lead && FigureHas(support, m)) continue;
+                // The landed key often falls on a note the figure already strikes. Doubling the very
+                // same pitch is inaudible as a separate event (identical sample, identical onset) and
+                // only makes that one voice loud — so move it an octave, where it is still a tone of
+                // this chord but reads as its own note. Chord-snap mode makes that collision the norm,
+                // which is why the key can no longer simply be dropped here.
+                if (!lead && FigureHas(support, m))
+                {
+                    if (m + 12 <= 108) m += 12;
+                    else if (m - 12 >= 21) m -= 12;
+                }
                 melodyScratch.Add(m);
             }
 
@@ -377,26 +412,20 @@ namespace SlimeJumping.Platforms.Piano
             return false;
         }
 
-        // The landed key, moved to the nearest pitch class the song is using here — the whole figure
-        // plus its line when blending, only the sung line when leading. Off the song's material this
-        // bends the key by at most a tone; on it, the key does not move at all.
+        // The landed key, moved to the nearest of the pitch classes it is allowed to use here (see the
+        // caller: the figure's own tones in chord-snap mode, otherwise the song's material). That is at
+        // most a tone of movement, and none at all when the key is already on one of them.
         // Only lead mode lifts the note above the figure: a blended voice belongs inside the texture,
         // at the octave the slime actually landed on.
-        private static int SnapLandedKey(int keyMidi, ScorePreviewStep step, HarmonizeSettings h,
+        private static int SnapLandedKey(int keyMidi, List<int> pcs, HarmonizeSettings h,
                                          bool lead, int supportTop)
         {
-            int[] pcs = lead ? step.melodyPcs : step.snapPcs;
-            if (pcs == null || pcs.Length == 0) pcs = lead ? step.snapPcs : step.melodyPcs;
-            int best = keyMidi;
-            if (pcs != null && pcs.Length > 0)
+            int best = keyMidi, bestD = 99;
+            for (int i = 0; i < pcs.Count; i++)
             {
-                int bestD = 99;
-                for (int i = 0; i < pcs.Length; i++)
-                {
-                    int d = (((pcs[i] - keyMidi) % 12) + 12) % 12;
-                    if (d > 6) d -= 12;
-                    if (Mathf.Abs(d) < bestD) { bestD = Mathf.Abs(d); best = keyMidi + d; }
-                }
+                int d = (((pcs[i] - keyMidi) % 12) + 12) % 12;
+                if (d > 6) d -= 12;
+                if (Mathf.Abs(d) < bestD) { bestD = Mathf.Abs(d); best = keyMidi + d; }
             }
             if (lead && h.melodyAboveSupport && supportTop > int.MinValue)
             {

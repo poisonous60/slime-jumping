@@ -352,6 +352,10 @@ namespace SlimeJumping.Platforms.Piano
         public bool melodyAboveSupport = true;
         [Tooltip("착지 속도를 음량·음색에 반영할지. **끔이 기본** — 세기는 곡이 실제로 친 세기로만 정해진다(빠르게 착지했다고 곡보다 크게 치면 재현이 깨짐). 켜면 예전처럼 velocityToVolume 곡선이 곱해진다.")]
         public bool previewUseLandingVelocity = false;
+        [Tooltip("★ 음이 끊기는 시점 = 곡의 실측 길이와 밟고 있는 시간 중 **더 긴 쪽**. 실측이 짧거나 오탐인 구간은 점프할 때까지 유지되고, 실측이 더 긴 음은 떠난 뒤에도 남은 길이만큼 울린다. 끄면 실측 길이만 쓴다.")]
+        public bool sustainWhileStanding = true;
+        [Tooltip("★ 밟은 건반을 그 순간 울리는 **화음의 음으로** 강제한다(밟은 음에서 가장 가까운 화음 음, 최대 온음 이동). 어느 건반을 밟았는지는 소리에 남지만 화성 밖 음은 절대 안 나온다. 곡이 이미 그 음을 치고 있으면 옥타브를 옮겨 따로 들리게 한다.")]
+        public bool snapLandedKeyToChord = false;
 
         [Tooltip("건반을 뗀 뒤 댐퍼가 소리를 죽이는 시간(초). 울리는 동안은 샘플 자신의 감쇠에 맡기고, 끝에서만 이 시간으로 지수 감쇠한다 — 릴리즈 내내 선형으로 줄이면 샘플의 자연 감쇠와 싸워서 죽은 소리가 된다.")]
         [Min(0.02f)] public float damperSeconds = 0.18f;

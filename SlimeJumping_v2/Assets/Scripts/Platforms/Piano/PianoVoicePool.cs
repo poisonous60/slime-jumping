@@ -39,7 +39,7 @@ namespace SlimeJumping.Platforms.Piano
             public AudioLowPassFilter lowpass;
             public double startDsp;
             public float playVol, ringTimer, damperTimer, damperDur;
-            public bool sounding;
+            public bool sounding, sustained;
         }
 
         private struct Sample { public AudioClip clip; public float basePitch; public int baseMidi; }
@@ -48,6 +48,12 @@ namespace SlimeJumping.Platforms.Piano
         // down in Tick, so it still belongs to the landing that spawned it — no clock involved.
         private struct Pending { public int midi; public float volume, hold, fall, delay, velocity; }
         private readonly List<Pending> pending = new List<Pending>();
+
+        /// While true, a note also rings for as long as the key is held: its stop time becomes the later
+        /// of its measured length and ReleaseSustained(), so neither the transcription (which can read a
+        /// few tens of ms, or plain wrong) nor the press alone decides it. Read at the note's true onset,
+        /// so a delayed note firing after the key came up is not held.
+        public bool sustainNewNotes;
 
         /// Post-attack behaviour for every note played from now on.
         public Envelope envelope = new Envelope
@@ -214,7 +220,18 @@ namespace SlimeJumping.Platforms.Piano
             v.damperDur = fall;
             v.damperTimer = fall;
             v.sounding = true;
+            v.sustained = sustainNewNotes;
             v.startDsp = AudioSettings.dspTime;
+        }
+
+        /// Key up: the held notes go back to their own measured length. A note whose length already ran
+        /// out under the press damps now; one that is still longer than the press rings out the rest.
+        /// The stop time is the LATER of the two, never one of them chosen over the other.
+        public void ReleaseSustained()
+        {
+            sustainNewNotes = false;
+            for (int i = 0; i < voices.Count; i++)
+                voices[i].sustained = false;
         }
 
         /// Hold at full gain (the recording decays by itself), then fall: an exponential drop to
@@ -238,6 +255,14 @@ namespace SlimeJumping.Platforms.Piano
             {
                 var v = voices[i];
                 if (!v.sounding) continue;
+                if (v.sustained)
+                {
+                    // The measured length still runs down — the key being held only blocks the damper,
+                    // it does not restart the note. So a long measured note that outlives the press
+                    // keeps the remainder of its own length after key-up.
+                    if (v.ringTimer > 0f) v.ringTimer -= dt;
+                    continue;
+                }
                 if (v.ringTimer > 0f)
                 {
                     v.ringTimer -= dt;

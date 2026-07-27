@@ -110,7 +110,7 @@ namespace SlimeJumping.Editor
             var pso = new SerializedObject(partner);
             SetWaypoints(pso, Vector2.zero, new Vector2(0f, -1.6f));
             pso.FindProperty("travelSpeed").floatValue = 2.5f;
-            pso.FindProperty("mountTriggered").boolValue = true; // responds to TriggerFromLeader
+            pso.FindProperty("mountTriggered").boolValue = true; // responds to TriggerFromPartner
             pso.FindProperty("isLeader").boolValue = false;
             pso.FindProperty("enableTilt").boolValue = false;
             pso.FindProperty("holdRange").floatValue = 2.5f;

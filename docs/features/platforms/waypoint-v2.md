@@ -20,7 +20,7 @@
 
 ## Feature 1 — 탑승 트리거 + 범위 유지 (상태기계)
 `Phase { Parked, Departing, Holding, Returning }`, `mountTriggered` 토글.
-- **Parked**(target=wp0): 탑승 rising-edge(또는 `TriggerFromLeader()`) → Departing.
+- **Parked**(target=wp0): 탑승 rising-edge(또는 `TriggerFromPartner()`) → Departing.
 - **Departing**: wp[last]까지 진행, 도착(`pathParam≈last` && smoothPos 근접) → Holding.
 - **Holding**(target=wp[last]): 매 프레임 `Physics2D.OverlapCircle(wp[last], holdRange, riderLayers)`. 범위 내 슬라임 없으면 → Returning. (부착이 아닌 **근접** — 슬라임이 공중이어도 근처면 유지. `ThinIceRespawnZone` exit 패턴과 동일.)
 - **Returning**: wp0 복귀 → Parked(재무장).
@@ -28,7 +28,7 @@
 ## Feature 2 — 샌드위치 페어 + Pinch (명시적 platform↔slime 커플링)
 > 재설계 이유: 이전 3개 시도는 pinch를 **generic collision depenetration**(Phase A)에 의존 → off-center 슬라임의 대각선 normal 합이 1~2프레임에 옆으로 사출(시간/step 게이트 우회), kinematic 플랫폼이 dynamic 슬라임을 그냥 통과, localScale·intensity squash는 cheat(플랫폼 안으로 파고듦)라 다 실패. 해결: pinch를 **명시적 opt-in 상호작용**(bamboo-grab/rope 패턴)으로 — 플랫폼이 슬라임을 잡고 명시적으로 hold/extrude.
 
-- 페어링: `partner`+`isLeader`. leader 탑승 → leader Departing + `partner.TriggerFromLeader()`. 반대 이동은 각 waypoints가 결정.
+- 페어링: `partner`+`isLeader`. **트리거는 대칭** — 어느 쪽을 밟아도 그 데크가 Departing + `partner.TriggerFromPartner()`로 상대도 출발. `partner`는 한쪽에만 배선하면 Awake에서 반대 방향 링크를 자동 채움(`partner.partner = this`). 에코 재출발 방지: `TriggerFromPartner()`는 Parked 데크만 수락. `isLeader`는 이제 **pinch 솔브 담당/축 방향(−axis 쪽)** 만 결정 — 밟을 수 있는 데크를 뜻하지 않음. 반대 이동은 각 waypoints가 결정.
 - **복귀 = 트리거 박스 zone (ThinIce RespawnZone 모델, 2026-06-16)**: 각 데크가 자기 dest 원으로 복귀 판정하면 partner dest(낮은 쪽)에 압출 슬라임이 머물러 partner만 Holding에 갇힘. 대신 별도 컴포넌트 **`WaypointReturnZone`**(`ThinIceRespawnZone`와 동일 구조: isTrigger BoxCollider2D + Kinematic Rigidbody2D)이 멤버 데크들을 소유. 슬라임이 박스 **enter/exit를 카운트**(`slimeOverlapCount`), **exit→0 시 `ReturnAllMembers()`**가 멤버 전원에 `RequestReturn()` 호출 → leader+partner 동시 복귀. 데크는 `RegisterParentZone`로 zone 등록되면 holdRange 자가복귀를 끄고 zone 명령만 따름(`parentZone != null` 게이트). **출발은 그대로 탑승 트리거**(zone은 복귀만 담당). 멤버십: zone 자식 자동수집 + `explicitMembers`(샌드위치는 leader/partner 둘 다 등록). zone 미배치 시 데크는 legacy holdRange 자가복귀(F1 기본).
 
 > **현재 모델 (2026-06-16): FORCE + 콜라이더 축소 디커플 + 데크 reaction-stall + 셰이더 평면 clamp.**
@@ -57,7 +57,7 @@
 ## 배치 체크리스트
 - **공통/F1**: Rigidbody2D(Kinematic) + BoxCollider2D + `WaypointPlatformV2`, waypoint 2개. 탑승 → 흔들림+sag+댐핑 이동→도착, `holdRange` 밖으로 점프 → 복귀+재무장.
 - **틸트/얼음**: `iceMaterial`=Ice.asset, `enableTilt`, `idleTipBias>0`. 가만히 있는 슬라임 → 플랫폼 기울어 미끄러져 떨어짐 → 재점프 강제.
-- **샌드위치**: v2 2개, leader.`partner`=상대, `isLeader` 체크, waypoints 반대(위/아래). leader 탑승 → 둘이 수렴 → 슬라임이 `pinchSqueezeGapMin`에서 데크를 멈추고(reaction-stall) 압축비례 속도로 열린 옆으로 압출, 데크는 탈출 쪽으로 벌어짐(reaction torque). 비주얼은 풀사이즈 그대로 gap에 평면 clamp(납작). `riderLayers`는 슬라임 레이어로. `SurfaceProbeModeOverride(Multi)`는 자동 부착됨.
+- **샌드위치**: v2 2개, 한쪽 `partner`=상대(반대 링크 자동), 그 쪽에 `isLeader` 체크, waypoints 반대(위/아래). 아무 쪽 탑승 → 둘이 수렴 → 슬라임이 `pinchSqueezeGapMin`에서 데크를 멈추고(reaction-stall) 압축비례 속도로 열린 옆으로 압출, 데크는 탈출 쪽으로 벌어짐(reaction torque). 비주얼은 풀사이즈 그대로 gap에 평면 clamp(납작). `riderLayers`는 슬라임 레이어로. `SurfaceProbeModeOverride(Multi)`는 자동 부착됨.
 
 ## 기존 `WaypointPlatform` 과 차이
 | | v1 (`WaypointPlatform`) | v2 (`WaypointPlatformV2`) |

@@ -66,9 +66,9 @@ namespace SlimeJumping.Platforms
         [SerializeField] float arriveEpsilon = 0.05f;
 
         [Header("Feature 2 — sandwich pair")]
-        [Tooltip("The other half of the sandwich. Leave null for a solo platform.")]
+        [Tooltip("The other half of the sandwich. Mounting EITHER half departs both. Wire it on one deck — the other side is linked back automatically. Leave null for a solo platform.")]
         [SerializeField] WaypointPlatformV2 partner;
-        [Tooltip("Leader = the platform the slime mounts. Mounting it also triggers the partner. Partner should have its own (opposite) waypoints.")]
+        [Tooltip("Which deck owns the pinch solve (and sits on the −axis side of the gap). Check exactly one of the pair. Does NOT decide which deck the slime may mount.")]
         [SerializeField] bool isLeader;
         [Tooltip("Gap (units) at which the squeezed slime fully stops the deck. The deck's CLOSING speed is scaled by (gap−this)/(2R−this): full at first touch (gap=2R), easing to 0 here as the incompressible slime resists harder. The slime collider shrinks to fit down to this gap, so there's no overlap/fling. ~0.12.")]
         [SerializeField] float pinchSqueezeGapMin = 0.12f;
@@ -128,7 +128,7 @@ namespace SlimeJumping.Platforms
 
         BoxCollider2D box;
         Vector2 boxHalf = new Vector2(1f, 0.25f);
-        bool triggeredByLeader;
+        bool triggeredByPartner;
         SlimeController cachedSlime;
 
         // Optional authored trigger box that drives return (ThinIce RespawnZone model — one zone,
@@ -163,6 +163,10 @@ namespace SlimeJumping.Platforms
                 boxHalf = new Vector2(box.size.x * Mathf.Abs(ls.x) * 0.5f, box.size.y * Mathf.Abs(ls.y) * 0.5f);
             }
 
+            // The pair link is symmetric — authoring it on one deck links the other back, so mounting
+            // either half departs both.
+            if (partner != null && partner.partner == null) partner.partner = this;
+
             holdFilter = new ContactFilter2D { useTriggers = true };
             holdFilter.SetLayerMask(riderLayers);
             holdFilter.useLayerMask = true;
@@ -170,7 +174,7 @@ namespace SlimeJumping.Platforms
 
         // A deck that gets deactivated mid-trip keeps its phase/pathParam frozen while the rest of
         // the world moves on: the leader can park and re-depart (consuming its own mount trigger and
-        // setting triggeredByLeader on the sleeping partner) before the partner has finished
+        // setting triggeredByPartner on the sleeping partner) before the partner has finished
         // returning, so the pair comes back a full leg out of step and both decks end up stacked on
         // the same side. Waking always re-parks at the authored origin instead of resuming.
         protected override void OnEnable()
@@ -186,7 +190,7 @@ namespace SlimeJumping.Platforms
 
             phase = Phase.Parked;
             pathParam = 0f;
-            triggeredByLeader = false;
+            triggeredByPartner = false;
 
             rigidTarget = worldWaypoints[0];
             smoothPos = worldWaypoints[0];
@@ -226,8 +230,12 @@ namespace SlimeJumping.Platforms
             riderOnTop = false;
         }
 
-        /// <summary>Called on the partner by the leader when a slime mounts the leader.</summary>
-        public void TriggerFromLeader() => triggeredByLeader = true;
+        /// <summary>Called on one half of the pair when a slime mounts the other. Only a parked deck
+        /// accepts it — the deck that just departed must not re-arm its own trip from the echo back.</summary>
+        public void TriggerFromPartner()
+        {
+            if (phase == Phase.Parked) triggeredByPartner = true;
+        }
 
         /// <summary>Half-extent of this platform's box projected onto a world-space unit axis (rotation-aware).</summary>
         public float ExtentAlong(Vector2 worldAxisN)
@@ -370,12 +378,12 @@ namespace SlimeJumping.Platforms
             switch (phase)
             {
                 case Phase.Parked:
-                    if (mountRisingEdge || triggeredByLeader)
+                    if (mountRisingEdge || triggeredByPartner)
                     {
                         phase = Phase.Departing;
-                        if (isLeader && partner != null) partner.TriggerFromLeader();
+                        if (partner != null) partner.TriggerFromPartner();
                     }
-                    triggeredByLeader = false;
+                    triggeredByPartner = false;
                     break;
 
                 case Phase.Departing:

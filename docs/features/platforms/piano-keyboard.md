@@ -174,6 +174,11 @@ sensor(`BoxCollider2D`)는 정적 자식 GO, dip 애니는 건반 mesh transform
   - 처음엔 "울린 시간" 하나로 뭉쳤다가 유저 판정에서 걸렸다: *"ASpringGreen은 통통 튀는 느낌인데 한 번 눌렀을 때 지속 시간이 너무 길다."* 그 곡의 음 길이는 **0.215초**인데 페달이 3.37초 내려가 있어서 모든 음이 3.4초로 늘어났고, 런타임은 그동안 게인을 1.0으로 붙잡고 있었다. **페달이 내려가 있다 = 그 음이 풀볼륨으로 3.4초 난다가 아니라, 댐퍼가 안 내려와서 자연 감쇠한다**는 뜻이다. 0.2초 바운스 + 3.2초 꼬리가 맞다.
   - `fall`이 0보다 크면 곡이 이미 페달을 밟은 것이므로 **슬라임이 페달 오브젝트를 밟아도 더 안 늘린다**(이중 적용 방지). 페달을 안 밟은 음만 `damperSeconds × sustain`.
 - **음량·음색은 곡이 친 세기로만**(`previewUseLandingVelocity` 기본 off). 착지 속도는 안 쓴다 — 세게 착지했다고 곡보다 크게 치면 재현이 깨진다. 리버브 send도 같은 규칙.
+- **끊기는 시점 = 실측 길이와 밟은 시간의 max**(`sustainWhileStanding`, 기본 켬, 2026-07-27) — 실측 `hold`가 수십 ms거나 오탐인 구간에서 한 번 밟은 음이 즉시 끊겼다(유저 판정 *"한 번 눌렀을 때 너무 음이 짧게 지속되는 구간이 있다"*). **둘 중 하나를 고르지 않는다**: 밟고 있는 동안에도 실측 `hold` 카운트다운은 계속 돌고(누르는 게 음을 재시작하지 않는다) 눌림이 막는 건 댐퍼뿐이므로, 짧은 실측은 점프까지 유지되고 긴 실측은 떠난 뒤에도 남은 길이만큼 더 울린다. 키업은 접촉 falling edge → `PianoVoicePool.ReleaseSustained()`, 그 뒤 댐퍼는 그 음의 `fall`(실측 페달 잔향, 없으면 `damperSeconds`)로 내려온다. 지연 발음은 **실제 발음 시점에** 플래그를 읽으므로 건반이 이미 올라온 뒤 울리는 장식음은 안 붙들린다. 스키마 폴백 경로에도 같이 걸린다(플래그를 두 경로 공통 지점에서 세팅).
+- **밟은 건반 → 화음 음으로 강제**(`snapLandedKeyToChord`, 기본 끔, 2026-07-27) — 스냅 후보를 `snapPcs`가 아니라 **그 figure가 실제로 친 음들의 피치클래스**로 좁힌다. `snapPcs`에는 곡이 노래하는 선의 경과음까지 들어 있어서 화성 밖 반음이 남을 수 있었고, 좁히면 밟은 건반은 **울리는 화음의 음일 수밖에** 없다(이동량은 여전히 최대 온음 = 밟은 자리 근처).
+  - **건반 소리를 죽이는 방식은 반려됐다**(*"밟은 근처의 소리는 나야해. 화성에 맞춰서 나야하지만, 나긴 해야한다고"*) — 첫 구현은 밟은 건반을 아예 넣지 않았고 유저 판정 *"아예 무시하는 느낌"*.
+  - **화음으로 스냅하면 곡이 이미 그 음을 치고 있는 경우가 기본**이 된다. 똑같은 피치를 겹쳐 치면 샘플·온셋이 동일해서 **별개의 발음으로 안 들리고 그 성부만 커진다** — 그래서 겹칠 때 옥타브를 옮긴다(88건반 범위 안에서 위 우선). 예전처럼 건너뛰면 다시 "무시하는 느낌"이 된다.
+  - 스키마 폴백 경로에선 스냅 모드를 `ChordTones`로 강제(장식용 `melSnap`까지 동일). lead 모드와도 공존한다 — 노래하는 음을 대신하되 화음 음으로만.
 - **`melodyPcs`** = 그 코드 구간에서 곡이 노래하는 음들의 피치 클래스. 밟은 건반을 여기로 스냅하므로 **상성부는 곡의 음재료이면서 플레이어 입력에 답한다**. `melodyVel`/`melodyRing`은 그 타건이 실제로 노래했으면 그 음의 값, 아니면 구간 중앙값.
 - **런타임은 재구성하지 않는다.** preview 스텝이 있으면 `PlayPreviewGesture`가 보이스리딩·velocity density·장식 전부를 건너뛴다 — 그것들은 전부 *화음 모양을 지어내는* 장치이고, 지어내는 것이 곡의 실측 보이싱을 덮어써서 모든 곡을 같게 만든 원인이다.
 - **밟은 건반이 곡 바깥일 때**: `snapPcs` 안으로 최대 온음만큼만 굽힌다. `melodyClashSemitones`(1) 이내 지지음 제거는 **lead 모드 전용** — 거기선 밟은 건반이 멜로디를 대신하니 옆 음이 뭉갠다. 섞는 모드에선 곡이 친 걸 빼지 않는다.
@@ -219,10 +224,11 @@ sensor(`BoxCollider2D`)는 정적 자식 GO, dip 애니는 건반 mesh transform
 
 `scale`은 그 경로에서 **Major로 강제**한다. tonic이 이미 나란한장조라 그 위의 장조 펜타토닉 = 곡 으뜸음의 단조 펜타토닉(같은 음집합, 위 하모나이즈 항목의 "C장조 펜타 = A단조 펜타"와 같은 근거). Minor로 두면 B♭단조 펜타가 되어 곡에 없는 음이 나온다.
 
-실측(현재 로테이션 11곡):
+실측(현재 로테이션 42곡, 19개 조성):
 ```
-Dm  -> tonic 65 (F)      Am -> tonic 60 (C)      Fm -> tonic 68 (A♭)     Gm -> tonic 70 (B♭)
-C   -> tonic 60 (C)      D  -> tonic 62 (D)      B♭ -> tonic 70 (B♭)     C# -> tonic 61 (C#)
+C  /Am  -> 60 (C)     C# /B♭m -> 61 (C#)    D  /Bm  -> 62 (D)     E♭ /Cm  -> 63 (E♭)
+E  /C#m -> 64 (E)     F  /Dm  -> 65 (F)     F# /E♭m -> 66 (F#)    G       -> 67 (G)
+Fm      -> 68 (A♭)    B♭ /Gm  -> 70 (B♭)    A♭m     -> 71 (B)
 ```
 tonic은 항상 `[60,71]`에 놓는다 — authored 보이싱 최저 오프셋이 `-19`라 최저음이 `41..52`가 되어 "최저음 F2(41) 이상" 규칙을 정확히 만족한다(Codex가 전 조성 × 전 스키마로 검산).
 
@@ -243,12 +249,12 @@ tonic은 항상 `[60,71]`에 놓는다 — authored 보이싱 최저 오프셋�
 ### 파일 / 설정
 - **`PianoKeyboard.AutoPlay.cs`** (신규 partial) — 상태머신 전부. `AutoPlayStep(anyContacting)`은 FixedUpdate에서 도착·착지·복귀를 처리, `AutoPlayUpdate()`는 Update에서 트리거 판정 + 재생 tick.
 - **`PianoScoreData.cs`** — `PianoScoreData`/`ScoreNote`/`ScorePedalSpan`/`ScoreKey` + **`ScorePreview`/`ScorePreviewStep`/`ScoreSupportNote`**(곡별 미리보기). JsonUtility DTO. JSON의 `chords` 필드는 런타임 미사용이라 무시됨(오디오 크로마 추정이라 신뢰도 낮음 — chordToneAgreement 0.41; 심볼릭 재추출인 `preview.steps`가 그 자리를 대체).
-- **`PianoVoicePool.cs`** — `Envelope` 구조체(damper/brightness)를 착지마다 config에서 받아 세팅. `Play`(delay)와 `PlayExpressive`(delay+velocity) 분리.
-- **`HarmonizeSettings`의 `Performance expression` 블록** — `previewGesture`/`gestureMaxSpreadSeconds`/`gestureMaxRingSeconds`/`melodyClashSemitones`/`melodyAboveSupport`/`previewPlayerAsLead`/`previewChordBlur`/`blurRollSeconds`/`previewUseLandingVelocity`/`damperSeconds`/`brightnessEnabled`/`brightnessSoftHz`/`brightnessHardHz`/`brightnessHarmonicFloor`/`brightnessVelocityLow`/`brightnessVelocityHigh`.
+- **`PianoVoicePool.cs`** — `Envelope` 구조체(damper/brightness)를 착지마다 config에서 받아 세팅. `Play`(delay)와 `PlayExpressive`(delay+velocity) 분리. `sustainNewNotes` + `ReleaseSustained()`가 "밟고 있는 동안 풀게인 유지 → 키업에 댐퍼" 담당.
+- **`HarmonizeSettings`의 `Performance expression` 블록** — `previewGesture`/`gestureMaxSpreadSeconds`/`gestureMaxRingSeconds`/`melodyClashSemitones`/`melodyAboveSupport`/`previewPlayerAsLead`/`previewChordBlur`/`blurRollSeconds`/`previewUseLandingVelocity`/`sustainWhileStanding`/`snapLandedKeyToChord`/`damperSeconds`/`brightnessEnabled`/`brightnessSoftHz`/`brightnessHardHz`/`brightnessHarmonicFloor`/`brightnessVelocityLow`/`brightnessVelocityHigh`.
 - **`PianoVoicePool.PlayExpressive(midi, vol, hold, fall, delay, velocity)`** — `Play`(4인자)는 예전대로 delay 의미라 장식 경로 무수정.
 - **`PianoConfig.PianoSong`** (신규) — `label`/`clip`/`scoreJson`/`tonicMidi`(-1=자동)/`scale`/`ornaments`.
 - **`PianoConfig.AutoPlaySettings`** — `enabled`/`songs`/`minPresses`/`idleSeconds`/`cooldownSeconds`/`volume`/`loop`/`fadeInSeconds`/`fadeOutSeconds`/`visualDepthScale`.
-- **에셋**: `Assets/Audio/Music/` 에 11곡 (30초 10곡 + 167초 1곡), 각각 mp3 + `_score.json`.
+- **에셋**: `Assets/Audio/Music/` 에 42곡 (30~39초 41곡 + 167초 1곡), 각각 mp3 + `_score.json`. `Assets/Audio/`는 gitignore이므로 리포에 안 들어간다 — 원본은 `sound/music/`.
 
 ### 하드 게인 — 두 번의 적대적 리뷰에서 나온 것
 Claude 워크플로우(5렌즈) + Codex 리뷰가 잡은 실제 결함들. 재발 방지용으로 기록:
@@ -272,5 +278,5 @@ Claude 워크플로우(5렌즈) + Codex 리뷰가 잡은 실제 결함들. 재�
 - 검은 건반은 **밟을 수 없음**(콜라이더 없음, 의도) — 단 2026-07-23부터 소리에 맞춰 **시각적으로는 눌림**(차용화음 A♭/B♭ 등).
 - `Assets/Audio/Perc/vcsl_*.wav` 3개는 폐기된 자동 반주용으로 받아둔 것 — 현재 미사용.
 - **자동 연주 곡의 라이선스** — 현재 곡은 AudioHero 싱크권이라 "mp3 재생 + 건반 싱크"까지만 가능하고 샘플러 재연주는 불가. AI 전사 조항도 문자상 걸림(위 참조). 상용 전 confirm 또는 PD 곡 교체 필요.
-- **전사 스크립트가 repo에 없음** — `midi_to_score.py`(audio→score JSON)는 scratchpad에만 있다. 다른 곡을 추가하려면 스크립트를 repo로 옮겨야 함(현재는 요청 범위 밖이라 보류). `extract_preview.py`(score JSON→preview)는 2026-07-25부터 `tools/`에 있음.
+- **전사 스크립트가 repo에 없음** — `add_songs.py`(배치) / `midi_to_score.py`(MIDI→score JSON) / `build_artifact.py`(score JSON→테스트 HTML)는 전부 scratchpad에만 있다. transkun venv(`amt311`, Python 3.11 + `ncls==0.0.39`)와 librosa venv(`amt`)도 같은 자리. 이 셋 중 하나라도 지워지면 곡을 더 못 넣는다 — repo로 옮기려면 별도 요청 필요. `extract_preview.py`(score JSON→preview)는 2026-07-25부터 `tools/`에 있음.
 - 자동 연주 중 `harmonize.enabled`가 켜져 있고 슬라임이 착지하면 두 시스템이 같은 건반 시각을 겹쳐 누를 수 있다 — `PianoKeyVisual.Press`가 깊이·시간 모두 `max` 누적이라 깨지진 않지만, 복귀 직후 ~fadeOut 동안 자동 연주가 누른 건반이 남아 있다(의도: 급정지로 지우면 슬라임이 방금 친 건반의 dip까지 지워짐).
