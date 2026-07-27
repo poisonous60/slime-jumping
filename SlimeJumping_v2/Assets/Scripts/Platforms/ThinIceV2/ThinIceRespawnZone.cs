@@ -4,17 +4,9 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Platforms.ThinIceV2
 {
-    /// Defines a "trial group" of ThinIcePlatformV2 instances that all regenerate together
-    /// when the slime exits this zone's trigger box. Mirror of DeformablePlatformActivator
-    /// but driven by static authored-in-scene boxes instead of a slime-following circle.
-    ///
-    /// Membership: child ThinIcePlatformV2 components are auto-collected on Awake. Use
-    /// <see cref="explicitMembers"/> to add platforms outside this GO's hierarchy.
-    ///
-    /// Layer policy: stays on the same layer as the rest of the scene; isTrigger guarantees
-    /// no physical collision. The OnTriggerEnter/Exit handlers filter to slime via
-    /// GetComponentInParent&lt;SlimeController&gt; — no new layers needed.
-    [RequireComponent(typeof(BoxCollider2D))]
+    /// Trial group of ThinIcePlatformV2 that all regenerate when the slime exits this trigger.
+    /// Shape = any Collider2D on this GO (Reset drops a Box; swap for a Polygon to follow terrain).
+    /// Members: child components auto-collected on Awake, plus <see cref="explicitMembers"/>.
     [RequireComponent(typeof(Rigidbody2D))]
     public class ThinIceRespawnZone : MonoBehaviour
     {
@@ -28,16 +20,27 @@ namespace SlimeJumping.Platforms.ThinIceV2
         [SerializeField] bool drawMemberLines = true;
         [SerializeField] Color gizmoColor = new Color(0.4f, 0.85f, 1f, 0.65f);
 
-        BoxCollider2D box;
+        Collider2D shape;
         Rigidbody2D   rb;
         readonly List<ThinIcePlatformV2> members = new List<ThinIcePlatformV2>();
         int slimeOverlapCount;
 
+        /// Authored trigger shape. Test against this collider, never its bounds.
+        public Collider2D Shape
+        {
+            get
+            {
+                if (shape == null) shape = GetComponent<Collider2D>();
+                return shape;
+            }
+        }
+
         void Reset()
         {
-            var b = GetComponent<BoxCollider2D>();
+            var c = GetComponent<Collider2D>();
+            if (c == null) c = gameObject.AddComponent<BoxCollider2D>();
             var r = GetComponent<Rigidbody2D>();
-            if (b != null) b.isTrigger = true;
+            c.isTrigger = true;
             if (r != null)
             {
                 r.bodyType = RigidbodyType2D.Kinematic;
@@ -48,9 +51,15 @@ namespace SlimeJumping.Platforms.ThinIceV2
 
         void Awake()
         {
-            box = GetComponent<BoxCollider2D>();
+            shape = GetComponent<Collider2D>();
             rb  = GetComponent<Rigidbody2D>();
-            box.isTrigger = true;
+            if (shape == null)
+            {
+                Debug.LogError("[ThinIceRespawnZone] No Collider2D on this GameObject — zone disabled.", this);
+                enabled = false;
+                return;
+            }
+            shape.isTrigger = true;
             rb.bodyType = RigidbodyType2D.Kinematic;
             rb.gravityScale = 0f;
             // Ensure trigger events fire even against kinematic-bodied colliders (defensive).
@@ -103,13 +112,25 @@ namespace SlimeJumping.Platforms.ThinIceV2
 
         void OnDrawGizmos()
         {
-            var b = GetComponent<BoxCollider2D>();
-            if (b == null) return;
+            var c = GetComponent<Collider2D>();
+            if (c == null) return;
             Gizmos.color = gizmoColor;
-            Matrix4x4 prev = Gizmos.matrix;
-            Gizmos.matrix = transform.localToWorldMatrix;
-            Gizmos.DrawWireCube(b.offset, b.size);
-            Gizmos.matrix = prev;
+
+            var box  = c as BoxCollider2D;
+            var poly = c as PolygonCollider2D;
+            if (box != null || poly != null)
+            {
+                Matrix4x4 prev = Gizmos.matrix;
+                Gizmos.matrix = transform.localToWorldMatrix;
+                if (box != null) Gizmos.DrawWireCube(box.offset, box.size);
+                else DrawPolygonPaths(poly);
+                Gizmos.matrix = prev;
+            }
+            else
+            {
+                // Other shapes: AABB hint only; runtime checks still use the real collider.
+                Gizmos.DrawWireCube(c.bounds.center, c.bounds.size);
+            }
 
             if (!drawMemberLines) return;
             // Cached members may be empty in edit mode (Awake hasn't run); fall back to a
@@ -122,6 +143,16 @@ namespace SlimeJumping.Platforms.ThinIceV2
             {
                 if (m == null) continue;
                 Gizmos.DrawLine(transform.position, m.transform.position);
+            }
+        }
+
+        static void DrawPolygonPaths(PolygonCollider2D poly)
+        {
+            for (int path = 0; path < poly.pathCount; path++)
+            {
+                var pts = poly.GetPath(path);
+                for (int i = 0; i < pts.Length; i++)
+                    Gizmos.DrawLine(poly.offset + pts[i], poly.offset + pts[(i + 1) % pts.Length]);
             }
         }
     }

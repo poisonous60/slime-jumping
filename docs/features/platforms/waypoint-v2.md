@@ -9,7 +9,7 @@
 
 ## 연출 (매 FixedUpdate `ComputeMotion` 합성)
 1. **Rigid path target** — `localWaypoints` 폴리라인을 `travelSpeed`로 진행, `easeCurve` per-leg 이징. Phase가 방향 결정. waypoint <2 개 또는 `mountTriggered` off → 정지(틸트/얼음 전용).
-2. **Damped follow (UI 댐핑)** — `Vector2.SmoothDamp(smoothPos, rigidTarget, …, riderPresent ? mountedSmoothTime : followSmoothTime)`. 탑승 시 smoothTime↑ → 묵직한 UI-스프링 지연감.
+2. **Damped follow (UI 댐핑)** — `Vector2.SmoothDamp(smoothPos, rigidTarget, …, curSmoothTime)`. 탑승 시 smoothTime↑ → 묵직한 UI-스프링 지연감. smoothTime 은 `riderOnTop ? mountedSmoothTime : followSmoothTime` 로 **즉시 전환하지 않고 `smoothTimeBlendTime`(초) 동안 `MoveTowards` 블렌드**. SmoothDamp 는 등속 타깃을 `travelSpeed × smoothTime` 만큼 뒤에서 따라가므로, 값을 즉시 뒤집으면 그 위치 빚(3 m/s·(0.18−0.05) = 0.39u)을 한 settle 안에 몰아서 갚음 → 발사 순간 데크가 진행방향으로 확 튀고 착지 순간 멈칫. 수직 플랫폼에서 특히 조작감을 해쳤음. 블렌드로 완만하게 상환.
 3. **Vertical sag 스프링** — under-damped. 목표 `riderPresent ? -sagDepth*riderMass : 0`. 탑승 → 살짝 가라앉으며 흔들림, 이탈 → overshoot 반동. rb를 실제로 움직이므로 슬라임이 출렁임을 같이 탐.
 4. **Tilt 스프링** (`enableTilt`) — `TiltPlatform` 수식 재사용: 라이더 localX/halfWidth → targetTilt, 스프링-댐퍼 → currentTilt. **콜라이더가 기울어** 슬라임이 미끄러짐.
 5. 반환 `(smoothPos + (0, sagY), baseRot + currentTilt)`.

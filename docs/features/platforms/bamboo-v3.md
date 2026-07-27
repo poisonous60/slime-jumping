@@ -111,8 +111,39 @@ a > adhesionBreakAccel  →  slime.ForceAirborneWithVelocity(ω × arm)
 | `maxDeflectionDeg` | 60 | `|θ|` 하드 캡. 초과 시 각도 clamp + 바깥 방향 각속도 흡수. **라이더 유무와 무관하게 항상 동일** |
 | `maxTipSpeed` | 18 | `|θ̇|·L` 상한. carrier 상속이 배율 없이 1.0이라 **이게 곧 부스트 천장** |
 | `adhesionBreakAccel` | 40 | 접착 파단 임계 (m/s²) |
+| `underhangClingTime` | 0.2 | 밑면에 붙었는데 **그 스윙이 못 던질 때**만 도는 짧은 점착 시간. 초과 시 미끄러져 떨어진다. 던질 수 있는 스윙이면 타이머가 아예 안 돌아서 throw가 끝낼 때까지 매달린다 |
 
 **튜닝 규칙:** 약해도 튕기면 `adhesionBreakAccel`을 **올리고**, 세게 박아도 안 튕기면 **내린다.** 다른 노브는 안 건드려도 된다 — 그게 이 설계의 목적이다.
+
+### 외부 하중 (`ApplyExternalLoad`)
+
+라이더가 아닌 것이 스탈크에 얹혀 있을 때(쓰러진 장대) 쓰는 채널. 무게 토크는 rider 무게와 **같은 누적기**(`pendingRiderTorque`)에 가산되고 — 토크는 가산이라 슬라임 무게와 자연히 합쳐진다 — 관성 기여는 `pendingExternalInertia`로 모아 `ComputeSpringCoeffs`의 `ITotal`에 더한 뒤 `ComputeMotion`에서 토크와 함께 리셋된다. 매 FixedUpdate 부르는 게 전제, 안 부르면 그게 해제.
+
+관성은 `pendingExternalInertia`에 모았다가 `ComputeMotion` **맨 앞**에서 `externalInertia`로 커밋하고 프레임 내내 유지한다 — `CheckSpringThrow`/`ThrowCapable`이 `OnAfterMotion`에서 계수를 다시 계산하는데, 여기서 0으로 지워버리면 `lastWeightTorque`엔 장대 무게가 들어 있는데 강성엔 없는 **불일치 평형**이 throw 게이트에 그대로 들어간다(codex 지적).
+
+**라이더 슬롯을 건드리지 않는 게 핵심.** 슬롯은 1개뿐이라 얹힌 장대가 그걸 점유하면: 슬라임이 그 스탈크에 착지해도 `firstAttach`가 안 떠서 **랜딩킥이 0**(= "대나무가 안 휜다"), 차징 freeze가 읽는 arm·질량이 장대 것으로 오염, 접촉 플리커마다 `RemoveRider`가 슬라임에 리랜드 락아웃 등록. 외부 하중 채널로 분리하고 나서 그 세 증상이 한꺼번에 사라졌고, 플리커 방어용 grace 노브도 필요 없어져 삭제했다.
+
+### 외부 충격 입력 (`ApplyExternalImpact`)
+
+라이더 계약 밖에서 스탈크에 충격을 넣는 공개 경로. 쓰러진 장대가 이 스탈크에 걸쳐 있고 그 위에서 슬라임이 착지/발사할 때, 쓰러진 장대가 대신 전달한다 — 스탈크는 Kinematic이라 접촉 물리로는 아무것도 못 받고, `ApplyRiderInfluence`의 랜딩킥은 `firstAttach` 엣지에서만 발화하는데 그 슬롯은 얹힌 장대가 계속 점유하기 때문.
+
+착지 임펄스 수학은 private `InjectImpactImpulse`로 추출해 착지 분기와 공유한다(`impactSoftCap` 로그 압축 → `dOmega = (r × J)/I_stalk` → `LandingImpulseRampTime` 램프). 차이는 둘:
+- **팁 보너스 `landingImpulseGain` 미적용** — 그건 슬라임이 이 스탈크의 스위트스폿을 맞힌 보상인데, 여기 접촉점은 장대가 얹힌 자리라 슬라임이 겨눈 지점이 아니다
+- 접촉점의 표면 속도는 그대로 차감 — 스탈크가 충격에서 멀어지는 중이면 덜 먹고 다가오는 중이면 더 먹는다(반복 착지 공짜 에너지 차단)
+
+### 밑면 매달림 (underhang)
+
+`BambooV3_Surface`는 `overrideCeilingAngle`로 글로벌 천장 한계(150°/140°)를 **180°/180°**로 덮어쓴다. 임계값이 `cos(180°) = -1`이라 슬라임의 천장 detach 조건 `dot(n, up) < thr`가 성립 불가 — 이건 **의도된 것**이다. 안 그러면 reattach 임계(-0.766) 때문에 밑에서 때린 슬라임이 부착조차 못 해서 "밑면 강타 → 스프링 로드 → 튕겨나감"이 통째로 사라진다. 대가는 던져지지 않은 슬라임이 영구히 매달리는 것.
+
+그래서 판정은 시간이 아니라 **질문**이다: `BambooPlatformV3.ThrowCapable` — 지금 이 스윙이 `CheckSpringThrow`의 게이트 2개(peak bend ≥ `ejectBendDeg`, 사출 속도 ≥ `MinEjectSpeed` 2)를 만족시킬 수 있나?
+
+- 감쇠 무시 SHO 진폭 `A = √((θ − θeq)² + (ω_total/ωn)²)`, `ωn = 2π·naturalFreqHz`, `θeq = lastWeightTorque / stiffness`
+- `ω_total = angularVel + rampOmegaRemainingDeg` — 착지 임펄스가 `LandingImpulseRampTime`(0.1초) 램프로 들어가므로, 아직 큐에 있는 분량을 안 더하면 **착지 직후 강타를 "못 던짐"으로 오판**한다
+- 실제 게이트는 0 기준 절대 bend(`peakBendSinceAttach`)를 보므로 예측도 `|θeq| + A`로 맞춤
+- 사출 속도 예측은 half-return 발화 지점 기준: `A_rad · ωn · √3/2 · |arm|`. **arm은 라이더 슬롯이 아니라 슬라임 위치에서 잰다**(`TryGetSlimeArm`) — 라이더 슬롯은 1개뿐이라 쓰러진 장대가 이 줄기에 얹히면 `lastRiderWorldPos`가 그 접촉점으로 덮이고, 그대로 쓰면 슬라임과 무관한 접촉으로 throw를 예측하게 된다(codex 지적). 같은 이유로 `CheckSpringThrow`의 사출 속도도 슬라임 arm으로 계산한다
+- 감쇠를 무시하는 건 낙관 방향(쿼터 스윙당 약 `e^(-ζπ/2)`)이지만, 링다운하면서 A가 줄어 판정이 **저절로 false로 뒤집히는** 게 이 설계의 자기교정 지점 — 별도 만료 규칙이 필요 없다
+
+`ThrowCapable`이 참인 동안엔 cling 타이머가 안 돌고(= throw가 끝냄), 거짓이 되면 `underhangClingTime` 후 미끄러진다. 해제는 throw와 같은 `ForceAirborneWithVelocity` 경로 + **장대 전체 콜라이더**에 `relandLockoutTime` 재부착 가드(한 세그먼트만 풀면 다음 프로브에서 옆 캡슐이 받아버림). 차징 중엔 타이머 리셋 — 차지는 반드시 발사로 끝난다. 규칙은 중첩 struct `BambooPlatformV3.UnderhangSlip`에 들어 있어서, 스프링이 없는 쓰러진 장대(`FallingBambooCorpseMotor`)가 `throwCapable: false`로 같은 코드를 쓴다.
 
 carrier 상속은 `VelocityTransferScale` override로 처리한다: `launchBoostScale`(기본 1.5) 배율에, SpringyBranch/TautLine과 동일한 **boost-falloff 게이트**(`boostFalloffStartSpeed` 12 / `boostFalloffEndSpeed` 18, 2026-07-26 추가)를 곱한다. 발사 순간 슬라임의 pre-bonus 속도(EnergyConversion·하이퍼대시 포함, carrier 기여 제외)가 start 이하면 풀 부스트, end 이상이면 0, 사이는 선형 falloff — 이미 높게 뛸 수 있는 발사 위에는 줄기 부스트가 스택되지 않는다. 슬라임 자신의 속도는 그대로 통과. 부스트 천장은 `maxTipSpeed × launchBoostScale`.
 

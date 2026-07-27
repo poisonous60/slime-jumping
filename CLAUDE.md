@@ -43,6 +43,13 @@ unity-cli 확인은 `console` 컴파일 에러 뿐. 예상 못 한 출력 나와
 
 
 ### Coding Convention
+- 주석 길게 쓰지 마
+- 주석 길게 쓰지 마
+- 주석 길게 쓰지 마
+- 코드 변경했으면 주석에 변경한 내용 덧붙이지 말고 전체 행동만 써. 변경한 내용을 주석에 쓰지마
+- 주석에 오류 고쳤다고 쓰지 마
+- 오류 생겼을 땐 파일 뒤져보지 말고 구글 검색 먼저해.
+
 - 요청 안 받은 산출물(테스트 파일, 헬퍼, 에디터 툴, 새 문서) 만들지 말고 물어본다.
 - Use `rb.position` instead of `transform.position`
 - If some feature add or change, update  `SlimeJumping_메커닉_설계_v6.md`, `프로토타입_구현_현황.md` document in /docs folder

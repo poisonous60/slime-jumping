@@ -67,5 +67,9 @@ namespace SlimeJumping.Settings
 
         [Tooltip("Seconds after the rider leaves this stalk during which it cannot re-attach: SurfaceProbe skips the stalk's colliders for the full window (timer-only, no separation early-out) while physics stays ON — the whip-back shoves the slime away instead of catching it, and never passes through it. Needed because the springing stalk can move faster than a weak jump and chase the slime down mid-flight. 0 disables.")]
         [Range(0f, 1f)] public float relandLockoutTime = 0.3f;
+
+        [Header("Underhang")]
+        [Tooltip("Seconds a slime clings UNDER the stalk (contact normal pointing down) when the swing it is on CANNOT throw it — soft touch, swing already damped below ejectBendDeg, or a fallen pole with no spring at all. A swing that still meets the throw gate holds the slime for as long as it takes, so a hard hit from below always ends in the throw, never in a slip. Short by design: this is the 'it stuck for a moment and let go' window, not a hang time. 0 = slip immediately (no cling at all).")]
+        [Range(0f, 2f)] public float underhangClingTime = 0.2f;
     }
 }

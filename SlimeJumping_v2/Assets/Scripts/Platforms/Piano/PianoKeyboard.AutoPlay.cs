@@ -200,12 +200,12 @@ namespace SlimeJumping.Platforms.Piano
                     scale = preview.minor ? ScaleType.Minor : ScaleType.Major;
                 }
                 h.SetProgressionOverride(previewProg);
-                h.SetTextureOverride(TextureUsable(preview.texture) ? preview.texture : null);
+                h.SetPreviewStepsOverride(preview.steps);   // index-aligned with previewProg
             }
             else
             {
                 h.SetProgressionOverride(null);
-                h.SetTextureOverride(null);
+                h.SetPreviewStepsOverride(null);
 
                 if (tonic < 0 && hasScore && autoPlayScore.key != null)
                 {
@@ -244,12 +244,7 @@ namespace SlimeJumping.Platforms.Piano
                 Debug.Log($"[Piano] song {autoPlaySongIndex + 1}/{list.Count} '{song.label}' "
                           + $"tonic={h.TonicMidi} {h.Scale} | "
                           + (previewProg != null
-                              ? $"preview {previewProg.Count} chords"
-                                + (h.Texture != null
-                                    ? $" tex[spread {h.Texture.spreadSeconds * 1000f:F0}ms ring {h.Texture.releaseSeconds:F2}s"
-                                      + (h.Texture.bassReleaseSeconds > 0f ? $" drone {h.Texture.bassReleaseSeconds:F1}s" : "")
-                                      + "]"
-                                    : " (no texture)")
+                              ? $"preview {previewProg.Count} strikes [{PreviewShape(preview)}]"
                               : "schema")
                           + " | orn:"
                           + (o.rolledChord ? " rolled" : "") + (o.voiceLeading ? " voiceLead" : "")
@@ -277,32 +272,39 @@ namespace SlimeJumping.Platforms.Piano
                    && p.tonicMidi >= 60 && p.tonicMidi <= 71;
         }
 
-        /// Content-based validity for the measured texture block (same JsonUtility caveat as
-        /// PreviewUsable: a default instance has releaseSeconds 0, which no real song measures).
-        private static bool TextureUsable(ScoreTexture t) => t != null && t.releaseSeconds > 0f;
+        /// How many keys each of the song's strikes presses, e.g. "1212121212121212" for a song that
+        /// alternates bass and melody — the one-glance check that the rotation is playing THIS piece.
+        private static string PreviewShape(ScorePreview p)
+        {
+            var sb = new System.Text.StringBuilder(p.steps.Length);
+            for (int i = 0; i < p.steps.Length; i++)
+            {
+                var s = p.steps[i];
+                int n = s == null || s.support == null ? 0 : s.support.Length;   // the figure itself
+                sb.Append((char)('0' + Mathf.Min(9, n)));
+            }
+            return sb.ToString();
+        }
 
-        /// The JSON steps as runtime ChordSteps. Deliberately built with object initializers over
-        /// `new ChordStep()` — never deserialized straight into ChordStep — so leftNext/centerNext/
-        /// rightNext keep their -1 defaults and nextOptions stays empty. That data shape is what
-        /// makes HarmonyMath.NextIndex walk the song's loop linearly and wrap, with zone branching
-        /// and weighted dice naturally inert; no branching flags to manage.
-        /// The song's measured ring (texture.releaseSeconds) is baked into every step here — the
-        /// landing path already honors ChordStep.releaseSeconds, so chords ring as long as the
-        /// piece lets its own chords ring.
+        /// The JSON steps as runtime ChordSteps, ONE PER STEP so the list stays index-aligned with
+        /// ScorePreview.steps (the landing reads the strike by harmonizeIndex). Deliberately built
+        /// with object initializers over `new ChordStep()` — never deserialized straight into
+        /// ChordStep — so leftNext/centerNext/rightNext keep their -1 defaults and nextOptions stays
+        /// empty. That data shape is what makes HarmonyMath.NextIndex walk the song's opening
+        /// linearly and wrap, with zone branching and weighted dice naturally inert.
+        /// releaseSeconds stays 0 here: ring is now per NOTE, measured, inside the strike itself.
         private static System.Collections.Generic.List<ChordStep> BuildPreviewProgression(ScorePreview p)
         {
-            float ring = TextureUsable(p.texture) ? p.texture.releaseSeconds : 0f;   // 0 = defaultReleaseSeconds
             var steps = new System.Collections.Generic.List<ChordStep>(p.steps.Length);
             for (int i = 0; i < p.steps.Length; i++)
             {
                 var s = p.steps[i];
-                if (s == null || s.offsetsFromTonic == null || s.offsetsFromTonic.Length == 0) continue;
                 steps.Add(new ChordStep
                 {
-                    label = s.label,
-                    offsetsFromTonic = s.offsetsFromTonic,
-                    releaseSeconds = ring,
-                    overrideSnapMode = s.chordTones,   // borrowed chords force chord-tone melody snap (S5 rule)
+                    label = s != null ? s.label : "",
+                    offsetsFromTonic = s != null && s.offsetsFromTonic != null && s.offsetsFromTonic.Length > 0
+                                     ? s.offsetsFromTonic : new[] { 0 },
+                    overrideSnapMode = s != null && s.chordTones,   // borrowed chords force chord-tone snap
                     snapMode = MelodySnapMode.ChordTones,
                 });
             }

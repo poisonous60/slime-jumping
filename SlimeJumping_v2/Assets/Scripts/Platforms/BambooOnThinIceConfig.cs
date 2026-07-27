@@ -18,6 +18,11 @@ namespace SlimeJumping.Platforms
                  "a new landing — debounce for attach flicker double-counts.")]
         [Min(0f)] public float landingDebounceSeconds = 0.1f;
 
+        [Tooltip("Seconds without any contact on the stalk before the partial cracks heal back " +
+                 "to none (the count AND the shader progress). Leaving the respawn zone still " +
+                 "resets them immediately, whichever comes first. 0 = never heal on its own.")]
+        [Min(0f)] public float crackHealSeconds = 2f;
+
         [Header("Corpse fall")]
         [Tooltip("Mass the SLIME feels (rigidbody mass: shove resistance, launch recoil " +
                  "response). No effect on fall speed, no effect on stalk shake (bambooMass).")]
@@ -45,12 +50,18 @@ namespace SlimeJumping.Platforms
                  "the slime's rider mass is ~1 for comparison.")]
         [Min(0f)] public float bambooMass = 2f;
 
-        [Tooltip("Seconds the corpse keeps holding a live stalk after their contact drops. " +
-                 "Resting on a swinging spring makes contacts blink out for a few frames at a " +
-                 "time; releasing on every blink re-arms the stalk's landing kick AND its " +
-                 "reland lockout, which keeps the slime Airborne on top of that stalk. Must be " +
-                 "longer than a flicker gap, shorter than a real departure.")]
-        [Min(0f)] public float stalkContactGraceSeconds = 0.3f;
+        [Tooltip("Extra mass a supporting stalk feels while the SLIME rides the fallen pole. " +
+                 "One number drives all three ways the slime reaches the stalk through the pole: " +
+                 "weight bow while it stands (m·g), landing kick when it touches down (m·v), and " +
+                 "recoil when it launches off. Split between supports — a pole bridging two stalks " +
+                 "loads each with half. 0 = the stalk only ever feels the pole itself (bambooMass).")]
+        [Min(0f)] public float ridingSlimeMass = 1f;
+
+        [Tooltip("Seconds after the stalk topples before it stands back up on its own (the ice " +
+                 "regenerates with it — same path the respawn zone uses). The zone-exit route " +
+                 "still works and wins if the slime leaves the area first. 0 = no timer, zone " +
+                 "exit only.")]
+        [Min(0f)] public float respawnDelaySeconds = 2f;
 
         [Tooltip("Dust-puff prefab spawned along the pole when the corpse is removed (out of " +
                  "zone / ice regen). playOnAwake must be OFF; Play() is called explicitly. " +

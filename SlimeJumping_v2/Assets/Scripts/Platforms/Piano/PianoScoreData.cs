@@ -32,38 +32,48 @@ namespace SlimeJumping.Platforms.Piano
         public float confidence;
     }
 
-    /// One chord of the song's own opening progression, voiced offline (tools/extract_preview.py)
-    /// as tonic-relative semitone offsets — exactly what ChordStep.offsetsFromTonic wants, so the
-    /// runtime does no music math. chordTones marks out-of-key chords whose melody snap must be
-    /// forced to chord tones (same reason as the authored S5 borrowed chords).
+    /// One note of a measured strike: which key, how long after the strike's first note it enters,
+    /// how loud relative to the loudest note in the whole measured window, and its two-part length.
+    /// `hold` and `fall` are separate measurements on purpose — a 0.2 s bounce under a 3.4 s pedal is
+    /// a short strike with a long tail, not a 3.4 s note, and collapsing them into one "ring" is what
+    /// made a staccato piece sound sustained.
+    [System.Serializable]
+    public class ScoreSupportNote
+    {
+        public int midi;
+        public float dt;    // seconds after the strike's first note (tens of ms at most)
+        public float vel;   // 0..1, relative to the window's peak — this is the song's dynamics
+        public float hold;  // seconds the key is down: full gain, the recording decays on its own
+        public float fall;  // seconds of pedal tail after that; 0 = the damper falls right away
+        public bool sings;  // the voice the song sings with — dropped only in lead mode
+    }
+
+    /// One step of the preview = ONE attack the song actually played, not a chord symbol. Two songs
+    /// on the same progression differ entirely above the chord label — which notes are struck
+    /// together, how hard, how long, which one sings — so that is what a step carries.
+    /// `support` is the whole figure, singing voice included. The landed key joins it as one more
+    /// voice, snapped into `snapPcs` (the pitch classes the song is using right here) and set at the
+    /// figure's own level, so it blends into the texture instead of sitting on top of it.
+    /// In lead mode (`previewPlayerAsLead`) the sung note is dropped and the landed key takes its
+    /// place in `melodyPcs` instead.
     [System.Serializable]
     public class ScorePreviewStep
     {
         public string label;
-        public int[] offsetsFromTonic;
+        public int[] offsetsFromTonic;   // the strike as tonic-relative offsets (fallback math only)
         public bool chordTones;
+
+        public int[] snapPcs;            // blend mode: where the landed key goes
+        public int[] melodyPcs;          // lead mode: the line the song sings over this chord
+        public float melodyVel;          // this strike's singing dynamics
+        public float melodyHold, melodyFall;   // as ScoreSupportNote
+        public bool melodyStruck;        // false = the song struck no melody here (bass-only attack)
+
+        public ScoreSupportNote[] support;
     }
 
-    /// The measured shape of how the song's opening actually plays its chords — every field is a
-    /// continuous value from the transcription, never a toggle from an ornament catalog:
-    /// how far apart (and in which direction) chord notes unfold, how long chords ring, whether a
-    /// low drone is held (and for how long / how loud), and how loud the accompaniment sits under
-    /// the top voice. Deliberately NO inter-attack pattern: one landing = one sounding gesture is
-    /// a user-set contract — a landing must never re-strike keys a beat later, however faithfully
-    /// that would copy the song's ostinato.
-    [System.Serializable]
-    public class ScoreTexture
-    {
-        public float spreadSeconds;
-        public bool rollUp;
-        public float releaseSeconds;
-        public float bassReleaseSeconds;   // 0 = the song holds no drone
-        public float bassVolumeScale;
-        public float chordVolumeScale;
-    }
-
-    /// The song-as-preview data: the piece's opening chord loop plus the measured texture above,
-    /// so the slime's landings play THIS piece, not the shared schemas.
+    /// The song-as-preview data: the opening as a run of measured attacks, so a run of landings
+    /// reproduces THIS piece rather than a shared schema.
     /// Validity is judged by content (see PianoKeyboard.AutoPlay.PreviewUsable), never by null:
     /// JsonUtility may materialize a default instance when the JSON has no "preview" field.
     [System.Serializable]
@@ -72,7 +82,6 @@ namespace SlimeJumping.Platforms.Piano
         public int tonicMidi;
         public bool minor;
         public ScorePreviewStep[] steps;
-        public ScoreTexture texture;
     }
 
     /// A whole auto-play score, deserialized from the JSON TextAsset produced by the offline

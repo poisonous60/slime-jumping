@@ -40,7 +40,7 @@ Idle → Cracking → Shattered → (zone) Regenerating → Idle
 ```
 SlimeJumping.Platforms.ThinIceV2
 ├─ ThinIcePlatformV2          (runtime; state machine, OnLaunch 구독, shard spawn)
-├─ ThinIceRespawnZone         (runtime; BoxCollider2D trigger + Rigidbody2D Kinematic)
+├─ ThinIceRespawnZone         (runtime; 임의 Collider2D trigger + Rigidbody2D Kinematic)
 ├─ ThinIceV2Config            (ScriptableObject; 공유 자산 single source of truth)
 ├─ ThinIceShardSet            (ScriptableObject; shard mesh 리스트 — Config가 참조)
 └─ ThinIceShardRuntime        (per-shard 인스턴스; 수명 + 알파 페이드)
@@ -203,7 +203,7 @@ properties:
 2. MeshRenderer 머티리얼을 `Assets/Shaders/ThinIceV2.mat`로 설정 (toon ramp는 1회 셋업에서 자동 할당됨)
 3. `ThinIcePlatformV2` 컴포넌트 추가 → **끝**. 공유 자산은 Config에서 자동 로드
 4. (옵션) Config Override 슬롯에 다른 `ThinIceV2Config`를 지정해서 변형(다른 톤/밀도 등) 사용
-5. (옵션) Zone 트라이얼: 부모 GO에 `ThinIceRespawnZone`을 두고 그 자식으로 ThinIce를 배치 → zone-exit 시 일괄 regen
+5. (옵션) Zone 트라이얼: 부모 GO에 `ThinIceRespawnZone`을 두고 그 자식으로 ThinIce를 배치 → zone-exit 시 일괄 regen. Collider는 Box(기본, Reset이 자동 추가) 또는 **PolygonCollider2D** — 지형을 따라야 하면 Polygon으로 교체하면 되고, 트리거 판정·기즈모·BambooOnThinIce의 존 판정 모두 AABB가 아닌 실제 폴리곤 모양을 쓴다
 6. U자/곡선처럼 여러 ThinIce child collider를 이어 만든 표면도 별도 guide anchor 없이 기존 `SurfaceProbe` snap을 사용한다. child collider를 하나의 parent 아래 정리하는 것은 씬 관리 목적이며, 부착/이탈 판정은 항상 실제 활성 collider 기준이다.
 
 ## 테스트 시나리오 (메뉴: SlimeJumping/Platform/Setup ThinIcePlatformV2 Test)

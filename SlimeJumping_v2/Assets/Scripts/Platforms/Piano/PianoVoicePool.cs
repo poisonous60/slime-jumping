@@ -5,26 +5,56 @@ using UnityEngine.Audio;
 namespace SlimeJumping.Platforms.Piano
 {
     /// A small pool of AudioSources that plays a voiced chord as several simultaneous pitched piano
-    /// notes with a linear release tail — the audio half of harmonize mode (the physical keys only
-    /// sink visually). Mirrors SoundService's pooled-source + soft-steal pattern. Clips come from the
-    /// keyboard's own keys (a midi->clip map built at construction); notes with no exact key sample
-    /// (accidentals) pitch-shift from the nearest key (≤ ~1 semitone on a fully-chromatic set).
+    /// notes — the audio half of harmonize mode (the physical keys only sink visually). Mirrors
+    /// SoundService's pooled-source + soft-steal pattern. Clips come from the keyboard's own keys (a
+    /// midi->clip map built at construction); notes with no exact key sample (accidentals)
+    /// pitch-shift from the nearest key (≤ ~1 semitone on a fully-chromatic set).
+    ///
+    /// Two things here are performance expression, not mixing:
+    /// • A note RINGS at full gain for its measured length and is only killed at the end, by a short
+    ///   exponential damper. The clips are real piano recordings that already decay on their own; the
+    ///   old linear fade across the whole tail fought that decay and was the single loudest reason a
+    ///   landing read as "a sample being played" rather than a key being struck.
+    /// • Cutoff follows velocity. A real piano hammer is a hardening spring, so a hard strike is not
+    ///   just louder but brighter; with one sample per key we can only take brightness away, so a
+    ///   soft strike is filtered down toward its fundamental instead of merely turned down.
     public class PianoVoicePool
     {
+        /// How a struck note behaves after its attack. Set from HarmonizeSettings — every number is
+        /// a config knob, nothing here is a constant.
+        public struct Envelope
+        {
+            public float damperSeconds;
+            public bool brightness;
+            public float softHz, hardHz, harmonicFloor;
+            public float velocityLow, velocityHigh;   // the velocity span the cutoff sweeps over
+        }
+
+        private const float DamperDecibels = 6.9f;   // e^-6.9 ≈ -60 dB by the end of the damper fall
+        private const float MaxCutoffHz = 22000f;
+
         private class Voice
         {
             public AudioSource src;
+            public AudioLowPassFilter lowpass;
             public double startDsp;
-            public float playVol, releaseDur, releaseTimer;
-            public bool releasing;
+            public float playVol, ringTimer, damperTimer, damperDur;
+            public bool sounding;
         }
 
         private struct Sample { public AudioClip clip; public float basePitch; public int baseMidi; }
 
-        // A note waiting out its ornament delay (rolled chord / Alberti / chiptune burst). Counted down
-        // in Tick, so the whole figure still belongs to the landing that spawned it — no clock involved.
-        private struct Pending { public int midi; public float volume, release, delay; }
+        // A note waiting out its in-gesture offset (a rolled strike, or an ornament figure). Counted
+        // down in Tick, so it still belongs to the landing that spawned it — no clock involved.
+        private struct Pending { public int midi; public float volume, hold, fall, delay, velocity; }
         private readonly List<Pending> pending = new List<Pending>();
+
+        /// Post-attack behaviour for every note played from now on.
+        public Envelope envelope = new Envelope
+        {
+            damperSeconds = 0.18f, brightness = false, softHz = 1600f,
+            hardHz = MaxCutoffHz, harmonicFloor = 4f, velocityLow = 0.35f, velocityHigh = 0.85f,
+        };
 
         /// Fired the instant a note actually sounds — (midi, volume, releaseSeconds). Delayed ornament
         /// notes fire from Tick when their delay runs out, so a subscriber sees the true onset time of
@@ -52,7 +82,9 @@ namespace SlimeJumping.Platforms.Piano
                 src.loop = false;
                 src.spatialBlend = 0f;
                 src.outputAudioMixerGroup = group;
-                voices.Add(new Voice { src = src });
+                var lp = go.AddComponent<AudioLowPassFilter>();
+                lp.cutoffFrequency = MaxCutoffHz;
+                voices.Add(new Voice { src = src, lowpass = lp });
             }
 
             BuildMap(keys);
@@ -93,57 +125,101 @@ namespace SlimeJumping.Platforms.Piano
             return clip != null;
         }
 
+        // Free voice first; then one already under the damper (nearest to silent); only then a voice
+        // still ringing, and of those the QUIETEST. Ring-phase voices sit at full gain now, so
+        // "nearest to done" — which used to also mean "already faded out" — would hard-cut a loud
+        // note and click.
         private Voice Acquire()
         {
-            Voice steal = null;
+            Voice damping = null, ringing = null;
             for (int i = 0; i < voices.Count; i++)
             {
                 var v = voices[i];
-                if (!v.releasing || !v.src.isPlaying) return v;             // free
-                if (steal == null || v.releaseTimer < steal.releaseTimer) steal = v; // nearest to done
+                if (!v.sounding || !v.src.isPlaying) return v;
+                if (v.ringTimer <= 0f)
+                {
+                    if (damping == null || v.damperTimer < damping.damperTimer) damping = v;
+                }
+                else if (ringing == null || v.playVol < ringing.playVol) ringing = v;
             }
-            if (steal != null) steal.src.Stop();
-            return steal != null ? steal : voices[0];
+            var steal = damping != null ? damping : ringing;
+            if (steal == null) return voices[0];
+            steal.src.Stop();
+            return steal;
         }
 
-        /// Play one chord note at `volume`, fading to silence over `releaseSeconds` (the tail).
-        /// `delaySeconds` > 0 queues it instead — used by the ornaments to spread a chord in time.
-        public void Play(int midi, float volume, float releaseSeconds, float delaySeconds)
+        /// A soft strike is darker, not merely quieter. One sample per key means brightness can only
+        /// be removed, so cutoff falls toward the note's own fundamental as velocity drops — floored
+        /// at a few harmonics up so a quiet high note does not vanish.
+        /// The sweep runs over [velocityLow, velocityHigh], not 0..1: transcribed velocities sit in a
+        /// narrow band (~0.4-0.8 across the rotation), and mapping that band onto the middle of a
+        /// 0..1 ramp leaves a light touch barely darker than a heavy one.
+        private float CutoffFor(int midi, float velocity)
+        {
+            if (!envelope.brightness) return MaxCutoffHz;
+            float fundamental = 440f * Mathf.Pow(2f, (midi - 69) / 12f);
+            float t = Mathf.InverseLerp(envelope.velocityLow, envelope.velocityHigh, velocity);
+            float byVelocity = Mathf.Lerp(envelope.softHz, envelope.hardHz, t);
+            float floor = fundamental * Mathf.Max(1f, envelope.harmonicFloor);
+            return Mathf.Clamp(Mathf.Max(byVelocity, floor), 10f, MaxCutoffHz);
+        }
+
+        /// Play one note at `volume`, held for `holdSeconds` before the damper falls.
+        /// `delaySeconds` > 0 queues it instead — how a strike unfolds over its measured spread.
+        public void Play(int midi, float volume, float holdSeconds, float delaySeconds)
+            => PlayExpressive(midi, volume, holdSeconds, 0f, delaySeconds, -1f);
+
+        public void Play(int midi, float volume, float holdSeconds)
+            => PlayExpressive(midi, volume, holdSeconds, 0f, 0f, -1f);
+
+        /// As Play, with the note's own measured tail and velocity.
+        /// `fallSeconds` <= 0 uses the configured damper time (no pedal was down in the source).
+        /// `velocity01` < 0 means "take it from the volume" — the ornament paths, which carry no
+        /// dynamics of their own.
+        public void PlayExpressive(int midi, float volume, float holdSeconds, float fallSeconds,
+                                   float delaySeconds, float velocity01)
         {
             if (delaySeconds > 0f)
             {
-                // Kept sorted by remaining delay so a long frame that expires several ornament notes at
-                // once still fires them in their authored order (a rolled chord must stay low-to-high).
-                var p = new Pending { midi = midi, volume = volume, release = releaseSeconds, delay = delaySeconds };
+                // Kept sorted by remaining delay so a long frame that expires several notes at once
+                // still fires them in order (a rolled strike must keep its direction).
+                var p = new Pending { midi = midi, volume = volume, hold = holdSeconds, fall = fallSeconds,
+                                      delay = delaySeconds, velocity = velocity01 };
                 int i = pending.Count;
                 while (i > 0 && pending[i - 1].delay > delaySeconds) i--;
                 pending.Insert(i, p);
                 return;
             }
-            Play(midi, volume, releaseSeconds);
+            PlayNow(midi, volume, holdSeconds, fallSeconds, velocity01);
         }
 
-        public void Play(int midi, float volume, float releaseSeconds)
+        private void PlayNow(int midi, float volume, float holdSeconds, float fallSeconds, float velocity01)
         {
             if (!Resolve(midi, out var clip, out var pitch)) return;
-            NotePlayed?.Invoke(midi, volume, releaseSeconds);   // the note the score asked for, not the sampled one
+            float fall = fallSeconds > 0f ? fallSeconds : Mathf.Max(0.02f, envelope.damperSeconds);
+            // Subscribers (the key visuals) want how long the note is audible, not just held.
+            NotePlayed?.Invoke(midi, volume, holdSeconds + fall);
 
             var v = Acquire();
             v.src.clip = clip;
             v.src.pitch = pitch;
             v.src.volume = volume;
             v.src.time = 0f;
+            if (v.lowpass != null)
+                v.lowpass.cutoffFrequency = CutoffFor(midi, velocity01 < 0f ? Mathf.Clamp01(volume) : velocity01);
             v.src.Play();
 
             v.playVol = volume;
-            v.releaseDur = Mathf.Max(0.05f, releaseSeconds);
-            v.releaseTimer = v.releaseDur;
-            v.releasing = true;
+            v.ringTimer = Mathf.Max(0.02f, holdSeconds);
+            v.damperDur = fall;
+            v.damperTimer = fall;
+            v.sounding = true;
             v.startDsp = AudioSettings.dspTime;
         }
 
-        /// Advance every voice's linear release fade; stop and free those that finished. Also fires any
-        /// ornament note whose delay ran out.
+        /// Hold at full gain (the recording decays by itself), then fall: an exponential drop to
+        /// silence over the note's tail — the song's own pedal tail when it had one, the configured
+        /// damper time when it did not. Also fires any note whose in-gesture offset ran out.
         public void Tick(float dt)
         {
             int due = 0;
@@ -154,20 +230,26 @@ namespace SlimeJumping.Platforms.Piano
                 pending[i] = p;
                 if (p.delay <= 0f) due = i + 1;
             }
-            for (int i = 0; i < due; i++) Play(pending[i].midi, pending[i].volume, pending[i].release);
+            for (int i = 0; i < due; i++)
+                PlayNow(pending[i].midi, pending[i].volume, pending[i].hold, pending[i].fall, pending[i].velocity);
             if (due > 0) pending.RemoveRange(0, due);
 
             for (int i = 0; i < voices.Count; i++)
             {
                 var v = voices[i];
-                if (!v.releasing) continue;
-                v.releaseTimer -= dt;
-                float k = Mathf.Clamp01(v.releaseTimer / v.releaseDur);
-                v.src.volume = v.playVol * k;
-                if (v.releaseTimer <= 0f)
+                if (!v.sounding) continue;
+                if (v.ringTimer > 0f)
+                {
+                    v.ringTimer -= dt;
+                    continue;                                   // untouched: the sample's own decay
+                }
+                v.damperTimer -= dt;
+                float fallen = 1f - Mathf.Clamp01(v.damperTimer / v.damperDur);
+                v.src.volume = v.playVol * Mathf.Exp(-DamperDecibels * fallen);
+                if (v.damperTimer <= 0f)
                 {
                     v.src.Stop();
-                    v.releasing = false;
+                    v.sounding = false;
                 }
             }
         }

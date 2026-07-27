@@ -18,8 +18,9 @@ MonoBehaviour:
   maxTipSpeed: 40
   ejectBendDeg: 15
   impactSoftCap: 24
-  landingImpulseGain: 1
+  landingImpulseGain: 1.3
   launchBoostScale: 0.5
   boostFalloffStartSpeed: 12
   boostFalloffEndSpeed: 18
   relandLockoutTime: 0.3
+  underhangClingTime: 0.2

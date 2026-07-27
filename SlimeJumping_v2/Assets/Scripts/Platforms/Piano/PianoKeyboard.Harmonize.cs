@@ -129,6 +129,32 @@ namespace SlimeJumping.Platforms.Piano
             float release = step.releaseSeconds > 0f ? step.releaseSeconds : h.defaultReleaseSeconds;
             release *= SustainMultiplier(h.Ornaments);   // damper up while the slime stands on a pedal
 
+            harmonizePool.envelope = new PianoVoicePool.Envelope
+            {
+                damperSeconds = h.damperSeconds,
+                brightness = h.brightnessEnabled,
+                softHz = h.brightnessSoftHz,
+                hardHz = h.brightnessHardHz,
+                harmonicFloor = h.brightnessHarmonicFloor,
+                velocityLow = h.brightnessVelocityLow,
+                velocityHigh = h.brightnessVelocityHigh,
+            };
+
+            // The rotation song's own strike for this step, played verbatim. It replaces the whole
+            // rebuild-and-decorate path below — voice leading, velocity density and every ornament
+            // exist to invent a chord shape, and inventing one is exactly what overwrote the song's
+            // measured voicing and made every piece sound alike.
+            var previewSteps = h.PreviewSteps;
+            if (h.previewGesture && previewSteps != null
+                && harmonizeIndex < previewSteps.Length && previewSteps[harmonizeIndex] != null)
+            {
+                PlayPreviewGesture(h, previewSteps[harmonizeIndex], baseVol,
+                                   SustainMultiplier(h.Ornaments));
+                // Reverb send follows the same rule as loudness: the song decides, not the landing.
+                AdvanceHarmonizeStep(h, step, h.previewUseLandingVelocity ? vel : 1f);
+                return;
+            }
+
             // chord voicing (absolute MIDI)
             HarmonyMath.BuildChord(step, h.TonicMidi, chordScratch);
 
@@ -205,15 +231,189 @@ namespace SlimeJumping.Platforms.Piano
             // delayed ones inside an ornament — comes back through PianoVoicePool.NotePlayed and
             // presses its own key there (OnNoteSounded), so sound and picture can't drift apart.
 
+            AdvanceHarmonizeStep(h, step, vel);
+        }
+
+        // Shared tail of a landing: reverb send, then walk to the next step. A preview song's
+        // progression is linear data (no nextOptions), so this walks it 0,1,2,... and wraps.
+        private void AdvanceHarmonizeStep(HarmonizeSettings h, ChordStep step, float vel)
+        {
             if (h.reverbEnabled && harmonizeMixer != null)
                 harmonizeMixer.SetFloat(h.reverbWetParam, h.velocityToReverb.Evaluate(vel));
 
+            var prog = h.Progression;
             LandingZone zone = h.branchingEnabled ? HarmonyMath.Zone(NormalizedLandingX(), h) : LandingZone.Center;
             float roll = h.randomBranching ? Random.value : -1f;   // < 0 disables the weighted path
             bool wasLoopEnd = step.nextOptions != null && step.nextOptions.Length > 0;
             harmonizeIndex = HarmonyMath.NextIndex(step, zone, harmonizeIndex, prog.Count, roll);
             if (wasLoopEnd) harmonizeLoopStart = harmonizeIndex;   // a loop end always lands on a schema start
             lastAdvanceTime = Time.time;
+        }
+
+        // ── The song's own figure ────────────────────────────────────────────────────────────────
+        // One landing = what the song actually played here: its notes, at its measured offsets, its
+        // measured loudness, ringing for as long as they really rang (pedal included).
+        //
+        // The landed key is BLENDED IN, not swapped for the melody. Replacing the sung note with the
+        // landed key removed the piece's own line and left an arbitrary note on top of it — the
+        // reason it read as not belonging. Now the whole figure sounds, and the landed key joins as
+        // one more voice: snapped into the pitch classes the song is using right here, and set at the
+        // figure's own level so it sits inside the texture. Lead mode restores the old behaviour.
+        private void PlayPreviewGesture(HarmonizeSettings h, ScorePreviewStep step,
+                                        float landingVol, float sustain)
+        {
+            var support = step.support;
+            bool lead = h.previewPlayerAsLead;
+
+            // Loudness and timbre come from the SONG's measured dynamics, not from how fast the
+            // slime hit the key: a hard landing playing louder than the piece ever plays breaks the
+            // reproduction. The landing curve is opt-in.
+            float baseVol = h.previewUseLandingVelocity ? landingVol : h.masterVolume;
+
+            int supportTop = int.MinValue;
+            float maxDt = 0f, velSum = 0f, holdSum = 0f, fallSum = 0f;
+            int voiced = 0;
+            if (support != null)
+                for (int i = 0; i < support.Length; i++)
+                {
+                    var n = support[i];
+                    if (lead && n.sings) continue;               // the landed key takes its place
+                    if (n.midi > supportTop) supportTop = n.midi;
+                    if (n.dt > maxDt) maxDt = n.dt;
+                    velSum += n.vel; holdSum += n.hold; fallSum += n.fall; voiced++;
+                }
+
+            // A figure wider than the gesture budget is compressed, never truncated — dropping its
+            // tail notes would take it apart, and stretching it would collide with the next landing.
+            float spreadScale = maxDt > h.gestureMaxSpreadSeconds && maxDt > 0f
+                              ? h.gestureMaxSpreadSeconds / maxDt : 1f;
+
+            // Blend: the landed key is voiced like the rest of the figure (its mean level and
+            // length), so it reads as part of the playing. Lead: it is the singing voice and takes
+            // that voice's own measured dynamics.
+            float playerVel = lead || voiced == 0 ? Mathf.Clamp01(step.melodyVel) : velSum / voiced;
+            float playerHold = HoldOf(lead || voiced == 0 ? step.melodyHold : holdSum / voiced, h);
+            float playerFall = FallOf(lead || voiced == 0 ? step.melodyFall : fallSum / voiced, h, sustain);
+
+            melodyScratch.Clear();
+            for (int i = 0; i < contactingKeys.Count; i++)
+            {
+                if (contactingKeys[i] == null) continue;
+                int m = SnapLandedKey(contactingKeys[i].MidiNote, step, h, lead, supportTop);
+                while (melodyScratch.Contains(m)) m += 12;
+                // Blending, the landed key often lands on a note the figure already strikes — then
+                // the pressed key IS sounding and doubling it would only make that one voice loud.
+                if (!lead && FigureHas(support, m)) continue;
+                melodyScratch.Add(m);
+            }
+
+            float playerVol = baseVol * playerVel * (contactingKeys.Count >= 2 ? h.dyadVolumeScale : 1f);
+            for (int i = 0; i < melodyScratch.Count; i++)
+                harmonizePool.PlayExpressive(melodyScratch[i], playerVol, playerHold, playerFall, 0f, playerVel);
+
+            prevLandingMidi = melodyScratch.Count > 0 ? melodyScratch[0] : prevLandingMidi;
+            prevChordScratch.Clear();
+
+            if (support == null) return;
+
+            // Chord blur: play the pitches of this stretch as ONE chord instead of walking the
+            // song's note order. Copying the transcription note for note read as a clumsy imitation
+            // of the piece; the harmony and the way it is played carry the impression on their own.
+            // Everything measured survives — level, length, tail, register — only the melodic order
+            // is dropped, and the chord rolls by blurRollSeconds so it does not land as a block.
+            chordScratch.Clear();
+            for (int i = 0; i < support.Length; i++)
+            {
+                var n = support[i];
+                if (lead && n.sings) continue;
+                if (h.previewChordBlur && chordScratch.Contains(n.midi)) continue;
+                chordScratch.Add(n.midi);
+            }
+            if (h.previewChordBlur) chordScratch.Sort();
+
+            for (int k = 0; k < chordScratch.Count; k++)
+            {
+                int midi = chordScratch[k];
+                var n = FindNote(support, midi);
+                prevChordScratch.Add(midi);   // keep the legacy path honest if it ever resumes
+                // Only lead mode drops a clashing voice: there the landed key stands in for the
+                // melody, so a neighbouring note muddies it. Otherwise nothing the song played is
+                // removed.
+                if (lead && ClashesWithMelody(midi, h.melodyClashSemitones)) continue;
+                float delay = h.previewChordBlur
+                            ? (chordScratch.Count > 1 ? h.blurRollSeconds * k / (chordScratch.Count - 1) : 0f)
+                            : n.dt * spreadScale;
+                harmonizePool.PlayExpressive(midi, baseVol * Mathf.Clamp01(n.vel),
+                                             HoldOf(n.hold, h), FallOf(n.fall, h, sustain),
+                                             delay, Mathf.Clamp01(n.vel));
+            }
+            prevChordScratch.Sort();
+        }
+
+        private static ScoreSupportNote FindNote(ScoreSupportNote[] support, int midi)
+        {
+            for (int i = 0; i < support.Length; i++) if (support[i].midi == midi) return support[i];
+            return support[0];
+        }
+
+        // How long the key stays down — the song's own key-down time, never inflated by a pedal.
+        private static float HoldOf(float measured, HarmonizeSettings h)
+            => Mathf.Min(h.gestureMaxRingSeconds, Mathf.Max(0.05f, measured));
+
+        // How long the string is then left to die away. The song's own pedal tail if it had one;
+        // otherwise the configured damper, stretched while the slime stands on the pedal. Applying
+        // the slime's pedal on top of a tail the song already pedalled would hold a note far longer
+        // than the piece ever does.
+        private static float FallOf(float measured, HarmonizeSettings h, float sustain)
+        {
+            float fall = measured > 0f ? measured : h.damperSeconds * sustain;
+            return Mathf.Min(h.gestureMaxRingSeconds, Mathf.Max(0.02f, fall));
+        }
+
+        private static bool FigureHas(ScoreSupportNote[] support, int midi)
+        {
+            if (support == null) return false;
+            for (int i = 0; i < support.Length; i++) if (support[i].midi == midi) return true;
+            return false;
+        }
+
+        // The landed key, moved to the nearest pitch class the song is using here — the whole figure
+        // plus its line when blending, only the sung line when leading. Off the song's material this
+        // bends the key by at most a tone; on it, the key does not move at all.
+        // Only lead mode lifts the note above the figure: a blended voice belongs inside the texture,
+        // at the octave the slime actually landed on.
+        private static int SnapLandedKey(int keyMidi, ScorePreviewStep step, HarmonizeSettings h,
+                                         bool lead, int supportTop)
+        {
+            int[] pcs = lead ? step.melodyPcs : step.snapPcs;
+            if (pcs == null || pcs.Length == 0) pcs = lead ? step.snapPcs : step.melodyPcs;
+            int best = keyMidi;
+            if (pcs != null && pcs.Length > 0)
+            {
+                int bestD = 99;
+                for (int i = 0; i < pcs.Length; i++)
+                {
+                    int d = (((pcs[i] - keyMidi) % 12) + 12) % 12;
+                    if (d > 6) d -= 12;
+                    if (Mathf.Abs(d) < bestD) { bestD = Mathf.Abs(d); best = keyMidi + d; }
+                }
+            }
+            if (lead && h.melodyAboveSupport && supportTop > int.MinValue)
+            {
+                int floor = supportTop + Mathf.Max(0, Mathf.RoundToInt(h.minMelodyGap));
+                while (best < floor) best += 12;
+            }
+            return best;
+        }
+
+        // A support note this close to the melody muddies it. The song never had this collision —
+        // it comes from the landed key being somewhere the song was not — so the smaller chord is
+        // the more song-like answer.
+        private bool ClashesWithMelody(int midi, int semitones)
+        {
+            for (int i = 0; i < melodyScratch.Count; i++)
+                if (Mathf.Abs(melodyScratch[i] - midi) <= semitones) return true;
+            return false;
         }
 
         // One PianoKeyVisual per key MESH, covering all 88 — the 52 white ones ride their KeyMotor, the
@@ -321,7 +521,6 @@ namespace SlimeJumping.Platforms.Piano
             susIndex = -1;
             if (!o.suspension || prevChordScratch.Count == 0 || chordScratch.Count < 2) return;
             if (o.chiptuneArp || o.alberti) return;   // those figures re-play every tone; a held voice would double
-            if (config.harmonize.Texture != null) return;   // same reason: the song texture re-plays its voices
 
             for (int i = chordScratch.Count - 1; i >= 1; i--)      // upper voices only — never the bass
             {
@@ -372,31 +571,6 @@ namespace SlimeJumping.Platforms.Piano
                 if (playedScratch.Add(susNote)) harmonizePool.Play(susNote, vol, release);
                 harmonizePool.Play(chordScratch[susIndex], vol, release, o.suspensionResolveSeconds);
                 playedScratch.Add(chordScratch[susIndex]);   // the block/roll loop must not double it
-            }
-
-            // The rotation song's measured texture — it outranks every generic ornament figure
-            // because it reproduces how THIS piece sounds a chord: its own note spread and
-            // direction, its own ring, its own low drone, its own accompaniment level. All values
-            // were measured from the transcription offline; nothing here is a preset. One landing
-            // = ONE sounding gesture (user-set contract): the whole chord unfolds inside the
-            // measured spread (tens of ms) and only RINGS after that — no re-strikes later.
-            var tex = config.harmonize.Texture;
-            if (tex != null)
-            {
-                float chordVol = vol * (tex.chordVolumeScale > 0f ? tex.chordVolumeScale : 1f);
-                bool drone = tex.bassReleaseSeconds > 0f;   // chordScratch is sorted: index 0 = bass
-
-                int n = chordScratch.Count;
-                for (int k = 0; k < n; k++)
-                {
-                    int idx = tex.rollUp ? k : n - 1 - k;
-                    float delay = n > 1 ? tex.spreadSeconds * k / (n - 1) : 0f;   // k=0 instant — landing contract
-                    bool isBass = idx == 0;
-                    float rel = drone && isBass ? tex.bassReleaseSeconds : release;
-                    float vs = drone && isBass && tex.bassVolumeScale > 0f ? tex.bassVolumeScale : 1f;
-                    harmonizePool.Play(chordScratch[idx], chordVol * vs, rel, delay);
-                }
-                return;
             }
 
             if (o.chiptuneArp)

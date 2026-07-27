@@ -33,6 +33,8 @@ namespace SlimeJumping.Platforms
         [SerializeField] float followSmoothTime = 0.05f;
         [Tooltip("SmoothDamp time while a slime rides. Higher = laggier UI-spring feel.")]
         [SerializeField] float mountedSmoothTime = 0.18f;
+        [Tooltip("Seconds to blend the follow smooth time between empty and mounted. SmoothDamp's steady-state lag is travelSpeed × smoothTime, so flipping the value instantly dumps that whole position debt in one settle — the deck lurches along the path on launch and stalls on landing. Blending pays it gradually.")]
+        [SerializeField] float smoothTimeBlendTime = 0.5f;
 
         [Header("Sag spring (mount wobble / leave recoil)")]
         [Tooltip("Downward dip (units) per unit rider mass.")]
@@ -91,6 +93,7 @@ namespace SlimeJumping.Platforms
         Vector2 rigidTarget;        // un-damped path target
         Vector2 smoothPos;          // damped actual position
         Vector2 followVel;          // SmoothDamp velocity ref
+        float curSmoothTime;        // blended between followSmoothTime and mountedSmoothTime
 
         float sagY, sagVel;
         float currentTilt, tiltVel, targetTilt;
@@ -151,6 +154,7 @@ namespace SlimeJumping.Platforms
             rigidTarget = worldWaypoints[0];
             smoothPos = worldWaypoints[0];
             prevSmoothPos = smoothPos;
+            curSmoothTime = followSmoothTime;
 
             box = GetComponentInChildren<BoxCollider2D>();
             if (box != null)
@@ -238,9 +242,14 @@ namespace SlimeJumping.Platforms
 
             AdvanceRigidTarget(dt);
 
-            // Damped follow (UI feel) — laggier while ridden.
-            float smoothTime = riderOnTop ? mountedSmoothTime : followSmoothTime;
-            smoothPos = Vector2.SmoothDamp(smoothPos, rigidTarget, ref followVel, Mathf.Max(0.0001f, smoothTime), Mathf.Infinity, dt);
+            // Damped follow (UI feel) — laggier while ridden. The smooth time is BLENDED, not
+            // flipped: SmoothDamp trails a moving target by travelSpeed × smoothTime, so a hard
+            // switch makes the deck sprint to close (or stall to re-open) that whole gap in one
+            // settle — felt as a lurch on launch and a hitch on landing.
+            float targetSmoothTime = riderOnTop ? mountedSmoothTime : followSmoothTime;
+            float blendRate = Mathf.Abs(mountedSmoothTime - followSmoothTime) / Mathf.Max(1e-4f, smoothTimeBlendTime);
+            curSmoothTime = Mathf.MoveTowards(curSmoothTime, targetSmoothTime, blendRate * dt);
+            smoothPos = Vector2.SmoothDamp(smoothPos, rigidTarget, ref followVel, Mathf.Max(0.0001f, curSmoothTime), Mathf.Infinity, dt);
 
             // REACTION: the squeezed (incompressible) slime opposes the deck's CLOSING. Scale only the
             // closing component of this frame's axial move by pinchReactionFactor (1=free → 0 as the

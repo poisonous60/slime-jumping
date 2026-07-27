@@ -1,48 +1,51 @@
-"""Bake per-song "preview" data into the piano score JSONs, so slime landings on the
-piano platform REPRODUCE the song that is about to auto-play — its opening chord loop
-AND the measured shape of how those chords are actually played.
+"""Bake per-song "preview" data into the piano score JSONs, so a run of slime landings
+REPRODUCES the opening of the song that is about to auto-play.
 
 Input : SlimeJumping_v2/Assets/Audio/Music/*_score.json (transkun transcriptions:
         unquantized notes {t, midi, vel, dur}, pedal spans, KS-estimated key).
-Output: the SAME files, updated in place with a "preview" field (everything else,
-        including field order and indent=1, is preserved). Runtime falls back to the
-        shared authored schemas whenever "preview" is absent or unusable.
+Output: the SAME files, updated in place with a "preview" field. Runtime falls back to
+        the shared authored schemas whenever "preview" is absent or unusable.
 
-Chord extraction is a from-the-paper implementation of HarmAn (Pardo & Birmingham,
-"Algorithms for Chordal Analysis", Computer Music Journal 26:2, 2002):
-  - partition points where the sounding pitch set changes (no beat grid needed,
-    which is exactly why it suits rubato performance transcriptions),
-  - template scoring S = P - (M + N) with note weight = minimal segments spanned,
-  - optimal segmentation as a DAG longest path (Relaxation), pruned by span.
-Performance-MIDI onset scatter (~40 ms in these transcriptions) is absorbed by
-clustering onsets/offsets with a 60 ms epsilon before building partition points
-(the paper's "Performance variation" error class).
+WHY THIS SHAPE (2026-07-27 rewrite). The previous version reduced the opening to 4-8
+chord LABELS and one global "texture" of five scalars, then rebuilt each chord from a
+template, re-octaved it by a generic voice-leading rule and topped it with a pentatonic
+snap of the landed key. Everything that differs between two songs sharing a progression
+-- which notes, in which order, how hard, how long, which one sings on top -- was
+averaged away, so every song came out as the same block harmony. Two songs with the
+same chords do not sound alike, and that difference lives entirely above the chord
+symbol.
 
-The TEXTURE block is what makes a landing sound like THIS song rather than a preset:
-every field is a continuous value measured from the opening — never a toggle from a
-catalog, never a hand-tuned constant:
-  spreadSeconds / rollUp   how far apart (and in which direction) the song unfolds a
-                           chord's notes — median intra-attack onset spread. A block
-                           song measures ~0.005 and correctly plays as near-simultaneous;
-                           a 24 ms roller rolls at 24 ms. No quantization, no threshold.
-  releaseSeconds           how long the song lets chords ring: p75 accompaniment note
-                           duration. Baked into every chord step.
-  bassReleaseSeconds/-Vol  the song's low drone, if it holds one (long notes under
-                           MIDI 55): the landing's bass voice rings that long instead.
-  chordVolumeScale         accompaniment loudness relative to the top voice.
-Voicings are likewise taken from the song: only tones the segment actually sounds, at
-the octaves it sounds them, capped per step at the song's STRIKE gesture — the largest
-onset cluster inside that chord's segment. Sounding overlap (long sustain, pedal) is
-deliberately NOT the cap: a calm broken-chord song keeps 4-5 notes ringing while only
-ever striking 1-2 together, and a landing is a strike. (Texture classification keys on
-onset synchronization — Huron 1989 / ISMIR 2014; sounding-based verticals are for
-harmony labels, which is what segment_chords still uses them for.)
-"one landing = one sounding gesture" is a user-set contract, so a landing may never
-re-strike over time (no inter-attack pattern playback) and never press more keys than
-the song itself strikes at once. F2 floor is the only correction.
+So a step is no longer a chord. **One step = one attack the song actually played**:
+the notes of a single onset cluster, each with its measured offset inside the cluster,
+its measured loudness, and how long it actually sounded (pedal included). Successive
+landings walk the opening attack by attack, at the player's own pace -- an arpeggiated
+song arpeggiates, a block song blocks, a sparse song plays single notes, because that
+is what its attacks are. No template, no catalogue, no threshold: the strike IS the
+measurement.
+
+  step.support     the attack's notes minus its melody voice, verbatim
+                   (midi, dt = seconds after the attack's first note,
+                    vel = the transcribed velocity as measured, NOT normalized per song,
+                    ring = how long it sounds, pedal sustain included)
+  step.melodyPcs   the pitch classes the song's melody sings over this chord -- the
+                   snap target for the key the slime landed on, so the top voice is the
+                   song's own material while still answering the player's input
+  step.melodyVel   how the song's melody sits against its accompaniment, measured
+
+Loudness is NOT normalized at all -- the transcribed velocity travels through as measured.
+Normalizing per attack made every landing equally loud; normalizing per song made every
+piece equally loud, because each one then reaches 1.0 somewhere (a soft piece averaging
+0.54 was scaled to 0.77 while a heavy one averaging 0.72 only reached 0.86). Absolute level
+is masterVolume's job, and it is one knob for all songs.
+
+Chord labels (used for the melody snap set and for the report) still come from HarmAn
+(Pardo & Birmingham, "Algorithms for Chordal Analysis", Computer Music Journal 26:2,
+2002): partition points where the sounding pitch set changes (no beat grid needed,
+which is why it suits rubato transcriptions), template scoring S = P - (M + N), optimal
+segmentation as a DAG longest path.
 
 Usage:
-  python tools/extract_preview.py                 # write all 11 songs
+  python tools/extract_preview.py                 # write all songs
   python tools/extract_preview.py --dry-run       # report only, write nothing
   python tools/extract_preview.py <file.json> ... # subset
   python tools/extract_preview.py --selftest
@@ -54,21 +57,28 @@ from pathlib import Path
 
 MUSIC_DIR = Path(__file__).resolve().parent.parent / "SlimeJumping_v2" / "Assets" / "Audio" / "Music"
 
-CLUSTER_EPS = 0.06     # onset/offset epsilon (s) for HARMONY segmentation
+CLUSTER_EPS = 0.06     # onset/offset epsilon (s): one strike, however rolled, is one attack
 WINDOW_SECONDS = 24.0  # only the opening is previewed; also caps cost on the 167 s song
 MAX_SPAN_SECONDS = 8.0 # DAG edge pruning: no single chord segment longer than this
 MAX_SPAN_MINSEGS = 48
 MIN_CHORD_SECONDS = 0.35   # merged chords shorter than this are treated as passing
-MIN_STEPS, MAX_STEPS = 4, 8
+MIN_CHORDS = 3             # fewer than this in the opening = no usable harmony reading
 
-DRONE_MIN_DUR = 2.0        # a low note this long is a held drone, not a bass step
-BASS_SPLIT = 55            # below this = bass register (same split song_character.py used)
+MAX_STEPS = 16         # landings needed to walk the opening once, then it loops
+GESTURE_WINDOW = 0.35  # one landing may carry the song's attacks inside this window, at their real
+                       # spacing. A fast piece (attacks ~0.2 s apart) is fast BECAUSE of that spacing,
+                       # and a landing every second cannot convey it one attack at a time. Slower
+                       # pieces have nothing inside the window, so they stay one strike per landing.
+                       # The window is a gesture budget, not a pattern: it always ends well before the
+                       # next landing, so two landings never overlap.
+MAX_RING_SECONDS = 6.0 # how long a landing may ring
+MIN_MIDI = 41          # F2 floor: below this the pitch-shifted key samples turn to mud
+MELODY_LONE_MIDI = 60  # a lone note this high is the melody; a lone low note is bass
 
 # Template classes with tie-breaking priors. The first six are HarmAn's own set with
 # the KP-corpus proportions (Table 2). min7/maj7 are added per the paper's "It is
 # simple to add new templates" - this material is pop-leaning solo piano where m7/maj7
 # sonorities are common, and without them a m7 with a weak fifth mislabels as hdim7.
-# Their priors are only tie-breakers (placed between min and the diminished family).
 TEMPLATES = [
     ("maj",   (0, 4, 7),      43.6),
     ("dom7",  (0, 4, 7, 10),  21.9),
@@ -84,21 +94,16 @@ TEMPLATE_OFFS = {name: offs for name, offs, _ in TEMPLATES}
 MAJOR_SCALE = {0, 2, 4, 5, 7, 9, 11}
 NATURAL_MINOR = {0, 2, 3, 5, 7, 8, 10}
 
-# Roman numeral base by semitone distance from tonic, stored case-neutral (uppercase);
-# roman() lowercases the core for minor-family qualities. Flats 'b', sharps '#'.
 ROMAN_MAJOR = ["I", "bII", "II", "bIII", "III", "IV", "bV", "V", "bVI", "VI", "bVII", "VII"]
 ROMAN_MINOR = ["I", "bII", "II", "III", "#III", "IV", "#IV", "V", "VI", "#VI", "VII", "#VII"]
 PC_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+QUAL_SUFFIX = {"min": "m", "min7": "m7", "maj7": "M7", "dim": "o", "hdim7": "o/7",
+               "dim7": "o7", "dom7": "7"}
 
 
 def median(vals):
     vals = sorted(vals)
     return vals[len(vals) // 2] if vals else 0
-
-
-def percentile75(vals):
-    vals = sorted(vals)
-    return vals[(len(vals) * 3) // 4] if vals else 0
 
 
 def cluster_times(times, eps=CLUSTER_EPS):
@@ -221,78 +226,6 @@ def merge_chords(segs):
     return fuse([s for s in merged if s[1] - s[0] >= MIN_CHORD_SECONDS])
 
 
-def opening_loop(chords):
-    """First MIN..MAX chords; cut where the opening chord returns, if it does."""
-    if len(chords) < MIN_STEPS:
-        return None
-    first = (chords[0][2], chords[0][3])
-    for L in range(MIN_STEPS, min(MAX_STEPS, len(chords) - 1) + 1):
-        if L < len(chords) and (chords[L][2], chords[L][3]) == first:
-            return chords[:L]
-    return chords[:MAX_STEPS]
-
-
-# ── Voicing: the octaves the song actually played ───────────────────────────────────
-
-def voice_from_segment(root_pc, quality, seg_notes, tonic_midi, max_voices):
-    """Only tones the segment ACTUALLY sounds, at the octaves it sounds them (weighted
-    by dur x vel), capped at this segment's strike gesture (max_voices). Never invents
-    an unheard template tone — that is exactly how a landing ends up pressing more keys
-    than the song ever strikes. Root is guaranteed (harmonic anchor; placed at a low
-    register only if somehow unheard). F2 floor is the only register correction."""
-    offs = TEMPLATE_OFFS[quality]
-    weight = {}
-    for n in seg_notes:
-        weight[n["midi"]] = weight.get(n["midi"], 0.0) + n["dur"] * max(0.05, n["vel"])
-
-    picked = {}   # midi -> weight, template tones only, heard only
-    for o in offs:
-        pc = (root_pc + o) % 12
-        cands = [(w, m) for m, w in weight.items() if m % 12 == pc]
-        if not cands:
-            continue
-        cands.sort(key=lambda cm: (-cm[0], cm[1]))       # heaviest, tie -> LOWEST octave
-        picked[cands[0][1]] = cands[0][0]
-
-    root_octaves = sorted(m for m in weight if m % 12 == root_pc % 12)
-    if len(root_octaves) >= 2 and root_octaves[-1] - root_octaves[0] >= 12:
-        picked.setdefault(root_octaves[-1], weight[root_octaves[-1]])   # song doubles its root
-
-    if not any(m % 12 == root_pc % 12 for m in picked):
-        picked[48 + ((root_pc - 48) % 12)] = 0.01        # unheard root: anchor it low
-
-    # Gesture cap: keep the bass anchor + the heaviest voices, exactly as many as the
-    # song strikes at once when it states this chord, never fewer than 2.
-    cap = max(2, min(5, max_voices))
-    midis = sorted(picked)
-    while len(midis) > cap:
-        droppable = midis[1:]                            # never the bass
-        drop = min(droppable, key=lambda m: picked[m])
-        midis.remove(drop)
-
-    while midis and midis[0] < 41:                        # F2 floor (pitch-shifted samples mud)
-        low = midis.pop(0) + 12
-        if low not in midis:
-            midis.append(low)
-        midis.sort()
-    while midis and midis[-1] > 76:                       # keep a lane for the melody snap
-        hi = midis.pop() - 12
-        if hi not in midis:
-            midis.append(hi)
-        midis.sort()
-    return [m - tonic_midi for m in midis], midis
-
-
-def gesture_size(seg_notes, onmap):
-    """How many notes this segment's chord-stating STRIKE presses at once: the largest
-    onset cluster inside the segment. Struck, not sounding — sustained notes still
-    ringing from earlier attacks never inflate a landing's key count."""
-    by_attack = {}
-    for n in seg_notes:
-        by_attack.setdefault(onmap[n["t"]], []).append(n)
-    return max(len(g) for g in by_attack.values()) if by_attack else 2
-
-
 def is_diatonic(root_pc, quality, tonic_pc, minor):
     scale = NATURAL_MINOR if minor else MAJOR_SCALE
     scale_abs = {(tonic_pc + d) % 12 for d in scale}
@@ -313,10 +246,12 @@ def roman(root_pc, quality, tonic_pc, minor):
     return prefix + core + suffix
 
 
-# ── Texture: the measured shape of the opening ──────────────────────────────────────
+# ── Attacks: what the song actually strikes, and how ────────────────────────────────
 
 def split_attacks(notes):
-    """Onset clusters -> list of (cluster_time, [notes]) sorted by time."""
+    """Onset clusters -> [(cluster_time, [notes])] in time order. One cluster = one
+    strike = one landing: a 24 ms roll stays a single gesture, a 300 ms arpeggio does
+    not (it is several attacks, i.e. several landings)."""
     onmap = cluster_times([n["t"] for n in notes])
     attacks = {}
     for n in notes:
@@ -324,69 +259,188 @@ def split_attacks(notes):
     return sorted(attacks.items())
 
 
-def accompaniment_of(attack_notes):
-    """The attack minus its melody candidate: drop the top voice of a multi-note
-    attack; a lone high note IS the melody (a lone low note is bass texture)."""
+def hold_fall(note, pedal_spans):
+    """Split the note into (hold, fall): how long the key is DOWN, then how long the string
+    is left to die away.
+
+    These are not the same measurement and collapsing them is what made a staccato song
+    sound sustained. Pedal down at key release does not mean the note stays loud until the
+    pedal lifts -- it means the damper never arrives, so the string decays on its own. A
+    0.2 s bounce under a 3.4 s pedal is a short strike with a long tail, not a 3.4 s note.
+    fall = 0 means the damper falls immediately (the runtime supplies its own damper time)."""
+    hold = min(MAX_RING_SECONDS, max(0.05, note["dur"]))
+    end = note["t"] + note["dur"]
+    fall = 0.0
+    for sp in pedal_spans:
+        s, e = sp["t"], sp["t"] + sp["dur"]
+        if s <= end < e:
+            fall = min(MAX_RING_SECONDS, e - end)
+            break
+    return round(hold, 2), round(fall, 2)
+
+
+def support_note(note, t0, pedal_spans, sings=False):
+    """One struck note of a figure, timed against its first note. `sings` marks the voice
+    the song is singing with — kept in the figure (it is part of the music), and only
+    dropped when the runtime is in lead mode, where the landed key takes its place.
+
+    vel is the transcribed velocity AS MEASURED — deliberately not normalized against the
+    piece's own loudest note. Dividing by a per-song peak forces every song to reach 1.0
+    somewhere, which erases how loudly the piece is played: a soft piece then comes out as
+    loud as a heavy one (ASpringGreen 0.54 mean scaled to 0.77 while ADarkBlue 0.72 only
+    reached 0.86). Absolute level belongs to HarmonizeSettings.masterVolume."""
+    hold, fall = hold_fall(note, pedal_spans)
+    return {
+        "midi": lift_above_floor(note["midi"]),
+        "dt": round(note["t"] - t0, 4),
+        "vel": round(note["vel"], 3),
+        "hold": hold,
+        "fall": fall,
+        "sings": sings,
+    }
+
+
+def melody_of(attack_notes):
+    """The attack's singing voice: the top note of a multi-note strike; a lone high note
+    is itself the melody, a lone low note is bass texture and the attack has none."""
     grp = sorted(attack_notes, key=lambda n: n["midi"])
     if len(grp) >= 2:
-        return grp[:-1]
-    return grp if grp[0]["midi"] < 60 else []
+        return grp[-1]
+    return grp[0] if grp[0]["midi"] >= MELODY_LONE_MIDI else None
 
 
-def extract_texture(notes, chords, voicing_midis_by_step):
-    """Continuous, measured description of how the opening plays its chords."""
+def chord_at(chords, t):
+    """The merged chord segment containing time t (nearest preceding one)."""
+    found = None
+    for c in chords:
+        if c[0] <= t < c[1]:
+            return c
+        if c[1] <= t:
+            found = c
+    return found if found is not None else (chords[0] if chords else None)
+
+
+def lift_above_floor(midi):
+    """F2 floor is the one register correction: the key samples are pitch-shifted and
+    turn to mud below it. Octave transposition, so the voicing keeps its pitch class."""
+    while midi < MIN_MIDI:
+        midi += 12
+    return midi
+
+
+def group_gestures(attacks):
+    """One landing's worth of music: the first attack, plus any that follow inside
+    GESTURE_WINDOW. Returns [(t0, [attacks])].
+
+    A piece is fast because its attacks are close together; a landing every second cannot
+    show that one attack at a time. Grouping keeps the song's real spacing (nothing is
+    quantised or re-timed) and stops at the window, so the figure is always over well
+    before the next landing. Pieces whose attacks are further apart than the window come
+    out unchanged: one strike per landing."""
+    out = []
+    i = 0
+    while i < len(attacks) and len(out) < MAX_STEPS:
+        t0 = attacks[i][0]
+        j = i + 1
+        while j < len(attacks) and attacks[j][0] - t0 <= GESTURE_WINDOW:
+            j += 1
+        out.append((t0, attacks[i:j]))
+        i = j
+    return out
+
+
+def build_steps(notes, chords, pedal_spans, tonic_pc, minor, tonic_midi):
+    """One step per landing: the song's own strike (or quick figure), measured."""
     attacks = split_attacks(notes)
-    t_lo, t_hi = chords[0][0], chords[-1][1]
-    window = [(at, grp) for at, grp in attacks if t_lo <= at < t_hi]
+    t_lo = chords[0][0]
+    attacks = [(at, grp) for at, grp in attacks if at >= t_lo]
+    gestures = group_gestures(attacks)
+    if not gestures:
+        return [], {}
+    attacks = [a for _t0, grp in gestures for a in grp]     # only what the steps actually use
 
-    # 1. Intra-attack spread: how the song unfolds a chord, and in which direction.
-    spreads, ups = [], 0
-    multi = 0
-    for _at, grp in window:
-        if len(grp) < 2:
+    ref_vel = median([n["vel"] for _at, grp in attacks for n in grp]) or 0.6
+
+    # The melody material of each chord segment: every singing note the song places over
+    # that chord. The landed key snaps into this set, so the top voice answers the player
+    # while staying the song's own notes.
+    seg_melody = {}
+    for _at, grp in attacks:
+        mel = melody_of(grp)
+        if mel is None:
             continue
-        multi += 1
-        by_onset = sorted(grp, key=lambda n: n["t"])
-        spreads.append(by_onset[-1]["t"] - by_onset[0]["t"])
-        if by_onset[-1]["midi"] >= by_onset[0]["midi"]:
-            ups += 1
-    spread = round(median(spreads), 4) if spreads else 0.0
-    roll_up = ups * 2 >= multi if multi else True
+        c = chord_at(chords, _at)
+        if c is None:
+            continue
+        seg_melody.setdefault((c[0], c[1]), []).append(mel)
 
-    # 2. Ring: p75 accompaniment duration + sustain-pedal duty over the window.
-    acc_notes = [n for _at, grp in window for n in accompaniment_of(grp)]
-    durs = [n["dur"] for n in acc_notes]
-    release = round(min(4.0, max(0.5, percentile75(durs))), 2) if durs else 1.2
+    steps = []
+    for t0, group in gestures:
+        at, grp = group[0]
+        c = chord_at(chords, at)
+        root, qual = c[2], c[3]
+        mel_notes = seg_melody.get((c[0], c[1]), [])
+        if not mel_notes:                                  # bass-only stretch: fall back
+            mel_notes = [n for _a, g in attacks for n in g if n["midi"] >= MELODY_LONE_MIDI]
 
-    # 3. Low drone: long-held bass notes mean the landing's bass voice should ring.
-    drones = [n for _at, grp in window for n in grp
-              if n["midi"] < BASS_SPLIT and n["dur"] >= DRONE_MIN_DUR]
-    if len(drones) >= 2:
-        bass_release = round(min(6.0, median([n["dur"] for n in drones])), 2)
-        all_vel = median([n["vel"] for _at, g in window for n in g]) or 1.0
-        bass_vol = round(min(1.0, max(0.3, median([n["vel"] for n in drones]) / all_vel)), 3)
-    else:
-        bass_release, bass_vol = 0.0, 0.0
+        # The whole figure is kept, singing voice included: the song's own line is what makes
+        # a landing sound like the piece, and cutting it out to make room for the landed key
+        # left an arbitrary note sitting on top of a song that had lost its melody.
+        mel = melody_of(grp)
+        figure = [n for _a, g in group for n in g]
 
-    # 4. Accompaniment loudness relative to the top voice.
-    tops = [max(grp, key=lambda n: n["midi"])["vel"] for _at, grp in window if len(grp) >= 2]
-    if tops and acc_notes:
-        chord_vol = round(min(1.1, max(0.5, median([n["vel"] for n in acc_notes]) / (median(tops) or 1.0))), 3)
-    else:
-        chord_vol = 1.0
+        # The landed key inherits THIS strike's dynamics when the song sang here, and
+        # the segment's median only when it did not — otherwise every landing inside a
+        # chord comes out equally loud, which is the flattening this rewrite exists to
+        # undo.
+        mel_vel = (mel["vel"] if mel is not None
+                   else median([n["vel"] for n in mel_notes]) if mel_notes else ref_vel)
+        if mel is not None:
+            mel_hold, mel_fall = hold_fall(mel, pedal_spans)
+        elif mel_notes:
+            pairs = [hold_fall(n, pedal_spans) for n in mel_notes]
+            mel_hold = median([hf[0] for hf in pairs])
+            mel_fall = median([hf[1] for hf in pairs])
+        else:
+            mel_hold, mel_fall = 1.0, 0.0
 
-    # NOTE: no inter-attack "pattern" playback. One landing = one sounding gesture is a
-    # user-set contract — a landing must never re-strike keys 0.3-0.9 s later, however
-    # faithfully that would copy the song's ostinato. The song's motion across attacks
-    # is conveyed by successive landings advancing the progression instead.
-    return {
-        "spreadSeconds": spread,
-        "rollUp": roll_up,
-        "releaseSeconds": release,
-        "bassReleaseSeconds": bass_release,
-        "bassVolumeScale": bass_vol,
-        "chordVolumeScale": chord_vol,
+        step = {
+            "label": "%s %s%s" % (roman(root, qual, tonic_pc, minor), PC_NAMES[root],
+                                  QUAL_SUFFIX.get(qual, "")),
+            "chordTones": not is_diatonic(root, qual, tonic_pc, minor),
+            "melodyPcs": sorted({n["midi"] % 12 for n in mel_notes}),
+            "melodyVel": round(mel_vel, 3),
+            "melodyHold": round(mel_hold, 2),
+            "melodyFall": round(mel_fall, 2),
+            "melodyStruck": mel is not None,
+            # Where the landed key goes when it is blended into the texture instead of
+            # replacing the melody: the pitch classes the song is using right here — the
+            # figure's own notes plus the line it sings over this chord.
+            "snapPcs": sorted({n["midi"] % 12 for n in figure}
+                              | {n["midi"] % 12 for n in mel_notes}),
+            "support": [support_note(n, t0, pedal_spans, sings=(n is mel))
+                        for n in sorted(figure, key=lambda n: n["t"])],
+        }
+        # Kept for the fallback melody-gap math and for anything still reading a chord
+        # shape; the gesture above is what actually sounds.
+        voiced = sorted({s["midi"] for s in step["support"]})
+        step["offsetsFromTonic"] = [m - tonic_midi for m in voiced] if voiced else [0]
+        steps.append(step)
+
+    rep = {
+        "attacks": len(steps),
+        "sizes": [len(s["support"]) for s in steps],   # the figure; the landed key adds one more
+        "figure_ms": round(1000 * median([max(n["dt"] for n in s["support"]) for s in steps
+                                          if s["support"]]), 0),
+        "spread_ms": round(1000 * median([s["support"][-1]["dt"] for s in steps
+                                          if len(s["support"]) >= 2]), 1),
+        "hold": round(median([s["melodyHold"] for s in steps]), 2),
+        "fall": round(median([s["melodyFall"] for s in steps]), 2),
+        "vel_lo": round(min(s["melodyVel"] for s in steps), 2),
+        "vel_hi": round(max(s["melodyVel"] for s in steps), 2),
+        "seconds": round(max(a for a, _ in attacks) - t_lo, 1),
     }
+    return steps, rep
 
 
 # ── Pipeline ─────────────────────────────────────────────────────────────────────────
@@ -398,115 +452,124 @@ def extract(data):
     minor = key.get("mode") == "minor"
     window_end = min(float(data.get("duration", WINDOW_SECONDS)), WINDOW_SECONDS)
     notes = [n for n in data.get("notes", []) if n["t"] < window_end]
+    pedal_spans = [p for p in (data.get("pedal") or []) if p["t"] < window_end]
     if len(notes) < 12:
         return None, {"fallback": "too few notes in window (%d)" % len(notes)}
 
-    segs = segment_chords(notes, window_end)
-    chords = merge_chords(segs)
-    loop = opening_loop(chords)
-    if not loop:
+    chords = merge_chords(segment_chords(notes, window_end))
+    if len(chords) < MIN_CHORDS:
         return None, {"fallback": "merged progression too short (%d chords)" % len(chords)}
 
-    # Sparse/ambiguous openings (mono lines, dyads) produce junk labels: require most
-    # loop chords to have >= 2 distinct template pcs sounding and decent coverage.
-    weak = sum(1 for c in loop if c[6] < 2 or (c[4] / max(1, c[5])) < 0.55)
-    if weak > len(loop) // 4:
-        return None, {"fallback": "low-confidence harmony (%d/%d chords weak)" % (weak, len(loop))}
+    # Sparse/ambiguous openings (mono lines, dyads) produce junk labels.
+    weak = sum(1 for c in chords if c[6] < 2 or (c[4] / max(1, c[5])) < 0.55)
+    if weak > len(chords) // 4:
+        return None, {"fallback": "low-confidence harmony (%d/%d chords weak)" % (weak, len(chords))}
 
     tonic_midi = 60 + tonic_pc
-    onmap = cluster_times([n["t"] for n in notes])
-    steps, voicings, romans, gestures = [], [], [], []
-    for (t0, t1, root, qual, p, w, _m) in loop:
-        seg_notes = [n for n in notes if t0 <= onmap[n["t"]] < t1]
-        gest = gesture_size(seg_notes, onmap)
-        gestures.append(gest)
-        offs, midis = voice_from_segment(root, qual, seg_notes, tonic_midi, gest)
-        voicings.append(midis)
-        rn = roman(root, qual, tonic_pc, minor)
-        romans.append(rn)
-        steps.append({
-            "label": "%s %s%s" % (rn, PC_NAMES[root], {"min": "m", "min7": "m7", "maj7": "M7", "dim": "o", "hdim7": "o/7", "dim7": "o7", "dom7": "7"}.get(qual, "")),
-            "offsetsFromTonic": offs,
-            "chordTones": not is_diatonic(root, qual, tonic_pc, minor),
-        })
+    steps, rep = build_steps(notes, chords, pedal_spans, tonic_pc, minor, tonic_midi)
+    if len(steps) < 2:
+        return None, {"fallback": "too few attacks in the opening (%d)" % len(steps)}
 
-    texture = extract_texture(notes, loop, voicings)
-    p_sum = sum(s[4] for s in loop)
-    w_sum = sum(s[5] for s in loop) or 1
-    report = {
+    p_sum = sum(s[4] for s in chords)
+    w_sum = sum(s[5] for s in chords) or 1
+    rep.update({
         "key": "%s %s" % (PC_NAMES[tonic_pc], "minor" if minor else "major"),
-        "romans": romans,
-        "labels": [s["label"] for s in steps],
-        "voicings": voicings,
-        "gestures": gestures,
+        "romans": [roman(c[2], c[3], tonic_pc, minor) for c in chords][:8],
         "coverage": p_sum / w_sum,
-        "texture": texture,
-        "warn_first": (loop[0][2] - tonic_pc) % 12 != 0,
-    }
-    preview = {"tonicMidi": tonic_midi, "minor": minor, "steps": steps, "texture": texture}
-    return preview, report
+        "labels": [s["label"] for s in steps],
+    })
+    preview = {"tonicMidi": tonic_midi, "minor": minor, "steps": steps}
+    return preview, rep
 
 
 def print_report(name, preview, rep):
     if preview is None:
         print("%-28s FALLBACK: %s" % (name, rep["fallback"]))
         return
-    t = rep["texture"]
-    parts = ["spread %dms %s" % (round(t["spreadSeconds"] * 1000), "up" if t["rollUp"] else "down"),
-             "ring %.2fs" % t["releaseSeconds"]]
-    if t["bassReleaseSeconds"] > 0:
-        parts.append("drone %.1fs vol%.2f" % (t["bassReleaseSeconds"], t["bassVolumeScale"]))
-    parts.append("chordVol %.2f" % t["chordVolumeScale"])
-    parts.append("gesture %s -> voices %s" % ("/".join(str(g) for g in rep["gestures"]),
-                 "/".join(str(len(v)) for v in rep["voicings"])))
     print("%-28s %-9s cov %.2f  %s" % (name, rep["key"], rep["coverage"], " - ".join(rep["romans"])))
-    print("%-28s   chords: %s" % ("", ", ".join(rep["labels"])))
-    print("%-28s   texture: %s%s" % ("", " | ".join(parts),
-                                     "   [WARN first chord != I/i]" if rep["warn_first"] else ""))
+    print("%-28s   %d landings over %.1fs, notes %s"
+          % ("", rep["attacks"], rep["seconds"], "".join(str(min(9, s)) for s in rep["sizes"])))
+    print("%-28s   figure %.0fms | hold %.2fs + fall %.2fs | melody vel %.2f..%.2f"
+          % ("", rep["figure_ms"], rep["hold"], rep["fall"], rep["vel_lo"], rep["vel_hi"]))
 
 
 def selftest():
-    """Synthetic C-F-G-C block chords (strummed over 15 ms, held ~0.9 s, 4 notes held
-    at once) must come out I-IV-V-I major, voiced at the octaves the 'song' used with
-    all 4 voices kept (gesture 4), near-zero spread, no drone. A sparse dyad version
-    of the same must cap its voicings at 2, and a broken-chord version — same tones
-    struck ONE at a time but sustained so 4 always sound together — must also cap at 2:
-    sounding overlap must never inflate the strike gesture."""
-    def mk(chords, offsets):
-        notes = []
-        for k, root in enumerate(chords):
-            for j, off in enumerate(offsets):
-                notes.append({"t": k * 1.0 + 0.005 * j, "midi": root + off, "vel": 0.8, "dur": 0.9})
-        return {"duration": len(chords) * 1.0, "key": {"tonicPc": 0, "mode": "major"}, "notes": notes}
+    """Three synthetic songs, same chords, different playing. They must come out as
+    three DIFFERENT gesture streams -- that is the whole point of the rewrite.
+    1) block: 4 notes struck together, so each landing strikes 4;
+    2) broken: the same tones one at a time, so each landing strikes 1 and it takes
+       four landings to state the chord;
+    3) soft/loud alternation: window-relative velocity must keep the quiet strikes
+       quiet instead of normalizing every attack to full."""
+    def score(notes, pedal=None):
+        return {"duration": 8.0, "key": {"tonicPc": 0, "mode": "major"},
+                "notes": notes, "pedal": pedal or []}
 
-    preview, rep = extract(mk([48, 53, 55, 48], (0, 4, 7, 12)))
-    assert preview is not None, "selftest: no preview extracted"
-    assert rep["romans"] == ["I", "IV", "V", "I"], "selftest: got %s" % rep["romans"]
-    tex = preview["texture"]
-    assert tex["spreadSeconds"] <= 0.03, "selftest: block strum measured as %s" % tex["spreadSeconds"]
-    assert tex["bassReleaseSeconds"] == 0, "selftest: phantom drone"
-    assert rep["voicings"][0] == [48, 52, 55, 60], "selftest: voicing %s not the song's" % rep["voicings"][0]
-    assert all(min(s["offsetsFromTonic"]) + preview["tonicMidi"] >= 41 for s in preview["steps"]), \
-        "selftest: bass below F2"
+    block, broken, dyn = [], [], []
+    for k, root in enumerate([48, 53, 55, 48, 53, 55, 48, 53]):
+        for j, off in enumerate((0, 4, 7, 12)):
+            block.append({"t": k * 1.0 + 0.005 * j, "midi": root + off, "vel": 0.8, "dur": 0.9})
+            broken.append({"t": k * 1.0 + 0.22 * j, "midi": root + off, "vel": 0.8, "dur": 1.0})
+            dyn.append({"t": k * 1.0 + 0.005 * j, "midi": root + off,
+                        "vel": 0.9 if k % 2 == 0 else 0.3, "dur": 0.9})
 
-    _p2, rep2 = extract(mk([48, 53, 55, 48, 53, 55, 48, 53], (0, 7)))   # dyads only
-    assert all(len(v) <= 2 for v in rep2["voicings"]), \
-        "selftest: dyad song voiced %s — gesture cap broken" % rep2["voicings"]
+    pb, rb = extract(score(block))
+    assert pb is not None, "selftest: block song produced no preview"
+    assert all(len(s["support"]) == 4 for s in pb["steps"]), \
+        "selftest: block strike lost notes -> %s" % rb["sizes"]
+    assert all(sum(1 for n in s["support"] if n["sings"]) == 1 for s in pb["steps"]), \
+        "selftest: the singing voice must be marked exactly once per figure"
 
-    def mk_broken(chords, offsets):
-        notes = []
-        for k, root in enumerate(chords):
-            for j, off in enumerate(offsets):
-                notes.append({"t": k * 1.0 + 0.22 * j, "midi": root + off, "vel": 0.8,
-                              "dur": 1.0 - 0.22 * j})   # all still sounding at bar end
-        return {"duration": len(chords) * 1.0, "key": {"tonicPc": 0, "mode": "major"}, "notes": notes}
+    pk, rk = extract(score(broken))
+    assert pk is not None, "selftest: broken song produced no preview"
+    # Its tones are struck one at a time 0.22 s apart, so a landing may carry two of them —
+    # but SEPARATED, never stacked. Sustain overlap must not turn them into a block chord.
+    for s in pk["steps"]:
+        at_onset = [n for n in s["support"] if n["dt"] <= CLUSTER_EPS]
+        assert len(at_onset) <= 1, \
+            "selftest: broken song stacked %s notes at one instant - sustain overlap inflated the strike" \
+            % len(at_onset)
 
-    _p3, rep3 = extract(mk_broken([48, 53, 55, 48], (0, 4, 7, 12)))
-    assert all(len(v) <= 2 for v in rep3["voicings"]), \
-        "selftest: broken-chord song voiced %s — sounding overlap inflated the strike gesture" % rep3["voicings"]
-    print("selftest OK: I-IV-V-I / voicing [48,52,55,60] / spread %.0fms / dyad cap %s / broken cap %s"
-          % (tex["spreadSeconds"] * 1000, [len(v) for v in rep2["voicings"]],
-             [len(v) for v in rep3["voicings"]]))
+    pd, _ = extract(score(dyn))
+    vels = [s["melodyVel"] for s in pd["steps"]]
+    assert max(vels) - min(vels) > 0.4, \
+        "selftest: dynamics flattened (%s) - velocity must be window-relative" % vels
+
+    # A fast piece must arrive as a figure at its own spacing; a slow one must not be
+    # glued together. Block above is 1 s apart, so it stays one strike per landing.
+    assert all(all(n["dt"] <= CLUSTER_EPS for n in s["support"]) for s in pb["steps"]), \
+        "selftest: 1 s apart attacks were grouped into one landing"
+    fast = []
+    for k in range(24):
+        fast.append({"t": k * 0.12, "midi": 60 + (k % 4) * 3, "vel": 0.8, "dur": 0.1})
+    pf, rf = extract(score(fast + [{"t": k * 0.96, "midi": 41, "vel": 0.8, "dur": 0.9}
+                                   for k in range(3)]))
+    if pf is not None:
+        spans = [max(n["dt"] for n in s["support"]) for s in pf["steps"] if s["support"]]
+        assert spans and max(spans) > 0.2, \
+            "selftest: fast piece did not become a figure (%s) - its speed is lost" % spans
+        assert max(spans) <= GESTURE_WINDOW + 1e-6, \
+            "selftest: figure ran past the gesture budget (%.3f)" % max(spans)
+
+    # A short note under a long pedal is a SHORT strike with a LONG tail, never a long
+    # note: hold must stay the key-down time and only fall may grow. Getting this wrong is
+    # what made a staccato song ring for three seconds per landing.
+    staccato = [{"t": k * 1.0, "midi": 72, "vel": 0.8, "dur": 0.2} for k in range(8)]
+    pp, _ = extract(score(block + staccato, pedal=[{"t": 0.0, "dur": 2.5}]))
+    tops = [s for s in pp["steps"] if s["melodyStruck"]]
+    assert tops, "selftest: staccato top voice never registered as melody"
+    assert all(s["melodyHold"] <= 0.25 for s in tops), \
+        "selftest: pedal inflated hold to %s - staccato lost" % [s["melodyHold"] for s in tops]
+    early = [s for s in tops if s["melodyFall"] > 0]
+    assert early, "selftest: pedal tail never measured"
+    assert all(s["melodyFall"] == 0 for s in tops[3:]), \
+        "selftest: pedal tail applied after the pedal lifted"
+
+    assert all(m >= MIN_MIDI for s in pb["steps"] for m in [n["midi"] for n in s["support"]]), \
+        "selftest: support below the F2 floor"
+    print("selftest OK: block voices %s / broken voices %s / dynamics %.2f..%.2f / staccato hold %.2fs + fall %.2fs"
+          % (rb["sizes"][:4], rk["sizes"][:4], min(vels), max(vels),
+             early[0]["melodyHold"], early[0]["melodyFall"]))
 
 
 def main(argv):

@@ -12,13 +12,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b307e436674c10d4a9abcd5abe0ff861, type: 3}
   m_Name: BambooOnThinIceConfig
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.BambooOnThinIceConfig
-  jumpsToShatter: 3
+  jumpsToShatter: 4
   landingDebounceSeconds: 0.1
+  crackHealSeconds: 2
   slimeMass: 8
   corpseGravityScale: 2.5
   corpseLinearDamping: 0.05
   corpseAngularDamping: 0.6
   corpseRecoilImpulse: 1
   bambooMass: 2
-  stalkContactGraceSeconds: 0.3
+  ridingSlimeMass: 1
+  respawnDelaySeconds: 2
   corpsePoofPrefab: {fileID: 5911743663151647118, guid: 614a977c154d7be4fae12b257a550a03, type: 3}

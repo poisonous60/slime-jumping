@@ -195,7 +195,7 @@ namespace SlimeJumping.Platforms.Piano
         [System.NonSerialized] private ScaleType overrideScale;
         [System.NonSerialized] private OrnamentSettings overrideOrnaments;
         [System.NonSerialized] private List<ChordStep> overrideProgression;
-        [System.NonSerialized] private ScoreTexture overrideTexture;
+        [System.NonSerialized] private ScorePreviewStep[] overridePreviewSteps;
 
         /// The key everything harmonic must actually use — the song's if one is in rotation.
         public int TonicMidi => hasKeyOverride ? overrideTonicMidi : tonicMidi;
@@ -210,9 +210,10 @@ namespace SlimeJumping.Platforms.Piano
         public List<ChordStep> Progression =>
             overrideProgression != null && overrideProgression.Count > 0 ? overrideProgression : progression;
 
-        /// The rotation song's measured texture (how IT sounds a chord: spread, ring, drone,
-        /// dynamics), or null (= no song in force; ornament figures / block apply).
-        public ScoreTexture Texture => overrideTexture;
+        /// The rotation song's measured strikes, index-aligned with Progression — the landing plays
+        /// step[i] verbatim instead of rebuilding a chord. Null = no song in force (ornament
+        /// figures / block apply, unchanged).
+        public ScorePreviewStep[] PreviewSteps => overridePreviewSteps;
 
         public void SetKeyOverride(int midi, ScaleType s)
         {
@@ -223,12 +224,12 @@ namespace SlimeJumping.Platforms.Piano
 
         public void SetProgressionOverride(List<ChordStep> p) => overrideProgression = p;
 
-        public void SetTextureOverride(ScoreTexture t) => overrideTexture = t;
+        public void SetPreviewStepsOverride(ScorePreviewStep[] s) => overridePreviewSteps = s;
 
         public void ClearOverrides()
         {
             hasKeyOverride = false; overrideOrnaments = null;
-            overrideProgression = null; overrideTexture = null;
+            overrideProgression = null; overridePreviewSteps = null;
         }
         [Tooltip("착지 건반 → 멜로디 음 스냅 방식. Pentatonic = 가장 안전(안 틀림).")]
         public MelodySnapMode snapMode = MelodySnapMode.Pentatonic;
@@ -328,6 +329,44 @@ namespace SlimeJumping.Platforms.Piano
         public float defaultReleaseSeconds = 1.2f;
         [Tooltip("멜로디 음을 보이싱 최상단보다 최소 이 반음 위로 띄운다.")]
         public float minMelodyGap = 3f;
+
+        // ── 연주 표현 ───────────────────────────────────────────────────────────────────────────
+        // 같은 화음이라도 곡이 다르게 들리는 층. 전사에 노트별 세기·길이가 이미 있는데 전부 같은
+        // 음량·같은 길이로 뭉개던 것이 "샘플 재생 같다"의 원인이었다. 아래 값들은 그 층의 노브다.
+        [Header("Performance expression")]
+        [Tooltip("★ 곡의 실측 타건 재현. 끄면 기존 화음 재구성 + 장식 경로(스키마 폴백과 동일).")]
+        public bool previewGesture = true;
+        [Tooltip("한 착지의 제스처 예산(초). 빠른 곡은 이 안에 곡의 연속 타건이 실제 간격 그대로 들어와 '띠리링'이 되고, 느린 곡은 안에 들어올 게 없어서 한 타건만 난다. 추출 쪽 GESTURE_WINDOW와 같은 값으로 두 것. 0.08로 낮추면 착지당 한 타건(2026-07-27 이전 동작).")]
+        [Min(0f)] public float gestureMaxSpreadSeconds = 0.35f;
+        [Tooltip("한 음이 울릴 수 있는 최대 시간(초). 곡의 실측 울림이 이보다 길면 잘린다.")]
+        [Min(0.1f)] public float gestureMaxRingSeconds = 6f;
+        [Tooltip("멜로디 음과 이 반음 이내인 지지음은 뺀다. 밟은 건반이 곡 바깥 음일 때 화음을 억지로 유지하지 않고 줄이는 쪽이 곡답게 들린다.")]
+        [Range(0, 3)] public int melodyClashSemitones = 1;
+        [Tooltip("★ 밟은 건반을 곡의 주 멜로디 자리에 **대신 꽂는다**(켬) vs 곡이 친 음은 노래하는 음까지 전부 울리고 밟은 건반은 그 텍스처 안의 한 성부로 **섞는다**(끔, 기본). 켜면 곡의 선율선이 빠지고 임의 음이 제일 앞에 나와 겉돈다.")]
+        public bool previewPlayerAsLead = false;
+        [Tooltip("★ 곡의 음을 **순서대로 따라 치지 않고** 그 구간 음들을 화음으로 뭉쳐서 낸다(기본 켬). 전사를 문자 그대로 재생하면 곡을 어설프게 흉내내는 것처럼 들려서, 화음 인상만 두루뭉실하게 전한다. 세기·길이·잔향·음역은 그대로 실측값.")]
+        public bool previewChordBlur = true;
+        [Tooltip("뭉친 화음을 굴리는 폭(초). 0이면 완전 동시타. 화음이 한 덩어리로 뭉개지지 않을 만큼만.")]
+        [Min(0f)] public float blurRollSeconds = 0.03f;
+        [Tooltip("lead 모드에서만: 멜로디를 항상 지지음 최상단 위로 올린다(곡이 실제로 그렇게 친다). 끄면 밟은 건반의 옥타브를 그대로 존중.")]
+        public bool melodyAboveSupport = true;
+        [Tooltip("착지 속도를 음량·음색에 반영할지. **끔이 기본** — 세기는 곡이 실제로 친 세기로만 정해진다(빠르게 착지했다고 곡보다 크게 치면 재현이 깨짐). 켜면 예전처럼 velocityToVolume 곡선이 곱해진다.")]
+        public bool previewUseLandingVelocity = false;
+
+        [Tooltip("건반을 뗀 뒤 댐퍼가 소리를 죽이는 시간(초). 울리는 동안은 샘플 자신의 감쇠에 맡기고, 끝에서만 이 시간으로 지수 감쇠한다 — 릴리즈 내내 선형으로 줄이면 샘플의 자연 감쇠와 싸워서 죽은 소리가 된다.")]
+        [Min(0.02f)] public float damperSeconds = 0.18f;
+        [Tooltip("★ 세기 → 음색(밝기). 실제 피아노는 세게 칠수록 밝아지는데 건반당 샘플이 1개라 음량만 변한다. 로우패스로 약한 타건을 어둡게 만들어 근사한다(밝게는 못 만든다 — 뺄셈만 가능).")]
+        public bool brightnessEnabled = true;
+        [Tooltip("가장 약한 타건의 로우패스 컷오프(Hz).")]
+        [Min(200f)] public float brightnessSoftHz = 1600f;
+        [Tooltip("가장 센 타건의 로우패스 컷오프(Hz). 22000이면 사실상 필터 없음.")]
+        [Min(200f)] public float brightnessHardHz = 22000f;
+        [Tooltip("이 세기 이하는 전부 가장 어둡게. 전사 세기가 실제로 쓰는 구간의 하단(로테이션 11곡 실측 0.4~0.8) — 0~1 전 구간에 매핑하면 실제 데이터가 중간에만 몰려서 여리게 쳐도 안 어두워진다.")]
+        [Range(0f, 1f)] public float brightnessVelocityLow = 0.35f;
+        [Tooltip("이 세기 이상은 전부 가장 밝게. 위 항목의 상단.")]
+        [Range(0f, 1f)] public float brightnessVelocityHigh = 0.85f;
+        [Tooltip("컷오프 하한 = 그 음 기음의 이 배수. 높은 음이 약하게 나도 사라지지 않게 한다.")]
+        [Min(1f)] public float brightnessHarmonicFloor = 4f;
 
         [Header("Seam (2-key) dyad")]
         [Tooltip("이음새 2건반 착지 시 두 멜로디 음의 음량 배수(살짝 두껍게).")]
