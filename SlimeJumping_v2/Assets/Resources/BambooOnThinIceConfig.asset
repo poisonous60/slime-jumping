@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.BambooOnThinIceConfig
   jumpsToShatter: 4
   landingDebounceSeconds: 0.1
-  crackHealSeconds: 2
+  crackHealSeconds: 3
   slimeMass: 8
   corpseGravityScale: 2.5
   corpseLinearDamping: 0.05

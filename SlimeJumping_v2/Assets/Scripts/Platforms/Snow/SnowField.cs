@@ -63,7 +63,10 @@ namespace SlimeJumping.Platforms.Snow
         public MeshFilter sourceMeshFilter;
 
         [Header("Wiring")]
-        [Tooltip("Host platform's Collider2D. Registered as the routing key in SnowFieldRegistry — SlimeController.SurfaceCollider must equal this for carve events to land here.")]
+        [Tooltip("Background decoration mode. Keeps hostCollider permanently unassigned so this field never registers with SnowFieldRegistry — the slime can never carve it — and skips the overlap mask without warning. Auto-resolution from the parent chain is disabled while this is on, so re-parenting under a collider-bearing platform can't silently make the field carvable. Coverage is also unrestricted: the slope filter opens to 89.99 deg, the min-patch-tri filter drops to 1, subdivision drops to 0 (nothing carves, so the extra tris would only alias at distance), and the slope-to-height curve is bypassed so steep faces keep full thickness instead of emitting zero-height snow that z-fights the host. Override Max Snow Slope still wins if you want a specific angle back. Use for scenery snow that extends the playable field visually.")]
+        public bool backgroundOnly = false;
+
+        [Tooltip("Host platform's Collider2D. Registered as the routing key in SnowFieldRegistry — SlimeController.SurfaceCollider must equal this for carve events to land here. Ignored and forced null while Background Only is on.")]
         public Collider2D hostCollider;
 
         [Header("Overlap masking")]
@@ -113,14 +116,25 @@ namespace SlimeJumping.Platforms.Snow
         const float DefaultSettleRate      = 0f;
         const float DefaultHeightMaxMult   = 1.5f;
 
+        // Background fields cover every upward face: the slope filter opens to the
+        // extractor's clamp ceiling and single-triangle patches are kept.
+        const float BackgroundMaxSnowSlopeDeg = 89.99f;
+        const int   BackgroundMinPatchTris    = 1;
+        // Subdivision exists to give carve dips resolution. A background field never
+        // carves, so the extra tris only buy sub-pixel shading aliasing at distance.
+        const int   BackgroundSubdivLevels    = 0;
+
         public float MaxSnowSlopeDeg =>
             overrideMaxSnowSlope ? maxSnowSlopeDegOverride
+            : backgroundOnly     ? BackgroundMaxSnowSlopeDeg
             : settings != null   ? settings.maxSnowSlopeDeg
             : DefaultMaxSnowSlopeDeg;
-        public int   MinPatchTris    => settings != null ? settings.minPatchTris    : DefaultMinPatchTris;
+        public int   MinPatchTris    => backgroundOnly ? BackgroundMinPatchTris
+            : settings != null ? settings.minPatchTris : DefaultMinPatchTris;
         public float RestThickness   => settings != null ? settings.restThickness   : DefaultRestThickness;
         public int   EdgeTaperHops   => settings != null ? settings.edgeTaperHops   : DefaultEdgeTaperHops;
-        public int   SubdivLevels    => settings != null ? settings.subdivLevels    : DefaultSubdivLevels;
+        public int   SubdivLevels    => backgroundOnly ? BackgroundSubdivLevels
+            : settings != null ? settings.subdivLevels : DefaultSubdivLevels;
         public float AccumulationRate=> settings != null ? settings.accumulationRate: DefaultAccumRate;
         public float SettleRate      => settings != null ? settings.settleRate      : DefaultSettleRate;
         public float HeightMaxMultiplier => settings != null ? settings.heightMaxMultiplier : DefaultHeightMaxMult;
@@ -150,6 +164,12 @@ namespace SlimeJumping.Platforms.Snow
         // asset itself is never mutated (matches the read-only invariant the rest of
         // the system already follows for per-strip heightBuf via MPB).
         [System.NonSerialized] Material runtimeMaterial;
+
+        // Meshes this field built. Duplicating the GO copies the SnowStrip children with
+        // their MeshFilter still pointing at the ORIGINAL's runtime mesh, so ClearChildren
+        // must destroy only what it owns — the copy's set is empty (NonSerialized) and it
+        // detaches instead of destroying.
+        [System.NonSerialized] readonly HashSet<Mesh> ownedMeshes = new HashSet<Mesh>();
 
         // Property IDs for runtime-material texture pushes.
         static readonly int IdGradientRamp    = Shader.PropertyToID("_GradientRamp");
@@ -435,6 +455,7 @@ namespace SlimeJumping.Platforms.Snow
         // (with this SnowField) lives on a child.
         void ResolveHostCollider()
         {
+            if (backgroundOnly) { hostCollider = null; return; }
             if (hostCollider != null) return;
             var c = GetComponent<Collider2D>();
             if (c != null) { hostCollider = c; return; }
@@ -470,7 +491,7 @@ namespace SlimeJumping.Platforms.Snow
             // otherwise the host's polygon hits OverlapPoint at every interior vert
             // and the entire patch gets dropped. Warn + skip masking instead of
             // silently producing nearly-empty snow.
-            bool maskActive = excludeOverlapWithOtherPlatforms;
+            bool maskActive = excludeOverlapWithOtherPlatforms && !backgroundOnly;
             if (maskActive && hostCollider == null)
             {
                 Debug.LogWarning(
@@ -621,7 +642,11 @@ namespace SlimeJumping.Platforms.Snow
                 // The user is aware of this and accepts it; mitigate by flattening
                 // the low-angle portion of the curve if it bleeds onto level ground.
                 {
-                    var slopeCurve = settings != null ? settings.slopeToHeightScale : null;
+                    // Background fields skip the curve: their slope filter is wide open, so
+                    // a curve that zeroes past ~57 deg would emit zero-thickness snow that
+                    // sits coplanar with the host and z-fights.
+                    var slopeCurve = backgroundOnly ? null
+                        : settings != null ? settings.slopeToHeightScale : null;
                     if (slopeCurve != null && slopeCurve.length > 0)
                     {
                         for (int i = 0; i < V; i++)
@@ -637,6 +662,9 @@ namespace SlimeJumping.Platforms.Snow
 
                 var go = new GameObject($"SnowStrip_{emitted}");
                 emitted++;
+                // Follow the host's layer so background snow stays on the background
+                // camera instead of being drawn over it by the overlay pass.
+                go.layer = gameObject.layer;
                 go.transform.SetParent(transform, worldPositionStays: false);
                 go.transform.localPosition = Vector3.zero;
                 go.transform.localRotation = Quaternion.identity;
@@ -668,6 +696,7 @@ namespace SlimeJumping.Platforms.Snow
                     meshName = $"SnowStrip_{emitted - 1}_Mesh",
                 });
                 mf.sharedMesh = built;
+                ownedMeshes.Add(built);
 
                 ss.Init(mr);
             }
@@ -2148,7 +2177,10 @@ namespace SlimeJumping.Platforms.Snow
                 {
                     var m = mf.sharedMesh;
                     mf.sharedMesh = null;
-                    if (Application.isPlaying) Destroy(m); else DestroyImmediate(m);
+                    if (ownedMeshes.Remove(m))
+                    {
+                        if (Application.isPlaying) Destroy(m); else DestroyImmediate(m);
+                    }
                 }
                 if (Application.isPlaying) Destroy(go);
                 else DestroyImmediate(go);

@@ -336,7 +336,8 @@ per-instance reference 만 — tuning 은 settings asset 으로.
 |---------|--------|------|
 | Settings | None | `SnowSettings` 자산 참조. null 이면 baked-in 기본값 |
 | Source Mesh Filter | auto | 호스트 메쉬. 같은 GO 또는 자식에서 자동 resolve |
-| Host Collider | None | 슬라임 SurfaceCollider 와 매칭될 호스트의 Collider2D — registry 키 |
+| Background Only | false | 배경 장식 모드. `hostCollider` 를 항상 null 로 강제해 `SnowFieldRegistry` 등록 자체를 막고 (슬라임이 carve 불가), overlap mask 는 경고 없이 skip. 부모 체인 자동 resolve 도 함께 꺼지므로 collider 가 있는 플랫폼 밑으로 re-parent 해도 조용히 carve 대상이 되지 않음. **커버리지 무제한**: `MaxSnowSlopeDeg` 89.99 (extractor clamp 상한), `MinPatchTris` 1 로 강제되어 윗면을 보는 모든 face 에 눈이 깔림 — 단 `Override Max Snow Slope` 는 여전히 우선하므로 특정 각도로 되돌릴 수 있음. 플레이 영역 눈밭을 배경으로 연장하는 지형 오브젝트용 — 같은 `SnowSettings` (= 같은 `snowMaterial`) 를 물리면 근접 눈과 색이 구조적으로 일치 |
+| Host Collider | None | 슬라임 SurfaceCollider 와 매칭될 호스트의 Collider2D — registry 키. `Background Only` 가 켜져 있으면 무시되고 null 로 강제 |
 | Exclude Overlap With Other Platforms | true | rebuild 시점에 각 snow tri 가 (hostCollider 가 아닌) 다른 Collider2D 와 겹치면 그 tri 를 drop. 다른 플랫폼 mesh 와 겹쳐서 z-fighting 나는 영역이 사라지고, 외곽 rim 만 남음. boundary 는 잘라낸 모양에 맞게 재생성되어 BFS taper 가 새 가장자리에서도 둥글게 내려감. drop 알고리즘은 `Mask Mode` 로 선택 |
 | Mask Mode | SampleBased | drop 알고리즘 선택. **SampleBased**: 4-sample (3 verts + centroid) 중 하나라도 foreign 안이면 tri 통째 drop. 빠르고 기존 동작 유지하지만 정점 공유로 인한 캐스케이드로 갭이 foreign 실제 footprint 보다 넓어짐. **GeometricClipping**: Sutherland-Hodgman 으로 tri 를 foreign 엣지에서 정확히 잘라 `(tri ∩ NOT foreign)` 만 남김. 캐스케이드 없음, rim 이 foreign 엣지에 정확히 안착. 지원: Box / 단일-path 볼록 Polygon. Fallback: Circle/Capsule/Edge/Composite, 다중 path / concave Polygon, "foreign 이 단일 tri 안에 완전히 포함" 케이스. 기존 씬 byte-identical 동작 유지를 위해 default 는 SampleBased — 캐스케이드 갭이 신경 쓰이는 SnowField 만 인스펙터에서 전환 |
 | Overlap Layer Mask | Everything | 위 toggle 이 켜져 있을 때 검사할 레이어. hostCollider 는 항상 제외 |
