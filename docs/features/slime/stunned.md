@@ -13,7 +13,7 @@
 ## 동작
 - **입력 잠금**: 모든 입력 핸들러 early-return.
 - **공중**: 중력 1x (W/S 조절 없음, 상승/하강 비대칭 없음).
-- **표면 접촉**: 법선 속도만 상쇄 (Airborne 천장 충돌과 동일). Attached/Charging 전환 **차단** — 미끄러지지 않고 정지 유지도 아님, 벽에 달라붙어 슬라이드 방지.
+- **표면 접촉**: 법선 속도만 상쇄 (`SurfaceProbe.ProjectVelocityAgainstContacts`, Airborne 천장 충돌과 동일). 접선 성분은 유지 → 지면/벽을 따라 미끄러짐. Attached/Charging 전환 **차단**.
 - **타이머**: `stunTimer` 카운트다운. 만료 시 Airborne 전환 (`intentional: true`).
 - **i-frame**: 기절 중 추가 `ApplyHazardEffect` 무시.
 - **외부 힘**: `AddExternalVelocity` (바람 등) 정상 적용 (Airborne과 동일 분기).

@@ -5,28 +5,18 @@ namespace SlimeJumping.Controller
     public partial class SlimeController
     {
         // --- State: Stunned ---
-        // Sticks to any contacted surface (like Attached) until stun expires.
-        // No air control, no W/S gravity modulation, no state transitions.
+        // Slides along surfaces, never attaches. No air control, no W/S gravity modulation.
 
         private void FixedUpdateStunned(float dt)
         {
             stunTimer -= dt;
 
-            bool stickable = isTouchingSurface
-                && surfaceCollider != null
-                && !ignoredColliderList.Contains(surfaceCollider);
+            velocity += -gravityUp * Mathf.Abs(settings.gravity) * dt;
 
-            if (stickable)
-            {
-                velocity = Vector2.zero;
-                SnapToSurface();
-            }
-            else
-            {
-                velocity += -gravityUp * Mathf.Abs(settings.gravity) * dt;
-            }
+            // Cancel normal velocity only — tangent survives.
+            if (isTouchingSurface)
+                surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
 
-            // Timer expired: recover to Airborne
             if (stunTimer <= 0f)
             {
                 stunTimer = 0f;
