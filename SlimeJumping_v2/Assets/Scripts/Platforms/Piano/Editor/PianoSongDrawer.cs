@@ -3,10 +3,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Piano.EditorTools
 {
-    /// Draws one auto-play song as a single header row — [x] Name  (summary) — so a piece can be
-    /// switched in and out of the rotation without expanding it. The default drawer buries the
-    /// toggle under the clip, the score, the key and eleven ornament flags, which makes "try it
-    /// without this piece" a chore on an eleven-entry list.
+    /// Draws one song as a single header row — [x] Name (summary) — so a piece can be toggled out of the rotation without expanding it.
     [CustomPropertyDrawer(typeof(PianoSong))]
     public class PianoSongDrawer : PropertyDrawer
     {
@@ -18,7 +15,7 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
             "suspension", "dropTwo", "sustainPedal", "resonance", "glissando",
         };
 
-        // Short tags so the header can say what the piece will actually do, at a glance.
+        // Header tags, index-aligned with Ornaments.
         private static readonly string[] Tags =
         {
             "roll", "vl", "ped.pt", "alberti", "chip", "appog",

@@ -3,24 +3,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Swinging hammer obstacle. Lives on the hammer root; orbits the root (head + pole
-    /// children) around a fixed world pivot — by default the top of the pole (hammer_lod) —
-    /// oscillating left-right between centerAngle ± maxAngle.
-    ///
-    /// The speed profile is an AnimationCurve: flat at the ends means the head dwells / stops
-    /// at the angle extremes, steep in the middle means it is fastest at the lowest point.
-    ///
-    /// On contact the slime is launched along the head's instantaneous velocity at the hit
-    /// point (omega x arm), so launch strength scales with BOTH the swing speed and how far
-    /// out along the swing the slime was struck. Shares the launch code path with JumpPad via
-    /// SlimeController.ForceAirborneWithVelocity.
-    ///
-    /// Hierarchy (unchanged by this component):
-    ///   hammer (this, kinematic Rigidbody2D + trigger BoxCollider2D)
-    ///     hammer_head  (head visual, scaled by headSizeMultiplier)
-    ///     hammer_lod   (pole visual, scaled by poleSizeMultiplier)
-    /// </summary>
+    /// <summary>Swinging hammer: orbits head+pole around a fixed world pivot between centerAngle ± maxAngle; on contact launches the slime along the head velocity at the hit point (omega x arm).</summary>
     [RequireComponent(typeof(Rigidbody2D))]
     [DefaultExecutionOrder(-100)]
     public class HammerPlatform : MonoBehaviour
@@ -115,7 +98,6 @@ namespace SlimeJumping.Mechanisms
 
             float swingDeg = ComputeSwingAngle(timeAccum);
 
-            // Orbit the body around the fixed world pivot.
             Quaternion q = Quaternion.Euler(0f, 0f, swingDeg);
             Vector2 newPos = pivotWorld + (Vector2)(q * armRest);
             rb.MovePosition(newPos);
@@ -128,21 +110,15 @@ namespace SlimeJumping.Mechanisms
             if (cooldownTimer > 0f) cooldownTimer -= dt;
         }
 
-        /// <summary>
-        /// Swing angle in degrees, relative to rest, at the given elapsed time.
-        /// Oscillates between centerAngle - maxAngle and centerAngle + maxAngle,
-        /// shaped by speedProfile. Bottom of the swing = authored rest pose = fastest.
-        /// </summary>
+        /// <summary>Swing angle in degrees relative to rest; bottom of the swing = authored rest pose.</summary>
         private float ComputeSwingAngle(float t)
         {
             if (usePendulumMotion)
             {
-                // True pendulum (small-angle SHM): starts at -maxAngle, sweeps through the
-                // bottom (fastest), reaches +maxAngle, back. cos => max accel at the extremes.
+                // Small-angle SHM; cos gives max acceleration at the extremes, not zero.
                 float w = period > 0.0001f ? (2f * Mathf.PI / period) : 0f;
                 float c = Mathf.Cos(w * t);
-                // tanh soft-clip adds dwell at the extremes (|c|~1 saturates flat) and steepens
-                // the bottom pass; k->0 reduces to pure cosine.
+                // tanh soft-clip adds dwell at the extremes; dwell->0 reduces to pure cosine.
                 float shaped = pendulumDwell > 0.001f
                     ? (float)(System.Math.Tanh(pendulumDwell * c) / System.Math.Tanh(pendulumDwell))
                     : c;
@@ -219,11 +195,9 @@ namespace SlimeJumping.Mechanisms
             float armLen = headVisual != null ? Vector2.Distance(pivot, headVisual.position)
                                               : Mathf.Max(0.1f, pivotLocalOffset.magnitude);
 
-            // pivot marker
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(pivot, armLen * 0.06f);
 
-            // swing extremes + arc
             Gizmos.color = new Color(1f, 0.5f, 0.1f, 0.9f);
             Vector2 a = ArmDir(rot + centerAngle - maxAngle) * armLen + pivot;
             Vector2 b = ArmDir(rot + centerAngle + maxAngle) * armLen + pivot;

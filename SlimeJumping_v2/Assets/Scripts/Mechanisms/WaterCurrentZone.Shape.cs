@@ -37,9 +37,8 @@ namespace SlimeJumping.Mechanisms
         RibbonPoint[] points;
         float totalArcLength;
 
-        // Set after migration runs once. Stops a re-migration from clobbering an authored
-        // centerline if a designer later clears it intentionally and the polygon path is still
-        // present.
+        // Stops re-migration from clobbering a centerline a designer cleared on purpose while the
+        // legacy polygon path is still present.
         [SerializeField, HideInInspector] bool migrated;
 
         public int CenterlinePointCount => centerlineLocal == null ? 0 : centerlineLocal.Count;
@@ -75,8 +74,7 @@ namespace SlimeJumping.Mechanisms
             if (points == null || points.Length != sampleCount)
                 points = new RibbonPoint[sampleCount];
 
-            // Catmull-Rom subdivide. Open-polyline endpoint clamping: replicate boundary points
-            // so endpoints sit exactly on the user's authored centerline (no overshoot).
+            // Boundary points replicated so endpoints land exactly on the authored centerline (no overshoot).
             int w = 0;
             for (int i = 0; i < n - 1; i++)
             {
@@ -99,7 +97,6 @@ namespace SlimeJumping.Mechanisms
                     w++;
                 }
             }
-            // Final endpoint (t=1 of the last segment).
             {
                 var prev = points[w];
                 points[w] = new RibbonPoint
@@ -110,7 +107,6 @@ namespace SlimeJumping.Mechanisms
                 };
             }
 
-            // Tangent + normal per sample. Central differences interior, one-sided at endpoints.
             int m = points.Length;
             for (int i = 0; i < m; i++)
             {
@@ -121,9 +117,7 @@ namespace SlimeJumping.Mechanisms
 
                 if (tan.sqrMagnitude < 1e-8f) tan = Vector2.right;
                 tan.Normalize();
-                // Rotate 90° CCW: gives "right of flow direction" for left-handed Unity 2D.
-                // For tangent (0,-1) (flow points down), normalLR = (1,0) (right). Matches the
-                // U axis convention of the previous WaterCurrentZone (line 254-255).
+                // Rotate 90° CCW: tangent (0,-1) (flow down) -> normalLR (1,0) = right of flow.
                 points[i].normalLR = new Vector2(-tan.y, tan.x);
             }
 
@@ -168,12 +162,7 @@ namespace SlimeJumping.Mechanisms
             migrated = true;
         }
 
-        /// <summary>
-        /// Build the ribbon's silhouette polygon (left outline forward + right outline reversed)
-        /// and write it into the attached PolygonCollider2D. Trigger area exactly matches the
-        /// visual silhouette (in XY plane). Inner cross-section vertices L'/C/R' stay out of
-        /// the collider — they only affect the visual mesh's Z depth.
-        /// </summary>
+        /// <summary>Ribbon silhouette (left outline + reversed right outline) -> PolygonCollider2D path.</summary>
         [ContextMenu("Sync Collider To Ribbon Outline")]
         public void SyncColliderToRibbonOutline()
         {
@@ -194,12 +183,7 @@ namespace SlimeJumping.Mechanisms
 
         // ---- One-shot migration from the legacy rectangular PolygonCollider2D ----
 
-        /// <summary>
-        /// Extracts a vertical centerline + ribbonWidth from the existing PolygonCollider2D's
-        /// AABB. Used to migrate scene instances authored with the old cube-prism mesh
-        /// (rectangular polygon path) without forcing designers to re-author from scratch.
-        /// Idempotent — sets `migrated` after running so subsequent OnValidate calls noop.
-        /// </summary>
+        /// <summary>Derives a vertical centerline + width from the legacy polygon AABB. Idempotent via `migrated`.</summary>
         void TryMigrateFromPolygon()
         {
             if (migrated) return;

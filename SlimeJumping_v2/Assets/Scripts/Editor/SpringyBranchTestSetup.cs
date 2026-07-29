@@ -72,8 +72,7 @@ namespace SlimeJumping.Editor
                 passiveDecayRate: 0.3f,
                 riderDecayRate: 0.3f);
 
-            // Reference branch tuned to hit the maxTipSpeed ceiling quickly — for verifying the
-            // launch-boost guarantee during playtesting.
+            // Tuned to peg maxTipSpeed quickly — reference for the launch-boost ceiling.
             CreateSpringyBranch("Branch_BoostGauge", root.transform,
                 pivotWorldPos: new Vector3(baseX + 22f, baseY + 3f, 0f),
                 tint: new Color(1.0f, 0.85f, 0.2f),
@@ -127,8 +126,7 @@ namespace SlimeJumping.Editor
 
             body.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(tint);
 
-            // Bones are parented under the unscaled pivot (not the non-uniformly scaled body),
-            // so localPosition steps are in world units and any art parented later won't shear.
+            // Bones hang off the unscaled pivot, not the non-uniformly scaled body — else steps aren't world units and child art shears.
             int boneCount = 5;
             float segmentWorld = branchLength / boneCount;
             Transform[] bones = new Transform[boneCount];

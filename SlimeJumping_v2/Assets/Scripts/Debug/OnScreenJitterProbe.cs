@@ -4,28 +4,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Last-mile camera-vs-slime diagnostic. Samples per RENDER frame (Update, not FixedUpdate)
-    /// the slime's transform.position, the camera's transform.position, and the screen-relative
-    /// difference. Any per-frame spike in the screen-relative delta IS what the eye sees.
-    ///
-    /// What this tool can rule out / confirm:
-    ///   - rb.position smooth but transform.position spiky → Rigidbody2D interpolation is failing
-    ///   - transform.position smooth, camera spiky → Cinemachine update-method or follow path
-    ///   - both smooth, screen-relative spiky → camera-vs-slime phase mismatch (timing)
-    ///   - all three smooth → the perceived 덜컹 is render-pacing or display-side, NOT in the data
-    ///
-    /// How to read the auto-dump:
-    ///   slimeΔ jaggedness AT FIXED Hz peak → physics-step alias bleeding through interpolation
-    ///   camΔ jaggedness independent of slimeΔ → camera follow timing
-    ///   relΔ has spikes when slimeΔ + camΔ are individually smooth → phase mismatch (the jolt
-    ///       you "feel" is a 2-3 px on-screen wobble of the slime relative to the world)
-    ///
-    /// Auto-dumps when |relΔ - relΔ_prev| (acceleration of screen-relative position) exceeds
-    /// `relAccelTriggerPx` in pixels (mapped from world via camera ortho size).
-    ///
-    /// Manual dump: F4.
-    /// </summary>
+    /// <summary>Per-render-frame slime-vs-camera jitter probe; dumps a ring buffer when on-screen relative acceleration spikes.</summary>
     [DefaultExecutionOrder(2100)]
     public class OnScreenJitterProbe : MonoBehaviour
     {
@@ -47,13 +26,13 @@ namespace SlimeJumping.Debugging
             public int frame;
             public float time;
             public float deltaTime;
-            public Vector2 rbPos;       // physics position (50 Hz step)
-            public Vector2 tfPos;       // interpolated transform position (every render frame)
-            public Vector2 camPos;      // camera transform position
+            public Vector2 rbPos;
+            public Vector2 tfPos;
+            public Vector2 camPos;
             public Vector2 rbDelta;     // tf vs prev tf (NOT rb — this is what the eye sees)
-            public Vector2 camDelta;    // cam vs prev cam
-            public Vector2 relPos;      // tf - cam (slime position on screen, world units)
-            public Vector2 relDelta;    // relPos vs prev (this is what wobbles visually)
+            public Vector2 camDelta;
+            public Vector2 relPos;
+            public Vector2 relDelta;
             public float relAccelMagPx; // |relDelta - prev relDelta| in pixels — the jolt metric
             public bool isFixedTick;    // did a FixedUpdate run during this Update?
         }
@@ -93,8 +72,7 @@ namespace SlimeJumping.Debugging
 
         private void FixedUpdate()
         {
-            // Mark that a FixedUpdate ran since the last Update — useful to correlate
-            // visible jitter with physics-step boundaries.
+            // Marks that a FixedUpdate ran since the last Update, to correlate jitter with physics steps.
             currUpdateFixedTickFlag = 1;
             fixedTicksPerSecond++;
         }

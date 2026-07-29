@@ -5,16 +5,8 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Interaction
 {
-    /// <summary>
-    /// Shows a world-space "E" prompt above the current interactable.
-    /// - Appears when the InteractionDetector's current target changes to a non-null interactable.
-    /// - Hides when slime leaves the target's range or the interact key is pressed.
-    /// - After a press, stays hidden until the slime leaves that specific target and re-enters.
-    ///
-    /// The TMP component lives on the SAME GameObject as this script (via RequireComponent),
-    /// so the prompt's Transform has the same lifetime as the manager — there is never a
-    /// stale runtime-child reference that can survive a domain reload.
-    /// </summary>
+    /// <summary>World-space "E" prompt above the current interactable; stays hidden after a press until the slime re-enters.</summary>
+    /// TMP must sit on this same GameObject — a runtime child Transform would survive a domain reload as a stale ref.
     [RequireComponent(typeof(TextMeshPro))]
     public class InteractionPromptManager : MonoBehaviour
     {

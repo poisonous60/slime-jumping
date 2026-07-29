@@ -15,12 +15,10 @@ namespace SlimeJumping.Editor
             float baseX = 0f;
             float baseY = 0f;
 
-            // --- Floor ---
             CreatePlatform("Floor", root.transform,
                 new Vector3(baseX, baseY - 0.5f, 0f),
                 new Vector3(40f, 1f, 1f));
 
-            // --- Ball 1: Fixed-only, non-consumable (persistent — bounces forever) ---
             CreateJumpBall("JumpBall_FixedOnly_Persistent", root.transform,
                 new Vector3(baseX - 12f, baseY + 2.5f, 0f),
                 radius: 0.6f,
@@ -33,7 +31,6 @@ namespace SlimeJumping.Editor
                 consumable: false,
                 respawnDelay: 2.5f);
 
-            // --- Ball 2: Moderate bounce — consumable, fast respawn (1s) ---
             CreateJumpBall("JumpBall_Bouncy_FastRespawn", root.transform,
                 new Vector3(baseX - 4f, baseY + 2.5f, 0f),
                 radius: 0.6f,
@@ -46,7 +43,6 @@ namespace SlimeJumping.Editor
                 consumable: true,
                 respawnDelay: 1.0f);
 
-            // --- Ball 3: High amplification — consumable, slow respawn (4s) ---
             CreateJumpBall("JumpBall_HighAmp_SlowRespawn", root.transform,
                 new Vector3(baseX + 4f, baseY + 2.5f, 0f),
                 radius: 0.6f,
@@ -59,7 +55,6 @@ namespace SlimeJumping.Editor
                 consumable: true,
                 respawnDelay: 4.0f);
 
-            // --- Ball 4: Stack 1 (chain — consumable, default respawn) ---
             CreateJumpBall("JumpBall_Stack_Low", root.transform,
                 new Vector3(baseX + 12f, baseY + 2.5f, 0f),
                 radius: 0.6f,
@@ -72,7 +67,6 @@ namespace SlimeJumping.Editor
                 consumable: true,
                 respawnDelay: 2.5f);
 
-            // --- Ball 5: Stack 2 (chain — consumable, default respawn) ---
             CreateJumpBall("JumpBall_Stack_High", root.transform,
                 new Vector3(baseX + 12f, baseY + 8f, 0f),
                 radius: 0.6f,
@@ -85,7 +79,6 @@ namespace SlimeJumping.Editor
                 consumable: true,
                 respawnDelay: 2.5f);
 
-            // --- Landing platforms at various heights ---
             CreatePlatform("Landing_Mid", root.transform,
                 new Vector3(baseX - 8f, baseY + 6f, 0f),
                 new Vector3(3f, 0.5f, 1f));
@@ -94,7 +87,6 @@ namespace SlimeJumping.Editor
                 new Vector3(baseX + 6f, baseY + 12f, 0f),
                 new Vector3(3f, 0.5f, 1f));
 
-            // --- Side walls ---
             CreatePlatform("LeftWall", root.transform,
                 new Vector3(baseX - 20.5f, baseY + 6f, 0f),
                 new Vector3(1f, 13f, 1f));
@@ -120,7 +112,6 @@ namespace SlimeJumping.Editor
             float bobAmplitude, float bobFrequency, Color tint,
             bool consumable, float respawnDelay)
         {
-            // Root: trigger collider + JumpBall component (no renderer on root)
             var rootGo = new GameObject(name);
             rootGo.transform.parent = parent;
             rootGo.transform.position = pos;
@@ -129,7 +120,6 @@ namespace SlimeJumping.Editor
             col.isTrigger = true;
             col.radius = radius;
 
-            // Child: visual sphere (bobs independently, no collider)
             var visualGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             visualGo.name = "Visual";
             visualGo.transform.parent = rootGo.transform;

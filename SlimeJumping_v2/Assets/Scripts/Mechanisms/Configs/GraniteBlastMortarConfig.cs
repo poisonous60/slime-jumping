@@ -2,22 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Per-mode tuning for GraniteBlastEmitter Mortar mode (delayed-tracking projectile).
-    ///
-    /// Lifecycle of a single mortar projectile:
-    ///   1. Spawn at muzzle, eject in a random direction around it (orbit phase entry).
-    ///   2. Travel to its orbit anchor over <c>travelToOrbitDuration</c> seconds. Distance
-    ///      from start to anchor is <c>orbitDistance</c>; per-frame speed along the path
-    ///      is shaped by <c>travelToOrbitSpeedCurve</c> (X = 0..1 normalized progress,
-    ///      Y = speed multiplier). The curve lets the designer ease in/out of arrival.
-    ///   3. Hover at the orbit anchor for <c>dwellAtOrbitDuration</c> seconds.
-    ///   4. Lock target at slime position (the homing factor below blends "lock once at
-    ///      strike start" vs. "track the live slime"), then accelerate toward it.
-    ///      Per-frame speed during the strike is shaped by <c>strikeSpeedCurve</c>.
-    ///      Strike continues until the projectile hits something or
-    ///      <c>strikeMaxDuration</c> elapses (then fizzles).
-    /// </summary>
+    /// <summary>Per-mode tuning for GraniteBlastEmitter Mortar mode (delayed-tracking projectile).</summary>
+    /// Projectile lifecycle: eject from muzzle → travel to orbit anchor → dwell → lock onto the slime and strike (fizzles at strikeMaxDuration).
     [CreateAssetMenu(fileName = "GraniteBlastMortarConfig",
         menuName = "SlimeJumping/Granite Blast/Mortar Config", order = 3)]
     public class GraniteBlastMortarConfig : ScriptableObject

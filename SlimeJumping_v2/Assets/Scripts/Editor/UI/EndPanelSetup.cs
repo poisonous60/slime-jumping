@@ -26,7 +26,6 @@ namespace SlimeJumping.EditorTools.UI
             var root = UISetupCommon.CreatePanelRoot("EndPanel", new Vector2(UISetupCommon.CanvasRefWidth, UISetupCommon.CanvasRefHeight));
             var panel = root.AddComponent<EndPanel>();
 
-            // Optional dim backdrop
             var backdrop = UISetupCommon.CreateChild(root.transform, "Backdrop",
                 typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
             UISetupCommon.FillParent(backdrop);
@@ -34,7 +33,6 @@ namespace SlimeJumping.EditorTools.UI
             bImg.color = new Color(0.02f, 0.08f, 0.05f, 0.88f);
             bImg.raycastTarget = false;
 
-            // Content stack centered
             var content = UISetupCommon.CreateChild(root.transform, "Content", typeof(RectTransform));
             var crt = content.GetComponent<RectTransform>();
             crt.anchorMin = new Vector2(0.5f, 0.5f);

@@ -7,11 +7,7 @@ using SlimeJumping.UI.Panels;
 
 namespace SlimeJumping.EditorTools.UI
 {
-    /// Builds Assets/Prefabs/UI/Panels/OptionsPanel.prefab.
-    /// Layout: centered box + VerticalLayoutGroup of rows. Each row is either a
-    /// Cycler (prev/value/next), Slider (slider/value), or Dropdown (dropdown).
-    /// The setup script assigns the OptionsPanel's [SerializeField] refs via
-    /// SerializedProperty so the prefab is fully wired on first build.
+    /// Builds OptionsPanel.prefab: centered box of Cycler/Slider/Dropdown rows, refs wired via SerializedProperty.
     public static class OptionsPanelSetup
     {
         public const string PrefabPath = UISetupCommon.PanelPrefabRoot + "/OptionsPanel.prefab";
@@ -38,19 +34,16 @@ namespace SlimeJumping.EditorTools.UI
             var root = UISetupCommon.CreatePanelRoot("OptionsPanel", new Vector2(UISetupCommon.CanvasRefWidth, UISetupCommon.CanvasRefHeight));
             var panel = root.AddComponent<OptionsPanel>();
 
-            // Dim backdrop so content behind is de-emphasized
             var backdrop = UISetupCommon.CreateChild(root.transform, "Backdrop",
                 typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
             UISetupCommon.FillParent(backdrop);
             backdrop.GetComponent<Image>().color = UISetupCommon.ColorBackdropDim;
 
-            // Centered box
             var box = UISetupCommon.CreateCenteredBox(root.transform, "Box", new Vector2(BoxWidth, BoxHeight));
             UISetupCommon.AddVerticalLayout(box, padding: 32, spacing: 10, childAlign: TextAnchor.UpperCenter);
             UISetupCommon.TagSlot(box, UISlotType.ContentRoot);
             UISetupCommon.AddContainerStagger(box);
 
-            // Title
             var title = UISetupCommon.CreateText(box.transform, "Title", "Options",
                 UISetupCommon.FontTitle, TextAlignmentOptions.Center);
             title.color = UISetupCommon.ColorTitle;
@@ -58,7 +51,6 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.AddLayoutElement(title.gameObject, minHeight: 88f, preferredHeight: 96f);
             UISetupCommon.TagSlot(title.gameObject, UISlotType.Title);
 
-            // Tab strip
             var tabs = UISetupCommon.CreateChild(box.transform, "Tabs", typeof(RectTransform));
             UISetupCommon.AddHorizontalLayout(tabs, padding: 0, spacing: 12, childAlign: TextAnchor.MiddleCenter, expandWidth: false);
             UISetupCommon.AddLayoutElement(tabs, minHeight: TabHeight, preferredHeight: TabHeight);
@@ -71,7 +63,7 @@ namespace SlimeJumping.EditorTools.UI
             var debugTabBtn = CreateTabButton(tabs.transform, "DebugTabButton", "Debug", out TextMeshProUGUI debugTabText);
             UISetupCommon.TagSlot(debugTabBtn.gameObject, UISlotType.Tab_Debug);
 
-            // Page containers — only one is active at a time, controlled at runtime by SelectTab.
+            // Only one page is active at a time; SelectTab toggles them at runtime.
             var graphicsPage = UISetupCommon.CreateChild(box.transform, "GraphicsPage", typeof(RectTransform));
             UISetupCommon.AddVerticalLayout(graphicsPage, padding: 0, spacing: 10, childAlign: TextAnchor.UpperCenter);
             UISetupCommon.TagSlot(graphicsPage, UISlotType.Page_Graphics);
@@ -148,11 +140,9 @@ namespace SlimeJumping.EditorTools.UI
                 out Button clearTrailBtn);
             UISetupCommon.TagSlot(clearTrailRow, UISlotType.Row_ClearTrail);
 
-            // Spacer
             var spacer = UISetupCommon.CreateChild(box.transform, "Spacer", typeof(RectTransform));
             UISetupCommon.AddLayoutElement(spacer, minHeight: 12f, preferredHeight: 16f);
 
-            // Close / Quit row
             var actions = UISetupCommon.CreateChild(box.transform, "Actions", typeof(RectTransform));
             UISetupCommon.AddHorizontalLayout(actions, padding: 0, spacing: 16, childAlign: TextAnchor.MiddleCenter, expandWidth: true);
             UISetupCommon.AddLayoutElement(actions, minHeight: 56f, preferredHeight: 60f);
@@ -295,9 +285,8 @@ namespace SlimeJumping.EditorTools.UI
             var font = UISetupCommon.LoadSharedFont();
             if (font != null) label.font = font;
 
-            // Configure the RectTransform AFTER AddComponent<TextMeshProUGUI>,
-            // since adding the TMP component resets the rect to its preferred
-            // text size and would clobber any anchors/offsets we set first.
+            // RectTransform must be set AFTER AddComponent<TextMeshProUGUI> — TMP resets
+            // the rect to preferred text size and clobbers earlier anchors/offsets.
             var rt = label.rectTransform;
             rt.anchorMin = Vector2.zero;
             rt.anchorMax = Vector2.one;
@@ -443,7 +432,6 @@ namespace SlimeJumping.EditorTools.UI
             var dd = go.AddComponent<TMP_Dropdown>();
             dd.targetGraphic = bgImg;
 
-            // Label child (shows current selection)
             var labelGO = UISetupCommon.CreateChild(go.transform, "Label", typeof(RectTransform));
             var lbl = labelGO.AddComponent<TextMeshProUGUI>();
             lbl.fontSize = UISetupCommon.FontRowValue;
@@ -459,7 +447,6 @@ namespace SlimeJumping.EditorTools.UI
             lblRT.offsetMax = new Vector2(-28f, -4f);
             dd.captionText = lbl;
 
-            // Arrow
             var arrowGO = UISetupCommon.CreateChild(go.transform, "Arrow",
                 typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
             var arrowImg = arrowGO.GetComponent<Image>();
@@ -472,7 +459,6 @@ namespace SlimeJumping.EditorTools.UI
             arrowRT.anchoredPosition = new Vector2(-8f, 0f);
             arrowRT.sizeDelta = new Vector2(20f, 20f);
 
-            // Template
             var templateGO = UISetupCommon.CreateChild(go.transform, "Template",
                 typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(ScrollRect));
             var tRT = templateGO.GetComponent<RectTransform>();
@@ -551,7 +537,6 @@ namespace SlimeJumping.EditorTools.UI
             toggle.graphic = icImg;
             toggle.isOn = true;
 
-            // Scrollbar
             var scrollbarGO = UISetupCommon.CreateChild(templateGO.transform, "Scrollbar",
                 typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Scrollbar));
             var sbRT = scrollbarGO.GetComponent<RectTransform>();

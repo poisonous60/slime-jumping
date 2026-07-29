@@ -3,13 +3,8 @@ using SlimeJumping.Visual;
 
 namespace SlimeJumping.Debugging
 {
-    /// On-screen overlay for SlimeFrostController.freezeT. Pull-only — no fields
-    /// added to the controller. Attach to any GameObject in the scene; OnGUI
-    /// renders in screen space so the host transform is irrelevant. Auto-finds
-    /// the first SlimeFrostController if target is left null.
-    ///
-    /// 0.3 marker on the bar indicates the default frostCurve flat-zone edge —
-    /// freezeT below 0.3 produces _FrostStrength=0 (invisible) with default curve.
+    /// Pull-only on-screen overlay for SlimeFrostController.freezeT (OnGUI, host transform irrelevant).
+    /// 0.3 marker = default frostCurve flat-zone edge; below it _FrostStrength=0, i.e. invisible.
     public class SlimeFrostDebug : MonoBehaviour
     {
         [SerializeField] SlimeFrostController target;

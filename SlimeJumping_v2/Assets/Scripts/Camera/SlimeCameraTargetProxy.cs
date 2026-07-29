@@ -4,28 +4,9 @@ using SlimeJumping.Controller;
 namespace SlimeJumping.Camera
 {
     /// <summary>
-    /// Follow-target proxy for Cinemachine. Position = low-pass filtered slime position
-    /// during normal motion, but snaps instantly on intentional bursts (Launch). Set the
-    /// CinemachineCamera's Follow target to this object's transform instead of the slime
-    /// directly.
-    ///
-    /// Why: with the camera following slime directly and Cinemachine Damping=0, frame-
-    /// to-frame multi-probe normal jitter on Ice curves transfers into visible camera
-    /// shake. Adding Cinemachine Damping smooths it but the slime feels "left behind"
-    /// when launching (intentional bursts get the same lag as jitter).
-    ///
-    /// This proxy decouples the two:
-    ///   - Continuous motion (slide / walk / fall): low-pass at smoothRateHz, slime
-    ///     micro-jitter is averaged out, lag ≈ 1 / (2π × rate). At 30 Hz that's ~5 ms,
-    ///     well under one fixed step — visually imperceptible.
-    ///   - Launch: SlimeController fires OnLaunch, proxy snaps to slime in the next
-    ///     LateUpdate. Camera follows the burst with zero lag, exactly as if
-    ///     Cinemachine Damping = 0.
-    ///
-    /// Setup:
-    ///   1. Create empty GameObject "SlimeCameraTarget" in the scene (anywhere).
-    ///   2. Add this component, drag the Slime into the slime field.
-    ///   3. On the SlimeVCam, set Tracking Target / Follow to "SlimeCameraTarget".
+    /// Cinemachine follow target: low-pass filtered slime position, snapped on Launch.
+    /// Cinemachine Damping alone was rejected — it hides probe-normal jitter but makes
+    /// launches feel left behind. Point the vcam's Follow at this transform, not the slime.
     /// </summary>
     [DefaultExecutionOrder(1500)]
     public class SlimeCameraTargetProxy : MonoBehaviour
@@ -82,8 +63,7 @@ namespace SlimeJumping.Camera
                 return;
             }
 
-            // Catch large unannounced jumps (teleport / external force) — keeps
-            // camera from spending several frames lerping across the level.
+            // Teleport / external force fires no event — snap instead of lerping across the level.
             if (snapDistanceThreshold > 0f
                 && (slimePos - smoothedPos).sqrMagnitude > snapDistanceThreshold * snapDistanceThreshold)
             {

@@ -32,19 +32,16 @@ namespace SlimeJumping.Platforms
 
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity, bool isCharging)
         {
-            // World-horizontal offset — gravity (world-down) creates the imbalance,
-            // so the torque arm is measured in world X, not disk-local X.
+            // Torque arm is world X, not disk-local X: gravity (world-down) creates the imbalance.
             float offsetX = riderWorldPos.x - rb.position.x;
 
-            // Dead zone: within deadZoneAngleDeg of the disk's top, no torque.
-            // offsetX ≈ radius · sin(rider-angle-from-top) for a rider on the disk surface.
-            // Compare |offsetX| against the sin of the threshold to get an angle-based band.
+            // offsetX ≈ radius · sin(rider-angle-from-top), so comparing against sin of the
+            // threshold makes the dead zone angle-based rather than distance-based.
             float deadZoneX = diskRadius * Mathf.Sin(deadZoneAngleDeg * Mathf.Deg2Rad);
             float excessMag = Mathf.Abs(offsetX) - deadZoneX;
             if (excessMag <= 0f) return;
 
-            // Smooth fade-in past the threshold: torque starts at 0 at the boundary and
-            // scales linearly, avoiding a hard step at the dead-zone edge.
+            // Arm is the excess past the dead zone, so torque ramps from 0 instead of stepping at the edge.
             float effectiveArm = excessMag * Mathf.Sign(offsetX);
             pendingAngAccel += -effectiveArm * mass * riderAngAccelScale;
         }

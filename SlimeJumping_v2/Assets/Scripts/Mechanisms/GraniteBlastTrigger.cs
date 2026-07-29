@@ -3,14 +3,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Trigger volume that fires its bound GraniteBlastEmitter once when the slime
-    /// enters. Designer wires the emitter (set its autoFire=false so it stays
-    /// dormant), drops a trigger Collider2D in the scene, and the laser fires when
-    /// the slime walks into the volume. Optional retrigger cooldown supports
-    /// "fires every N seconds while the slime is inside" gameplay; default is
-    /// strict one-shot.
-    /// </summary>
+    /// <summary>Trigger volume that fires its bound GraniteBlastEmitter (autoFire=false) when the slime enters; one-shot unless retrigger is allowed.</summary>
     [RequireComponent(typeof(Collider2D))]
     public class GraniteBlastTrigger : MonoBehaviour
     {
@@ -26,7 +19,6 @@ namespace SlimeJumping.Mechanisms
 
         void Reset()
         {
-            // Ensure the attached collider is a trigger by default.
             var col = GetComponent<Collider2D>();
             if (col != null) col.isTrigger = true;
         }

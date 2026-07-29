@@ -15,12 +15,10 @@ namespace SlimeJumping.Editor
             float baseX = 4f;
             float baseY = 0f;
 
-            // --- Long horizontal platform (the black bar in the reference sketch) ---
             CreatePlatform("Platform", root.transform,
                 new Vector3(baseX, baseY, 0f),
                 new Vector3(14f, 1.2f, 1f));
 
-            // --- Spike on top of the platform ---
             var exitPointGO = new GameObject("SpikeV2_ExitPoint");
             exitPointGO.transform.parent = root.transform;
             exitPointGO.transform.position = new Vector3(baseX, baseY - 2f, 0f);
@@ -30,7 +28,6 @@ namespace SlimeJumping.Editor
                 new Vector2(1.5f, 0.6f),
                 exitPointGO.transform);
 
-            // Floor so the slime can land somewhere after the warp
             CreatePlatform("Floor", root.transform,
                 new Vector3(baseX, baseY - 4f, 0f),
                 new Vector3(20f, 1f, 1f));

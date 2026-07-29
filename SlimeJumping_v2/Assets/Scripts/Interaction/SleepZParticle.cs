@@ -3,8 +3,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Interaction
 {
-    // Lifetime + drift + fade for a single Z spawned by SleepZEmitter.
-    // Self-destructs at end of life.
+    // One Z from SleepZEmitter: rise + sway + fade, self-destructs at end of life.
     public class SleepZParticle : MonoBehaviour
     {
         public float lifetime = 1.5f;
@@ -39,15 +38,12 @@ namespace SlimeJumping.Interaction
             }
 
             float t = _age / lifetime;
-            // Position: rise + sway
             float swayX = Mathf.Sin(_age * swayFrequency + _phaseSeed) * swayAmplitude;
             transform.position = _spawnPos + new Vector3(swayX, _age * riseSpeed, 0f);
 
-            // Scale ramp-up over first 30%
             float scale = Mathf.Lerp(0.5f, 1f, Mathf.Clamp01(t / 0.3f));
             transform.localScale = Vector3.one * scale;
 
-            // Alpha fade-out over last 60% (stays opaque for first 40%)
             float alphaT = Mathf.Clamp01((t - 0.4f) / 0.6f);
             float alpha = Mathf.Lerp(1f, 0f, alphaT);
             Color c = _baseColor;

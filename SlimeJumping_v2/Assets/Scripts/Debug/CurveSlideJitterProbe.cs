@@ -3,26 +3,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Diagnoses whether "곡선으로 밀려가서 부딪칠 때 드득거림" is visual or physics.
-    /// Attach to the Slime GameObject (or any object with a SlimeController reference).
-    ///
-    /// What it measures each FixedUpdate:
-    ///   - rb.position Δ per frame + direction reversal (physics jitter signal)
-    ///   - |transform.position - rb.position| gap (visual-vs-physics drift signal)
-    ///   - Primary collider flip count over last 1s (rapid primary switching)
-    ///   - SurfaceNormal rotation rate in deg/frame (EffectiveNormal wiggle)
-    ///   - crawlVelocity, state, active contact count
-    ///
-    /// Triggers a ring-buffer dump to Console:
-    ///   - Automatically on a detected direction reversal while Attached (cooldown 1s)
-    ///   - Manually via dumpKey (F2 by default)
-    ///
-    /// How to read the OnGUI readout:
-    ///   dPos reversals > 0 while Attached  → PHYSICS jitter (rb.position itself wiggles)
-    ///   dPos reversals = 0 but jitter visible on screen → VISUAL (interpolation / child transform / camera)
-    ///   |tf - rb| ≠ 0 → some script is writing transform directly (visual-physics decoupling)
-    /// </summary>
+    /// <summary>Slide-jitter probe: dPos reversals = physics jitter, |tf - rb| gap = visual drift.</summary>
     public class CurveSlideJitterProbe : MonoBehaviour
     {
         [SerializeField] private SlimeController slime;
@@ -133,7 +114,6 @@ namespace SlimeJumping.Debugging
                 normalDeg = Vector2.Angle(prevSurfN, surfN);
             if (normalDeg > maxNormalDegPerFrame) maxNormalDegPerFrame = normalDeg;
 
-            // Record snapshot
             Snap s;
             s.frame = Time.frameCount;
             s.time = Time.time;
@@ -153,7 +133,6 @@ namespace SlimeJumping.Debugging
             ringHead = (ringHead + 1) % RING;
             if (ringCount < RING) ringCount++;
 
-            // Auto-dump on reversal while Attached
             if (autoDumpOnJitter && reversal
                 && slime.CurrentState == SlimeController.SlimeState.Attached
                 && Time.time - lastAutoDumpTime > autoDumpCooldown)
@@ -162,7 +141,6 @@ namespace SlimeJumping.Debugging
                 DumpRing($"[CurveSlideJitterProbe] auto-dump on dPos reversal (angle {Vector2.Angle(prevDPos, dPos):F0}°)");
             }
 
-            // Window rollover every 1 second
             if (Time.time - windowStart >= 1f)
             {
                 lastWindowReversals = windowReversals;

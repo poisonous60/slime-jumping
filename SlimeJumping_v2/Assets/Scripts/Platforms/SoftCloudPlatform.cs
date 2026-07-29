@@ -7,36 +7,11 @@ using SlimeJumping.Interaction;
 namespace SlimeJumping.Platforms
 {
     /// <summary>
-    /// Jelly cloud: a soft surface that dents when a slime lands and springs back with an
-    /// authored, non-linear "boing". Pure juice — no launch, no pass-through, no movement drag.
-    /// All tuning lives in a shared <see cref="SoftCloudConfig"/> asset, not per-instance.
-    ///
-    /// TWO channels, kept apart:
-    ///   BODY    — the whole cloud recoils along the landing normal and a damped spring returns it
-    ///             to rest (ComputeMotion → rb.MovePosition → PlatformCarrier carries the rider).
-    ///   SURFACE — a local dent inside the rider's footprint (contour field → SetPath + mesh).
-    /// Every layer that isn't the body must stay inside the footprint; a term added to all contour
-    /// points breathes the whole silhouette, which reads as the cloud inflating, not denting.
-    ///
-    /// The DENT TIMING is designer-authored, not a physics spring: a raw spring has one fixed
-    /// asymmetry (fast overshoot → long settle) you can't reshape, and can't "hold at the apex".
-    /// Instead the dent depth over time follows the config's dentEnvelope AnimationCurve
-    /// (slow-in, dwell at the bottom, fast-out, overshoot up, hold at the apex, settle — draw it),
-    /// scaled by a landing-speed curve. The contour then SmoothDamp-follows that authored target,
-    /// so the wobble shape comes from the curve, not the follower.
-    ///
-    /// Three composed layers (mirrors SlimeVisual's layered scale): landing envelope + a small
-    /// resting/rolling dimple + an idle breathing jiggle (alive while occupied).
-    ///
-    /// Source of truth = a 2D contour field: the root PolygonCollider2D's rest path. The gameplay
-    /// collider (SetPath) AND the visual child mesh both follow that field — field authoritative,
-    /// visual a follower (divide-visual-collider).
-    ///
-    /// Runs in OnAfterMotion at PlatformMotor order (-100), BEFORE SlimeController's FixedUpdate
-    /// probe; PolygonCollider2D.SetPath applies synchronously, so the probe reads the fresh dented
-    /// collider and rides the slime with the dent (SurfaceProbe Phase A/B). maxSurfaceSpeed caps
-    /// per-tick surface motion so the probe never loses the surface (no detach / no charge-cancel).
-    /// No PlatformCarrier override / ISurfaceAnchorProvider — the probe rides the unambiguous blob.
+    /// Jelly cloud, two channels: BODY = whole-cloud recoil (analytic spring → rb.MovePosition),
+    /// SURFACE = local dent inside the rider's footprint (contour field → SetPath + mesh).
+    /// A term added to every contour point breathes the whole silhouette instead of denting.
+    /// Dent timing is an authored curve, not a spring — a spring can't dwell at the apex.
+    /// Order -100 runs before the SlimeController probe; maxSurfaceSpeed caps per-tick surface motion.
     /// </summary>
     [RequireComponent(typeof(PolygonCollider2D))]
     public class SoftCloudPlatform : PlatformMotor, IPlatformEffect
@@ -65,10 +40,8 @@ namespace SlimeJumping.Platforms
         bool asleep;
 
         // --- Body recoil state (whole-cloud translation) ---------------------
-        // The spring is EVALUATED analytically, not integrated: a 50 Hz explicit integrator
-        // under-shoots the first peak by 10-50% (worse the stiffer/more damped it is), which would
-        // make the config's recoil *distance* a lie. springX0/springV0 are the initial conditions
-        // of the current segment; a new landing freezes the current state and re-seeds them.
+        // Spring is EVALUATED analytically, not integrated: a 50 Hz explicit integrator under-shoots
+        // the first peak by 10-50%, which would make the config's recoil *distance* a lie.
         Vector2 restPosition;   // rb.position at Awake — the spring's anchor
         Vector2 springEq;       // where the body settles: sag offset while ridden, zero when empty
         Vector2 springX0, springV0;
@@ -88,8 +61,6 @@ namespace SlimeJumping.Platforms
         int[]   vertInfluence;    // [vertCount*K] contour indices (-1 = unused)
         float[] vertWeight;       // [vertCount*K] normalized weights
         Matrix4x4 rootToChildVec; // transforms a root-local vector into child-local
-
-        // ---------------------------------------------------------------------
 
         protected override void Awake()
         {
@@ -126,7 +97,6 @@ namespace SlimeJumping.Platforms
                 Vector2 prev = restLocal[(i - 1 + n) % n];
                 Vector2 next = restLocal[(i + 1) % n];
                 Vector2 tangent = next - prev;
-                // Perpendicular; flip toward the centroid so it points into the interior.
                 Vector2 nrm = new Vector2(-tangent.y, tangent.x);
                 if (Vector2.Dot(nrm, centroid - restLocal[i]) < 0f) nrm = -nrm;
                 inwardNormal[i] = nrm.sqrMagnitude > 1e-8f ? nrm.normalized : Vector2.up;
@@ -143,7 +113,6 @@ namespace SlimeJumping.Platforms
             vertScratch = new Vector3[restVerts.Length];
             System.Array.Copy(restVerts, vertScratch, restVerts.Length);
 
-            // Static relative transform: a root-local vector → child-local vector.
             rootToChildVec = visualMesh.transform.worldToLocalMatrix * transform.localToWorldMatrix;
 
             // Precompute each vertex's K nearest contour points (by XY, root-local) + weights.
@@ -191,9 +160,7 @@ namespace SlimeJumping.Platforms
 
         // --- PlatformMotor ---------------------------------------------------
 
-        // The whole cloud recoils along the landing normal, then a damped spring pulls it back to
-        // rest. This is the BODY channel (rigid translation, carried to the rider by PlatformCarrier
-        // via DeltaPosition); the contour field below is the separate SURFACE channel (local dent).
+        // BODY channel: rigid translation, carried to the rider by PlatformCarrier via DeltaPosition.
         protected override (Vector2 position, float rotation) ComputeMotion(float dt)
         {
             springT += dt;
@@ -203,15 +170,13 @@ namespace SlimeJumping.Platforms
 
             if (bodyOffset.sqrMagnitude > cfg.bodyMaxOffset * cfg.bodyMaxOffset)
             {
-                // Clamped — re-seed the segment from the clamped pose so the analytic solution
-                // stays consistent with where the body actually is.
+                // Re-seed from the clamped pose, else the analytic solution drifts from where the body is.
                 bodyOffset = bodyOffset.normalized * cfg.bodyMaxOffset;
                 springX0 = bodyOffset - springEq; springV0 = Vector2.zero; springT = 0f;
             }
             else if (swing.sqrMagnitude < 1e-8f && bodyVel.sqrMagnitude < 1e-8f)
             {
-                // Settled on the equilibrium — stop springT from growing without bound
-                // (cos/sin of a huge argument loses precision).
+                // Settled — stop springT growing unbounded (cos/sin of a huge argument loses precision).
                 bodyOffset = springEq;
                 springX0 = Vector2.zero; springV0 = Vector2.zero; springT = 0f;
             }
@@ -226,7 +191,7 @@ namespace SlimeJumping.Platforms
             if (n == 0) return;
             PruneRiders();
 
-            if (asleep && riders.Count == 0) return; // fully at rest, nobody on it — skip
+            if (asleep && riders.Count == 0) return;
 
             ComputeTarget(dt);
             Follow(dt);
@@ -242,9 +207,8 @@ namespace SlimeJumping.Platforms
         {
             for (int i = 0; i < n; i++) target[i] = 0f;
 
-            // Idle breathing — folded into the rider footprint below. Adding it to every contour
-            // point instead would breathe the WHOLE silhouette in and out (a global puff), which
-            // is not what a local dimple should do.
+            // Idle breathing folds into the rider footprint below; adding it to every contour point
+            // would puff the WHOLE silhouette instead of the local dimple.
             float breath = 0f;
             if (riders.Count > 0 && cfg.idleAmplitude > 0f)
             {
@@ -262,7 +226,7 @@ namespace SlimeJumping.Platforms
                 rs.envTime += dt;
                 float t01 = cfg.dentDuration > 0f ? Mathf.Clamp01(rs.envTime / cfg.dentDuration) : 1f;
                 float env = cfg.dentEnvelope.Evaluate(t01) * rs.envPeak; // signed world depth (authored shape)
-                float amp = env + cfg.restDentDepth + breath;             // + resting dimple + idle jiggle
+                float amp = env + cfg.restDentDepth + breath;
 
                 Vector2 pushLocal = transform.InverseTransformDirection(-rider.SurfaceNormal);
                 Vector2 centerWorld = rider.Position - rider.SurfaceNormal * rider.SlimeRadius;
@@ -296,9 +260,8 @@ namespace SlimeJumping.Platforms
             }
         }
 
-        // Collider/mesh SmoothDamp-follow the authored target. The bounce SHAPE is the curve;
-        // the follower is critically damped (no oscillation of its own). maxSurfaceSpeed caps the
-        // per-tick motion so the probe can always track the surface.
+        // Follower is critically damped, so the bounce shape comes from the curve, not the follower.
+        // maxSurfaceSpeed caps per-tick motion so the probe can always track the surface.
         void Follow(float dt)
         {
             for (int i = 0; i < n; i++)
@@ -351,13 +314,11 @@ namespace SlimeJumping.Platforms
             if (slime == null) return;
             RiderState rs = FindRider(slime);
             if (rs == null) { rs = new RiderState { slime = slime }; riders.Add(rs); }
-            // (Re)start the landing envelope, capturing this landing's peak depth.
             rs.envTime = 0f;
             rs.envPeak = cfg.dentBaseDepth + cfg.dentDepthPerSpeed * Mathf.Max(0f, slime.ImpactNormalSpeed);
 
-            // Kick the whole body along the landing normal and sink the equilibrium to the sag
-            // pose: the landing wobbles, then the cloud STAYS pressed down while ridden instead of
-            // springing back to rest. Rest is restored on the last detach.
+            // Kick along the landing normal and sink the equilibrium to the sag pose, so the cloud
+            // stays pressed down while ridden; rest is restored on the last detach.
             float peak = cfg.bodyRecoilDistance * (Mathf.Max(0f, slime.ImpactNormalSpeed) / cfg.bodyRecoilRefSpeed);
             ReseedSpring(-slime.SurfaceNormal * cfg.bodySagDistance,
                          -slime.SurfaceNormal * (peak * ImpulsePerPeakDistance(cfg.bodyFrequency, cfg.bodyDamping)));
@@ -375,8 +336,8 @@ namespace SlimeJumping.Platforms
             if (riders.Count == 0) ReseedSpring(Vector2.zero, Vector2.zero); // unloaded — rise back to rest
         }
 
-        // Move the spring's equilibrium (and optionally add velocity) without teleporting the body:
-        // the current pose becomes the new segment's initial condition.
+        // Move the equilibrium without teleporting the body: the current pose becomes the new
+        // segment's initial condition.
         void ReseedSpring(Vector2 newEq, Vector2 addedVelocity)
         {
             EvaluateSpring(springX0, springV0, springT, cfg.bodyFrequency, cfg.bodyDamping,
@@ -389,11 +350,7 @@ namespace SlimeJumping.Platforms
 
         // --- Helpers ---------------------------------------------------------
 
-        /// <summary>
-        /// Exact underdamped-spring solution at time t for initial conditions (x0, v0):
-        /// x(t) = e^(−ζωt)·[x0·cos(ωd·t) + ((v0 + ζω·x0)/ωd)·sin(ωd·t)], ωd = ω√(1−ζ²).
-        /// Evaluated rather than integrated so the peak is frame-rate independent.
-        /// </summary>
+        /// <summary>Exact underdamped-spring solution at t; evaluated, not integrated, so the peak is frame-rate independent.</summary>
         public static void EvaluateSpring(Vector2 x0, Vector2 v0, float t, float frequency, float damping,
                                           out Vector2 x, out Vector2 v)
         {
@@ -407,11 +364,7 @@ namespace SlimeJumping.Platforms
             v = e * (c * v0 - (s / wd) * (a * v0 + (w * w) * x0));
         }
 
-        /// <summary>
-        /// Initial velocity that makes a spring kicked from rest peak at exactly 1 world unit, so
-        /// <c>bodyRecoilDistance</c> in the config reads as the real distance the cloud travels
-        /// rather than an abstract impulse. Peak is at ωd·t = acos(ζ), where x = (v0/ω)·e^(−ζ·acos(ζ)/√(1−ζ²)).
-        /// </summary>
+        /// <summary>Initial velocity peaking at exactly 1 world unit, so <c>bodyRecoilDistance</c> reads as real distance, not an impulse.</summary>
         public static float ImpulsePerPeakDistance(float frequency, float damping)
         {
             float z = Mathf.Clamp(damping, 0.01f, 0.99f);

@@ -4,20 +4,10 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Effects
 {
-    /// Drives the fullscreen impact-frame post-effect. Hard-cut timing (no fade):
-    /// frame 0 is a white pre-flash with radial chroma aberration; frames 1..N hold
-    /// the binary manga composition; end snaps to intensity 0.
-    ///
-    /// Subscribes to HitStopService.OnImpactFrameStarted — a separate channel from
-    /// OnFreezeStarted so callers can request the visual without a time freeze (and
-    /// vice versa). Resolves the radial center to the slime's screen-space UV so
-    /// speed lines emanate from the subject, not the screen center. All other tuning
-    /// lives on the shared Material and is pushed on enable / OnValidate / each trigger.
-    ///
-    /// Setup (one-time): URP Renderer Asset must carry a FullScreenPassRendererFeature
-    /// pointing at `Assets/Art/Materials/M_ImpactFrameGrayscale.mat` at injection point
-    /// AfterRenderingPostProcessing, with requirements=Depth (the
-    /// ImpactFrameRendererFeatureSetup editor utility wires this idempotently).
+    /// Fullscreen impact-frame post-effect: frame 0 white pre-flash + chroma, frames 1..N binary ink hold, hard cut to 0.
+    /// OnImpactFrameStarted is a separate channel from OnFreezeStarted, so the visual and the time freeze can fire alone.
+    /// Needs a FullScreenPassRendererFeature on the URP Renderer Asset pointing at M_ImpactFrameGrayscale.mat,
+    /// injection AfterRenderingPostProcessing, requirements=Depth — without it nothing renders.
     [DisallowMultipleComponent]
     public class ImpactFrameVisual : MonoBehaviour
     {
@@ -131,7 +121,6 @@ namespace SlimeJumping.Effects
             // Refresh Camera.main lazily in case the scene swapped cameras.
             if (cam == null) cam = UnityEngine.Camera.main;
 
-            // Resolve radial center to the slime's screen-space UV.
             if (slime != null && cam != null)
             {
                 Vector3 vp = cam.WorldToViewportPoint(slime.Position);
@@ -153,7 +142,6 @@ namespace SlimeJumping.Effects
             while (Time.realtimeSinceStartup < endReal)
                 yield return null;
 
-            // Hard cut off.
             SetIdle();
             running = null;
         }

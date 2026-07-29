@@ -26,7 +26,6 @@ namespace SlimeJumping.EditorTools.UI
             var root = UISetupCommon.CreatePanelRoot("MainMenuPanel", new Vector2(UISetupCommon.CanvasRefWidth, UISetupCommon.CanvasRefHeight));
             var panel = root.AddComponent<MainMenuPanel>();
 
-            // Vertical content stack, centered horizontally
             var content = UISetupCommon.CreateChild(root.transform, "Content", typeof(RectTransform));
             var crt = content.GetComponent<RectTransform>();
             crt.anchorMin = new Vector2(0.5f, 0.5f);
@@ -38,7 +37,6 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.TagSlot(content, UISlotType.ContentRoot);
             UISetupCommon.AddContainerStagger(content);
 
-            // Title — single line guaranteed via wrapping off + overflow visible.
             var title = UISetupCommon.CreateText(content.transform, "Title", "Slime Jumping", UISetupCommon.FontTitle,
                 TextAlignmentOptions.Center);
             title.color = UISetupCommon.ColorTitle;
@@ -48,11 +46,9 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.TagSlot(title.gameObject, UISlotType.Title);
             UISetupCommon.AddLayoutElement(title.gameObject, minHeight: 96f, preferredHeight: 110f);
 
-            // Spacer below title
             var spacer = UISetupCommon.CreateChild(content.transform, "Spacer", typeof(RectTransform));
             UISetupCommon.AddLayoutElement(spacer, minHeight: 20f, preferredHeight: 24f);
 
-            // Buttons
             var start = UISetupCommon.CreateButton(content.transform, "StartButton", "Start");
             UISetupCommon.TagSlot(start.gameObject, UISlotType.StartButton);
 
@@ -62,7 +58,6 @@ namespace SlimeJumping.EditorTools.UI
             var quit = UISetupCommon.CreateButton(content.transform, "QuitButton", "Quit");
             UISetupCommon.TagSlot(quit.gameObject, UISlotType.QuitButton);
 
-            // Panel config
             var panelSO = new SerializedObject(panel);
             panelSO.FindProperty("canvasGroup").objectReferenceValue = root.GetComponent<CanvasGroup>();
             panelSO.FindProperty("layer").enumValueIndex = (int)UILayer.Menu;

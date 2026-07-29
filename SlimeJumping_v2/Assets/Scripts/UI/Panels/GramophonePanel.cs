@@ -9,11 +9,7 @@ using SlimeJumping.UI.Framework;
 
 namespace SlimeJumping.UI.Panels
 {
-    /// Shared modal panel that shows the track list for whichever gramophone
-    /// the player just interacted with. Rebuilt per-open from the gramophone's
-    /// Playlist — one panel instance serves every gramophone in the scene.
-    /// Applies the player's choice in OnAfterClose so the visual fade finishes
-    /// before the disc animation / BGM crossfade kicks in.
+    /// One shared track-list panel for every gramophone, rebuilt per-open from the source's Playlist.
     public class GramophonePanel : UIPanel
     {
         [Header("List")]
@@ -32,8 +28,7 @@ namespace SlimeJumping.UI.Panels
         private MediaInteractable_PhonographV2 source;
         private readonly List<GameObject> spawnedRows = new List<GameObject>();
 
-        // Deferred action applied at OnAfterClose so the panel can fade out
-        // before the gramophone animates. -1 = none, -2 = stop, >=0 = track index.
+        // Applied at OnAfterClose so the panel fades out before the gramophone animates.
         private const int PendingNone = -1;
         private const int PendingStop = -2;
         private int pendingAction = PendingNone;
@@ -64,9 +59,8 @@ namespace SlimeJumping.UI.Panels
             if (gramophone == null) return;
             source = gramophone;
             pendingAction = PendingNone;
-            // Open first so the hierarchy is active before we instantiate rows —
-            // TextMeshProUGUI generated under an inactive parent skips its first
-            // mesh build and renders blank even after we set .text.
+            // Open first: TMP instantiated under an inactive parent skips its first
+            // mesh build and renders blank even after .text is set.
             if (UIManager.Instance != null) UIManager.Instance.Open(this);
             else Open();
         }
@@ -78,8 +72,7 @@ namespace SlimeJumping.UI.Panels
 
         protected override void OnAfterClose()
         {
-            // Fire the deferred decision after the panel starts fading out so
-            // the needle/disc tween and BGM crossfade overlap with the fade.
+            // Fired here so the needle tween and BGM crossfade overlap with the fade-out.
             var target = source;
             int action = pendingAction;
             source = null;
@@ -156,11 +149,8 @@ namespace SlimeJumping.UI.Panels
                 spawnedRows.Add(rowGO);
             }
 
-            // Force the full layout chain to settle this frame. Rebuilding only
-            // trackListContent leaves Scroll at its prefab-default sizeDelta
-            // (100x100) on the first frame, so VLG would assign each row ~54px
-            // width and TMP would mesh at that width. Walk up to the box (the
-            // outer VerticalLayoutGroup that owns Scroll) so width propagates.
+            // Rebuilding only trackListContent leaves Scroll at its prefab-default
+            // 100x100 for a frame, so rows mesh at ~54px width. Rebuild from the top group.
             var topRT = trackListContent as RectTransform;
             while (topRT != null && topRT.parent is RectTransform parentRT
                    && parentRT.GetComponent<LayoutGroup>() != null)
@@ -174,9 +164,7 @@ namespace SlimeJumping.UI.Panels
                 if (tmp != null) tmp.ForceMeshUpdate();
             }
 
-            // Stagger the freshly spawned rows. The Box-level stagger fired by
-            // UIPanel.Open() ran before these rows existed, so we trigger a
-            // list-targeted pass here against the row spawns instead.
+            // UIPanel.Open()'s box-level stagger ran before these rows existed.
             if (rowStagger != null) rowStagger.PlayForList(spawnedRows);
         }
 

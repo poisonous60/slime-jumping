@@ -7,12 +7,8 @@ using SlimeJumping.UI.Panels;
 
 namespace SlimeJumping.Interaction
 {
-    /// v2 gramophone. On interact, opens the shared GramophonePanel with this
-    /// gramophone's Playlist. The panel calls back with the player's choice,
-    /// then this script runs the needle/disc tween and routes audio through
-    /// SoundService (mixer-controlled, survives scene loads).
-    /// Visual rotation is on discTransform only — the body/collider stays put,
-    /// per the "split visual from collider" rule in CLAUDE.md.
+    /// v2 gramophone: opens GramophonePanel, then plays the chosen track through SoundService
+    /// and tweens needle/disc. Rotation touches discTransform only — the collider stays put.
     public class MediaInteractable_PhonographV2 : InteractableBase
     {
         [Header("Playlist")]

@@ -4,12 +4,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Closed-polygon dynamic water. Each outline point has an outward normal and a
-    /// scalar displacement along that normal. Waves propagate around the loop; slime
-    /// impacts push nearby points inward. Physics (buoyancy/drag/fall-cap/blockAttach)
-    /// is inherited from the original WaterZone contract.
-    /// </summary>
+    /// <summary>Closed-polygon dynamic water: each outline point carries a displacement along its outward normal, waves propagate around the loop, slime impacts push points inward.</summary>
     [RequireComponent(typeof(MeshFilter))]
     [RequireComponent(typeof(MeshRenderer))]
     public partial class WaterZone_v2 : EnvironmentalZone
@@ -71,8 +66,7 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Slime speed (m/s) that maps to full one-shot volume. Slower impacts scale down linearly.")]
         [Min(0.1f)] [SerializeField] float audioRefSpeed = 8f;
 
-        // Owned by WaterZoneAudioManager — not serialized per-zone. Defaults below are used
-        // only if no manager is present in the scene.
+        // Owned by WaterZoneAudioManager; these defaults apply only when no manager is in the scene.
         float splashVolume = 0.9f;
         float splashPitchJitter = 0.08f;
         float underwaterLoopVolume = 0.7f;
@@ -81,10 +75,7 @@ namespace SlimeJumping.Mechanisms
 
         Vector2 centerLocal;
 
-        /// <summary>
-        /// Overwrites clips + splash/loop volume params. Used by WaterZoneAudioManager
-        /// to broadcast a shared audio set to every zone in the scene.
-        /// </summary>
+        /// <summary>Overwrites clips + splash/loop volume params; WaterZoneAudioManager broadcasts a shared set to every zone.</summary>
         public void ApplyAudioSettings(AudioClip hardEnter, AudioClip softEnter, AudioClip exit, AudioClip underwaterLoop,
                                        float splashVolume, float splashPitchJitter, float underwaterLoopVolume)
         {
@@ -109,10 +100,7 @@ namespace SlimeJumping.Mechanisms
             RebuildRuntime();
         }
 
-        /// <summary>
-        /// Rebuild simulation arrays, collider, and mesh from the current restPointsLocal.
-        /// Call after mutating outline at runtime (editor buttons during Play, live scripting).
-        /// </summary>
+        /// <summary>Rebuild simulation arrays, collider and mesh from restPointsLocal; call after mutating the outline at runtime.</summary>
         public void RebuildRuntime()
         {
             BuildShape();
@@ -125,7 +113,6 @@ namespace SlimeJumping.Mechanisms
             if (!ShowAuthoringGizmos) return;
             if (restPointsLocal == null || restPointsLocal.Count < 2) return;
 
-            // Outline (rest shape) in world space.
             Gizmos.color = new Color(0.3f, 0.8f, 1f, 0.9f);
             int n = restPointsLocal.Count;
             for (int i = 0; i < n; i++)
@@ -135,7 +122,6 @@ namespace SlimeJumping.Mechanisms
                 Gizmos.DrawLine(a, b);
             }
 
-            // Vertices.
             Gizmos.color = Color.yellow;
             for (int i = 0; i < n; i++)
             {
@@ -153,11 +139,8 @@ namespace SlimeJumping.Mechanisms
 
         protected override void OnSlimeEnter(SlimeController slime)
         {
-            // Splash with the pre-entry velocity. OnTriggerEnter2D fires mid-physics-step,
-            // so by the next FixedUpdate the entryMultiplier below has already drained the
-            // impact velocity — fast slams would otherwise read as gentle taps. isEntry also
-            // bypasses the contactRadius + approach-side checks, which both break when the
-            // slime tunnels fully across the surface in a single fixed step.
+            // Splash here with pre-entry velocity: by next FixedUpdate entryMultiplier has drained it and
+            // slams read as taps. isEntry also skips contactRadius/approach-side, which fail on tunneling.
             ApplySlimeImpulse(slime, Time.fixedDeltaTime, isEntry: true);
 
             slime.MultiplyVelocity(entryMultiplier);
@@ -235,11 +218,7 @@ namespace SlimeJumping.Mechanisms
         {
             float dt = Time.fixedDeltaTime;
 
-            // Impulse must read the slime's velocity BEFORE ApplyEffect alters it
-            // (drag multiplier + buoyancy would bias impactSpeed). Order matters:
-            //   1) sample slime velocity -> surface impulse
-            //   2) base.FixedUpdate -> ApplyEffect (drag/buoyancy/cap)
-            //   3) simulate wave physics
+            // Impulse before base.FixedUpdate: ApplyEffect's drag/buoyancy would bias impactSpeed.
             if (trackedSlime != null)
                 ApplySlimeImpulse(trackedSlime, dt);
 

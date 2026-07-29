@@ -4,11 +4,8 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Platform effect that pushes the slime along the conveyor direction while attached.
-    /// Uses AddExternalVelocity — SlimeController projects it onto surfaceTangent
-    /// for non-Airborne states (SlimeController.cs FixedUpdate).
-    /// </summary>
+    /// Pushes the attached slime along the conveyor direction; SlimeController projects the
+    /// external velocity onto surfaceTangent for non-Airborne states.
     public class ConveyorBelt : MonoBehaviour, IPlatformEffect
     {
         [Header("Conveyor")]
@@ -37,8 +34,6 @@ namespace SlimeJumping.Mechanisms
             slime.AddExternalVelocity(worldDir * accel * dt);
         }
 
-        // --- Gizmos ---
-
         void OnDrawGizmos()
         {
             if (localDirection.sqrMagnitude < 0.0001f) return;
@@ -48,7 +43,6 @@ namespace SlimeJumping.Mechanisms
             Vector3 dir = transform.TransformDirection(localDirection).normalized;
             float len = 1.2f;
 
-            // Three parallel flow arrows
             Vector3 perp = Vector3.Cross(dir, Vector3.forward).normalized;
             for (int i = -1; i <= 1; i++)
             {

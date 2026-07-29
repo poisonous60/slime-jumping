@@ -15,8 +15,7 @@ namespace SlimeJumping.Mechanisms
                  "Default 2.5 matches WaterZone_v2 (0.05/frame at 50Hz).")]
         [Min(0f)] [SerializeField] float spread = 2.5f;
 
-        // Two scratch arrays for the two-pass spring integration. Allocated lazily and resized
-        // when the sample count changes (after BuildShape).
+        // Scratch arrays for the two-pass spring integration; resized when the sample count changes.
         float[] deltaVL, deltaVR;
 
         void EnsureSimBuffers(int n)
@@ -25,13 +24,7 @@ namespace SlimeJumping.Mechanisms
             if (deltaVR == null || deltaVR.Length != n) deltaVR = new float[n];
         }
 
-        /// <summary>
-        /// Two-pass spring sim. Mirrors WaterZone_v2.Simulation.cs:15-43 with two structural
-        /// changes: (1) duplicate everything for L and R channels so each silhouette side
-        /// can wobble independently, (2) open-polyline neighbor clamp instead of modulo wrap
-        /// (Mathf.Clamp(i±1, 0, n-1)) — endpoints reflect on themselves, giving a natural
-        /// "wave bounces off the upstream/downstream end" behavior.
-        /// </summary>
+        /// <summary>Two-pass spring sim, L/R channels independent. Neighbor clamp (not modulo wrap) so endpoints reflect instead of wrapping.</summary>
         void SimulateWaves(float dt)
         {
             if (points == null || points.Length < 2 || dt <= 0f) return;

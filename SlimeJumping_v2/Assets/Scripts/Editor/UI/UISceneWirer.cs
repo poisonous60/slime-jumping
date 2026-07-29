@@ -8,21 +8,18 @@ using SlimeJumping.UI.Framework;
 
 namespace SlimeJumping.EditorTools.UI
 {
-    /// One-shot migration helpers: strip old per-scene UI Canvases and drop in
-    /// the new UIRoot prefab + requested panel prefabs. Invoked via unity-cli
-    /// exec once per scene during the UI framework rollout.
+    /// Per-scene migration: strips old UI Canvases, instantiates UIRoot + panel prefabs.
     public static class UISceneWirer
     {
         private const string MainMenuScenePath = "Assets/Scenes/MainMenuScene.unity";
         private const string MainScenePath = "Assets/Scenes/MainScene.unity";
         private const string EndScenePath = "Assets/Scenes/EndScene.unity";
 
-        // Top-level GameObject names deleted when wiring a scene. Missing names
-        // are silently skipped so the wirer is idempotent (safe to re-run).
+        // Root GameObjects deleted on wire; missing names are skipped, so re-running is safe.
         private static readonly string[] OldCanvasNames =
         {
             "MainMenuCanvas", "OptionsCanvas", "EndCanvas", "FullscreenEffectCanvas", "EventSystem",
-            // Controller host GameObjects (legacy — standalone GOs hosting the now-deleted scripts).
+            // Legacy controller host GameObjects.
             "MainMenuController", "DemoEndController",
         };
 

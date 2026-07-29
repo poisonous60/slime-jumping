@@ -15,41 +15,34 @@ namespace SlimeJumping.Editor
             float baseX = 4f;
             float baseY = 0f;
 
-            // --- Floor ---
             CreatePlatform("Floor", root.transform,
                 new Vector3(baseX, baseY - 0.5f, 0f),
                 new Vector3(20f, 1f, 1f));
 
-            // --- Left wall ---
             CreatePlatform("LeftWall", root.transform,
                 new Vector3(baseX - 10.5f, baseY + 4f, 0f),
                 new Vector3(1f, 9f, 1f));
 
-            // --- Right wall ---
             CreatePlatform("RightWall", root.transform,
                 new Vector3(baseX + 10.5f, baseY + 4f, 0f),
                 new Vector3(1f, 9f, 1f));
 
-            // --- Spike 1: Floor spike (useLocalUp = true, launches upward) ---
             var spike1 = CreateSpike("Spike_FloorUp", root.transform,
                 new Vector3(baseX, baseY + 0.15f, 0f),
                 new Vector2(1.5f, 0.3f),
                 useLocalUp: true);
 
-            // --- Spike 2: Wall spike (useLocalUp = true, launches away from wall) ---
             var spike2 = CreateSpike("Spike_WallRight", root.transform,
                 new Vector3(baseX - 10f + 0.15f, baseY + 2f, 0f),
                 new Vector2(0.3f, 1.5f),
                 useLocalUp: true);
             spike2.transform.rotation = Quaternion.Euler(0f, 0f, -90f);
 
-            // --- Spike 3: Auto-direction (useLocalUp = false, pushes away from center) ---
             var spike3 = CreateSpike("Spike_AutoDir", root.transform,
                 new Vector3(baseX + 4f, baseY + 0.15f, 0f),
                 new Vector2(1.5f, 0.3f),
                 useLocalUp: false);
 
-            // --- Spike 4: Redirect spike (sends slime toward redirect target) ---
             var redirectTarget = new GameObject("RedirectTarget");
             redirectTarget.transform.parent = root.transform;
             redirectTarget.transform.position = new Vector3(baseX - 5f, baseY + 6f, 0f);
@@ -62,19 +55,16 @@ namespace SlimeJumping.Editor
             so4.FindProperty("redirectTarget").objectReferenceValue = redirectTarget.transform;
             so4.ApplyModifiedProperties();
 
-            // --- Elevated platform (to test charging -> spike) ---
             CreatePlatform("ElevatedPlatform", root.transform,
                 new Vector3(baseX - 4f, baseY + 3f, 0f),
                 new Vector3(4f, 0.5f, 1f));
 
-            // --- Ceiling spike (test spike on ceiling) ---
             var spike5 = CreateSpike("Spike_Ceiling", root.transform,
                 new Vector3(baseX - 4f, baseY + 5.85f, 0f),
                 new Vector2(2f, 0.3f),
                 useLocalUp: true);
             spike5.transform.rotation = Quaternion.Euler(0f, 0f, 180f);
 
-            // --- Ceiling above ceiling spike ---
             CreatePlatform("CeilingAboveSpike", root.transform,
                 new Vector3(baseX - 4f, baseY + 6.5f, 0f),
                 new Vector3(6f, 1f, 1f));
@@ -109,7 +99,6 @@ namespace SlimeJumping.Editor
             so.FindProperty("useLocalUp").boolValue = useLocalUp;
             so.ApplyModifiedProperties();
 
-            // Visual indicator (red tint)
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
             sr.drawMode = SpriteDrawMode.Sliced;

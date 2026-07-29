@@ -5,16 +5,8 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Drives the slime through a pipe shortcut as a 5-phase sequence:
-    ///   1. Absorb  — input/physics locked, slime lerps from entry edge to entry center.
-    ///   2. Hidden traversal — slime alpha = 0, position lerps along PipePath at uniform speed,
-    ///      PipeDotTrail brightens a sliding window so the player sees the in-wall journey.
-    ///   3. Emerge  — slime appears at exit center, lerps outward to exit edge.
-    ///   4. Teleport — final position + outward velocity.
-    ///   5. Release — control returns.
-    /// commitment: once Begin() runs the slime cannot cancel until Release fires.
-    /// </summary>
+    /// <summary>Drives the slime through a pipe: absorb → hidden path traversal → emerge → teleport.
+    /// Once Begin() runs the slime cannot cancel until Release fires.</summary>
     public class PipeTraversalController : MonoBehaviour, IExternalController
     {
         [Tooltip("Seconds for the slime to be pulled from the entry trigger edge into the wall.")]

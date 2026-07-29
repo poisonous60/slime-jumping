@@ -2,9 +2,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Per-mode tuning for GraniteBlastEmitter Beam mode.
-    /// </summary>
+    /// <summary>Per-mode tuning for GraniteBlastEmitter Beam mode.</summary>
     [CreateAssetMenu(fileName = "GraniteBlastBeamConfig",
         menuName = "SlimeJumping/Granite Blast/Beam Config", order = 1)]
     public class GraniteBlastBeamConfig : ScriptableObject

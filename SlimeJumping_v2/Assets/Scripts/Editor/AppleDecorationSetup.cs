@@ -4,13 +4,9 @@ using SlimeJumping.Visual;
 
 namespace SlimeJumping.Editor
 {
-    // Temporary setup: hangs a swaying Apple decoration off Branch_Bouncy_DecoCube.
-    // Run via menu once; delete this file if you don't need it afterwards.
-    //
-    // Design note: the apple's stem is pinned to DecoCube via *transform parenting*, not a
-    // HingeJoint2D. A joint between two Dynamic bodies (branch→cube is already dynamic→dynamic)
-    // has visible Box2D compliance, which showed up as the apple jittering up and down. Parenting
-    // the stem keeps it rigidly at DecoCube's origin; the body rotates via AppleSwayPendulum.
+    // Hangs a swaying Apple decoration off Branch_Bouncy_DecoCube (menu-run, one-shot).
+    // Stem is transform-parented, not a HingeJoint2D: a dynamic→dynamic joint's Box2D
+    // compliance made the apple jitter up and down.
     public static class AppleDecorationSetup
     {
         const string AppleName = "Branch_Bouncy_Apple";
@@ -40,8 +36,7 @@ namespace SlimeJumping.Editor
 
             apple.AddComponent<AppleSwayPendulum>();
 
-            // Visual — sphere primitive, offset below the stem so it hangs. Swap the mesh later
-            // for a real apple model; keep its origin at the stem point (or tweak localPosition).
+            // Visual — sphere primitive, offset below the stem so it hangs.
             var visual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             visual.name = "Visual";
             Undo.RegisterCreatedObjectUndo(visual, "Create Apple Visual");

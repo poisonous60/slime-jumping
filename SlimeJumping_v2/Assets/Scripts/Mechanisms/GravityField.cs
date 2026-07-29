@@ -3,12 +3,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Gravity vector replacement zone. NOT a force field.
-    /// Inside this zone, "down" points in a different direction.
-    /// Gravity magnitude is always |SlimeSettings.gravity|.
-    /// No falloff, no attraction, no deadzone.
-    /// </summary>
+    /// <summary>Replaces the "down" direction inside the zone — not a force field: magnitude stays |SlimeSettings.gravity|, no falloff.</summary>
     [RequireComponent(typeof(Collider2D))]
     public class GravityField : MonoBehaviour
     {
@@ -49,11 +44,7 @@ namespace SlimeJumping.Mechanisms
             slime.PopGravityField(this);
         }
 
-        /// <summary>
-        /// Returns the normalized "down" direction at the given world position.
-        /// Fixed mode: constant direction regardless of position.
-        /// Radial mode: toward (or away from) the pivot point.
-        /// </summary>
+        /// <summary>Normalized "down" at a world position: fixed direction, or toward/away from the radial pivot.</summary>
         public Vector2 GetDownDirection(Vector2 worldPos)
         {
             if (gravityMode == GravityMode.Fixed)
@@ -96,7 +87,6 @@ namespace SlimeJumping.Mechanisms
             }
             else
             {
-                // Radial: draw pivot marker
                 Vector3 worldPivot = transform.TransformPoint(localPivot);
                 Gizmos.DrawWireSphere(worldPivot, 0.15f);
             }
@@ -107,7 +97,6 @@ namespace SlimeJumping.Mechanisms
             var col = GetComponent<Collider2D>();
             if (col == null) return;
 
-            // Zone fill
             Gizmos.color = GizmoFill;
             if (col is CircleCollider2D circle)
             {
@@ -177,10 +166,8 @@ namespace SlimeJumping.Mechanisms
                     Vector3 arrowDir = invertDirection ? -towardPivot : towardPivot;
                     Gizmos.DrawLine(boundaryPoint, boundaryPoint + arrowDir * arrowLen);
                 }
-                // Pivot marker
                 Gizmos.color = GizmoColor;
                 Gizmos.DrawWireSphere(worldPivot, 0.15f);
-                // Line from center to pivot if offset
                 if (localPivot.sqrMagnitude > 0.01f)
                 {
                     Gizmos.color = new Color(0.7f, 0.3f, 1f, 0.3f);

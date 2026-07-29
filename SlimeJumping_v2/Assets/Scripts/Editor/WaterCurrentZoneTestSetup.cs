@@ -5,25 +5,13 @@ using SlimeJumping.Mechanisms;
 
 namespace SlimeJumping.Editor
 {
-    /// <summary>
-    /// Builds a minimal scene to verify WaterCurrentZone end-to-end:
-    ///   - Floor + a tall vertical wall the slime can charge into.
-    ///   - A WaterCurrentZone whose PolygonCollider2D spans the upper half of
-    ///     the wall surface plus a small slab of adjacent air, so the trigger
-    ///     fires the moment the slime sticks.
-    ///   - flowDirection set to local -Y, matching the wall surface tangent.
-    /// User drops a slime prefab into the scene to test.
-    /// </summary>
+    /// <summary>Test scene for WaterCurrentZone: floor, climbable wall, and a zone over the wall's upper half.</summary>
     public static class WaterCurrentZoneTestSetup
     {
         const int GroundLayer = 7;
-        // Refraction-based material — matches WaterfallImpactVFX_Test's translucent
-        // calm look (sees the wall through the water with a subtle blue tint) instead
-        // of Water_FlowingV2's saturated rim glow. Designer can swap the zone's
-        // flowMaterial slot back to M_WaterFlowingV2 if they want the bright version.
+        // Translucent refraction look; swap to M_WaterFlowingV2 for the saturated rim glow.
         static readonly string FlowMaterialPath = "Assets/Art/Materials/M_WaterFlowingRefraction.mat";
-        // Water surface material — no stick / no friction / no crawl. Wired into the test
-        // zone's waterSurfaceMaterial slot so the slime slips off the wall while inside.
+        // No stick / no friction / no crawl — the slime slips off the wall while inside.
         static readonly string WaterSurfaceMaterialPath = "Assets/Settings/SurfaceMaterials/Water.asset";
 
         [MenuItem("SlimeJumping/Mechanism/Setup WaterCurrent Zone Test")]
@@ -32,17 +20,14 @@ namespace SlimeJumping.Editor
             var root = new GameObject("WaterCurrentZone_Test");
             Undo.RegisterCreatedObjectUndo(root, "Create WaterCurrentZone Test");
 
-            // Ground + launch pads
             CreatePlatform(root.transform, "Floor",
                 new Vector3(0f, -6f, 0f), new Vector3(30f, 1f, 1f));
             CreatePlatform(root.transform, "LaunchPad_Left",
                 new Vector3(-6f, -3f, 0f), new Vector3(3f, 1f, 1f));
 
-            // Vertical wall to climb / be pushed off
             CreatePlatform(root.transform, "WallToClimb",
                 new Vector3(6f, 0f, 0f), new Vector3(1f, 10f, 1f));
 
-            // Water current zone overlapping the upper half of the wall
             CreateWaterCurrentZone(root.transform, "WaterCurrent_UpperHalf",
                 position: new Vector3(6f, 1f, 0f),
                 halfSize:  new Vector2(1.2f, 3.5f));
@@ -69,12 +54,7 @@ namespace SlimeJumping.Editor
             return go;
         }
 
-        /// <summary>
-        /// Creates a WaterCurrentZone with a 5-point vertical centerline spanning the requested
-        /// height and a ribbonWidth = 2 * halfSize.x. SyncColliderToRibbonOutline will populate
-        /// the PolygonCollider2D from the ribbon silhouette so the trigger area auto-matches the
-        /// visual mesh.
-        /// </summary>
+        /// <summary>Zone with a 5-point vertical centerline; the collider is synced from the ribbon silhouette.</summary>
         static GameObject CreateWaterCurrentZone(Transform parent, string name,
             Vector3 position, Vector2 halfSize)
         {
@@ -85,9 +65,7 @@ namespace SlimeJumping.Editor
             // RequireComponent auto-adds PolygonCollider2D + Reset() flips isTrigger on.
             var zone = go.AddComponent<WaterCurrentZone>();
 
-            // Wire the shared flow material asset. If missing — e.g. user moved/deleted it —
-            // fall back to a runtime-built material so the test scene at least shows SOMETHING
-            // instead of a magenta placeholder.
+            // Runtime-built fallback when the asset is missing, else the zone renders magenta.
             var mat = AssetDatabase.LoadAssetAtPath<Material>(FlowMaterialPath);
             if (mat == null)
             {
@@ -95,9 +73,8 @@ namespace SlimeJumping.Editor
                 if (sh != null) mat = new Material(sh) { name = "M_WaterFlowingRefraction_Runtime" };
             }
 
-            // Author centerline + ribbonWidth + flowDirection + flowMaterial + waterSurfaceMaterial
-            // via SerializedObject, then mark `migrated` so OnValidate doesn't try to derive a
-            // centerline from the (currently-default) PolygonCollider2D path.
+            // `migrated` is pre-set so OnValidate skips deriving a centerline from the still-default
+            // PolygonCollider2D path.
             var waterMat = AssetDatabase.LoadAssetAtPath<SlimeJumping.Physics.SurfaceMaterial>(
                 WaterSurfaceMaterialPath);
             var so = new SerializedObject(zone);
@@ -118,9 +95,8 @@ namespace SlimeJumping.Editor
             }
             so.ApplyModifiedProperties();
 
-            // Force a synchronous rebuild: OnEnable already ran with the unauthored centerline,
-            // so the mesh + collider are stale. The OnValidate delayCall would only fire next
-            // editor tick.
+            // Synchronous rebuild: OnEnable ran before the centerline existed and OnValidate's
+            // delayCall fires only next editor tick, leaving mesh + collider stale.
             zone.Rebuild();
             EditorUtility.SetDirty(zone);
 

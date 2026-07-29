@@ -2,14 +2,9 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Piano
 {
-    /// One white piano key, implemented as a PlatformMotor so the slime is carried: when the slime
-    /// rests on it the key (its collider AND mesh, which is parented under this motor) sinks DOWN
-    /// with a damped spring, and the standard PlatformCarrier path rides the slime down with it; it
-    /// springs back up when the slime leaves. The note plays on the press (velocity-scaled volume
-    /// and depth) and damper-fades out on release.
-    ///
-    /// The keyboard drives this every FixedUpdate via Drive(contacting, impactSpeed, settings) — it
-    /// owns the (multi-key) contact detection and the shared tuning. The motor just springs + sounds.
+    /// One white key: a PlatformMotor so PlatformCarrier rides the slime down as the key springs.
+    /// PianoKeyboard owns contact detection + tuning and calls Drive() each FixedUpdate; this only
+    /// springs and sounds.
     [RequireComponent(typeof(Rigidbody2D))]
     public class PianoKey : PlatformMotor
     {
@@ -36,9 +31,8 @@ namespace SlimeJumping.Platforms.Piano
         /// Is the slime standing on this key right now?
         public bool IsPhysicallyPressed => contacting;
 
-        /// How far the motor has already sunk this key (world units, positive = down). PianoKeyVisual
-        /// subtracts it so a note's dip composes with the slime's weight instead of doubling it — and
-        /// so a re-strike while the slime stands here can still pop the key up.
+        /// Sink already applied (positive = down); PianoKeyVisual subtracts it so an authored dip
+        /// composes with the slime's weight instead of doubling it.
         public float PhysicalSink => -offset;
 
         /// The key mesh (parented under this motor by PianoKeyboardBuilder). PianoKeyVisual rides it.

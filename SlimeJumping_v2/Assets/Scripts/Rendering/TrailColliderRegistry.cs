@@ -3,18 +3,15 @@ using UnityEngine;
 
 namespace SlimeJumping.Rendering
 {
-    /// Maps the platform's physics collider to its LocalTrailReceiver. Used by
-    /// TrailStamper to route stamps to the correct per-platform RT. Needed because
-    /// visual and collider live on separate GameObjects (project convention), so
-    /// a simple TryGetComponent on the contact collider would miss the receiver.
+    /// Maps a platform's physics collider to its LocalTrailReceiver so TrailStamper hits the right RT.
+    /// Visual and collider are separate GameObjects, so TryGetComponent on the contact collider misses it.
     public static class TrailColliderRegistry
     {
         private static readonly Dictionary<Collider2D, LocalTrailReceiver> map
             = new Dictionary<Collider2D, LocalTrailReceiver>();
 
-        // With "Enter Play Mode → Reload Domain" disabled, statics survive across Play sessions
-        // and leak fake-null Collider2D keys from the previous session. SubsystemRegistration runs
-        // at the very start of each Play entry, before any Awake.
+        // Domain Reload off ⇒ statics survive Play sessions and leak fake-null Collider2D keys.
+        // SubsystemRegistration runs at the start of each Play entry, before any Awake.
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics() => map.Clear();
 

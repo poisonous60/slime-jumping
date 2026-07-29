@@ -4,25 +4,10 @@ using SlimeJumping.Controller;
 namespace SlimeJumping.Mechanisms
 {
     /// <summary>
-    /// Mortar projectile spawned by <see cref="GraniteBlastEmitter"/> in Mortar mode.
-    ///
-    /// Lifecycle:
-    ///   Phase A (Travel)  — moves from spawn point along the ejection direction toward
-    ///                       its orbit anchor. Per-frame speed = strikeSpeed-equivalent
-    ///                       baseline derived from <c>orbitDistance / travelToOrbitDuration</c>
-    ///                       multiplied by <c>travelToOrbitSpeedCurve</c>(progress).
-    ///   Phase B (Dwell)   — hovers at the orbit anchor for <c>dwellAtOrbitDuration</c> seconds.
-    ///   Phase C (Strike)  — accelerates toward the slime. Direction is locked at strike
-    ///                       start when homingStrength==0, continuously chases when ==1, and
-    ///                       blends in between (per-frame Slerp toward live target by
-    ///                       homingStrength * dt-rate).
-    ///
-    /// Physics: kinematic Rigidbody2D, gravity-free. Movement is integrated via
-    /// <c>rb.position</c> updates. Collision is a swept <c>Collider2D.Cast</c> from the
-    /// previous position to the new one to prevent fast-projectile tunneling.
-    /// On hit the projectile applies the standard GraniteBlast push channel
-    /// (<c>ApplyHazardPush</c> or stunful <c>ApplyHazardEffect</c> when configured),
-    /// spawns ground explosion + impact VFX, and self-destructs.
+    /// Mortar projectile from <see cref="GraniteBlastEmitter"/>. Travel → Dwell at the orbit
+    /// anchor → Strike at the slime (homingStrength 0 = heading locked at strike start,
+    /// 1 = full chase). Kinematic and gravity-free, moved by rb.position; hits resolve via a
+    /// swept <c>Collider2D.Cast</c> so a fast projectile cannot tunnel through geometry.
     /// </summary>
     [RequireComponent(typeof(Rigidbody2D))]
     [RequireComponent(typeof(CircleCollider2D))]
@@ -68,16 +53,12 @@ namespace SlimeJumping.Mechanisms
             bodyCol = GetComponent<CircleCollider2D>();
             bodyCol.isTrigger = true;
             bodyCol.radius = Mathf.Max(0.05f, cfg.bodyRadius);
-            // Stays disabled through Travel + Dwell so the projectile cannot trigger
-            // anything (incl. its own Cast results) until Strike begins. Re-enabled in
-            // EnterStrike().
+            // Disabled through Travel + Dwell; EnterStrike re-enables.
             bodyCol.enabled = false;
 
-            // Visual — split from collider per project rule. Visual lives on a child
-            // transform; collider stays on root (no rotation propagation).
+            // Visual on a child transform, collider on root — no rotation propagation.
             BuildVisual();
 
-            // Phase A setup.
             spawnPos = rb.position;
             travelDir = ejectDir.sqrMagnitude > 0.0001f ? ejectDir.normalized : Vector2.up;
             orbitAnchor = spawnPos + travelDir * Mathf.Max(0.01f, cfg.orbitDistance);
@@ -96,8 +77,7 @@ namespace SlimeJumping.Mechanisms
             headRenderer.sprite = cfg.headSprite != null ? cfg.headSprite : MakeDiscSprite();
             headRenderer.color = owner != null ? owner.CoreColor : Color.white;
             headRenderer.sortingOrder = 100;
-            // Sprite scaled so its sprite radius (0.5 world units in default
-            // generated disc) matches the body radius.
+            // Generated disc has a 0.5 world-unit sprite radius, so ×2 matches bodyCol.radius.
             float visScale = bodyCol.radius * 2f;
             visual.localScale = new Vector3(visScale, visScale, 1f);
 
@@ -166,15 +146,8 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // Phase A — march from spawn to orbit anchor over travelToOrbitDuration sec.
-        // Per-frame speed = baselineSpeed * curve(progress), where baselineSpeed is
-        // sized so the average curve value of 1.0 lands the projectile exactly at
-        // the anchor in the configured duration.
-        // NOTE: Travel + Dwell are deliberately collision-IMMUNE — this is the wind-up
-        // window. Without that immunity the very first FixedUpdate's sweep can hit
-        // muzzle-adjacent geometry (emitter sibling colliders, ceiling above the muzzle,
-        // a slime sitting right on top of the emitter) and detonate before the
-        // projectile is ever visible. Hits only resolve in Strike phase.
+        // Travel + Dwell are deliberately collision-IMMUNE: otherwise the first FixedUpdate's
+        // sweep hits muzzle-adjacent geometry and detonates before the projectile is visible.
         private void StepTravel(float dt)
         {
             float total = Mathf.Max(0.001f, cfg.travelToOrbitDuration);
@@ -202,8 +175,6 @@ namespace SlimeJumping.Mechanisms
 
         private void StepDwell(float dt)
         {
-            // Hover in place. (No motion; collision-checking irrelevant since we're
-            // stationary.)
             if (phaseAge >= Mathf.Max(0f, cfg.dwellAtOrbitDuration))
             {
                 EnterStrike();
@@ -215,21 +186,16 @@ namespace SlimeJumping.Mechanisms
             phase = Phase.Strike;
             phaseAge = 0f;
             strikeAge = 0f;
-            // Re-enable hit detection now that the projectile is leaving the wind-up
-            // window and actively striking.
             if (bodyCol != null) bodyCol.enabled = true;
             // Lock initial direction at the slime's current position.
             Vector2 toSlime = ResolveSlimePos() - rb.position;
             strikeDir = toSlime.sqrMagnitude > 0.0001f ? toSlime.normalized : -travelDir;
         }
 
-        // Phase C — accelerate toward slime. Optional homing per frame.
         private void StepStrike(float dt)
         {
             strikeAge += dt;
 
-            // Homing — blend strikeDir toward the live slime direction at homingStrength.
-            // 0 → no rotation (locked), 1 → fully snap to live slime per frame.
             float homing = Mathf.Clamp01(cfg.homingStrength);
             if (homing > 0f && owner.Target != null)
             {
@@ -237,8 +203,7 @@ namespace SlimeJumping.Mechanisms
                 if (toSlime.sqrMagnitude > 0.0001f)
                 {
                     Vector2 desired = toSlime.normalized;
-                    // Smooth blend toward desired heading. Use a per-frame interpolation
-                    // factor so the rate is FPS-stable and capped by homing.
+                    // pow-based factor keeps the turn rate FPS-stable.
                     float k = 1f - Mathf.Pow(1f - homing, dt * 60f);
                     Vector2 blended = Vector2.Lerp(strikeDir, desired, k);
                     if (blended.sqrMagnitude > 0.0001f) strikeDir = blended.normalized;
@@ -261,8 +226,7 @@ namespace SlimeJumping.Mechanisms
             rb.position = next;
         }
 
-        // Sweep test from current position to next; on first valid collider apply hit
-        // effects and destroy. Returns true if the projectile was consumed.
+        // Returns true if the projectile was consumed by a hit.
         private bool TryResolveHit(Vector2 next)
         {
             Vector2 from = rb.position;
@@ -273,9 +237,8 @@ namespace SlimeJumping.Mechanisms
 
             if (owner.BulletHitMask == 0) return false;
 
-            // useTriggers = true because the slime body collider is itself a trigger;
-            // we filter foreign triggers (water zones, sensors, etc.) below the same way
-            // CircleCastExcludingSelf does.
+            // useTriggers = true because the slime body collider is itself a trigger; foreign
+            // triggers (water zones, sensors) are filtered out below.
             var filter = new ContactFilter2D { useTriggers = true };
             filter.SetLayerMask(owner.BulletHitMask);
             filter.useLayerMask = true;
@@ -288,8 +251,6 @@ namespace SlimeJumping.Mechanisms
                 var h = sweepBuf[i];
                 if (h.collider == null) continue;
                 if (h.collider.transform.IsChildOf(owner.transform)) continue;
-                // Triggers: skip non-slime triggers (water zones / sensors), accept
-                // slime triggers so the slime body still stops the mortar.
                 if (h.collider.isTrigger
                     && h.collider.GetComponentInParent<SlimeController>() == null) continue;
                 if (h.distance < bestDist)
@@ -301,8 +262,7 @@ namespace SlimeJumping.Mechanisms
 
             if (best.collider == null) return false;
 
-            // Move the rb forward to the contact point so the impact VFX spawns at the
-            // hit instead of mid-air.
+            // Move to the contact point so the impact VFX spawns at the hit, not mid-air.
             rb.position = from + dir * Mathf.Max(0f, best.distance);
 
             var slime = best.collider.GetComponentInParent<SlimeController>();
@@ -357,8 +317,7 @@ namespace SlimeJumping.Mechanisms
 
         private void DetachTrailAndDestroy()
         {
-            // Detach the trail so it can fade out naturally instead of vanishing with
-            // the projectile body.
+            // Detach so the trail fades out instead of vanishing with the body.
             if (trail != null)
             {
                 trail.transform.SetParent(null, true);
@@ -375,8 +334,7 @@ namespace SlimeJumping.Mechanisms
             return rb.position;
         }
 
-        // Safe AnimationCurve evaluator — null curve evaluates to 1 (so a designer
-        // who forgets to assign a curve still sees baseline-speed motion).
+        // Unassigned curve evaluates to 1 so the projectile still moves at baseline speed.
         private static float EvalCurve(AnimationCurve c, float t)
         {
             if (c == null || c.length == 0) return 1f;

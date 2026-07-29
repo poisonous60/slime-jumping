@@ -3,14 +3,9 @@ using UnityEngine;
 
 namespace SlimeJumping.Background
 {
-    // Continuously drifts cloud leaves along a wind vector. When a cloud exits
-    // the bounds box, it wraps to the opposite edge with a randomized Y so the
-    // distribution genuinely changes over time instead of looping identically.
-    //
-    // Set boundsSize wider than the camera view — the wrap happens off-screen,
-    // so the player only sees a continuous slow drift, never a pop.
-    //
-    // Default leafDepth = 3 matches CloudField → CloudBackground → CloudsN → Cloud_NN.
+    // Drifts cloud leaves along a wind vector; a cloud leaving the bounds box wraps to the
+    // opposite edge with a randomized cross-axis. Keep boundsSize wider than the camera view
+    // so wraps happen off-screen and never read as a pop.
     [ExecuteAlways]
     public class CloudWindDrift : MonoBehaviour
     {

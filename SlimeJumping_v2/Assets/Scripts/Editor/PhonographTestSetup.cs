@@ -43,7 +43,6 @@ namespace SlimeJumping.Editor
             go.transform.position = hostPos;
             go.layer = InteractableLayer;
 
-            // Base box
             var baseBox = GameObject.CreatePrimitive(PrimitiveType.Cube);
             baseBox.name = "Base";
             Object.DestroyImmediate(baseBox.GetComponent<BoxCollider>());
@@ -52,7 +51,6 @@ namespace SlimeJumping.Editor
             baseBox.transform.localScale = new Vector3(1.2f, 0.3f, 1.2f);
             baseBox.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.4f, 0.25f, 0.15f));
 
-            // Disc child (rotating visual)
             var disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             disc.name = "Disc";
             Object.DestroyImmediate(disc.GetComponent<CapsuleCollider>());
@@ -63,7 +61,6 @@ namespace SlimeJumping.Editor
             disc.transform.localScale = new Vector3(0.9f, 0.05f, 0.9f);
             disc.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.1f, 0.1f, 0.1f));
 
-            // Marker stripe on disc (so rotation is visible)
             var stripe = GameObject.CreatePrimitive(PrimitiveType.Cube);
             stripe.name = "Stripe";
             Object.DestroyImmediate(stripe.GetComponent<BoxCollider>());
@@ -72,23 +69,20 @@ namespace SlimeJumping.Editor
             stripe.transform.localScale = new Vector3(0.3f, 0.5f, 0.05f);
             stripe.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(1f, 0.9f, 0.2f));
 
-            // Trigger
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size = new Vector2(1.4f, 1.2f);
 
-            // Audio
             var audio = go.AddComponent<AudioSource>();
             audio.spatialBlend = 1f;
             audio.playOnAwake = false;
             audio.loop = true;
 
-            // Component
             var phono = go.AddComponent<MediaInteractable_Phonograph>();
             var so = new SerializedObject(phono);
             so.FindProperty("audioSource").objectReferenceValue = audio;
             so.FindProperty("discTransform").objectReferenceValue = disc.transform;
-            so.FindProperty("discRPM").floatValue = 60f; // visible at test speed
+            so.FindProperty("discRPM").floatValue = 60f;
             so.FindProperty("interactPrompt").stringValue = "Toggle Music";
             so.ApplyModifiedProperties();
 

@@ -33,12 +33,8 @@ namespace SlimeJumping.Controller
             driftDirection = -surfaceNormal;
             prevSurfaceNormal = surfaceNormal;
 
-            // Charge entry stick grace: artificial stick event for smooth decel + slide suppression.
-            // Capture from the inertia channels (crawl + slide) rather than `velocity`: on a
-            // frame-perfect Airborne→Attached→Charging transition the Attached entry zeroed
-            // `velocity` and the next FixedUpdateAttached hasn't run yet to rebuild it from the
-            // channels, so reading `velocity` would falsely capture 0 and stick-lerp the slime
-            // to a halt despite live tangent inertia.
+            // Charge entry stick grace. Capture from the channels, not `velocity`: on a frame-perfect
+            // Airborne→Attached→Charging the Attached entry zeroed `velocity` → stick halts the slime.
             impactTangentSpeed = crawlVelocity + slideVelocity;
             stickTimer += settings.chargeEntryStickBonus;
             stickDeccelTimer = 0f;
@@ -46,12 +42,8 @@ namespace SlimeJumping.Controller
             wasStuck = true;
             velocity = surfaceTangent * impactTangentSpeed;
 
-            // Energy-conversion coyote: consume the pending spawn distance stashed
-            // by the no-Space landing branch (Airborne.cs) if it's still live.
-            // Space-held landings leave chargeEntryCrawl=0 (Launch zeroed it on the prior
-            // flight exit, and the Airborne→Charging branch doesn't re-seed it from the
-            // post-landing crawl) — zero it here too so coyote doesn't grant a strictly
-            // better hyper-dash tangent inheritance than holding Space at the landing frame.
+            // Energy-conversion coyote: consume the radius stashed by the no-Space landing branch.
+            // chargeEntryCrawl=0 here, else coyote beats holding Space for hyper-dash inheritance.
             if (energyCoyoteTimer > 0f && pendingEnergyChargeRadius > settings.chargeRadius)
             {
                 activeChargeRadius = pendingEnergyChargeRadius;

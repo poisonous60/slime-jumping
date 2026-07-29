@@ -6,25 +6,15 @@ namespace SlimeJumping.Settings
     public enum HyperDashInertiaSource { ChargeStart, LaunchMoment }
 
     // Selects how the friction-detach predicate combines tangent speed and ω.
-    // Heatmap in the SlimeSettings inspector visualizes each mode's detach region
-    // on the v × R plane assuming uniform-curvature sliding (ω = v/R).
     public enum FrictionDetachFormula
     {
-        // required = |v_tangent| · ω  (= v²/R). Detach scales with v². Default —
-        // matches the original "centrifugal force" spec. Fast slime falls off
-        // even at low curvature.
+        // required = |v_tangent| · ω (= v²/R). Detach scales with v².
         VelocityTimesOmega = 0,
-        // required = v_threshold · ω. Speed-independent — purely curvature-driven.
-        // ω alone (= 1/R at any speed) decides detach. Slow slime still falls off
-        // sharp corners; fast slime never falls off shallow curves.
+        // required = v_threshold · ω. Speed-independent, purely curvature-driven.
         ConstantTimesOmega = 1,
-        // VelocityTimesOmega + |Δθ| > cornerMinAngleDeg gate. Same v² scaling but
-        // ignores frames where the surface barely turns. Suppresses the "fast
-        // slime trips on flat-ish curves" case from the original formula.
+        // VelocityTimesOmega gated by |Δθ| > cornerMinAngleDeg — ignores barely-turning frames.
         VelocityTimesOmegaWithMinAngle = 2,
-        // ω > cornerOmegaThreshold. Pure angular-rate gate. v drops out entirely.
-        // Most predictable: a given curvature triggers at all speeds (above
-        // cornerDetachMinSpeed).
+        // ω > cornerOmegaThreshold. Pure angular-rate gate; v drops out entirely.
         AngularRateThreshold = 3,
     }
 
@@ -152,8 +142,8 @@ namespace SlimeJumping.Settings
         [Range(0.25f, 1f)] public float pinchSqueezeMinScale = 0.4f;
         [Tooltip("Extra clearance (units) the collider shrinks below the raw gap fit, so minor drift never re-overlaps a plate. ~0.04.")]
         public float pinchSqueezeFitMargin = 0.04f;
-        // DEAD (kept for .asset compat): pinchMaxLateralStep / pinchPressTargetComp / pinchPressMaxTime
-        // / pinchHoldTime were earlier pinch models. Pinch is now the collider-shrink squeeze model.
+        // DEAD (kept for .asset compat): pinchMaxLateralStep / pinchPressTargetComp /
+        // pinchPressMaxTime / pinchHoldTime. Pinch is now the collider-shrink squeeze model.
         public float pinchMaxLateralStep = 0.04f;
 
         [Header("Surface Probe")]

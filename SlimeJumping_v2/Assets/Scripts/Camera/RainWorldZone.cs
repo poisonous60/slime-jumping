@@ -4,15 +4,8 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Camera
 {
-    /// <summary>
-    /// Rain World style zone camera mode.
-    /// Outer trigger: slime entry boots the zone, exit restores the global VCam.
-    /// Inside the zone, child RainWorldSubRoom boxes drive sub-room VCams. Moving
-    /// between sub-rooms is a hard cut (CinemachineBrain.DefaultBlend forced to Cut
-    /// for one frame). Entering and leaving the zone uses the brain's normal blend
-    /// (typically EaseInOut), so the asymmetry described in the design lands:
-    /// smooth in / out, snap between rooms.
-    /// </summary>
+    /// <summary>Rain World zone camera: smooth blend on zone enter/exit, hard cut between
+    /// sub-rooms (Brain.DefaultBlend temporarily forced to Cut).</summary>
     [RequireComponent(typeof(BoxCollider2D))]
     public class RainWorldZone : MonoBehaviour
     {
@@ -34,8 +27,6 @@ namespace SlimeJumping.Camera
         private int overlappingColliderCount;
         private bool isInZone;
 
-        // Brain default blend snapshot. Captured the first time we override it,
-        // restored when we exit the zone or finish a hard cut.
         private bool brainBlendSnapshotted;
         private CinemachineBlendDefinition originalDefaultBlend;
         private Coroutine restoreBlendCo;
@@ -92,8 +83,7 @@ namespace SlimeJumping.Camera
             Vector2 slimePos = trackedSlime.Position;
             RainWorldSubRoom inside = FindContainingSubRoom(slimePos);
 
-            // Outside every sub-room (gap between rooms): keep the previous active
-            // room so the camera doesn't pop back to global mid-zone.
+            // In a gap between rooms keep the previous room, else the camera pops to global mid-zone.
             if (inside == null) return;
             if (inside == activeSubRoom) return;
 
@@ -162,9 +152,8 @@ namespace SlimeJumping.Camera
             if (newRoom.VCam != null)
                 newRoom.VCam.Priority = activePriority;
 
-            // Restore the smooth blend two frames later — Brain consumes the cut
-            // on its next blend evaluation, after which the zone-enter / zone-exit
-            // transitions need to fade again.
+            // Restore two frames later: Brain consumes the Cut on its next blend evaluation,
+            // and zone enter/exit must fade again after that.
             if (restoreBlendCo != null) StopCoroutine(restoreBlendCo);
             restoreBlendCo = StartCoroutine(RestoreBrainBlendNextFrame());
         }
@@ -188,8 +177,7 @@ namespace SlimeJumping.Camera
 
         private void OnDisable()
         {
-            // Disabling mid-overlap would otherwise leave the active sub-room VCam
-            // stuck at high priority and Brain stuck on Cut.
+            // Disabling mid-overlap leaves the sub-room VCam at high priority and Brain on Cut.
             if (isInZone) ExitZone();
             overlappingColliderCount = 0;
         }

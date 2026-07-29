@@ -23,8 +23,7 @@ namespace SlimeJumping.Editor
                 new Vector3(0f, baseY - 0.5f, 0f),
                 new Vector3(60f, 1f, 1f));
 
-            // Three emitters along the ground, one per mode, aimed up-and-inward
-            // so all three blasts converge on the slime if it hangs around the centre.
+            // One per mode, aimed inward so all three converge at the centre.
             CreateEmitter("Emitter_Branching", root.transform,
                 hostPos: new Vector3(-10f, baseY + 1f, 0f),
                 muzzleEulerZ: 70f,
@@ -50,10 +49,8 @@ namespace SlimeJumping.Editor
                 "- Tune mode/spread/colors on the emitter inspector. AudioClips are unset by default.");
         }
 
-        // Stage 2 menu — drops a rig that exercises every Stage 2 feature in one place.
-        // Anchored relative to the slime so it works in SampleScene OR MainScene without
-        // hard-coded coordinates. Wires SlimeBurnVisual onto the slime if not present.
-        // Re-runnable: deletes any prior "GraniteBlast_Stage2_Test" root before building.
+        // Stage 2 rig. Anchored to the slime so it works in any scene without hard-coded
+        // coordinates; re-runnable (deletes the prior root first).
         [MenuItem("SlimeJumping/Mechanism/Setup Granite Blast Stage 2 Test")]
         public static void SetupStage2()
         {
@@ -69,8 +66,7 @@ namespace SlimeJumping.Editor
             var existing = GameObject.Find("GraniteBlast_Stage2_Test");
             if (existing != null) Undo.DestroyObjectImmediate(existing);
 
-            // Anchor relative to the slime so the rig is always visible at scene load.
-            // Slightly above so the muzzles aren't buried in any ground collider.
+            // Offset up so the muzzles aren't buried in a ground collider.
             Vector3 slimePos = slime.transform.position;
             Vector3 anchor = new Vector3(slimePos.x, slimePos.y + 6f, slimePos.z);
 
@@ -78,16 +74,13 @@ namespace SlimeJumping.Editor
             root.transform.position = anchor;
             Undo.RegisterCreatedObjectUndo(root, "Create Stage 2 Test");
 
-            // 1. Wire SlimeBurnVisual onto the slime if not already present.
             EnsureSlimeBurnVisual(slime);
 
-            // 2. NavGraph — small zig-zag arc with 5 nodes so A* visibly weaves around.
+            // Zig-zag arc so A* visibly weaves rather than running straight.
             var navGraph = BuildSampleNavGraph(root.transform, anchor);
 
-            // 3. Three emitters showcasing the new modes.
             var explosion = CreateExplosionTemplate(root.transform);
 
-            // (a) Branching with NavGraph + Z bow + Z jitter (auto-fire when slime in range).
             var navEmitter = CreateEmitter("Emitter_NavBranching_Auto", root.transform,
                 hostPos: anchor + new Vector3(-12f, 0f, 0f),
                 muzzleEulerZ: 25f,
@@ -104,8 +97,6 @@ namespace SlimeJumping.Editor
                 em.FindProperty("cooldownDuration").floatValue = 2.5f;
             });
 
-            // (b) Sustained Beam (auto-fire). Slime walking into the beam keeps getting
-            // pushed via knockbackAcceleration each frame.
             var sustainedEmitter = CreateEmitter("Emitter_SustainedBeam_Auto", root.transform,
                 hostPos: anchor + new Vector3(12f, 4f, 0f),
                 muzzleEulerZ: -160f,
@@ -124,8 +115,7 @@ namespace SlimeJumping.Editor
                 em.FindProperty("detectionRange").floatValue = 30f;
             });
 
-            // (c) Triggered one-shot beam (autoFire=false) — walks-into-trigger fires
-            // a big slow telegraphed laser. Demonstrates GraniteBlastTrigger + FireOnce.
+            // autoFire=false — fired by the GraniteBlastTrigger volume built below.
             var oneShotEmitter = CreateEmitter("Emitter_BigOneShot_Triggered", root.transform,
                 hostPos: anchor + new Vector3(0f, 9f, 0f),
                 muzzleEulerZ: -90f,
@@ -141,7 +131,6 @@ namespace SlimeJumping.Editor
                 em.FindProperty("groundExplosionPrefab").objectReferenceValue = explosion;
             });
 
-            // Trigger volume below the one-shot emitter — slime walks under, beam fires.
             BuildTriggerVolume(root.transform,
                 worldPos: anchor + new Vector3(0f, 0.75f, 0f),
                 size: new Vector2(4f, 1.5f),
@@ -166,8 +155,7 @@ namespace SlimeJumping.Editor
             var existing = slime.GetComponentInChildren<SlimeBurnVisual>(true);
             if (existing != null) return;
 
-            // Pick a body transform for the burn-mark decals to parent under.
-            // Prefer the 3D mesh root (body3d), fall back to the legacy 2D sprite root.
+            // Burn-decal parent: prefer the 3D mesh root, fall back to the 2D sprite root.
             var slimeVisual = slime.GetComponentInChildren<SlimeVisual>(true);
             Transform bodyT = null;
             if (slimeVisual != null)
@@ -185,8 +173,7 @@ namespace SlimeJumping.Editor
             so.FindProperty("slimeController").objectReferenceValue = slime;
             so.FindProperty("slimeVisual").objectReferenceValue = slimeVisual;
             so.FindProperty("body3d").objectReferenceValue = bodyT;
-            // burnShellShader auto-resolves via Shader.Find in SlimeBurnVisual.Awake
-            // — no need to wire it here.
+            // burnShellShader is left unwired — SlimeBurnVisual.Awake Shader.Finds it.
             so.ApplyModifiedProperties();
         }
 
@@ -197,9 +184,7 @@ namespace SlimeJumping.Editor
             navGO.transform.position = anchor;
             var nav = navGO.AddComponent<GraniteBlastNavGraph>();
 
-            // Zigzag from the NavBranching emitter (left) toward the slime area.
-            // Local-space, so the whole rig moves together if the user drags the root.
-            // X spans -10..+10 around anchor; Y dips so the path visibly bows.
+            // Local-space so the whole rig moves together when the root is dragged.
             var nodes = new[]
             {
                 new Vector3(-10f, 0f, 0f),
@@ -247,7 +232,7 @@ namespace SlimeJumping.Editor
             so.FindProperty("retriggerCooldown").floatValue = retriggerCooldown;
             so.ApplyModifiedProperties();
 
-            // Visualize the trigger zone with a small flat quad so designers see where it is.
+            // Flat quad so the trigger zone is visible in-game, not just via gizmo.
             var preview = GameObject.CreatePrimitive(PrimitiveType.Quad);
             preview.name = "TriggerPreview";
             Object.DestroyImmediate(preview.GetComponent<MeshCollider>());
@@ -260,9 +245,7 @@ namespace SlimeJumping.Editor
             preview.GetComponent<MeshRenderer>().sharedMaterial = mat;
         }
 
-        // Apply additional SerializedObject edits on top of CreateEmitter's defaults.
-        // CreateEmitter already finalizes basic config; this opens a fresh SerializedObject
-        // for the caller to tweak mode-specific fields.
+        // Fresh SerializedObject on top of CreateEmitter's already-applied defaults.
         private static void ConfigureEmitter(GameObject emitterGO, System.Action<SerializedObject> cfg)
         {
             var em = emitterGO.GetComponent<GraniteBlastEmitter>();
@@ -272,9 +255,7 @@ namespace SlimeJumping.Editor
             so.ApplyModifiedProperties();
         }
 
-        // Larger, slower-fading variant of the small impactPrefab spark — used as the
-        // groundExplosionPrefab on Stage 2 emitters so designers see the difference between
-        // slime-hit (spark) and ground-hit (chunky).
+        // groundExplosionPrefab — chunkier than the slime-hit impactPrefab spark.
         static ParticleSystem CreateExplosionTemplate(Transform parent)
         {
             var go = new GameObject("ExplosionTemplate");

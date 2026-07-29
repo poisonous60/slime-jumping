@@ -5,10 +5,8 @@ using UnityEngine.Audio;
 
 namespace SlimeJumping.Audio
 {
-    /// Scene-persistent one-shot, looping and BGM audio playback backed by per-category
-    /// AudioSource pools. Routes all output through the SoundSettings mixer so volume can
-    /// be controlled per bus. Survives scene loads via DontDestroyOnLoad — scenes that
-    /// also carry a prefab instance are deduped by the singleton guard in Awake.
+    /// One-shot / looping / BGM playback over per-category AudioSource pools, routed through the
+    /// SoundSettings mixer. DontDestroyOnLoad; duplicate scene instances die in the Awake guard.
     [DefaultExecutionOrder(-100)]
     [AddComponentMenu("SlimeJumping/Audio/Sound Service")]
     public class SoundService : MonoBehaviour
@@ -30,8 +28,7 @@ namespace SlimeJumping.Audio
         private readonly Dictionary<SoundCategory, List<PooledSource>> pools =
             new Dictionary<SoundCategory, List<PooledSource>>();
 
-        // Two dedicated BGM sources for crossfade. Both route to settings.bgmGroup, loop=true,
-        // spatialBlend=0. Only one plays at a time except during a crossfade.
+        // Two BGM sources so a crossfade can overlap; only one plays otherwise.
         private AudioSource bgmA;
         private AudioSource bgmB;
         private AudioSource bgmActive;
@@ -236,10 +233,8 @@ namespace SlimeJumping.Audio
 
         // ---- BGM ----
 
-        /// Start or crossfade to the given BGM clip. Safe to call every frame — if the clip
-        /// matches the currently-playing BGM, the call is a no-op. If a fade is in progress,
-        /// it is cancelled and replaced. Final source volume is <paramref name="targetVolume"/>;
-        /// perceptual level is also scaled by the BGM bus (BGMVolume slider).
+        /// Start or crossfade to a BGM clip. Safe every frame — same clip is a no-op, an in-flight
+        /// fade is cancelled and replaced.
         public static void PlayBgm(AudioClip clip, float crossfadeSeconds = 1.5f, float targetVolume = 1f)
         {
             if (clip == null) return;

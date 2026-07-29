@@ -5,10 +5,7 @@ using UnityEditor;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Broadcasts a shared audio clip set to every WaterZone_v2 in the active scene
-    /// so individual zones don't need per-instance inspector assignment.
-    /// </summary>
+    /// <summary>Pushes one shared clip set onto every WaterZone_v2 in the scene, replacing per-instance assignment.</summary>
     public class WaterZoneAudioManager : MonoBehaviour
     {
         [Header("Clips")]

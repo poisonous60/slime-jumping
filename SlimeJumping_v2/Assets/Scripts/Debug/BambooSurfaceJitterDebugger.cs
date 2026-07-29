@@ -6,11 +6,7 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Attach to the Slime root while investigating bamboo descent/camera jitter.
-    /// Samples after FixedUpdate and dumps a short ring buffer when the physics pose,
-    /// surface identity, probe selection, or bamboo carry estimate jumps.
-    /// </summary>
+    /// <summary>Bamboo jitter probe: samples after FixedUpdate, dumps a ring buffer when pose, surface, probe selection, or carry estimate jumps.</summary>
     [DefaultExecutionOrder(3000)]
     [DisallowMultipleComponent]
     [RequireComponent(typeof(SlimeController))]

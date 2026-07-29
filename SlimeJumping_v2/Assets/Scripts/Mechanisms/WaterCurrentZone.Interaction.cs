@@ -20,12 +20,8 @@ namespace SlimeJumping.Mechanisms
         [Range(0f, 0.99f)] [SerializeField] float spreadFalloff = 0.5f;
 
         /// <summary>
-        /// Slime → ribbon impulse. Projects the slime onto the centerline, computes a bilateral
-        /// L/R weight from its lateral offset, and dispatches a velocity kick to both channels
-        /// proportionally. Wave then propagates and decays via the spring sim in Simulation.cs.
-        ///
-        /// Open-polyline neighbor clamping (Mathf.Min/Max with array bounds) is the only
-        /// structural difference from WaterZone_v2.Interaction.cs's closed-loop modulo wrap.
+        /// Slime → ribbon impulse: project onto the centerline, split L/R by lateral offset, kick
+        /// both channels. Open polyline — neighbors clamp at array bounds, no modulo wrap like v2.
         /// </summary>
         void ApplySlimeImpulse(SlimeController slime, float dt, bool isEntry = false)
         {
@@ -35,7 +31,6 @@ namespace SlimeJumping.Mechanisms
             Vector2 sWorld = slime.Position;
             Vector2 sVel   = slime.Velocity;
 
-            // Find nearest centerline segment in world space.
             int n = points.Length;
             int best = 0;
             float bestDSq = float.MaxValue;
@@ -59,10 +54,8 @@ namespace SlimeJumping.Mechanisms
             int j = best + 1;
             float bestDist = Mathf.Sqrt(bestDSq);
 
-            // Bilateral side weight: slime's signed offset from centerline along normalLR,
-            // normalized to (-1, +1) by halfWidth. wR = 0.5 when slime is on the centerline,
-            // 1 at the right silhouette, 0 at the left. The wake then appears predominantly on
-            // the slime's side but still nudges the opposite side near the centerline.
+            // Bilateral weight: wR = 0.5 on the centerline, 1 at the right silhouette — the wake
+            // favors the slime's side but still nudges the far side near the middle.
             Vector2 nLocal = Vector2.Lerp(points[best].normalLR, points[j].normalLR, bestT).normalized;
             Vector2 nWorld = transform.TransformDirection(nLocal);
             float halfW = ribbonWidth * 0.5f;
@@ -71,15 +64,13 @@ namespace SlimeJumping.Mechanisms
             float wR = (1f + sideNorm) * 0.5f;
             float wL = 1f - wR;
 
-            // Impulse magnitude: full slime speed × factor × dt. Using |velocity| (not the
-            // normal component) because a slime traveling downstream parallel to the ribbon
-            // should still leave a wake behind it.
+            // |velocity|, not the normal component — a slime moving parallel to the ribbon
+            // must still leave a wake.
             float impactSpeed = sVel.magnitude;
             if (impactSpeed < 0.001f) return;
 
-            // contactRadius gates the continuous per-FixedUpdate impulse so a slime hovering
-            // just outside the silhouette polygon (collider-edge case) doesn't keep injecting
-            // energy. Entry impulse always fires — the splash sets the initial wave shape.
+            // Gate stops a slime hovering just outside the silhouette from injecting energy
+            // every step. Entry impulse is exempt — the splash sets the initial wave shape.
             float attenuation = 1f;
             if (!isEntry && contactRadius > 0f)
             {
@@ -96,8 +87,7 @@ namespace SlimeJumping.Mechanisms
             points[best].velR += impulseR * (1f - bestT);
             points[j].velR    += impulseR * bestT;
 
-            // Propagate to ±spreadNeighbors with geometric falloff. Open-clamp at array bounds —
-            // an impulse near sample 0 stops at sample 0 instead of wrapping around.
+            // Open-clamp at array bounds — an impulse near sample 0 stops there, no wrap-around.
             if (spreadNeighbors > 0 && spreadFalloff > 0f)
             {
                 float falloff = spreadFalloff;

@@ -6,12 +6,7 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Extension of CCTV. Tracks the slime via a delayed-position virtual target:
-    /// the turret remembers where the slime was `trackingDelay` seconds ago and
-    /// hands that position to CCTVTracker, so aim naturally lags the player.
-    /// Telegraphs a shot with a laser sight, then fires a raycast with knockback.
-    /// </summary>
+    /// <summary>CCTV that aims at where the slime was `trackingDelay` seconds ago, telegraphs with a laser sight, then fires a knockback raycast.</summary>
     [RequireComponent(typeof(CCTVTracker))]
     public class TurretHazard : MonoBehaviour, IHazardSource
     {
@@ -154,8 +149,7 @@ namespace SlimeJumping.Mechanisms
             if (aimReticle == null) aimReticle = CreateAimReticle();
             aimReticle.gameObject.SetActive(false);
 
-            // Delayed aim target: CCTV will track this instead of the live slime.
-            // We move it to the slime's historical position (`trackingDelay` seconds ago).
+            // CCTV tracks this stand-in instead of the live slime.
             var dt = new GameObject("DelayedAimTarget_Auto");
             dt.transform.SetParent(transform, false);
             if (target != null) dt.transform.position = target.position;
@@ -246,7 +240,6 @@ namespace SlimeJumping.Mechanisms
             else
             {
                 delayedPos = history[idx].pos;
-                // Trim everything older than our chosen stamp to bound memory.
                 if (idx > 0) history.RemoveRange(0, idx);
             }
 
@@ -409,10 +402,7 @@ namespace SlimeJumping.Mechanisms
             return slime != null && slime.transform == target;
         }
 
-        /// <summary>
-        /// Raycast that skips any collider sitting under this turret's own hierarchy.
-        /// Prevents the barrel / mount / trigger colliders from blocking the shot at distance ~0.
-        /// </summary>
+        /// <summary>Raycast skipping colliders under this turret, else the barrel/mount blocks every shot at distance ~0.</summary>
         private RaycastHit2D RaycastExcludingSelf(Vector2 origin, Vector2 dir, float maxDist, LayerMask mask)
         {
             var hits = Physics2D.RaycastAll(origin, dir, maxDist, mask);

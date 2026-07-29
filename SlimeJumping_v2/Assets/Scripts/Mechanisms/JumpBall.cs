@@ -4,13 +4,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Trigger-based bounce ball. Slime passes through and is auto-launched upward.
-    /// Final jump speed = max(fixedJumpSpeed, incomingSpeed * percent + bonus).
-    /// Low-speed approach → fixed speed (JumpPad-style). High-speed approach → scaled + bonus.
-    /// Visual child bobs up/down independently of the collider.
-    /// Optional consume/respawn: disappears on eat, respawns after delay, with scale animations and SFX.
-    /// </summary>
+    /// <summary>Trigger bounce ball; launch speed = max(fixedJumpSpeed, incomingSpeed * percent + bonus), with an optional consume/respawn cycle.</summary>
     [RequireComponent(typeof(Collider2D))]
     public class JumpBall : MonoBehaviour
     {
@@ -216,19 +210,13 @@ namespace SlimeJumping.Mechanisms
             SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, sfxVolume);
         }
 
-        /// <summary>
-        /// Overwrites the per-ball audio clips + volume. Called by JumpBallAudioManager
-        /// to broadcast a shared set across the scene. Mirrors the ThinIcePlatform /
-        /// WaterZone_v2 pattern.
-        /// </summary>
+        /// <summary>Overwrites per-ball clips + volume; JumpBallAudioManager broadcasts a shared set with this.</summary>
         public void ApplyAudioSettings(AudioClip consume, AudioClip respawn, float volume)
         {
             consumeSfx = consume;
             respawnSfx = respawn;
             sfxVolume = volume;
         }
-
-        // --- Gizmos ---
 
         void OnDrawGizmos()
         {

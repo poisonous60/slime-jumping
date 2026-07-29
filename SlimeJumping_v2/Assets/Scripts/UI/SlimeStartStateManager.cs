@@ -5,12 +5,8 @@ using SlimeJumping.Interaction;
 
 namespace SlimeJumping.UI
 {
-    /// Scene-placed manager that puts the slime into a chosen Interaction
-    /// (e.g. BoxSleep) when the gameplay scene loads.
-    ///
-    /// Place one in MainScene, drag the target InteractableBase (BoxSleep, SitPose,
-    /// etc.) into <see cref="startInteraction"/>, and the slime will be teleported
-    /// to its sitAnchor and driven by its IExternalController at scene start.
+    /// Puts the slime into <see cref="startInteraction"/> (BoxSleep, SitPose…) at scene load:
+    /// teleported to its sitAnchor and driven by its IExternalController.
     public class SlimeStartStateManager : MonoBehaviour
     {
         public enum TriggerMode
@@ -37,8 +33,7 @@ namespace SlimeJumping.UI
                 yield break;
             }
 
-            // One-frame grace so every Awake/OnEnable in the scene has settled
-            // before we push an override onto SlimeController.
+            // One-frame grace: every Awake/OnEnable must settle before we push an override.
             yield return null;
 
             if (slime == null) slime = Object.FindFirstObjectByType<SlimeController>();
@@ -49,8 +44,7 @@ namespace SlimeJumping.UI
             }
             if (slime.HasOverride) yield break;
 
-            // Interact() bypasses CanInteract — good, because the slime isn't
-            // necessarily touching the interactable's trigger at scene start.
+            // Interact() bypasses CanInteract; at scene start the slime isn't inside the trigger yet.
             startInteraction.Interact(slime);
         }
 

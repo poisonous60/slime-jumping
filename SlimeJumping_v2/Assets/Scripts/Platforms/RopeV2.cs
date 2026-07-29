@@ -3,15 +3,10 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms
 {
-    // Timing-based rope. Same Verlet simulation core as Rope (v1) — only the
-    // launch-bonus mechanic differs:
-    //
-    //   v1 (Rope)    : bonus = max-sag × reboundSpeedPerMeter (timing-blind)
-    //   v2 (RopeV2)  : bonus = timingBonusCurve(proj) × chargeMultiplierCurve(charge)
-    //                  where proj = max(0, ropeVelAtAttachPoint · launchDir)
-    //
-    // Player must time the launch to ride the rope's upswing — same passive-
-    // physics timing feel as SpringyBranchPlatform.
+    // Timing-based rope. Same Verlet core as Rope (v1); only the launch bonus differs:
+    //   v1: max-sag × reboundSpeedPerMeter (timing-blind)
+    //   v2: timingBonusCurve(proj) × chargeMultiplierCurve(charge),
+    //       proj = max(0, ropeVelAtAttachPoint · launchDir) — player must ride the upswing.
     [ExecuteAlways]
     [DefaultExecutionOrder(-100)]
     public class RopeV2 : MonoBehaviour, IRopePlatform
@@ -520,9 +515,8 @@ namespace SlimeJumping.Platforms
         public int NodeCount => nodeCount;
         public Vector2 GetNodePosition(int i) => pos[i];
 
-        // Max perpendicular distance from any node to the straight anchorA→anchorB line.
-        // Not used for the launch bonus in v2 (timing-driven), but kept for the
-        // editor preview gizmo and diagnostics.
+        // Max perpendicular distance from any node to the anchorA→anchorB line.
+        // v2 uses it only for the preview gizmo, not for the launch bonus.
         public float GetMaxSagDistance()
         {
             if (nodeCount < 3) return 0f;
@@ -544,10 +538,8 @@ namespace SlimeJumping.Platforms
             return best;
         }
 
-        // IRopePlatform — two-curve timing bonus. proj is the rope's velocity at
-        // the slime's attach point projected onto launchDir, clamped ≥0 (negative
-        // = rope moving away from launch direction → no bonus). The two curves
-        // multiply, then the result is capped by maxReboundSpeed.
+        // Two-curve timing bonus. proj clamps at 0 so a rope moving away from
+        // launchDir gives no bonus; product is then capped by maxReboundSpeed.
         public float GetLaunchBonus(Vector2 launchDir, Vector2 worldContact, float chargeRatio)
         {
             if (nodeCount < 2) return 0f;
@@ -565,8 +557,7 @@ namespace SlimeJumping.Platforms
             return bonus;
         }
 
-        // V3-only carry channel; v2 keeps its impulse-based ApplyRiderImpact model
-        // and lets the controller's existing ropeVel inheritance handle tracking.
+        // No carry channel; ApplyRiderImpact + controller ropeVel inheritance cover tracking.
         public Vector2 ConsumeRiderCarryDelta(Vector2 _worldContact) => Vector2.zero;
 
         // TautLine-only minimum-vy enforcement; v2 leaves launch velocity unchanged.

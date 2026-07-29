@@ -66,12 +66,8 @@ namespace SlimeJumping.Physics
         };
 
         /// <summary>
-        /// Component-wise lerp for blending two surface profiles by a 0..1 weight.
-        /// AngleScaledValue / float fields use linear lerp; bool fields and curves
-        /// snap at t=0.5 (no graceful interpolation possible — discrete by nature).
-        /// AnimationCurve references prefer the snapped side rather than null.
-        /// Used by snow coverage to smoothly blend the host SurfaceMaterial with the
-        /// snow SurfaceMaterial as carve depth varies along the patch.
+        /// Component-wise lerp of two surface profiles. bool/curve fields have no meaningful
+        /// interpolation, so they snap at t=0.5; a curve prefers the other side over null.
         /// </summary>
         public static SurfaceModifiers Lerp(SurfaceModifiers a, SurfaceModifiers b, float t)
         {

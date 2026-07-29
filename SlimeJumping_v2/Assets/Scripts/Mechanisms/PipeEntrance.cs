@@ -5,11 +5,8 @@ using SlimeJumping.InputHandling;
 namespace SlimeJumping.Mechanisms
 {
     /// <summary>
-    /// One end of a pipe shortcut. Pair-wires to another PipeEntrance via
-    /// pairedExit. Entry conditions: slime is in trigger AND aiming inward AND
-    /// attached to a wall (the stick mechanic doubles as the "I'm pushing into
-    /// the wall" check). When all three pass, hands the slime to the shared
-    /// PipeTraversalController.
+    /// One end of a pipe shortcut, pair-wired via pairedExit. Entry needs all three: slime in
+    /// trigger, aiming inward, Attached to the wall. Then hands off to PipeTraversalController.
     /// </summary>
     [RequireComponent(typeof(BoxCollider2D))]
     public class PipeEntrance : MonoBehaviour
@@ -89,9 +86,8 @@ namespace SlimeJumping.Mechanisms
             if (overlappingSlime.HasOverride) return;
             if (overlappingSlime.CurrentState != SlimeController.SlimeState.Attached) return;
 
-            // Player must be holding a movement input that pushes into the wall.
-            // While Attached the slime's AimDirection collapses to surfaceNormal
-            // (which points OUT of the wall), so we read the raw input instead.
+            // While Attached, AimDirection collapses to surfaceNormal (points OUT of the wall),
+            // so the push-into-wall test has to read raw input.
             if (overlappingReader == null) return;
             Vector2 input = overlappingReader.LastInputMove;
             if (input.sqrMagnitude < 0.01f) return;
@@ -103,13 +99,11 @@ namespace SlimeJumping.Mechanisms
 
         private void BeginTraversal(SlimeController slime)
         {
-            // Lock both endpoints during traversal — re-entry check uses cooldownUntil
-            // but the controller will also cooldown the exit on completion.
+            // Lock both endpoints; the controller re-cooldowns the exit on completion.
             cooldownUntil = Time.time + reentryCooldown;
             pairedExit.cooldownUntil = Time.time + reentryCooldown;
 
-            // Resolve the path: prefer this end's, then the other end's, else fall
-            // back to a virtual two-point straight line (controller handles null path).
+            // This end's path, else the pair's; null falls back to a straight line in the controller.
             PipePath usedPath = path != null ? path : pairedExit.path;
             controller.Begin(slime, this, pairedExit, usedPath);
         }
@@ -128,7 +122,6 @@ namespace SlimeJumping.Mechanisms
                 Gizmos.matrix = Matrix4x4.identity;
             }
 
-            // Inward direction arrow.
             Vector3 origin = transform.position;
             Vector3 inward = transform.TransformDirection(pipeInwardDirLocal.normalized);
             Gizmos.color = Color.yellow;

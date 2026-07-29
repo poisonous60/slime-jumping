@@ -5,20 +5,15 @@ using SlimeJumping.Platforms.Snow;
 
 namespace SlimeJumping.Mechanisms
 {
-    // Impact effects — shared LineRenderer material for projectiles, ground-impact
-    // sound + big explosion VFX, and selection gizmos. Slime-hit small spark uses
-    // impactPrefab directly from the Tendril/Beam classes; the big chunky explosion
-    // fires on every contact (slime + ground) — Tendril/Beam call it once per hit.
+    // Impact effects: shared line material, ground-impact sound, explosion VFX, gizmos.
+    // Tendril/Beam own the small spark via impactPrefab and gate the explosion once per hit.
     public partial class GraniteBlastEmitter
     {
-        // --- shared material for line projectiles ---
         private Material coreMatCached;
 
         public Material GetCoreMaterial() => GetOrCreateMat(ref coreMatCached);
 
-        // Called by tendril / beam / burst-flash on ground impact. Each spawned
-        // projectile is responsible for invoking this once when its line first
-        // reaches the ground (or completes its draw to a ground-snapped endpoint).
+        // Caller contract: each projectile invokes this once, when its line first reaches ground.
         public void PlayGroundImpactSound(Vector3 worldPos)
         {
             if (groundImpactSound == null) return;
@@ -28,9 +23,7 @@ namespace SlimeJumping.Mechanisms
             SoundService.PlayAt(groundImpactSound, worldPos, SoundCategory.SFX_Object, groundImpactVolume, pitch);
         }
 
-        // Carve a dent into a SnowField when the ground hit lands on a registered
-        // host collider. Mirrors SnowStamper's routing — the same channel the slime
-        // landing uses, so the bite looks identical. Off-snow ground hits no-op.
+        // Routes through the same channel as slime landing so the bite looks identical.
         public void CarveSnowAtImpact(Collider2D hostCollider, Vector2 contactWorld)
         {
             if (!snowCarveOnImpact) return;
@@ -41,12 +34,8 @@ namespace SlimeJumping.Mechanisms
             field.Carve(contactWorld, snowCarveDepth, snowCarveRadius);
         }
 
-        // Carve snow around a slime hit point. Used by Beam/Burst/Branching when a
-        // projectile lands on the slime — without this, the bolt halts on the slime
-        // body and never reaches the snow underneath. Resolves the SnowField via
-        // (1) slime.SurfaceCollider (cheapest, works when slime is grounded on snow),
-        // then (2) an OverlapCircle scan near the contact point so airborne / mid-jump
-        // hits over snow still register. No-op when no SnowField is found nearby.
+        // A bolt that stops on the slime body never reaches the snow underneath, so carve here:
+        // SurfaceCollider first, then an OverlapCircle scan for airborne hits over snow.
         public void CarveSnowNearSlime(SlimeController slime, Vector2 contactWorld)
         {
             if (!snowCarveOnImpact) return;
@@ -60,8 +49,7 @@ namespace SlimeJumping.Mechanisms
                 return;
             }
 
-            // Fallback scan — radius covers the carve footprint so nearby snow under
-            // an airborne slime still resolves. Picks the first registered SnowField.
+            // Scan radius covers the carve footprint; first registered SnowField wins.
             float scanR = Mathf.Max(snowCarveRadius, 1f);
             var hits = Physics2D.OverlapCircleAll(contactWorld, scanR);
             for (int i = 0; i < hits.Length; i++)
@@ -74,10 +62,7 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // Spawn the big chunky explosion VFX at a contact point. Called by Tendril/Beam
-        // for both slime hits and ground hits — slime hits get the same flair as ground.
-        // Caller is responsible for gating to once-per-hit (slime contact) so sustained
-        // beams don't restage the explosion every frame.
+        // Caller must gate to once per hit, else a sustained beam restages the explosion every frame.
         public void SpawnGroundExplosion(Vector3 point, Vector3 normal)
         {
             if (groundExplosionPrefab == null) return;
@@ -116,8 +101,7 @@ namespace SlimeJumping.Mechanisms
             Gizmos.color = new Color(0.7f, 0.95f, 1f, 0.9f);
             Gizmos.DrawLine(origin, origin + d3 * Mathf.Min(maxRange, detectionRange));
 
-            // Hit-volume preview: a swept "tube" from muzzle along the aim direction
-            // shows the actual CircleCast radius used by all three modes.
+            // Swept tube previewing the CircleCast radius all three modes use.
             float r = Mathf.Max(0.01f, hitRadius);
             float previewLen = Mathf.Min(maxRange, detectionRange);
             Vector3 perp = new Vector3(-d.y, d.x, 0f) * r;
@@ -134,18 +118,12 @@ namespace SlimeJumping.Mechanisms
                 Gizmos.DrawWireSphere(target.position, targetRadius);
             }
 
-            // Distance-based mode bands: nested wire spheres around the muzzle
-            // showing where Close / Mid / Far modes activate. Only drawn when
-            // the toggle is on so the regular detection sphere isn't cluttered.
+            // Close / Mid band boundaries for distance-based mode switching.
             if (distanceBasedMode)
             {
-                // Close band — innermost. Red-ish so designers spot the boundary
-                // a slime crosses just before the emitter switches to closeMode.
                 Gizmos.color = new Color(1f, 0.4f, 0.4f, 0.85f);
                 Gizmos.DrawWireSphere(origin, Mathf.Max(0f, closeRangeDistance));
 
-                // Mid band — drawn only if it's actually wider than the close
-                // band. Yellow so it reads as "warning zone".
                 if (midRangeDistance > closeRangeDistance)
                 {
                     Gizmos.color = new Color(1f, 0.85f, 0.3f, 0.85f);

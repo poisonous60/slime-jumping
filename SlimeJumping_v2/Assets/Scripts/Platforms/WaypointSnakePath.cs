@@ -4,11 +4,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms
 {
-    /// <summary>
-    /// Default <see cref="ISnakePath"/>: inspector-authored Vector3 waypoints, optional
-    /// Catmull-Rom smoothing, per-waypoint speed for the path-segment that starts there.
-    /// Rebuilds a dense arc-length table on Awake/OnValidate so SampleWorld is O(log N).
-    /// </summary>
+    /// <summary>Default <see cref="ISnakePath"/>: authored waypoints + optional Catmull-Rom, backed by a dense arc-length table so SampleWorld is O(log N).</summary>
     [DisallowMultipleComponent]
     public class WaypointSnakePath : MonoBehaviour, ISnakePath
     {
@@ -29,7 +25,7 @@ namespace SlimeJumping.Platforms
         [SerializeField] bool drawGizmos = true;
 
         Vector3[] denseLocalPos;   // dense samples (local space)
-        float[]   denseArc;        // cumulative arc length at each dense sample (local, approximates world arc if no non-uniform scale)
+        float[]   denseArc;        // cumulative local arc length; only matches world arc without non-uniform scale
         int[]     denseSegIndex;   // which waypoint-segment each dense sample belongs to
         float     totalArcLen;
 
@@ -43,8 +39,7 @@ namespace SlimeJumping.Platforms
 
         void OnEnable()
         {
-            // Dense table isn't serialized and is wiped by domain reloads (play-mode exit,
-            // recompile). Rebuild on enable so editor gizmos + scene handles always have data.
+            // Dense table isn't serialized — domain reload wipes it, leaving gizmos/handles empty.
             if (denseLocalPos == null || denseLocalPos.Length < 2) Rebuild();
         }
 
@@ -104,7 +99,6 @@ namespace SlimeJumping.Platforms
                 denseSegIndex[write] = lastSeg;
             }
 
-            // Cumulative arc length over the dense samples.
             denseArc[0] = 0f;
             for (int i = 1; i < denseCount; i++)
                 denseArc[i] = denseArc[i - 1] + Vector3.Distance(denseLocalPos[i - 1], denseLocalPos[i]);
@@ -155,7 +149,6 @@ namespace SlimeJumping.Platforms
 
             arcLen = NormalizeArc(arcLen);
 
-            // Binary-search denseArc for the interval containing arcLen.
             int lo = 0, hi = denseArc.Length - 1;
             while (lo + 1 < hi)
             {
@@ -230,7 +223,6 @@ namespace SlimeJumping.Platforms
             if (!drawGizmos) return;
             if (waypoints == null || waypoints.Count < 2) return;
 
-            // Waypoint handles + straight-polyline baseline.
             Gizmos.color = new Color(0.2f, 0.8f, 1f, 0.9f);
             for (int i = 0; i < waypoints.Count; i++)
             {

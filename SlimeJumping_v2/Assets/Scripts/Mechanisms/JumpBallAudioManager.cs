@@ -5,11 +5,7 @@ using UnityEditor;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Broadcasts a shared audio clip set to every JumpBall in the active scene so
-    /// individual balls don't need per-instance inspector assignment.
-    /// Mirrors the WaterZoneAudioManager / ThinIcePlatformAudioManager pattern.
-    /// </summary>
+    /// <summary>Broadcasts a shared clip set to every JumpBall in the scene so balls need no per-instance assignment.</summary>
     [DefaultExecutionOrder(-50)]
     public class JumpBallAudioManager : MonoBehaviour
     {

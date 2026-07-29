@@ -6,11 +6,7 @@ namespace SlimeJumping.Settings
 {
     public enum WindowMode { Windowed, Fullscreen, Borderless }
 
-    /// Persists demo-facing user options (frame limit, Player/World SFX / BGM /
-    /// UI volume, window mode, background camera) via PlayerPrefs and applies
-    /// them on boot. Audio is re-applied after scene load so the mixer picks it
-    /// up once SoundService has initialized. Background camera changes fire an
-    /// event so scene-level components (see BackgroundCameraOption) can react live.
+    /// PlayerPrefs-backed user options applied on boot; audio is re-applied after scene load.
     public static class GameOptions
     {
         private const string KeyFrameLimit            = "opt.frameLimit";
@@ -25,8 +21,7 @@ namespace SlimeJumping.Settings
         private const string KeyChargeVisualOn        = "opt.chargeVisualEnabled";
         private const string KeyMouseTeleportDebugOn  = "opt.mouseTeleportDebugEnabled";
 
-        // Legacy key used before the SFX split (single combined slider).
-        // Migrated into PlayerSfxVolume on first load so existing users don't lose their setting.
+        // Pre-split combined SFX slider; seeds both SFX volumes on first load.
         private const string KeyLegacySfxVolume       = "opt.sfxVolume";
 
         public const int        DefaultFrameLimit            = 60;
@@ -103,12 +98,9 @@ namespace SlimeJumping.Settings
             ApplyDisplayPacing();
             ApplyDisplay(ResolutionOptions[ResolutionIndex], WindowMode);
 
-            // Cap FixedUpdate catchup. Default 0.333s lets ~16 physics ticks pile
-            // into one frame after a stall (GC, asset load, alt-tab) — each tick
-            // costs 5–20ms in this project, producing a death-spiral of 100ms+
-            // frames. 0.1s caps catchup at ~5 ticks; lost wall-clock past that is
-            // dropped (game effectively skips, not slow-mo, since no Animator/
-            // Timeline systems depend on continuous time).
+            // Cap FixedUpdate catchup: the 0.333s default lets ~16 ticks pile into one frame after a
+            // stall, and at 5–20ms per tick that death-spirals. 0.1s caps it at ~5 ticks; the rest is
+            // dropped (a skip, not slow-mo — nothing here depends on continuous time).
             Time.maximumDeltaTime = 0.1f;
         }
 
@@ -266,9 +258,7 @@ namespace SlimeJumping.Settings
                 case WindowMode.Borderless: fsMode = FullScreenMode.FullScreenWindow;    break;
                 default:                    fsMode = FullScreenMode.ExclusiveFullScreen; break;
             }
-            // In Windowed mode this resizes the window; in FullScreenWindow/
-            // ExclusiveFullScreen it sets the render resolution while the window
-            // covers the display.
+            // Windowed resizes the window; the fullscreen modes set render resolution only.
             Screen.SetResolution(res.x, res.y, fsMode);
         }
 

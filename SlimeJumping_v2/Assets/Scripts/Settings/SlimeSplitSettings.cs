@@ -2,16 +2,9 @@ using UnityEngine;
 
 namespace SlimeJumping.Settings
 {
-    /// <summary>
-    /// "잘림 = 작아진 둥근 슬라임 + 자크식 회수" 튜닝 (지속 단면 없음):
-    ///   • 본체 — 부피를 잃고 실제로 작아짐(콜라이더+비주얼). 상처는 평면 후퇴가 아니라
-    ///     메니스커스(표면장력 막)가 스프링으로 차오르며 림→중심으로 봉합.
-    ///   • 조각 — 손실 부피만큼의 자기 블롭이 sliver→droplet 으로 펴지며 날아가 바닥에 잔존.
-    ///     슬라임이 근접하면 자석처럼 끌려와 합체(흡수)되고 그만큼 즉시 회복.
-    ///   • 회복 — 흡수 = 빠른 회복. 조각 분실(낙사) = slowRecoveryDuration 기반 느린 자연 회복.
-    ///     점프력 페널티는 몸집 비율에서 파생(독립 타이머 없음).
-    /// ScriptableObject — 전부 인스펙터 튜닝, 코드에 매직넘버 없음.
-    /// </summary>
+    /// <summary>"잘림 = 작아진 둥근 슬라임 + 자크식 회수" 튜닝 (지속 단면 없음).</summary>
+    /// 본체는 부피를 잃고 실제로 작아지며 메니스커스로 봉합, 조각은 날아가 잔존하다 근접 시 흡수 = 즉시 회복.
+    /// 조각 분실 시에만 slowRecoveryDuration 기반 느린 회복. 점프력 페널티는 몸집 비율에서 파생(독립 타이머 없음).
     [CreateAssetMenu(menuName = "SlimeJumping/Slime Split Settings", fileName = "SlimeSplitSettings")]
     public class SlimeSplitSettings : ScriptableObject
     {

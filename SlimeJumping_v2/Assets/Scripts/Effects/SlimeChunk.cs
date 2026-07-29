@@ -5,25 +5,11 @@ using SlimeJumping.Settings;
 namespace SlimeJumping.Effects
 {
     /// <summary>
-    /// The severed piece of a sliced slime — the slime's OWN round blob mesh, spawned small,
-    /// and a REAL pickup (Zac-style). Lifecycle:
-    ///   1. FLYING: at spawn it is SQUASHED to a thin sliver along the cut normal, with the
-    ///      cut face showing as a wet cross-section that heals shut via the SAME meniscus
-    ///      membrane the body uses (one shader language for both halves of the cut). It
-    ///      surface-tensions into a round droplet while flying under the slime's gravity,
-    ///      wobbling like viscous goo.
-    ///   2. RESTING: on landing it stays — breathing softly (idle wobble) for as long as it
-    ///      takes the player to come back for it.
-    ///   3. ATTRACTING: once the slime is inside absorbPullRadius the piece is pulled in like
-    ///      goo to a magnet (gravity off, velocity-stretch elongates it toward the body).
-    ///   4. ABSORBED: touching the slime hands its volume to SlimeSplitSequence
-    ///      (NotifyChunkAbsorbed → merge bulge + size restore) and the piece despawns.
-    ///   Lost instead (continuous falling > severedMaxAirTime, i.e. a pit): NotifyChunkLost
-    ///   converts the volume to the slow ambient regen — never a soft-lock.
-    /// Never collides with the player: the collider excludes the slime's layer at the engine
-    /// level (set by the spawner), and the surface probe can't see the slime's own layer.
-    /// Shader pushes go through a per-renderer MaterialPropertyBlock (never mutates the
-    /// shared material → no regression on the live slime).
+    /// Severed slime piece, a real pickup: Flying → Resting → Attracting → absorbed
+    /// (SlimeSplitSequence.NotifyChunkAbsorbed). Continuous fall > severedMaxAirTime = pit →
+    /// NotifyChunkLost converts the volume to ambient regen, never a soft-lock.
+    /// The collider excludes the slime's layer (spawner-set) so it never blocks the player;
+    /// shader pushes go through a per-renderer MPB, never the shared material.
     /// </summary>
     [RequireComponent(typeof(Rigidbody2D))]
     public class SlimeChunk : MonoBehaviour
@@ -54,9 +40,8 @@ namespace SlimeJumping.Effects
         private bool resolved;             // notified absorbed/lost — guards double-counting
         private float roundUpGate;         // 0 = sliver, 1 = round droplet — gates shader stretch
 
-        // Cut-face meniscus (mesh OS): the face the piece was cut along looks back toward the
-        // body = local -Y (Init aligns local +Y with the fling direction). Same spring
-        // language as the body wound.
+        // Cut-face meniscus (mesh OS): the cut face looks back at the body = local -Y
+        // (Init aligns local +Y with the fling direction).
         private float faceW;
         private float faceWVel;
         private bool faceDone;
@@ -92,8 +77,7 @@ namespace SlimeJumping.Effects
             if (rb == null) rb = GetComponent<Rigidbody2D>();
         }
 
-        /// <param name="severDir">The cut-plane normal (world). The droplet is flattened along
-        /// this at spawn — the thin axis of the wedge it came from.</param>
+        /// <param name="severDir">Cut-plane normal (world); the droplet spawns flattened along it.</param>
         public void Init(SlimeSplitSettings settings, SlimeSplitSequence seq, SlimeController slimeRef,
                          Vector2 inheritVel, Vector2 severDir, Vector2 gravityVec, float volume)
         {
@@ -115,9 +99,8 @@ namespace SlimeJumping.Effects
             baseMeshLocalPos = meshTf.localPosition;
             mpb = new MaterialPropertyBlock();
 
-            // Orient the mesh so its local Y aligns with the cut normal — the round-up then
-            // flattens along Y (= the wedge's thin axis) and the cut face sits on local -Y.
-            // The blob is symmetric, so this rotation is invisible.
+            // Local Y aligned with the cut normal: round-up flattens along Y and the cut face
+            // sits on local -Y. The blob is symmetric, so the rotation is invisible.
             Vector2 dir = severDir.sqrMagnitude > 1e-4f ? severDir.normalized : Vector2.up;
             meshTf.localRotation = Quaternion.FromToRotation(Vector3.up, new Vector3(dir.x, dir.y, 0f));
 
@@ -138,8 +121,7 @@ namespace SlimeJumping.Effects
             InitCutFace();
         }
 
-        // Cut-face membrane geometry in mesh OS, along n = (0,-1,0). Static for the piece's
-        // lifetime; only the spring (faceW) animates.
+        // Cut-face membrane geometry in mesh OS along n = (0,-1,0); only the spring (faceW) animates.
         private void InitCutFace()
         {
             var mf = GetComponentInChildren<MeshFilter>();
@@ -188,7 +170,7 @@ namespace SlimeJumping.Effects
                 return;   // no gravity, no pit timer while being reeled in
             }
 
-            rb.linearVelocity += gravity * dt;   // slime's own gravity
+            rb.linearVelocity += gravity * dt;
 
             // Resting → falling again (the platform under it crumbled/moved away): ground
             // contact cancels the gravity step each frame, so sustained fall speed = airborne.
@@ -232,11 +214,8 @@ namespace SlimeJumping.Effects
             jigglePhase += dt * s.jiggleFrequency * 2f * Mathf.PI;
             float j = Mathf.Sin(jigglePhase) * s.jiggleAmplitude * jiggleEnv;
 
-            // Surface-tension un-squash: flat sliver (along local Y = cut normal) → round
-            // ball. NOT fully volume-preserving: true preservation expands the perpendicular
-            // axes by 1/√flatY (×2.9 at flatten 0.12) — a long thin blade, reads as the piece
-            // smearing into a streak at spawn. The piece was a patch of the body's surface,
-            // so its width is clamped near the droplet's own (piecePerpExpandMax).
+            // Sliver → round ball. NOT volume-preserving: true preservation expands the perp axes
+            // by 1/√flatY (×2.9 at flatten 0.12) and reads as a streak, so clamped to piecePerpExpandMax.
             float rt = Mathf.Clamp01((airTime - s.pieceSharpBeat) / Mathf.Max(0.001f, s.pieceRoundUpDuration));
             float rc = (s.pieceRoundUpCurve != null && s.pieceRoundUpCurve.length > 1)
                 ? s.pieceRoundUpCurve.Evaluate(rt) : rt;
@@ -244,7 +223,6 @@ namespace SlimeJumping.Effects
             float perp = Mathf.Min(1f / Mathf.Sqrt(Mathf.Max(0.01f, flatY)), s.piecePerpExpandMax);
             roundUpGate = rc;
 
-            // Idle breathing while waiting on the ground — alive, not parked.
             float bx = 0f;
             if (state == ChunkState.Resting)
             {
@@ -262,8 +240,7 @@ namespace SlimeJumping.Effects
             PushVelocityStretch();
         }
 
-        // The cut face heals shut with the same meniscus spring as the body wound: the
-        // membrane target follows the round-up curve, the spring adds welling overshoot.
+        // The cut face heals shut with the same meniscus spring as the body wound.
         private void UpdateCutFace(float dt, float roundUpProgress)
         {
             if (faceDone || meshRenderer == null) return;
@@ -285,7 +262,7 @@ namespace SlimeJumping.Effects
                 planeScratch[0] = new Vector4(0f, -1f, 0f, faceOff);
                 meniscusScratch[0] = new Vector4(faceW * faceCapH * 1.06f, faceRho2, 0f, 0f);
                 sealScratch[0] = Mathf.Clamp01(faceW);
-                healScratch[0] = 0f;   // fresh-goo glow band removed
+                healScratch[0] = 0f;
                 mpb.SetFloat(SliceCountID, 1f);
                 mpb.SetVectorArray(SlicePlaneOSID, planeScratch);
                 mpb.SetFloatArray(SliceSealID, sealScratch);
@@ -335,13 +312,9 @@ namespace SlimeJumping.Effects
             float speedNorm = Mathf.Clamp01(speed / Mathf.Max(0.01f, s.wobbleSpeedRef));
             Vector2 dir = speed > 0.01f ? v / speed : Vector2.zero;
 
-            // Gated by the round-up: the spawn-frame sliver is already extreme (flatten ×
-            // perp expansion + high inherited speed) — letting the shader stretch pile on
-            // top read as the piece smearing into a long streak. Stretch grows in as the
-            // droplet forms, full once round.
+            // Gated by the round-up: shader stretch on top of the spawn-frame sliver reads as a
+            // long smear, so it grows in as the droplet forms.
             float stretch = speedNorm * s.velocityStretchScale * roundUpGate;
-            // Reeling in: extra elongation toward the body — viscous goo being drawn, not a
-            // rigid pellet flying.
             if (state == ChunkState.Attracting)
                 stretch += speedNorm * s.absorbStretchBoost;
 

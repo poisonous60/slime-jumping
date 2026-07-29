@@ -7,11 +7,7 @@ using SlimeJumping.Settings;
 
 namespace SlimeJumping.Editor
 {
-    /// One-click test scene for the BambooOnThinIce coupling: bamboo stalks standing
-    /// on thin ice tiles. Jump on a stalk repeatedly → the ice under it cracks per
-    /// landing and shatters on the Nth → the stalk topples as a physics corpse.
-    /// Leave the respawn zone → ice regenerates and the stalk stands back up.
-    /// Deleting BambooOnThinIce.cs + this file removes the feature entirely.
+    /// One-click test scene for the BambooOnThinIce coupling: bamboo stalks standing on thin ice tiles.
     public static class BambooOnThinIceTestSetup
     {
         const string RootName = "BambooOnThinIceTest";
@@ -53,11 +49,8 @@ namespace SlimeJumping.Editor
             var existing = GameObject.Find(RootName);
             if (existing != null) Object.DestroyImmediate(existing);
 
-            // The stock BambooV3 / ThinIceV2 test roots occupy the SAME coordinates
-            // (floor y=-4, walls ±13, ice tiles along y=0). Leaving them in place puts
-            // stock ice tiles and stalks exactly on top of the combos — landings hit
-            // the wrong ice, probes flip between overlapping stalks, and two respawn
-            // zones fight. They are menu-recreatable test artifacts, so clear them.
+            // The stock BambooV3 / ThinIceV2 test roots occupy the SAME coordinates — leaving them
+            // means landings hit the wrong ice, probes flip between stalks, two respawn zones fight.
             foreach (var staleName in new[] { "BambooPlatformV3Test", "ThinIcePlatformV2Test" })
             {
                 var stale = GameObject.Find(staleName);
@@ -107,8 +100,7 @@ namespace SlimeJumping.Editor
                 icePos: new Vector3(0.5f, 0f, 0f), tiltZ: -30f, length: 6f, segments: 14,
                 settings, surface, linkConfig);
 
-            // In-zone: third variant. All combos are zone members — a stalk that never
-            // comes back reads as a bug, not a feature.
+            // In-zone: third variant. All combos are zone members.
             CreateCombo(zoneGo.transform, "Combo_Tilt20",
                 icePos: new Vector3(8.5f, 0f, 0f), tiltZ: -20f, length: 5f, segments: 12,
                 settings, surface, linkConfig);
@@ -131,8 +123,6 @@ namespace SlimeJumping.Editor
                 "\n" +
                 "Knob: jumpsToShatter lives on BambooOnThinIceConfig (shared asset).");
         }
-
-        // ------------------------------------------------------------------------
 
         static void CreateCombo(Transform parent, string name, Vector3 icePos, float tiltZ,
                                 float length, int segments,
@@ -157,9 +147,7 @@ namespace SlimeJumping.Editor
             var so = new SerializedObject(link);
             so.FindProperty("bamboo").objectReferenceValue = bambooGo.GetComponent<BambooPlatformV3>();
             so.FindProperty("ice").objectReferenceValue = iceGo.GetComponent<ThinIcePlatformV2>();
-            // Wire the canonical config into the visible slot — Resolve() would find it
-            // via Resources anyway, but an empty Inspector field hides where the fall
-            // tuning lives. Same asset either way.
+            // Wire the canonical config into the visible slot — Resolve() finds it via Resources anyway.
             so.FindProperty("configOverride").objectReferenceValue = linkConfig;
             so.ApplyModifiedProperties();
         }

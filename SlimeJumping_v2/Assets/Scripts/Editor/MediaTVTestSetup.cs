@@ -43,7 +43,6 @@ namespace SlimeJumping.Editor
             go.transform.position = hostPos;
             go.layer = InteractableLayer;
 
-            // TV body cube
             var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
             body.name = "Body";
             Object.DestroyImmediate(body.GetComponent<BoxCollider>());
@@ -52,7 +51,6 @@ namespace SlimeJumping.Editor
             body.transform.localScale = new Vector3(1.4f, 1f, 0.5f);
             body.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.15f, 0.15f, 0.15f));
 
-            // Screen quad (front face), its own renderer — this is the swap target
             var screen = GameObject.CreatePrimitive(PrimitiveType.Quad);
             screen.name = "Screen";
             Object.DestroyImmediate(screen.GetComponent<MeshCollider>());
@@ -63,17 +61,14 @@ namespace SlimeJumping.Editor
             screen.GetComponent<MeshRenderer>().sharedMaterial = offMat;
             var onMat = MakeMaterialEmissive(new Color(0.3f, 0.8f, 1f));
 
-            // Trigger
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size = new Vector2(1.6f, 1.2f);
 
-            // Audio
             var audio = go.AddComponent<AudioSource>();
             audio.spatialBlend = 1f;
             audio.playOnAwake = false;
 
-            // Component
             var tv = go.AddComponent<MediaInteractable_TV>();
             var so = new SerializedObject(tv);
             so.FindProperty("audioSource").objectReferenceValue = audio;

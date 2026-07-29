@@ -1,7 +1,5 @@
-// Editor-only one-shot utility: creates MainMixer.mixer + SoundSettings.asset + SoundService prefab
-// at fixed paths, and adds the service instance to MainScene. Idempotent.
-//
-// Usage: invoke `SlimeJumping.EditorTools.AudioMixerBootstrap.BuildAll()` via unity-cli exec.
+// Editor-only idempotent bootstrap: MainMixer + SoundSettings + SoundService prefab at fixed paths, instance into MainScene.
+// Usage: `SlimeJumping.EditorTools.AudioMixerBootstrap.BuildAll()` via unity-cli exec.
 
 using System.Reflection;
 using UnityEditor;
@@ -84,7 +82,6 @@ namespace SlimeJumping.EditorTools
                 controller = existing; // AudioMixerController inherits AudioMixer
             }
 
-            // Children of master: BGM, SFX, UI. Children of SFX: Slime, Environment, Object.
             var masterGroupProp = controllerType.GetProperty("masterGroup");
             var masterCtrl = masterGroupProp.GetValue(controller);
 
@@ -121,8 +118,7 @@ namespace SlimeJumping.EditorTools
             var sfxEnvCtrl = getOrCreate("SFX_Environment", sfxCtrl);
             var sfxObjCtrl = getOrCreate("SFX_Object", sfxCtrl);
 
-            // Expose volume parameters with fixed names. Rebuild the exposedParameters array so
-            // re-running the bootstrap produces the same 4 entries instead of accumulating dupes.
+            // Rebuild the whole exposedParameters array — appending accumulates dupes on re-run.
             var getGuid = groupControllerType.GetMethod("GetGUIDForVolume");
             var pathCtor = pathType.GetConstructor(new[] { groupControllerType, editorAsm.GetType("UnityEditor.GUID") });
             var nameField = exposedType.GetField("name");

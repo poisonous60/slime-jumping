@@ -22,19 +22,16 @@ namespace SlimeJumping.Editor
                 new Vector3(baseX, baseY - 0.5f, 0f),
                 new Vector3(24f, 1f, 1f));
 
-            // CW blade (positive RPM) — tangent goes CCW in screen space
             CreateSawBlade("Saw_CW", root.transform,
                 hostPos: new Vector3(baseX + 2f, baseY + 1.5f, 0f),
                 rotationRPM: 600f,
                 tangentWeight: 0.5f);
 
-            // CCW blade (negative RPM) — opposite fling direction
             CreateSawBlade("Saw_CCW", root.transform,
                 hostPos: new Vector3(baseX - 3f, baseY + 1.5f, 0f),
                 rotationRPM: -600f,
                 tangentWeight: 0.5f);
 
-            // Pure tangent blade
             CreateSawBlade("Saw_PureTangent", root.transform,
                 hostPos: new Vector3(baseX + 6f, baseY + 1.5f, 0f),
                 rotationRPM: 600f,
@@ -54,17 +51,15 @@ namespace SlimeJumping.Editor
         static GameObject CreateSawBlade(string name, Transform parent,
             Vector3 hostPos, float rotationRPM, float tangentWeight)
         {
-            // Root — carries SawBladeHazard + trigger (OnTriggerEnter2D only fires on same-GO MonoBehaviours).
+            // Hazard + trigger must share one GO: OnTriggerEnter2D only fires on same-GO MonoBehaviours.
             var go = new GameObject(name);
             go.transform.parent = parent;
             go.transform.position = hostPos;
 
-            // Trigger on root
             var trigger = go.AddComponent<CircleCollider2D>();
             trigger.isTrigger = true;
             trigger.radius = 0.6f;
 
-            // Blade visual (rotating child, no collider)
             var bladeGo = new GameObject("Blade");
             bladeGo.transform.parent = go.transform;
             bladeGo.transform.localPosition = Vector3.zero;
@@ -77,7 +72,6 @@ namespace SlimeJumping.Editor
             bladeVisual.transform.localScale = new Vector3(1.2f, 0.05f, 1.2f);
             bladeVisual.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.8f, 0.8f, 0.9f));
 
-            // Tooth markers (so rotation is visually obvious)
             for (int i = 0; i < 4; i++)
             {
                 var tooth = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -91,7 +85,6 @@ namespace SlimeJumping.Editor
                 tooth.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.95f, 0.3f, 0.3f));
             }
 
-            // Component on root (trigger already added above)
             var saw = go.AddComponent<SawBladeHazard>();
             var so = new SerializedObject(saw);
             so.FindProperty("bladeTransform").objectReferenceValue = bladeGo.transform;

@@ -5,10 +5,8 @@ using UnityEngine.UI;
 
 namespace SlimeJumping.UI.Animation
 {
-    /// Iterates the immediate children of this RectTransform, sets each one
-    /// transparent + offset, then fades them back in with an increasing
-    /// per-child delay. Visibility is never toggled — only alpha and position
-    /// — so the parent VerticalLayoutGroup doesn't reflow mid-animation.
+    /// Fades immediate children back in with an increasing per-child delay. Only alpha and
+    /// position change — toggling visibility would make the layout group reflow mid-animation.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(RectTransform))]
     public class UIContainerStagger : MonoBehaviour
@@ -65,10 +63,8 @@ namespace SlimeJumping.UI.Animation
                 switch (effect)
                 {
                     case StaggerEffect.SlideUp:
-                        // anchoredPosition tween fights VLG. Wrap a snapshot of
-                        // localPosition.y instead so the offset is applied on
-                        // top of whatever the layout assigned and snaps clean
-                        // when the tween completes.
+                        // Offset rides on top of a snapshot of the layout-assigned position,
+                        // else the tween fights the layout group and never lands clean.
                         Vector2 originalPos = child.anchoredPosition;
                         child.anchoredPosition = originalPos + profile.staggerSlideOffset;
                         seq = Sequence.Create()
@@ -93,10 +89,8 @@ namespace SlimeJumping.UI.Animation
             }
         }
 
-        /// Force every immediate child back to its baseline visual state before
-        /// the stagger starts. Without this, a previous tween that was canceled
-        /// mid-flight (e.g. panel closed before children finished fading in)
-        /// leaves CanvasGroup.alpha at 0 forever.
+        /// Resets children to baseline before the stagger; a tween canceled mid-flight
+        /// (panel closed while fading in) otherwise leaves CanvasGroup.alpha at 0 forever.
         private static void ResetAllChildren(RectTransform parent)
         {
             int childCount = parent.childCount;

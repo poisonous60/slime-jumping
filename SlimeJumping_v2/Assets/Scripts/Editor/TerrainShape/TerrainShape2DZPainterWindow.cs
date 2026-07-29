@@ -35,8 +35,7 @@ namespace SlimeJumping.TerrainShape.Editor
             NotifyExternalDataChanged(src);
         }
 
-        // Mark any open Z-Painter window's preview as stale so external loaders / generators
-        // don't leave the canvas showing stale colors.
+        // Any external writer to heightmapData must call this, else the open canvas keeps showing stale colors.
         public static void NotifyExternalDataChanged(TerrainShape2D src)
         {
             var windows = Resources.FindObjectsOfTypeAll<TerrainShape2DZPainterWindow>();

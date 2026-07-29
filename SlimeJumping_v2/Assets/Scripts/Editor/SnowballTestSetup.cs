@@ -26,51 +26,44 @@ namespace SlimeJumping.Editor
             var root = new GameObject(TestRootName);
             Undo.RegisterCreatedObjectUndo(root, "Create Snowball Test");
 
-            // 평지 (긴 발판) — Rolling 시작
             CreatePlatform("FlatGround",  root.transform,
                 new Vector3(0f, -0.5f, 0f),
                 new Vector3(20f, 1f, 1f));
 
-            // 오른쪽으로 굴러간 후 만나게 될 +30° 슬로프 (절대각이라 굴러갈 수 있어야 함)
+            // +30° — 굴러 올라갈 수 있어야 하는 각
             CreatePlatform("Slope_30",    root.transform,
                 new Vector3(11.5f, 0.5f, 0f),
                 new Vector3(4f, 1f, 1f),
                 rotationDeg: 30f);
 
-            // 그 위에 +60° 가파른 면 — 여기서 부서짐
+            // +60° — 앞 슬로프 대비 각도 급변 → 부서짐
             CreatePlatform("Slope_Break", root.transform,
                 new Vector3(14f, 1.6f, 0f),
                 new Vector3(2f, 1f, 1f),
                 rotationDeg: 60f);
 
-            // 절벽 너머 아랫단 — Falling 후 착지
             CreatePlatform("LowerLanding", root.transform,
                 new Vector3(-12f, -3f, 0f),
                 new Vector3(8f, 1f, 1f));
 
-            // 벽 — Flying snowball 이 부딪힐
             CreatePlatform("Wall_FlyTarget", root.transform,
                 new Vector3(-8f, 4f, 0f),
                 new Vector3(1f, 4f, 1f));
 
-            // Rolling snowball — 평지 시작점, 오른쪽으로 굴러감
             CreateSnowball("Snowball_Rolling", root.transform,
                 pos: new Vector3(-3f, 0.5f, 0f),
                 mode: Snowball.Mode.Rolling,
                 direction: 1,
                 flyDir: Vector2.left);
 
-            // Flying snowball — 오른쪽 위에서 왼쪽 아래로 비스듬히 날아감
             CreateSnowball("Snowball_Flying", root.transform,
                 pos: new Vector3(6f, 5f, 0f),
                 mode: Snowball.Mode.Flying,
                 direction: 1,
                 flyDir: new Vector2(-1f, -0.2f));
 
-            // Spawner 용 Rolling prefab 을 매 invocation 마다 재빌드 (CreateSnowball 의 현재 config 반영)
             var rollingPrefab = RebuildSnowballPrefab(RollingPrefabPath, Snowball.Mode.Rolling, 1, Vector2.left);
 
-            // Spawner — 좌측 상단에서 일정 간격으로 Rolling 눈덩이 뱉음
             CreateSpawner("Spawner_LeftRolling", root.transform,
                 pos: new Vector3(-9f, 0.5f, 0f),
                 initialAngleDegrees: 0f,
@@ -128,8 +121,6 @@ namespace SlimeJumping.Editor
             visualGo.transform.localPosition = Vector3.zero;
             visualGo.transform.localScale = Vector3.one * 1f;  // sphere = diameter 1 = radius 0.5
 
-            // Snowball.mat (Snowball_Quibli.shader) 가 있으면 SnowballMaterialBinder 로 wire,
-            // 없으면 fallback URP/Lit 머티리얼.
             var snowballMat = AssetDatabase.LoadAssetAtPath<Material>(SnowballMaterialPath);
             if (snowballMat != null)
             {
@@ -212,8 +203,7 @@ namespace SlimeJumping.Editor
             return go;
         }
 
-        // Snowball prefab 을 빌드해 자산으로 저장. 매 invocation 마다 재빌드 — CreateSnowball 의
-        // 현재 config 와 prefab 자산이 자동 동기화됨. 임시 GO 는 즉시 destroy.
+        // 매 invocation 재빌드 — CreateSnowball 의 현재 config 와 prefab 자산을 동기화.
         static Snowball RebuildSnowballPrefab(string assetPath, Snowball.Mode mode, int direction, Vector2 flyDir)
         {
             if (!Directory.Exists(PrefabDir)) Directory.CreateDirectory(PrefabDir);

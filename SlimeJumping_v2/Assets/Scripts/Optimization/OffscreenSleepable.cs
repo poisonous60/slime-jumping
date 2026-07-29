@@ -3,18 +3,11 @@ using UnityEngine;
 namespace SlimeJumping.Optimization
 {
     /// <summary>
-    /// Marker component attached to platforms/mechanisms that can be safely deactivated when
-    /// off-screen. <see cref="OffscreenSleeperManager"/> drives the toggle; this component
-    /// owns the bounds caching and the GameObject SetActive call.
-    ///
-    /// Place on the same GameObject as the candidate component (TautLine, WaterZone_v2, etc.)
-    /// or the prefab root that contains it. Bounds are computed from a Renderer ∪ Collider2D
-    /// union — using both because some candidates (TautLine) have a thin LineRenderer but a
-    /// wider PolygonCollider2D, so renderer-only bounds underestimate the interactable area.
-    ///
-    /// Bounds caching rule: while sleeping, the cached bounds are *frozen*. We never recache
-    /// from a deactivated Renderer (its bounds may be zero/stale) and `transform.hasChanged`
-    /// won't fire on inactive transforms anyway.
+    /// Marker for objects <see cref="OffscreenSleeperManager"/> may deactivate off-screen;
+    /// owns bounds caching + the SetActive call. Bounds = Renderer ∪ Collider2D, because
+    /// candidates like TautLine have a thin LineRenderer but a much wider PolygonCollider2D.
+    /// While sleeping the cached bounds are frozen: a deactivated Renderer reports zero/stale
+    /// bounds and transform.hasChanged never fires on an inactive transform.
     /// </summary>
     public class OffscreenSleepable : MonoBehaviour
     {
@@ -43,36 +36,28 @@ namespace SlimeJumping.Optimization
         public float MarginMultiplierOverride => marginMultiplierOverride;
         public bool IsSleeping => isSleeping;
 
-        // Bounds caching is deferred to the first GetActiveWorldBounds() call (not Awake).
-        // Some candidate components (SnowField, TautLine, ClothField...) generate child
-        // renderers/colliders in their OWN Awake — if our Awake reads bounds before theirs
-        // runs, we'd cache an empty 1m cube at the parent transform and the manager would
-        // promptly deactivate the GameObject. Lazy + per-call re-fetch sidesteps the
-        // Awake order race entirely.
+        // Bounds caching is lazy, never in Awake: candidates (SnowField, TautLine, ClothField)
+        // build their child renderers in their OWN Awake, so caching early yields an empty
+        // 1m cube and the manager immediately deactivates the object.
 
         void OnEnable()
         {
-            // Idempotent — Register is no-op if already in list. Needed for first-time
-            // registration AND for a wake from sleep (SetActive(true) re-fires OnEnable, but
-            // we never Unregistered so the entry's still there → contains check skips the add).
+            // Also fires on wake from sleep; Register is a no-op when already listed.
             if (OffscreenSleeperManager.Instance != null)
                 OffscreenSleeperManager.Instance.Register(this);
         }
 
         void OnDestroy()
         {
-            // Critical: Unregister on Destroy, NOT on OnDisable. SetSleeping(true) calls
-            // gameObject.SetActive(false) which fires OnDisable — if we Unregistered there,
-            // the marker would vanish from the manager's list and the GameObject could
-            // never be reactivated (manager has no reference left). Persisting through
-            // sleep cycles is the whole point of this design.
+            // Unregister here, never in OnDisable: sleeping calls SetActive(false), and dropping
+            // the entry there would leave the manager with no reference to ever wake it again.
             if (OffscreenSleeperManager.Instance != null)
                 OffscreenSleeperManager.Instance.Unregister(this);
         }
 
         public Bounds GetActiveWorldBounds()
         {
-            // Sleeping = bounds frozen at last active recache.
+            // Frozen at the last active recache.
             if (isSleeping) return cachedActiveBounds;
 
             if (!boundsValid || transform.hasChanged)
@@ -81,10 +66,8 @@ namespace SlimeJumping.Optimization
                 transform.hasChanged = false;
             }
 
-            // No renderer/collider visible yet — candidate's Awake/Start may create children
-            // later. Return huge bounds so manager treats as always-near and keeps the
-            // GameObject active until next-frame retry. Avoids spurious deactivation during
-            // the Awake-order race.
+            // Children may not exist yet: huge bounds read as always-near, so the object survives
+            // the Awake-order race until a later frame recaches for real.
             if (!boundsValid)
                 return new Bounds(transform.position, new Vector3(1e9f, 1e9f, 1e9f));
 
@@ -100,9 +83,6 @@ namespace SlimeJumping.Optimization
                 return;
             }
 
-            // Re-fetch each invalidation (not cached in Awake) — candidate components like
-            // SnowField generate child renderers in their OWN Awake/Start. If we cached in
-            // our Awake we'd miss those. Cost: O(child count) per first-FU per sleeper, fine.
             var renderers = GetComponentsInChildren<Renderer>(true);
             var colliders = GetComponentsInChildren<Collider2D>(true);
 
@@ -131,8 +111,7 @@ namespace SlimeJumping.Optimization
             }
             else
             {
-                // Leave invalid → GetActiveWorldBounds returns huge bounds (always-near).
-                // Next frame retry catches up if children appear later.
+                // Leave invalid → GetActiveWorldBounds returns huge bounds (always-near) and retries.
                 boundsValid = false;
             }
         }
@@ -141,8 +120,7 @@ namespace SlimeJumping.Optimization
         {
             if (isSleeping == sleep) return;
 
-            // Lock down the last-active bounds before flipping inactive — this is what the
-            // manager will read while we're asleep.
+            // Last chance to recache: after SetActive(false) the renderers report nothing.
             if (sleep) RecacheBounds();
 
             isSleeping = sleep;

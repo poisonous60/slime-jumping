@@ -3,18 +3,7 @@ using SlimeJumping.Platforms.ThinIceV2;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Tuning preset for <see cref="IcicleHazardV2"/>. Mirrors the v1 preset for the
-    /// shared sections (detection / shake / respawn / audio) and adds:
-    ///   - <c>fallSpeedCurve</c>: AnimationCurve replacing v1's constant fallSpeed.
-    ///     Authored in seconds → units/sec; held flat at the last keyframe value.
-    ///   - Shatter block: ThinIce shard library + spawn parameters + frost cloud
-    ///     VFX + shatter sounds + optional emissive flash and camera shake.
-    ///
-    /// Excluded by design (same rule as v1):
-    ///   - Visual asset refs (mesh / material) — vary per icicle instance.
-    ///   - Scene refs (visualRoot, mesh/renderer, solidCollider, ImpulseEmitter).
-    /// </summary>
+    /// <summary>Tuning preset for <see cref="IcicleHazardV2"/>. Excludes visual asset refs and scene refs — those are per-instance.</summary>
     [CreateAssetMenu(fileName = "IcicleHazardV2Preset",
         menuName = "SlimeJumping/Icicle/Hazard V2 Preset", order = 1)]
     public class IcicleHazardV2Preset : ScriptableObject

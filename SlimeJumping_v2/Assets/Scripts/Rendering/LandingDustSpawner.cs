@@ -3,11 +3,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Rendering
 {
-    /// <summary>
-    /// Spawns landing dust VFX when slime lands on a surface.
-    /// The dust prefab should emit along local up — this spawner handles
-    /// world rotation via Quaternion.FromToRotation(Vector3.up, surfaceNormal).
-    /// </summary>
+    /// <summary>Spawns landing dust; the prefab must emit along local up, this spawner supplies the surface-normal rotation.</summary>
     public class LandingDustSpawner : MonoBehaviour
     {
         [SerializeField] private SlimeController slimeController;
@@ -42,9 +38,8 @@ namespace SlimeJumping.Rendering
             cooldownTimer = cooldown;
             Quaternion rotation = Quaternion.FromToRotation(Vector3.up, (Vector3)surfaceNormal);
             var go = Instantiate(dustPrefab, (Vector3)position, rotation);
-            // playOnAwake must be OFF on the prefab. Calling Play() explicitly after
-            // Instantiate avoids the one-frame flash where burst fires in Awake()
-            // before the render frame reconciles the position (FixedUpdate timing issue).
+            // playOnAwake must be OFF on the prefab: an Awake() burst fires before the render
+            // frame reconciles position, giving a one-frame flash at the wrong spot.
             var ps = go.GetComponent<ParticleSystem>();
             if (ps != null) ps.Play();
         }

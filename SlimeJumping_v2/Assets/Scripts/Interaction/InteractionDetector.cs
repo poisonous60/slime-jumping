@@ -6,24 +6,18 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Interaction
 {
-    /// <summary>
-    /// Trigger-based interactable detector attached to a child GameObject of Slime.
-    /// The child must have its own Kinematic Rigidbody2D + trigger CircleCollider2D
-    /// to isolate trigger events from the parent's Rigidbody2D.
-    /// </summary>
+    /// <summary>Interactable detector on a Slime child; the child needs its own Kinematic Rigidbody2D + trigger collider to isolate trigger events from the parent body.</summary>
     public class InteractionDetector : MonoBehaviour
     {
         [SerializeField] private SlimeController slime;
         [SerializeField] private float detectionRadius = 1.5f;
 
-        // NOTE: Trigger-based candidate set. Slime teleport/override can cause stale
-        // entries because Unity doesn't fire OnTriggerExit2D after rb.position changes.
-        // ClearCandidates() is called from SlimeController.TeleportTo/SetOverride to fix this.
+        // Unity fires no OnTriggerExit2D after an rb.position jump, so teleport/override leaves
+        // stale entries; SlimeController.TeleportTo/SetOverride call ClearCandidates().
         private readonly HashSet<IInteractable> candidates = new HashSet<IInteractable>();
         private IInteractable currentTarget;
 
-        // Narrow-phase: slime's own body collider must actually overlap the interactable.
-        // Detector's large trigger is only a broad-phase wake-up.
+        // Narrow phase: the detector's large trigger is broad-phase only, the body must really overlap.
         private CircleCollider2D slimeBody;
 
         public bool HasInteractable => currentTarget != null;
@@ -48,9 +42,8 @@ namespace SlimeJumping.Interaction
             SetCurrentTarget(null);
         }
 
-        // Repopulate candidates from current overlaps. Unity doesn't fire OnTriggerEnter2D
-        // for colliders that are already overlapping when we re-enable detection
-        // (e.g. after ReleaseOverride from SitPose while still inside the bench's trigger).
+        // Unity fires no OnTriggerEnter2D for colliders already overlapping when detection re-enables
+        // (e.g. ReleaseOverride from SitPose while still inside the bench trigger), so rescan by hand.
         public void Rescan()
         {
             candidates.Clear();
@@ -96,7 +89,6 @@ namespace SlimeJumping.Interaction
                     float bestDistSq = float.MaxValue;
                     Vector2 slimePos = slime.Position;
 
-                    // Remove destroyed objects and find best candidate
                     candidates.RemoveWhere(c => (c as UnityEngine.Object) == null);
 
                     foreach (var candidate in candidates)
@@ -106,7 +98,6 @@ namespace SlimeJumping.Interaction
                         var mb = candidate as MonoBehaviour;
                         if (mb == null) continue;
 
-                        // Narrow-phase: require slime body to actually touch one of the candidate's colliders.
                         if (!IsSlimeTouching(mb)) continue;
 
                         float distSq = ((Vector2)mb.transform.position - slimePos).sqrMagnitude;

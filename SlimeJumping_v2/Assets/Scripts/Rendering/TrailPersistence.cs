@@ -8,17 +8,14 @@ using UnityEngine.Rendering;
 
 namespace SlimeJumping.Rendering
 {
-    /// Orchestrates real-time save/load for every registered ITrailTarget.
-    /// Single-flight AsyncGPUReadback + worker-thread atomic file write, so the
-    /// main thread never stalls during gameplay. See docs-md-peaceful-breeze.md
-    /// "Persistence" section.
+    /// <summary>Save/load for registered ITrailTargets: single-flight AsyncGPUReadback + worker-thread atomic write.</summary>
     public class TrailPersistence
     {
         public const int SaveVersion = 1;
         public const string Format = "R8";
 
         private readonly float autoSaveInterval;
-        private readonly string root;             // Application.persistentDataPath + "/trail"
+        private readonly string root;
         private readonly List<ITrailTarget> targets = new List<ITrailTarget>();
         private readonly Dictionary<ITrailTarget, byte[]> readbackBuffers = new Dictionary<ITrailTarget, byte[]>();
 
@@ -61,7 +58,6 @@ namespace SlimeJumping.Rendering
                 int idx = (rrIndex + i) % targets.Count;
                 if (targets[idx].Dirty) { StartSave(targets[idx]); rrIndex = (idx + 1) % targets.Count; timer = 0f; return; }
             }
-            // Nothing dirty — reset the timer so we check again next interval.
             timer = 0f;
         }
 
@@ -151,7 +147,7 @@ namespace SlimeJumping.Rendering
             Graphics.Blit(tex, t.Rt);
             UnityEngine.Object.Destroy(tex);
 
-            t.MarkDirty();  // loaded content should replace whatever is on disk next auto-save
+            t.MarkDirty();  // loaded content must overwrite disk on next auto-save
             return true;
         }
 
@@ -196,8 +192,7 @@ namespace SlimeJumping.Rendering
             });
         }
 
-        /// Synchronously save a single target to its canonical path. Used for teardown flushes
-        /// where the named-slot snapshot API would silently write to the wrong location.
+        /// <summary>Save one target to its canonical path (the named-slot API writes elsewhere).</summary>
         public void SaveSync(ITrailTarget t)
         {
             if (cancelled || t == null) return;
@@ -217,11 +212,10 @@ namespace SlimeJumping.Rendering
         public void FlushSync()
         {
             if (cancelled) return;
-            // Drain any in-flight readbacks so their callbacks don't run post-shutdown on a torn-down state.
+            // Drain in-flight readbacks, else their callbacks run post-shutdown on torn-down state.
             AsyncGPUReadback.WaitAllRequests();
 
-            // The readback callback kicks off a worker-thread Task for the actual file write.
-            // Spin until it finishes so quit doesn't leave .tmp files lingering.
+            // The callback's worker Task does the write; spin so quit doesn't leave .tmp files.
             int guard = 500;
             while (saveInFlight && guard-- > 0) System.Threading.Thread.Sleep(10);
 
@@ -269,9 +263,8 @@ namespace SlimeJumping.Rendering
             File.WriteAllBytes(datTmp, bytes);
             File.WriteAllText (metaTmp, metaJson);
 
-            // Rename data first, then meta. If the process dies between them, the next load
-            // sees "data present, meta missing" and treats it as "start fresh" (safer than
-            // loading data with assumed defaults).
+            // Data before meta: a crash between them leaves "data, no meta" → next load starts
+            // fresh instead of reading data under assumed defaults.
             if (File.Exists(datFinal)) File.Delete(datFinal);
             File.Move(datTmp, datFinal);
             if (File.Exists(metaFinal)) File.Delete(metaFinal);
@@ -301,7 +294,6 @@ namespace SlimeJumping.Rendering
                 if (char.IsLetterOrDigit(c) || c == '_' || c == '-' || c == '.') buf.Append(c);
                 else buf.Append('_');
             }
-            // Keep path components bounded.
             const int maxLen = 120;
             if (buf.Length > maxLen) buf.Length = maxLen;
             return buf.ToString();

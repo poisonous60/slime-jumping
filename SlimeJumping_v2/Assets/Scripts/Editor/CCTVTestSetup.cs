@@ -22,8 +22,7 @@ namespace SlimeJumping.Editor
                 new Vector3(baseX, baseY - 0.5f, 0f),
                 new Vector3(30f, 1f, 1f));
 
-            // Two CCTV units with different initial Head rotations and different Z positions
-            // to verify that per-prefab initial pose + 3D offset is handled without manual tuning.
+            // Two units with different initial Head rotation and Z, to check pose + 3D offset handling.
             CreateCCTV("CCTV_Left", root.transform,
                 hostPos: new Vector3(baseX - 6f, baseY + 5f, 0f),
                 headEuler: new Vector3(0f, 0f, -30f),
@@ -46,7 +45,6 @@ namespace SlimeJumping.Editor
 
         static GameObject CreateCCTV(string name, Transform parent, Vector3 hostPos, Vector3 headEuler, float trackingRange)
         {
-            // Root (static mount position)
             var go = new GameObject(name);
             go.transform.parent = parent;
             go.transform.position = hostPos;

@@ -5,14 +5,9 @@ using UnityEngine.Rendering.Universal;
 
 namespace SlimeJumping.Rendering
 {
-    /// Draws the slime's "OccludedSilhouette" shader pass after all opaques have
-    /// written to the depth buffer. The pass itself uses ZTest Greater + alpha blend
-    /// to tint the slime's silhouette where it is hidden behind terrain.
-    ///
-    /// The pass must tag LightMode = "SlimeOccludedSilhouette" (unique, so URP's
-    /// default DrawObjectsPass ignores it). Current materials:
-    ///   Assets/Art/Shader/SlimeBody_Quibli.shader (active)
-    ///   Assets/Art/Shader/SlimeBody3D.shader      (fallback)
+    /// Draws the slime's "OccludedSilhouette" pass after opaques have filled depth, so ZTest
+    /// Greater tints the silhouette behind terrain. The shader pass must tag
+    /// LightMode = "SlimeOccludedSilhouette" — unique, else URP's DrawObjectsPass also draws it.
     public class SlimeOccludedSilhouetteFeature : ScriptableRendererFeature
     {
         [SerializeField] private LayerMask layerMask = -1;

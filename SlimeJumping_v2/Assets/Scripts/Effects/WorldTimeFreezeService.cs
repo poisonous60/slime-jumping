@@ -4,16 +4,10 @@ using UnityEngine;
 
 namespace SlimeJumping.Effects
 {
-    /// Selective world freeze. Unlike <see cref="HitStopService"/> this never touches
-    /// <c>Time.timeScale</c>; it only flips a flag and raises events. Cooperators
-    /// (mechanism scripts that should pause during the freeze) early-return on
-    /// <see cref="IsFrozen"/> in their Update; non-cooperators (slime, warp FX) keep
-    /// running. ParticleSystems opt in via <see cref="FreezableParticleSystem"/>.
-    ///
-    /// Overlapping <see cref="Freeze"/> calls extend to the latest end time. The
-    /// service bootstraps a hidden DontDestroyOnLoad runner on first call; flag and
-    /// events are reset on app quit and editor play-mode exit so a stuck freeze
-    /// cannot leak across sessions.
+    /// Selective world freeze: never touches <c>Time.timeScale</c>, only flips <see cref="IsFrozen"/>
+    /// and raises events — cooperators early-return on the flag, everything else keeps running.
+    /// Overlapping <see cref="Freeze"/> calls extend to the latest end time; static state is reset on
+    /// quit and play-mode exit so a stuck freeze cannot leak across sessions.
     public static class WorldTimeFreezeService
     {
         public static bool IsFrozen { get; private set; }

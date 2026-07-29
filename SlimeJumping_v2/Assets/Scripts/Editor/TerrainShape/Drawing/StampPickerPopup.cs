@@ -41,11 +41,8 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
 
         void OnGUI()
         {
-            // ── Keyboard ──
-            // Esc = close. Alpha1..9 = pick the N-th visible preset.
-            // Handle BEFORE the TextField so typing into search doesn't compete for digits.
-            // (Note: while a TextField is focused, Unity routes KeyDown to it first, so this
-            // intercept only fires when search field is not focused.)
+            // Alpha1..9 must be intercepted BEFORE the search TextField, else the digits go to it
+            // (Unity routes KeyDown to a focused TextField first).
             var ev = Event.current;
             if (ev.type == EventType.KeyDown)
             {

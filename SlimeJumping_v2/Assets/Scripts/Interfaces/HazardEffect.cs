@@ -19,10 +19,7 @@ namespace SlimeJumping.Interfaces
         /// <summary>Knockback magnitude (units/s). Applied in knockbackDirection.</summary>
         public float knockbackForce;
 
-        /// <summary>
-        /// World-space knockback direction. Zero = auto-compute
-        /// (defaults to gravityUp in ApplyHazardEffect).
-        /// </summary>
+        /// <summary>World-space knockback direction. Zero = gravityUp, resolved in ApplyHazardEffect.</summary>
         public Vector2 knockbackDirection;
 
         /// <summary>Duration of the Stunned state (seconds).</summary>

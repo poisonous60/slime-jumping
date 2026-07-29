@@ -3,11 +3,8 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Water zone: drag + buoyancy + fall speed cap.
-    /// Blocks attach by default (slime floats, doesn't stick to submerged surfaces).
-    /// Uses the two-channel velocity model: MultiplyVelocity (drag) + AddExternalVelocity (buoyancy).
-    /// </summary>
+    /// <summary>Drag + buoyancy + fall-speed cap; blocks attach so the slime floats instead of sticking.</summary>
+    /// Two-channel velocity model: MultiplyVelocity for drag, AddExternalVelocity for buoyancy.
     public class WaterZone : EnvironmentalZone
     {
         [Header("Entry/Exit")]
@@ -57,14 +54,11 @@ namespace SlimeJumping.Mechanisms
 
         protected override void ApplyEffect(SlimeController slime, float dt)
         {
-            // Drag (multiplicative channel)
             if (dragFactor < 1f)
                 slime.MultiplyVelocity(Mathf.Pow(dragFactor, dt));
 
-            // Buoyancy (additive channel, opposing gravity)
             slime.AddExternalVelocity(slime.GravityUp * buoyancy * dt);
 
-            // Fall speed cap
             if (maxFallSpeed > 0f)
                 slime.ClampFallSpeed(maxFallSpeed);
         }
@@ -85,7 +79,6 @@ namespace SlimeJumping.Mechanisms
                 Gizmos.matrix = old;
             }
 
-            // Water surface line
             Gizmos.color = new Color(0.3f, 0.6f, 1f, 0.5f);
             if (col is BoxCollider2D box2)
             {
@@ -116,7 +109,6 @@ namespace SlimeJumping.Mechanisms
                 Gizmos.matrix = old;
             }
 
-            // Buoyancy direction arrows
             Gizmos.color = new Color(0.4f, 0.8f, 1f, 0.4f);
             Vector3 center2 = transform.position;
             float len = Mathf.Clamp(buoyancy * 0.05f, 0.3f, 2f);

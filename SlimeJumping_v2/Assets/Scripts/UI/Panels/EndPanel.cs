@@ -6,8 +6,7 @@ using SlimeJumping.UI.Framework;
 
 namespace SlimeJumping.UI.Panels
 {
-    /// Replaces DemoEndController. Any-key-to-return after a short input delay
-    /// so the scene-reveal fade can finish before a stray keypress fires.
+    /// Any-key-to-return after a short input delay, so the scene-reveal fade finishes before a stray keypress fires.
     public class EndPanel : UIPanel
     {
         [SerializeField, Min(0f)] private float inputDelay = 1.0f;

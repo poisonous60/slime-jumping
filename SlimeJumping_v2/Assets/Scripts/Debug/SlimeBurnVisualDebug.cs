@@ -7,29 +7,9 @@ using SlimeJumping.Visual;
 namespace SlimeJumping.Debugging
 {
     /// <summary>
-    /// Debug tool to isolate where the burn-mark pipeline is failing. Three
-    /// independent test paths, each binds to one key:
-    ///
-    ///   B — fires SlimeController.ApplyHazardPush with a fake hit point on the
-    ///       slime's right edge. Goes through the *full* normal pipeline
-    ///       (controller event → SlimeBurnVisual.HandleHazardPushed → MPB push).
-    ///       If this works, the pipeline is fine and the real bug is upstream
-    ///       (granite blast not calling ApplyHazardPush, or the hit point is
-    ///       outside the slime's local space).
-    ///
-    ///   N — bypasses SlimeBurnVisual entirely. Writes a giant burn (huge OS
-    ///       radius covering the whole mesh) directly into the body
-    ///       MeshRenderer's MaterialPropertyBlock. If this works, the shader
-    ///       path is OK and the bug is in SlimeBurnVisual's hit→OS conversion
-    ///       or its MPB push timing. If THIS doesn't darken the body, the
-    ///       shader itself is the problem (not bound, wrong shader on material,
-    ///       SampleBurn not being called, etc).
-    ///
-    ///   M — clears all burns by zeroing _BurnCount via direct MPB push.
-    ///
-    /// HUD shows: body MR's current shader name, current _Burns array snapshot
-    /// (read back from the renderer's MPB), and the result of the last test
-    /// fire so you can compare expected vs observed.
+    /// Burn-pipeline bisector. B = full path (ApplyHazardPush → SlimeBurnVisual → MPB);
+    /// N = bypass SlimeBurnVisual and push a giant burn straight into the body MPB, so a
+    /// failure there means the shader itself; M = clear; L = state snapshot.
     /// </summary>
     [DefaultExecutionOrder(150)]
     public class SlimeBurnVisualDebug : MonoBehaviour
@@ -55,9 +35,7 @@ namespace SlimeJumping.Debugging
         private string lastAction = "(none yet)";
         private float lastActionTime = -999f;
 
-        // Snoop on SlimeBurnVisual's internal state via reflection so we can see
-        // why a hit isn't producing a burn. None of these escape the debug build —
-        // pure read-only inspection.
+        // Read-only reflection snoop into SlimeBurnVisual's private state.
         private FieldInfo bvBurnsField;
         private FieldInfo bvMeshTransformField;
         private FieldInfo bvBodyMRField;
@@ -72,9 +50,8 @@ namespace SlimeJumping.Debugging
 
         void Awake()
         {
-            // SlimeVisual lives on a SIBLING (Slime/SlimeVisual), not a parent —
-            // so GetComponentInParent doesn't reach it. Walk up to the slime root
-            // (the GO that holds SlimeController) and search its children.
+            // SlimeVisual is a SIBLING (Slime/SlimeVisual), so GetComponentInParent misses it —
+            // walk up to the SlimeController root and search its children.
             if (slimeController == null) slimeController = GetComponentInParent<SlimeController>();
             Transform slimeRoot = slimeController != null ? slimeController.transform : transform.root;
             if (slimeVisual == null) slimeVisual = slimeRoot.GetComponentInChildren<SlimeVisual>(true);
@@ -92,8 +69,7 @@ namespace SlimeJumping.Debugging
                 bvBurnStrengthField = t.GetField("burnStrength", bf);
                 bvBurnRadiusField = t.GetField("burnRadius", bf);
             }
-            // Subscribe to the same hit event SlimeBurnVisual subscribes to, so
-            // we can see whether hits are even reaching the slime.
+            // Same hit event SlimeBurnVisual uses — shows whether hits reach the slime at all.
             if (slimeController != null) slimeController.OnHazardPushed += OnHitObserved;
         }
 
@@ -180,9 +156,8 @@ namespace SlimeJumping.Debugging
             Transform body3d = slimeVisual != null ? slimeVisual.Body3d : null;
             if (body3d == null && slimeController != null)
             {
-                // Last-ditch fallback: search for a known mesh name in the slime
-                // subtree. The actual mesh GO is "SlimeMesh" per the project's
-                // body3d hierarchy (Slime/SlimeVisual3d/MeshBaseline/MeshDepthFlatten/SlimeMesh).
+                // Fallback: find the mesh by name in the slime subtree
+                // (Slime/SlimeVisual3d/MeshBaseline/MeshDepthFlatten/SlimeMesh).
                 var mfs = slimeController.GetComponentsInChildren<MeshFilter>(true);
                 for (int i = 0; i < mfs.Length; i++)
                 {
@@ -243,16 +218,14 @@ namespace SlimeJumping.Debugging
             lastActionTime = Time.time;
         }
 
-        // While true, our LateUpdate keeps re-pushing the giant burn every frame —
-        // necessary because SlimeBurnVisual.LateUpdate (order 100) also writes to
-        // _Burns/_BurnCount, and would clobber a one-shot push from Update.
+        // Re-pushed every LateUpdate: SlimeBurnVisual.LateUpdate (order 100) also writes
+        // _Burns/_BurnCount and would clobber a one-shot push from Update.
         private bool forceBurnActive;
 
         private void ForceDirectMpb()
         {
             if (bodyMR == null) ResolveBody();
             if (bodyMR == null) { lastAction = "FAIL: no body MeshRenderer"; lastActionTime = Time.time; return; }
-            // Disable the real burn visual so it stops overwriting our push every frame.
             if (burnVisual != null) burnVisual.enabled = false;
             forceBurnActive = true;
             PushGiantBurn();
@@ -262,9 +235,8 @@ namespace SlimeJumping.Debugging
 
         private void PushGiantBurn()
         {
-            // Giant burn at OS origin with radius 100 — covers the entire mesh OS
-            // (any sane mesh fits in [-50, 50] OS units), so the whole body should
-            // turn black if SampleBurn is being executed.
+            // Radius 100 at OS origin covers any sane mesh, so the whole body blackens if
+            // SampleBurn is actually running.
             var arr = new Vector4[24];
             arr[0] = new Vector4(0f, 0f, 0f, 100f);
             bodyMR.GetPropertyBlock(probe);
@@ -279,8 +251,7 @@ namespace SlimeJumping.Debugging
             if (bodyMR == null) ResolveBody();
             if (bodyMR == null) { lastAction = "FAIL: no body MeshRenderer"; lastActionTime = Time.time; return; }
             forceBurnActive = false;
-            // Re-enable the real burn visual; its next LateUpdate will write
-            // _BurnCount=0 (empty list) which is what we want.
+            // Re-enabling is the real clear: its next LateUpdate writes _BurnCount=0.
             if (burnVisual != null) burnVisual.enabled = true;
             // Also do an immediate clear in case burnVisual is null.
             var arr = new Vector4[24];
@@ -292,10 +263,8 @@ namespace SlimeJumping.Debugging
             lastActionTime = Time.time;
         }
 
-        // LateUpdate runs at default order 0; with [DefaultExecutionOrder(150)]
-        // we run AFTER SlimeBurnVisual (order 100). When force mode is on, we
-        // re-push the giant burn here so it survives even if SlimeBurnVisual
-        // wakes back up.
+        // [DefaultExecutionOrder(150)] puts this after SlimeBurnVisual (order 100), so the
+        // forced burn survives even if SlimeBurnVisual wakes back up.
         void LateUpdate()
         {
             if (!forceBurnActive) return;

@@ -22,9 +22,8 @@ namespace SlimeJumping.TerrainShape.Editor
         float _freehandRdpEps = 0.05f;
         string _shapePresetSaveName = "";
 
-        // Modifier-mask helpers — only Shift/Control/Alt/Command count as "meaningful". CapsLock,
-        // Numeric (NumLock), and FunctionKey are masked out, so the same `1` keypress maps to the
-        // same hotkey whether or not those toggles are on.
+        // CapsLock / NumLock / FunctionKey masked out, else the same `1` keypress misses its
+        // hotkey while one of those toggles is on.
         const EventModifiers MeaningfulMods =
             EventModifiers.Shift | EventModifiers.Control | EventModifiers.Alt | EventModifiers.Command;
         static bool NoMods(EventModifiers m)    => (m & MeaningfulMods) == 0;
@@ -35,14 +34,11 @@ namespace SlimeJumping.TerrainShape.Editor
         bool _edgesDragging = false;
         int _edgesDragFromId = 0;
 
-        // Outline / tangent drag uses MarkDirtyOrDefer to skip the heavy mesh rebuild on every
-        // MouseDrag tick — this flag remembers we owe a rebuild and HandleOutlineTool flushes it
-        // on MouseUp.
+        // Mesh rebuild owed by an in-flight outline/tangent drag; HandleOutlineTool flushes on MouseUp.
         bool _outlineDragRebuildPending = false;
 
-        // Cached wireframe-edge analysis. ExtractVisibleEdges allocates a Dictionary + face-normal
-        // array proportional to triangle count and was running every Repaint — recompute only
-        // when the mesh actually rebuilds.
+        // Wireframe-edge cache. ExtractVisibleEdges allocates per triangle, so it runs on mesh
+        // rebuild only — never per Repaint.
         List<VisibleEdge> _wireSimp;
         HashSet<long> _wireSimpKeys;
         List<VisibleEdge> _wireOrig;
@@ -67,9 +63,7 @@ namespace SlimeJumping.TerrainShape.Editor
         int _circlePoints = 16;
         bool _transformFoldout = false;
         float _rotateAngle = 90f;
-        // 0 = auto (selection centroid if 2+ selected, else all-vertices centroid)
-        // 1 = all-vertices centroid
-        // 2 = origin (0,0 in local space)
+        // 0 = auto (selection centroid if 2+, else all-vertices), 1 = all-vertices, 2 = local origin
         int _rotatePivotMode = 0;
         HeightmapProcMode _procMode = HeightmapProcMode.Perlin;
         float _procScale = 0.3f;
@@ -89,7 +83,7 @@ namespace SlimeJumping.TerrainShape.Editor
             public bool toExistingVertex;
             public int vertexId;
             public bool toOutlineEdge;
-            public int outlineLoopIndex;     // which loop the edge belongs to
+            public int outlineLoopIndex;
             public int outlineEdgeAfterIdx;
             public bool toInteriorPoint;  // create new interior at posLocal
         }
@@ -105,9 +99,7 @@ namespace SlimeJumping.TerrainShape.Editor
             _heightmapChanged?.Invoke(src);
         }
 
-        // External assemblies subscribe to append a section at the bottom of this inspector
-        // (kept in this domain-neutral hook so callers don't need to subclass the editor or
-        // touch this file again). Mirror of `_heightmapChanged` pattern.
+        // External assemblies append a section at the bottom of this inspector without subclassing.
         public static System.Action<TerrainShape2D, UnityEditor.Editor> OnAdditionalInspectorGUI;
 
         void OnHeightmapChanged(TerrainShape2D src)
@@ -169,8 +161,7 @@ namespace SlimeJumping.TerrainShape.Editor
             if (src.layers == null || src.layers.Count == 0) EnsureInitialized();
             ClampActiveLayer(src);
 
-            // Cross-focus hotkey routing — fires when Inspector has keyboard focus too, not just
-            // SceneView. Skipped when a text field has focus (so typing "1" into a field works).
+            // Also routed here so hotkeys fire while the Inspector holds focus, not only SceneView.
             HandleEditorHotkeys(src);
 
             DrawLayerSection(src);
@@ -185,8 +176,7 @@ namespace SlimeJumping.TerrainShape.Editor
                 _tool = newTool;
                 _edgesDragFromId = 0;
                 _drawSession.EndStroke();
-                // Switching away from Outline mid-drag would otherwise leave a deferred rebuild
-                // dangling — flush it so the mesh catches up immediately.
+                // Switching away mid-drag would leave the deferred rebuild dangling — flush it.
                 if (_outlineDragRebuildPending)
                 {
                     _outlineDragRebuildPending = false;
@@ -543,9 +533,8 @@ namespace SlimeJumping.TerrainShape.Editor
             DrawFrontFaceWireframe(src);
             DrawInteriorDissolvePreview(src);
 
-            // Delete / Backspace = bulk delete selected vertices in Outline / Interior tools.
-            // Only consume the event when our selection is non-empty so Unity's GameObject
-            // delete still works when nothing is selected in our tools.
+            // Consumes Delete/Backspace only when our selection is non-empty, else Unity's own
+            // GameObject delete stops working.
             HandleBulkDeleteKey(src);
 
             switch (_tool)
@@ -565,8 +554,8 @@ namespace SlimeJumping.TerrainShape.Editor
             if (e.type != EventType.KeyDown) return;
             if (e.keyCode != KeyCode.Delete && e.keyCode != KeyCode.Backspace) return;
 
-            // Polyline session uses Backspace for "remove last point" — that handler runs after
-            // the switch, but it would never fire if we consume here. Skip in Draw mode.
+            // Polyline's "remove last point" Backspace handler runs after the switch — consuming
+            // here would starve it.
             if (_tool == ActiveTool.Draw) return;
 
             if (_tool == ActiveTool.Outline && _selectedOutlineIds.Count > 0)
@@ -586,7 +575,6 @@ namespace SlimeJumping.TerrainShape.Editor
         void BulkDeleteSelectedOutline(TerrainShape2D src)
         {
             if (src.FrontLayer == null) return;
-            // Collect (loopIndex, pointIndex) pairs for every selected vertex across every loop.
             var hits = new List<(int loopIdx, int pointIdx)>();
             for (int li = 0; li < src.FrontLayer.loops.Count; li++)
             {
@@ -599,7 +587,7 @@ namespace SlimeJumping.TerrainShape.Editor
             }
             if (hits.Count == 0) return;
             Undo.RecordObject(src, "Delete outline points");
-            // Sort by (loopIdx desc, pointIdx desc) so removals from the back keep earlier indices valid.
+            // Descending order — removing from the back keeps the earlier indices valid.
             hits.Sort((a, b) =>
             {
                 if (a.loopIdx != b.loopIdx) return b.loopIdx.CompareTo(a.loopIdx);
@@ -638,9 +626,7 @@ namespace SlimeJumping.TerrainShape.Editor
 
         void DrawAllLayerOutlines(TerrainShape2D src)
         {
-            // Multi-loop visualization: each loop gets a distinct hue (HSV golden-ratio rotate).
-            // Outer loops (CCW) draw solid, holes (CW) draw dashed. Active layer is brighter +
-            // thicker.
+            // Legend: hue = loop index, dashed = hole (CW), brighter/thicker = active layer.
             var t = src.transform;
             for (int li = 0; li < src.layers.Count; li++)
             {
@@ -667,10 +653,9 @@ namespace SlimeJumping.TerrainShape.Editor
             }
         }
 
-        // Distinct hue per loop index. Active layer gets full saturation, others dim.
         static Color LoopHue(int loopIndex, bool active)
         {
-            // Golden-ratio rotation gives evenly-spread hues even for many loops.
+            // Golden-ratio rotation keeps hues spread apart even for many loops.
             const float GOLDEN = 0.6180339887f;
             float h = (loopIndex * GOLDEN) % 1f;
             float s = active ? 0.55f : 0.4f;
@@ -696,7 +681,6 @@ namespace SlimeJumping.TerrainShape.Editor
             float frontZ = src.FrontLayer.z;
             float overlayZ = frontZ - 0.005f; // slight push toward camera (smaller Z) to avoid z-fighting
 
-            // bbox of all loops in the front layer (multi-loop aware).
             if (!TerrainShape2D.ComputeUnionBounds(src.FrontLayer, out var mn, out var mx)) return;
             Vector2 size = mx - mn;
             if (size.x < 1e-6f || size.y < 1e-6f) return;
@@ -935,8 +919,8 @@ namespace SlimeJumping.TerrainShape.Editor
             var e = Event.current;
             var layer = src.layers[_activeLayer];
 
-            // Drag ended — commit the deferred SetDirty + mesh rebuild now. We check rawType
-            // too because FreeMoveHandle calls Event.Use() and rewrites e.type to Used.
+            // Flush the deferred SetDirty + rebuild. rawType is checked too because FreeMoveHandle
+            // calls Event.Use() and rewrites e.type to Used.
             if (_outlineDragRebuildPending
                 && (e.type == EventType.MouseUp || e.rawType == EventType.MouseUp
                     || e.type == EventType.MouseLeaveWindow))
@@ -966,8 +950,7 @@ namespace SlimeJumping.TerrainShape.Editor
                 {
                     Undo.RecordObject(src, "Toggle outline smooth");
                     bool newSmooth = !layer.loops[sLoop].points[sIdx].smooth;
-                    // Propagate smooth + tangents to the same (loopIdx, pointIdx) in every layer.
-                    // v2 invariant requires identical XY/topology across layers.
+                    // v2 invariant: identical XY/topology across layers, so mirror to every layer.
                     for (int li = 0; li < src.layers.Count; li++)
                     {
                         var Lp = src.layers[li].loops[sLoop].points[sIdx];
@@ -988,8 +971,7 @@ namespace SlimeJumping.TerrainShape.Editor
                    || TryFindClickedTangentLoc(src, layer, e.mousePosition, out _, out _, out _),
                 (mode, mouseGUI) =>
                 {
-                    // Shift+click on empty (no drag): insert outline point on closest edge of
-                    // any loop.
+                    // Shift+click on empty: insert an outline point on the closest edge of any loop.
                     if (mode != 1) return;
                     if (!TryProjectMouseToActiveLayerXY(src, mouseGUI, out Vector2 lxy)) return;
                     if (!TryFindClosestOutlineEdgeLoc(layer, lxy, out int loopIdx, out int edgeI, out Vector2 onEdge)) return;
@@ -1002,8 +984,7 @@ namespace SlimeJumping.TerrainShape.Editor
             bool suppressHandles = ((e.control || e.alt) && (e.type == EventType.Layout || e.type == EventType.MouseDown))
                                 || _marqueeActive;
 
-            // Iterate every loop × every point on the active layer. v2 invariant: vertex moves
-            // propagate to every layer with same id.
+            // v2 invariant: a vertex move propagates to every layer sharing that id.
             for (int loopIdx = 0; loopIdx < layer.loops.Count; loopIdx++)
             {
                 var loop = layer.loops[loopIdx];
@@ -1026,12 +1007,9 @@ namespace SlimeJumping.TerrainShape.Editor
                             Vector3 lp = t.InverseTransformPoint(nw);
                             Vector2 newPos = new Vector2(lp.x, lp.y);
                             Vector2 delta = newPos - p.pos;
-                            // Record Undo only on the first drag tick. v2's nested
-                            // loops/points serialization makes Undo.RecordObject expensive,
-                            // and per-tick calls visibly stutter the drag. SetDirty is
-                            // skipped entirely during drag — the MouseUp flush calls it once
-                            // at the end so the Inspector repaints (which re-runs
-                            // serializedObject.Update on the nested data) only once.
+                            // Undo only on the first drag tick: RecordObject on the nested
+                            // loops/points is expensive and per-tick calls stutter the drag.
+                            // SetDirty is skipped during drag, done once by the MouseUp flush.
                             if (!_outlineDragRebuildPending)
                             {
                                 Undo.RecordObject(src,
@@ -1056,8 +1034,7 @@ namespace SlimeJumping.TerrainShape.Editor
             }
         }
 
-        // Move a single outline vertex (by id) — propagates the same id's pos to every layer
-        // (and every loop if duplicate ids exist; in practice ids are unique).
+        // Propagates the id's new pos to every layer (ids are unique per layer in practice).
         static void MoveOutlineVertexById(TerrainShape2D src, int id, Vector2 newPos)
         {
             foreach (var L in src.layers)
@@ -1066,12 +1043,10 @@ namespace SlimeJumping.TerrainShape.Editor
                         if (op.id == id) op.pos = newPos;
         }
 
-        // Translate every selected vertex (by id) by the same delta, across every layer + loop.
         void MoveSelectedOutlineByDelta(TerrainShape2D src, Vector2 delta)
         {
-            // To avoid double-moving when an id appears in multiple layers, we'd want a
-            // per-id-applied set — but each id appears exactly once per layer (different loops
-            // might share ids only if the user explicitly broke invariant). Iterate naively.
+            // No per-id applied-set: an id occurs once per layer, so the naive loop can't
+            // double-move unless the user has broken the invariant.
             foreach (var L in src.layers)
                 foreach (var lp in L.loops)
                     foreach (var op in lp.points)
@@ -1118,7 +1093,6 @@ namespace SlimeJumping.TerrainShape.Editor
                 if (!_outlineDragRebuildPending) Undo.RecordObject(src, "Move tangent");
                 Vector3 lp = t.InverseTransformPoint(newOut);
                 Vector2 newTan = new Vector2(lp.x - p.pos.x, lp.y - p.pos.y);
-                // Mirror to all layers' same (loopIdx, pointIdx).
                 foreach (var L in src.layers) {
                     var Lp = L.loops[loopIdx].points[pointIdx];
                     Lp.tangentOut = newTan;
@@ -1143,7 +1117,6 @@ namespace SlimeJumping.TerrainShape.Editor
             }
         }
 
-        // Multi-loop hit-test: nearest outline vertex within CLICK_RADIUS_PX. Returns (loopIdx, pointIdx).
         bool TryFindClickedOutlineLoc(TerrainShape2D src, OutlineLayer layer, Vector2 mouseGUI, out int loopIdx, out int pointIdx)
         {
             loopIdx = -1; pointIdx = -1;
@@ -1163,7 +1136,7 @@ namespace SlimeJumping.TerrainShape.Editor
             return loopIdx >= 0;
         }
 
-        // Multi-loop tangent-handle hit-test. `side` is 0 for tangentOut, 1 for tangentIn.
+        // `side`: 0 = tangentOut, 1 = tangentIn.
         bool TryFindClickedTangentLoc(TerrainShape2D src, OutlineLayer layer, Vector2 mouseGUI, out int loopIdx, out int pointIdx, out int side)
         {
             loopIdx = -1; pointIdx = -1; side = -1;
@@ -1187,8 +1160,6 @@ namespace SlimeJumping.TerrainShape.Editor
             return loopIdx >= 0;
         }
 
-        // Multi-loop closest-edge: scan every loop's edges, return the (loopIdx, edgeIdx) and
-        // the projected point in local XY.
         bool TryFindClosestOutlineEdgeLoc(OutlineLayer layer, Vector2 lxy, out int loopIdx, out int edgeIdx, out Vector2 onEdgeLocal)
         {
             loopIdx = -1; edgeIdx = -1; onEdgeLocal = Vector2.zero;
@@ -1242,9 +1213,8 @@ namespace SlimeJumping.TerrainShape.Editor
                 () => TryFindClickedInteriorIndex(src, e.mousePosition, out _),
                 (mode, mouseGUI) =>
                 {
-                    // Shift+click on empty (no drag): insert interior point at mouse if inside polygon.
-                    // Uses multi-loop normalized front loops so holes are honored (clicks inside
-                    // a hole are rejected).
+                    // Shift+click on empty: insert an interior point. Tested against the normalized
+                    // front loops so clicks inside a hole are rejected.
                     if (mode != 1) return;
                     if (!TryProjectMouseToFrontLayerXY(src, mouseGUI, out Vector2 lxy)) return;
                     var loops = _cache.normalizedFrontLoops;
@@ -1781,10 +1751,8 @@ namespace SlimeJumping.TerrainShape.Editor
             return result;
         }
 
-        // Bridson's Poisson-disk sampling: O(N) blue-noise distribution where every pair
-        // of points is at least `r` apart. Uses a background grid (cell = r/√2 → max one
-        // sample per cell) so neighbour queries are O(1).
-        // Reference: Bridson 2007, "Fast Poisson Disk Sampling in Arbitrary Dimensions".
+        // Bridson 2007 Poisson-disk: background grid cell = r/√2 so at most one sample per cell
+        // and neighbour queries stay O(1).
         static List<Vector2> SamplePoissonDisk(List<Vector2> poly, float r, List<Vector2> existing, System.Random rng)
         {
             var result = new List<Vector2>();
@@ -1872,8 +1840,7 @@ namespace SlimeJumping.TerrainShape.Editor
             return result;
         }
 
-        // Halton low-discrepancy sequence: deterministic, evenly-distributed, repeatable
-        // without RNG. We use bases (2, 3) for X and Y, then reject points outside the polygon.
+        // Halton bases (2, 3) for X/Y — even coverage, repeatable without an RNG.
         static List<Vector2> SampleHalton(List<Vector2> poly, float r, List<Vector2> existing)
         {
             var result = new List<Vector2>();
@@ -1898,13 +1865,9 @@ namespace SlimeJumping.TerrainShape.Editor
             return result;
         }
 
-        // Adaptive: each spacing×spacing cell yields its single most-interior point
-        // (sub-sampled approximation of the local medial-axis anchor). Unlike the
-        // other samplers there is no fixed boundary buffer — narrow strips of width
-        // W < spacing still receive one centerline point per cell instead of being
-        // entirely rejected. The min-distance check between accepted points is
-        // relaxed in proportion to local thickness (bestD), so two adjacent
-        // strip-cells can both keep their centerline anchor.
+        // One most-interior point per spacing cell. No fixed boundary buffer and min-distance
+        // scaled by local thickness (bestD) — otherwise strips narrower than `spacing` get
+        // rejected entirely instead of keeping their centerline anchor.
         static List<Vector2> SampleAdaptive(List<Vector2> poly, float spacing, List<Vector2> existing)
         {
             var result = new List<Vector2>();
@@ -1969,11 +1932,8 @@ namespace SlimeJumping.TerrainShape.Editor
             return r;
         }
 
-        // Lloyd's relaxation toward a Centroidal Voronoi Tessellation. Each iteration:
-        //   1. discretise the polygon into a sample grid,
-        //   2. assign each sample to its nearest movable point (existing manual points stay fixed),
-        //   3. move each movable point to the centroid of its assigned samples.
-        // Converges to evenly-spaced point distributions; 2-4 iterations is usually enough.
+        // Lloyd relaxation toward a CVT: grid-sample the polygon, bin each sample to its nearest
+        // point, move movable points to their bin centroid. `fixedPts` (manual points) never move.
         static List<Vector2> LloydRelax(List<Vector2> movable, List<Vector2> poly, List<Vector2> fixedPts, int iters)
         {
             if (movable.Count == 0) return movable;
@@ -2044,8 +2004,7 @@ namespace SlimeJumping.TerrainShape.Editor
             }
             EditorGUILayout.EndHorizontal();
 
-            // Quick picker: scan Assets/HeightmapPresets/ for all presets so the user can
-            // browse without navigating the project window.
+            // Quick picker so presets can be browsed without the project window.
             var allPresets = AssetDatabase.FindAssets("t:HeightmapPreset");
             if (allPresets != null && allPresets.Length > 0)
             {
@@ -2112,8 +2071,7 @@ namespace SlimeJumping.TerrainShape.Editor
                     break;
             }
 
-            // Output range: remap the generator's 0..1 result to [min..max]. Flat already
-            // writes a single value directly, so the remap doesn't apply there.
+            // Flat writes its single value directly, so the 0..1 remap doesn't apply to it.
             if (_procMode != HeightmapProcMode.Flat)
             {
                 EditorGUILayout.LabelField(new GUIContent("Output range", "Remap the generator's 0..1 output to [min..max]. Min = blue/far end, Max = red/near end."), EditorStyles.miniBoldLabel);
@@ -2206,20 +2164,15 @@ namespace SlimeJumping.TerrainShape.Editor
             NotifyHeightmapChanged(src);
             MarkDirty();
 
-            // Roll a fresh seed so the next click produces a new variation. Modes that ignore
-            // the seed (Cone / LinearGradient / Flat) are unaffected; the field still updates
-            // so the user sees the change.
+            // Roll a fresh seed so the next click gives a new variation.
             _procSeed = new System.Random().Next(int.MinValue, int.MaxValue);
         }
 
         // ──────────────── Marquee selection ────────────────
 
-        // Drives a screen-space rectangle selection. Plain drag = replace; Shift+drag = add;
-        // Ctrl+drag = subtract. Click without drag clears selection (or fires the modifier
-        // click action via `onClickWithoutDrag` — needed because Shift+click vs Shift+drag
-        // can only be told apart at MouseUp).
-        // `isOverHandle` lets the caller bail out when the click lands on a vertex — the
-        // FreeMoveHandle / Slider for that vertex must receive the MouseDown instead.
+        // Drag = replace / Shift add / Ctrl subtract. `onClickWithoutDrag` exists because
+        // Shift+click and Shift+drag can only be told apart at MouseUp; `isOverHandle` bails out
+        // so a vertex's FreeMoveHandle/Slider still receives the MouseDown.
         void HandleMarquee(Event e, HashSet<int> selection,
                            System.Func<HashSet<int>> hitsInRect, System.Func<bool> isOverHandle,
                            System.Action<int /*marqueeMode*/, Vector2 /*mousePos*/> onClickWithoutDrag = null)
@@ -2251,8 +2204,8 @@ namespace SlimeJumping.TerrainShape.Editor
                 _marqueeMode = 0;
                 if (r.width < 3f && r.height < 3f)
                 {
-                    // No drag — interpret as a click. Modifier-click actions (Shift = insert
-                    // point) fire here so they don't pre-empt a Shift+drag marquee.
+                    // Modifier-click actions fire here, not on MouseDown, so they can't pre-empt
+                    // a Shift+drag marquee.
                     if (onClickWithoutDrag != null)
                         onClickWithoutDrag(mode, e.mousePosition);
                     if (mode == 0) selection.Clear();
@@ -2276,7 +2229,6 @@ namespace SlimeJumping.TerrainShape.Editor
                 var fill = new Color(0.3f, 0.7f, 1f, 0.18f);
                 var border = new Color(0.4f, 0.85f, 1f, 0.9f);
                 EditorGUI.DrawRect(r, fill);
-                // 1px border (top/bottom/left/right)
                 EditorGUI.DrawRect(new Rect(r.xMin, r.yMin, r.width, 1f), border);
                 EditorGUI.DrawRect(new Rect(r.xMin, r.yMax - 1f, r.width, 1f), border);
                 EditorGUI.DrawRect(new Rect(r.xMin, r.yMin, 1f, r.height), border);
@@ -2331,8 +2283,7 @@ namespace SlimeJumping.TerrainShape.Editor
             front.loops.Add(new OutlineLoop());
             for (int i = 0; i < n; i++)
             {
-                // -π/2 start so the first vertex is at the bottom (matches the rectangle Reset's
-                // bottom-left starting feel — useful when comparing the two templates side-by-side).
+                // -π/2 start puts the first vertex at the bottom, matching the rectangle template.
                 float a = -Mathf.PI * 0.5f + (i / (float)n) * Mathf.PI * 2f;
                 front.loops[0].points.Add(new OutlinePoint
                 {
@@ -2381,7 +2332,6 @@ namespace SlimeJumping.TerrainShape.Editor
 
         void RotateVertices(TerrainShape2D src, float deg)
         {
-            // Decide which vertices to rotate, and the pivot.
             int selectionTotal = _selectedOutlineIds.Count + _selectedInteriorIds.Count;
             bool partial = (_rotatePivotMode == 0) && selectionTotal >= 2;
 
@@ -2405,9 +2355,8 @@ namespace SlimeJumping.TerrainShape.Editor
 
             Undo.RecordObject(src, partial ? "Rotate selected vertices" : "Rotate all vertices");
 
-            // Outline points + tangents. Apply across ALL layers AND ALL loops — v2 invariant
-            // requires identical XY across layers, and rotating only loop[0] would silently
-            // break that invariant once the user has holes or multiple outers.
+            // All layers AND all loops: rotating only loop[0] silently breaks the identical-XY
+            // invariant as soon as the shape has holes or multiple outers.
             for (int li = 0; li < src.layers.Count; li++)
             {
                 foreach (var loop in src.layers[li].loops)
@@ -2425,7 +2374,7 @@ namespace SlimeJumping.TerrainShape.Editor
                 }
             }
 
-            // Interior points. Rotate XY; preserve effective Z (the same logic as drag-move).
+            // Rotate XY, preserve effective Z (same rule as drag-move).
             foreach (var ip in src.interior)
             {
                 if (partial && !_selectedInteriorIds.Contains(ip.id)) continue;
@@ -2453,8 +2402,7 @@ namespace SlimeJumping.TerrainShape.Editor
         {
             Vector2 sum = Vector2.zero;
             int count = 0;
-            // Iterate ALL loops in the front layer (multi-loop). Layer-sync invariant means
-            // sampling the front layer alone is sufficient.
+            // Front layer alone is enough — the layer-sync invariant keeps XY identical.
             if (src.FrontLayer != null && src.FrontLayer.loops != null)
             {
                 foreach (var loop in src.FrontLayer.loops)
@@ -2518,9 +2466,8 @@ namespace SlimeJumping.TerrainShape.Editor
             SceneView.RepaintAll();
         }
 
-        // Wipes outline + interior + forced edges, then refills every layer with a default
-        // 2×2 rectangle (centered on origin). Layer Z stack is preserved — only the loops are
-        // replaced. Same IDs/XY across all layers (v2 invariant: layers differ only in z).
+        // Refills every layer with a default 2×2 rect, same IDs/XY per layer (v2 invariant:
+        // layers differ only in z). The layer Z stack itself is preserved.
         void ClearShape(TerrainShape2D src)
         {
             Undo.RecordObject(src, "Clear TerrainShape");
@@ -2559,9 +2506,8 @@ namespace SlimeJumping.TerrainShape.Editor
             SceneView.RepaintAll();
         }
 
-        // Run Clipper2 normalize on the raw outline data and overwrite with the result. Useful
-        // after outline-tool drags that created weird states (hole leaking outside outer,
-        // self-intersect, etc.). All vertex IDs are reissued; forced edges + selection wiped.
+        // Clipper2 normalize — repairs hole-outside-outer / self-intersect states left by outline
+        // drags. Reissues every vertex ID, so forced edges + selection are wiped.
         void NormalizeLoops(TerrainShape2D src)
         {
             var existing = ExtractFrontLoopsAsPaths(src);
@@ -2637,13 +2583,9 @@ namespace SlimeJumping.TerrainShape.Editor
             Rebuild();
         }
 
-        // For outline / tangent drag: skip Rebuild while a MouseDrag is in flight (Rebuild runs
-        // Clipper2 normalize + triangulation and stalls the editor on every tick). Outline lines
-        // and handles still update because they read raw layer data; only the filled mesh stays
-        // stale until release. HandleOutlineTool flushes the deferred rebuild on MouseUp.
-        // Note: we deliberately leave _cacheDirty unchanged in the deferred branch — setting it
-        // would make EnsureCache (called at the top of OnSceneGUI on the next Repaint) rebuild
-        // immediately, defeating the deferral.
+        // Skip Rebuild while a MouseDrag is in flight — Clipper2 normalize + triangulation stalls the
+        // editor every tick; HandleOutlineTool flushes on MouseUp. _cacheDirty stays untouched in the
+        // deferred branch, else EnsureCache rebuilds next Repaint and the deferral is pointless.
         void MarkDirtyOrDefer()
         {
             var e = Event.current;
@@ -2672,8 +2614,7 @@ namespace SlimeJumping.TerrainShape.Editor
             _cacheDirty = false;
         }
 
-        // Recompute visible-edge analysis once per mesh rebuild and cache it. DrawFrontFaceWireframe
-        // then just iterates the cached lists every Repaint — no allocations, no edge-graph rebuild.
+        // Once per mesh rebuild, so DrawFrontFaceWireframe allocates nothing per Repaint.
         void RebuildWireframeCache()
         {
             if (_cache.frontFaceVerts != null && _cache.frontFaceTris != null)
@@ -2749,13 +2690,12 @@ namespace SlimeJumping.TerrainShape.Editor
 
             if (src.installAutoGenerateCollider2D)
             {
-                // MeshToCollider2DGenerator.Generate() reads Selection.activeGameObject and
-                // slices the mesh at world Z=0. We just selected `go`, so it picks it up.
+                // Generate() takes its input from Selection.activeGameObject — `go` must already
+                // be selected above.
                 var col = SlimeJumping.EditorTools.MeshToCollider2DGenerator.Generate();
                 if (col != null)
                 {
-                    // Generate() reparents `go` under a new wrapper and selects the wrapper —
-                    // ping that instead so the user lands on the final hierarchy result.
+                    // Generate() reparents `go` under a new wrapper; ping the wrapper instead.
                     EditorGUIUtility.PingObject(col.gameObject);
                     return;
                 }
@@ -2771,7 +2711,6 @@ namespace SlimeJumping.TerrainShape.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Draw", EditorStyles.boldLabel);
 
-            // Sub-tool toolbar
             var newSub = (DrawSubTool)GUILayout.Toolbar(
                 (int)_drawSession.subTool,
                 new[] { "Rect", "Tri", "Circle", "Polyline", "Freehand", "Stamp" });
@@ -2840,7 +2779,6 @@ namespace SlimeJumping.TerrainShape.Editor
             var s = _drawSession;
             EditorGUILayout.LabelField("Stamp", EditorStyles.miniBoldLabel);
 
-            // Current preset object field — drag-drop or browse.
             var newPreset = (ShapePreset)EditorGUILayout.ObjectField(
                 new GUIContent("Active preset", "Press Tab to open the picker. Drag-drop here also works."),
                 s.stampPreset, typeof(ShapePreset), false);
@@ -2869,7 +2807,6 @@ namespace SlimeJumping.TerrainShape.Editor
             if (e.type == EventType.Layout)
                 HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
 
-            // Grid lines (drawn under everything else) when grid snap is on.
             if (e.type == EventType.Repaint && _snapGrid && src.FrontLayer != null)
             {
                 if (TryProjectMouseToFrontLayerXY(src, e.mousePosition, out var lxy))
@@ -2914,11 +2851,9 @@ namespace SlimeJumping.TerrainShape.Editor
                 cursorLocal = snap.snapped ? snap.pos : raw;
             }
 
-            // KeyDown hotkeys (1-6 sub-tool / Shift+1..4 tab / Tab popup / Q/E rotate) are handled
-            // by HandleEditorHotkeys at OnSceneGUI / OnInspectorGUI entry, regardless of which
-            // sub-tool we're in.
+            // KeyDown hotkeys live in HandleEditorHotkeys, called at OnSceneGUI/OnInspectorGUI entry.
 
-            // Click-to-place. Shift+click = commit as subtract / eraser stamp.
+            // Shift+click = commit as subtract / eraser stamp.
             if (e.type == EventType.MouseDown && e.button == 0 && haveProj && s.stampPreset != null)
             {
                 var stamped = StampedOutline(s.stampPreset, cursorLocal, s.stampRotationDeg, s.stampScale);
@@ -2935,7 +2870,6 @@ namespace SlimeJumping.TerrainShape.Editor
 
             if (e.type == EventType.MouseMove) SceneView.RepaintAll();
 
-            // Repaint: ghost preview + snap ring + hint label.
             if (e.type == EventType.Repaint)
             {
                 if (s.stampPreset != null && haveProj)
@@ -2980,15 +2914,8 @@ namespace SlimeJumping.TerrainShape.Editor
         // ──────────────── Editor-wide hotkey routing ────────────────
 
         // Called from both OnSceneGUI and OnInspectorGUI so hotkeys fire regardless of which
-        // window has keyboard focus.
-        //   Shift+1..4 : Outline/Interior/Edges/Draw tab switch (any tool).
-        //   1..6       : Sub-tool switch (Draw mode only).
-        //   Tab        : Stamp picker popup (Draw mode only).
-        //   Q/E        : Stamp rotation ±15° / Shift ±1° / Ctrl ±0.1° (Draw + Stamp only).
-        // Skipped when:
-        //   - The current event isn't a KeyDown.
-        //   - StampPickerPopup is open (it consumes its own keys; outer should not steal them).
-        //   - A text field has keyboard focus (user is typing).
+        // window has keyboard focus. Bails while StampPickerPopup is open (it owns the same keys)
+        // or while a text field has focus (the user is typing).
         void HandleEditorHotkeys(TerrainShape2D src)
         {
             var e = Event.current;
@@ -3098,13 +3025,12 @@ namespace SlimeJumping.TerrainShape.Editor
                 $"'{presetName}' already exists. Overwrite?", "Overwrite", "Cancel"))
                 return;
 
-            // Use explicit Unity null check rather than `??` — `existing` is a UnityEngine.Object
-            // and `??` bypasses the overloaded `==` that handles fake-null destroyed assets.
+            // Explicit null check: `??` bypasses Unity's overloaded `==` and mishandles fake-null.
             var preset = (existing == null) ? ScriptableObject.CreateInstance<ShapePreset>() : existing;
             preset.outline = normalized;
 
-            // Generate the new thumbnail BEFORE destroying the old one — if Generate returns null
-            // we'd otherwise lose the existing thumbnail and end up with no preview at all.
+            // New thumbnail BEFORE destroying the old one — a null Generate() would otherwise
+            // leave the preset with no preview at all.
             var newThumb = ShapePresetThumbnail.Generate(normalized, 96);
             if (overwrite && preset.thumbnail != null && newThumb != null)
             {
@@ -3127,8 +3053,7 @@ namespace SlimeJumping.TerrainShape.Editor
             var s = _drawSession;
             float frontZ = src.FrontLayer != null ? src.FrontLayer.z : 0f;
 
-            // Pre-compute a snap result for the cursor on every event so we can show the snap ring
-            // even before MouseDown.
+            // Resolved on every event so the snap ring shows before MouseDown.
             SnapResult snap = default;
             bool haveProj = TryProjectMouseToFrontLayerXY(src, e.mousePosition, out var lxy);
             if (haveProj && !s.dragging)
@@ -3196,8 +3121,7 @@ namespace SlimeJumping.TerrainShape.Editor
             float frontZ = src.FrontLayer != null ? src.FrontLayer.z : 0f;
             var t = src.transform;
 
-            // Resolve cursor with snap (vertex/edge/grid). For Polyline we further apply absolute
-            // angle snap if Shift is held — relative to the previous committed vertex.
+            // Shift adds absolute angle snap, measured from the previous committed vertex.
             bool haveProj = TryProjectMouseToFrontLayerXY(src, e.mousePosition, out var raw);
             SnapResult snap = default;
             Vector2 cursorLocal = raw;
@@ -3286,7 +3210,6 @@ namespace SlimeJumping.TerrainShape.Editor
             {
                 int n = s.polylinePoints.Count;
 
-                // Committed segments (solid).
                 if (n >= 1)
                 {
                     Handles.color = new Color(0.4f, 0.95f, 1f, 0.95f);
@@ -3297,7 +3220,6 @@ namespace SlimeJumping.TerrainShape.Editor
                         Handles.DrawLine(a, b, 2.5f);
                     }
 
-                    // Vertex dots.
                     Handles.color = new Color(0.4f, 0.95f, 1f, 1f);
                     for (int i = 0; i < n; i++)
                     {
@@ -3306,7 +3228,6 @@ namespace SlimeJumping.TerrainShape.Editor
                         Handles.SphereHandleCap(0, wp, t.rotation, r, EventType.Repaint);
                     }
 
-                    // Preview tail to cursor (dashed).
                     if (haveProj)
                     {
                         Vector3 last = t.TransformPoint(new Vector3(s.polylinePoints[n - 1].x, s.polylinePoints[n - 1].y, frontZ));
@@ -3342,7 +3263,7 @@ namespace SlimeJumping.TerrainShape.Editor
             {
                 if (TryProjectMouseToFrontLayerXY(src, e.mousePosition, out var lxy))
                 {
-                    // Discard samples that are within 2px of the last recorded sample (screen-space).
+                    // Drop samples within 2px of the last one (screen-space).
                     Vector2 lastWorldGUI = HandleUtility.WorldToGUIPoint(
                         src.transform.TransformPoint(new Vector3(s.freehandRaw[s.freehandRaw.Count - 1].x,
                                                                  s.freehandRaw[s.freehandRaw.Count - 1].y,
@@ -3386,13 +3307,8 @@ namespace SlimeJumping.TerrainShape.Editor
             }
         }
 
-        // Commits a drawn polygon into the TerrainShape2D: union with current front-layer outline
-        // (or replace if disjoint), wipe interior + forced edges, replicate the union'd outline XY
-        // to every layer (each keeps its own z), allocate fresh vertex IDs.
-        // Commits a drawn polygon into the TerrainShape2D as union (or subtract if subtractMode).
-        // Multi-loop result is replicated to every layer (XY identical, each layer keeps its z).
-        // Interior + forced edges are wiped. If the result has zero outer loops (e.g. Subtract
-        // erased everything), the commit is rejected with a Console warning.
+        // Union (or subtract) into the front outline, replicated to every layer with fresh IDs;
+        // interior + forced edges are wiped. A result with zero outer loops is rejected.
         void CommitDraw(TerrainShape2D src, IList<Vector2> drawnPolygon)
         {
             if (drawnPolygon == null || drawnPolygon.Count < 3) return;
@@ -3410,7 +3326,7 @@ namespace SlimeJumping.TerrainShape.Editor
                 return;
             }
 
-            // Reject if no outer loops survived (every loop is CW = hole).
+            // Every loop CW = hole only, nothing left to render.
             int outerCount = 0;
             foreach (var loop in resultLoops)
                 if (TerrainShape2DMeshBuilder.SignedArea(loop) > 0f) outerCount++;
@@ -3424,7 +3340,7 @@ namespace SlimeJumping.TerrainShape.Editor
             src.interior.Clear();
             src.forcedEdges.Clear();
 
-            // Replicate the result to every layer. v2 invariant: identical XY across layers.
+            // v2 invariant: identical XY across layers.
             foreach (var layer in src.layers)
             {
                 layer.loops.Clear();
@@ -3441,7 +3357,6 @@ namespace SlimeJumping.TerrainShape.Editor
             MarkDirty();
         }
 
-        // Snapshot the front layer's loops as List<List<Vector2>> for PolygonOps consumption.
         static List<List<Vector2>> ExtractFrontLoopsAsPaths(TerrainShape2D src)
         {
             var result = new List<List<Vector2>>();
@@ -3459,7 +3374,6 @@ namespace SlimeJumping.TerrainShape.Editor
 
         static bool PolygonTooSmall(IList<Vector2> poly)
         {
-            // Reject degenerate strokes — total path length below a tiny threshold.
             float len = 0f;
             for (int i = 0; i < poly.Count; i++)
                 len += Vector2.Distance(poly[i], poly[(i + 1) % poly.Count]);
@@ -3476,7 +3390,6 @@ namespace SlimeJumping.TerrainShape.Editor
             var world = new Vector3[n];
             for (int i = 0; i < n; i++) world[i] = t.TransformPoint(new Vector3(poly[i].x, poly[i].y, z));
 
-            // Color cue: cyan for union, red/orange for subtract (eraser).
             Color fill = subtractMode ? new Color(1f, 0.4f, 0.2f, 0.18f) : new Color(0.3f, 0.85f, 1f, 0.18f);
             Color line = subtractMode ? new Color(1f, 0.5f, 0.2f, 0.95f) : new Color(0.4f, 0.95f, 1f, 0.95f);
 

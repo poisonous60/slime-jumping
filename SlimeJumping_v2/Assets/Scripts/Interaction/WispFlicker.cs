@@ -2,10 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Interaction
 {
-    /// Drives a pixel-art wisp sprite:
-    ///   - Spawn ("뿅"): scale from 0 with ease-out overshoot + alpha fade-in.
-    ///   - Idle: subtle bob / drift / scale wobble / alpha flicker.
-    ///   - Optionally drives a linked Light's intensity with the same ramp.
+    /// Pixel-art wisp sprite: spawn "뿅" (ease-out overshoot + alpha fade-in), then idle
+    /// bob / drift / scale wobble / alpha flicker; optional linked Light on the same ramp.
     [RequireComponent(typeof(SpriteRenderer))]
     public class WispFlicker : MonoBehaviour
     {

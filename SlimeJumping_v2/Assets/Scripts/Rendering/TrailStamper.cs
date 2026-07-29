@@ -3,17 +3,15 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Rendering
 {
-    /// Drops trail stamps based on slime state. One-way subscriber to SlimeController
-    /// events — never pushes back. Trail is purely visual.
+    /// Drops trail stamps from slime state. One-way subscriber, never pushes back to the controller.
     [AddComponentMenu("Rendering/Trail/Trail Stamper")]
     public class TrailStamper : MonoBehaviour
     {
         [Header("Wiring")]
         [SerializeField] private SlimeController slimeController;
         [SerializeField] private CircleCollider2D slimeCollider;
-        // The trail manager is resolved at runtime via WorldTrailManager.Instance — no serialized
-        // reference so cross-scene stampers (e.g. on a persistent slime prefab) can't hold a dead
-        // reference to a manager from an unloaded scene.
+        // Manager resolved at runtime via WorldTrailManager.Instance — a serialized ref would go
+        // dead on a persistent prefab once the owning scene unloads.
 
         [Header("Continuous (while Attached/Charging)")]
         [Tooltip("Off by default: trail only marks landings. Enable for a crawl streak between landings.")]
@@ -67,9 +65,8 @@ namespace SlimeJumping.Rendering
 
         private void HandleLanded(Vector2 position, Vector2 surfaceNormal)
         {
-            // Normal (perpendicular-to-surface) impact speed — how hard the slime slammed into
-            // the surface, which drives the "splat" feel better than the tangent (slide) speed.
-            // Controller already captures this at landing for the energy-conversion path.
+            // Normal (perpendicular) impact speed, not tangent speed — tangent reads as a slide,
+            // not a splat.
             float impactSpeed = slimeController != null
                 ? slimeController.ImpactNormalSpeed
                 : 0f;
@@ -125,7 +122,7 @@ namespace SlimeJumping.Rendering
                 return;
             }
 
-            if (dist < moveStep * 0.5f) return;  // too close to last stamp, skip
+            if (dist < moveStep * 0.5f) return;
 
             int steps = Mathf.Max(1, Mathf.CeilToInt(dist / moveStep));
             for (int i = 1; i <= steps; i++)
@@ -139,9 +136,8 @@ namespace SlimeJumping.Rendering
         private Vector2 ComputeContactPoint()
         {
             Vector2 center = slimeController.Position;
-            // Primary collider's closest point matches where the stamp routes to, and
-            // stays correct at concave corners where SurfaceNormal is the aggregate
-            // bisector (which would place `center - n*r` in mid-air between surfaces).
+            // ClosestPoint, not `center - normal*r`: at concave corners SurfaceNormal is the
+            // aggregate bisector and that formula lands in mid-air between the two surfaces.
             Collider2D primary = slimeController.SurfaceCollider;
             if (primary != null) return primary.ClosestPoint(center);
             if (slimeCollider == null) return center;
@@ -158,9 +154,8 @@ namespace SlimeJumping.Rendering
                 local.StampAt(worldPos, radius, strength);
                 return;
             }
-            // No local receiver on the contact surface → fall through to the world RT, if any.
-            // Scene may legitimately have no WorldTrailManager (trail disabled in that scene);
-            // silently skip instead of throwing.
+            // Fall through to the world RT. A scene with no WorldTrailManager is legitimate
+            // (trail disabled there), so skip silently.
             var mgr = WorldTrailManager.Instance;
             if (mgr != null) mgr.Stamp(worldPos, radius, strength);
         }

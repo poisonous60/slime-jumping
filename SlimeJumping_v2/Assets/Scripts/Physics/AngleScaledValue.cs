@@ -28,9 +28,7 @@ namespace SlimeJumping.Physics
             angleMax = 90f
         };
 
-        // Component-wise lerp. The four scalars (baseValue/fullValue/angleMin/angleMax)
-        // each interpolate independently — for two reasonable surface profiles the
-        // interpolated curve stays a sensible angle ramp at every t.
+        // Lerps the four scalars independently, not the evaluated curve.
         public static AngleScaledValue Lerp(AngleScaledValue a, AngleScaledValue b, float t) => new AngleScaledValue
         {
             baseValue = Mathf.Lerp(a.baseValue, b.baseValue, t),

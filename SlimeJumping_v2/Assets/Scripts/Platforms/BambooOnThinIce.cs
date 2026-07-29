@@ -8,27 +8,11 @@ using SlimeJumping.Platforms.ThinIceV2;
 
 namespace SlimeJumping.Platforms
 {
-    /// Couples a BambooPlatformV3 stalk to the ThinIcePlatformV2 it stands on.
-    ///
-    /// Loop: each slime landing on the stalk advances the ice's cracks by
-    /// 1/jumpsToShatter (crack sound + shader progress); the Nth landing shatters the
-    /// ice. When the ice is Shattered — by the stalk OR by the slime stepping on the
-    /// ice directly — the standing stalk is swapped for a physics "corpse" clone that
-    /// topples under gravity (FallingTrainPlatform pattern), inheriting the spring's
-    /// current swing. When the ice regenerates (its ThinIceRespawnZone fired), the
-    /// corpse is removed and the original stalk is re-activated where it stood.
-    ///
-    /// DELIBERATELY ZERO-TOUCH: this file talks to both systems exclusively through
-    /// their public surface (RiderAttached / State / ResolvedConfig / carrier
-    /// contract) plus one reflection call into ThinIcePlatformV2.EnterShattered.
-    /// Deleting this file (and its test setup) restores stock behavior exactly.
-    /// One user-approved exception: BambooPlatformV3.CheckSpringThrow gained a
-    /// "slime is riding THIS stalk" guard (harmless without this feature).
-    ///
-    /// Placement: attach to the ICE GameObject (or any GameObject that stays active),
-    /// NEVER to the bamboo itself — the bamboo is deactivated while collapsed, which
-    /// would stop this component's polling, and the corpse clone would inherit a
-    /// second copy of it.
+    /// Couples a BambooPlatformV3 stalk to the ThinIcePlatformV2 it stands on: each
+    /// landing on the stalk advances the ice's cracks by 1/jumpsToShatter; on Shattered
+    /// the stalk is swapped for a physics "corpse" clone that topples, and restored on regen.
+    /// Zero-touch: public surfaces + reflection (EnterShattered / timer) + CheckSpringThrow's slime-arm guard.
+    /// Attach to the ICE, never the bamboo (it deactivates on collapse → polling stops).
     public class BambooOnThinIce : MonoBehaviour
     {
         [Tooltip("The stalk standing on the ice. Landings on THIS stalk crack the ice below it.")]
@@ -48,18 +32,13 @@ namespace SlimeJumping.Platforms
         // World-space distance between dust puffs along the pole centerline at poof.
         const float PoofSpacing = 0.45f;
 
-        // Reflection handle into ThinIcePlatformV2.EnterShattered(bool jumpInherit).
-        // The one non-public touch point (user-approved tradeoff for keeping the ice
-        // file untouched). If the method is ever renamed this logs loudly instead of
-        // silently doing nothing.
+        // Reflection into ThinIcePlatformV2.EnterShattered(bool) — the one non-public
+        // touch point; logs loudly if renamed instead of silently doing nothing.
         static MethodInfo enterShatteredMethod;
         static bool enterShatteredSearched;
 
-        // Second reflection touch point: ThinIcePlatformV2.timer (private float, the
-        // Cracking countdown). Needed to MERGE the two damage paths into one pool —
-        // without it, stepping on the ice directly restarts its timer from zero and
-        // visually regresses the cracks the stalk landings already earned, and stalk
-        // landings during Cracking contribute nothing.
+        // Reflection into ThinIcePlatformV2.timer: merges both damage paths into one pool
+        // — else a direct touch restarts the timer and regresses stalk-earned cracks.
         static FieldInfo timerField;
         static bool timerFieldSearched;
 
@@ -106,8 +85,7 @@ namespace SlimeJumping.Platforms
             iceRenderer = ice.GetComponentInChildren<Renderer>();
             mpb = new MaterialPropertyBlock();
 
-            // BambooV3 EnsureSettings pattern: a config-less project state still works
-            // on the class defaults instead of null-guarding every read.
+            // Fallback instance so a config-less project needs no null guard on every read.
             config = BambooOnThinIceConfig.Resolve(configOverride);
             if (config == null) config = ScriptableObject.CreateInstance<BambooOnThinIceConfig>();
 
@@ -117,10 +95,8 @@ namespace SlimeJumping.Platforms
 
         void FixedUpdate()
         {
-            // Central ice-state watch: diagnostic transition log + the Cracking-entry
-            // damage-pool sync (slime touched the ice directly while stalk landings
-            // had already cracked it partway — fast-forward the fresh touch timer so
-            // both paths pour into ONE pool).
+            // Cracking-entry sync: a direct touch starts a fresh timer, so fast-forward it
+            // to the damage stalk landings already earned (one shared pool).
             var st = ice.State;
             if (st != prevIceState)
             {
@@ -136,8 +112,7 @@ namespace SlimeJumping.Platforms
                 CountLandings();
                 MaybeResetCracksOnSlimeLeft();
                 MaybeHealCracks();
-                // Covers every shatter cause: our Nth landing, the slime stepping on
-                // the ice directly (touch timer / departure), anything.
+                // Covers every shatter cause, not just our Nth landing.
                 if (ice.State == ThinIcePlatformV2.IceState.Shattered) Collapse();
             }
             else if (ice.State == ThinIcePlatformV2.IceState.Regenerating ||
@@ -151,14 +126,12 @@ namespace SlimeJumping.Platforms
                 MaybeRegenOnSlimeLeft();
             }
 
-            // Outside the collapsed branch: the pole's lifetime is its own, so a fallen
-            // pole and the freshly respawned stalk can coexist.
+            // Outside the collapsed branch: a fallen pole and a respawned stalk can coexist.
             TickCorpseLifetime();
         }
 
-        // The stalk stands back up on its own respawnDelaySeconds after it fell, wherever the
-        // slime is. Same public call as the zone-exit route below (RequestRegen only acts on
-        // Shattered ice, so whichever fires first wins and the other is a no-op).
+        // RequestRegen only acts on Shattered ice, so this and the zone-exit route below are
+        // idempotent — whichever fires first wins.
         void MaybeRegenOnTimer()
         {
             if (config.respawnDelaySeconds <= 0f) return;
@@ -170,14 +143,8 @@ namespace SlimeJumping.Platforms
             ice.RequestRegen();
         }
 
-        // The zone only regens on an OnTriggerExit2D event. In the bamboo path the
-        // Nth landing happens at the stalk TIP — often ABOVE the zone box — so the
-        // slime's exit event was already spent while the ice was still Idle, and if
-        // the throw carries the slime away without re-entering the box, the zone
-        // never fires again. The link watches for "slime left the area" itself and
-        // calls the ice's public RequestRegen (idempotent with the zone's own call).
-        // "Left" = outside in X or fell below — being ABOVE the box still counts as
-        // inside, so the regen doesn't fire mid-bounce over the trial area.
+        // The zone only regens on OnTriggerExit2D, but the Nth landing happens at the stalk TIP
+        // above the box, so that exit event is already spent — watch for the exit ourselves.
         void MaybeRegenOnSlimeLeft()
         {
             if (ice.State != ThinIcePlatformV2.IceState.Shattered) return;
@@ -187,8 +154,7 @@ namespace SlimeJumping.Platforms
             ice.RequestRegen();
         }
 
-        // Partial landing damage resets when the slime leaves the zone area, matching
-        // the zone's own regen semantics for shattered ice.
+        // Partial damage resets on zone exit, matching the zone's own regen semantics.
         void MaybeResetCracksOnSlimeLeft()
         {
             if (landingCount == 0) return;
@@ -196,9 +162,7 @@ namespace SlimeJumping.Platforms
             ResetCracks("slime left the zone area");
         }
 
-        // ...and it also heals in place: leave the stalk alone for crackHealSeconds and the
-        // partial damage is gone, so a run that stalls does not silently keep its progress.
-        // offStalkSeconds is the same counter the landing debounce uses (CountLandings).
+        // Partial damage also heals in place after crackHealSeconds of no contact.
         void MaybeHealCracks()
         {
             if (landingCount == 0) return;
@@ -212,8 +176,7 @@ namespace SlimeJumping.Platforms
             Debug.Log($"[BambooOnThinIce {name}] {reason} — cracks reset " +
                       $"({landingCount}/{config.jumpsToShatter} dropped)", this);
             landingCount = 0;
-            // MaxValue, not 0: the next contact must count as a fresh landing rather than
-            // being eaten by the landing debounce.
+            // MaxValue, not 0: else the landing debounce eats the next contact.
             offStalkSeconds = float.MaxValue;
             if (ice.State == ThinIcePlatformV2.IceState.Idle && iceRenderer != null)
             {
@@ -239,10 +202,8 @@ namespace SlimeJumping.Platforms
 
         // --- Landing → crack ------------------------------------------------------
 
-        // Landing = the slime's surface collider, NOT RiderAttached — the corpse
-        // weight coupling also raises RiderAttached, which miscounted landings.
-        // Debounced (config landingDebounceSeconds): attach can flicker off/on within
-        // a frame or two, double-counting one physical landing.
+        // Landing = the slime's surface collider, NOT RiderAttached (corpse weight coupling
+        // raises it too). Debounced: attach flickers off/on and double-counts one landing.
         void CountLandings()
         {
             if (IsSlimeOnStalk())
@@ -287,9 +248,8 @@ namespace SlimeJumping.Platforms
             }
             else if (ice.State == ThinIcePlatformV2.IceState.Cracking)
             {
-                // Ice already counting down from direct touch: a stalk landing bites
-                // one landing's worth (duration/N) out of the timer, so both damage
-                // paths share the pool. The ice's own tick renders the progress.
+                // Ice already counting down from a direct touch: bite one landing's worth
+                // out of its timer so both damage paths share the pool.
                 ReduceTimer(CrackingDuration() / Mathf.Max(1, config.jumpsToShatter));
             }
         }
@@ -312,8 +272,7 @@ namespace SlimeJumping.Platforms
             }
             if (enterShatteredMethod == null) return;
 
-            // jumpInherit: false — shards get no launch-velocity kick; the slime is on
-            // the stalk, not jumping off the ice.
+            // jumpInherit: false — the slime is on the stalk, not jumping off the ice.
             enterShatteredMethod.Invoke(ice, new object[] { false });
             Debug.Log($"[BambooOnThinIce {name}] shatter fired via reflection (ice now {ice.State})", this);
             // Collapse() fires this same FixedUpdate via the State poll above.
@@ -321,10 +280,8 @@ namespace SlimeJumping.Platforms
 
         // --- Merged damage pool (timer reflection) ---------------------------------
 
-        // Known limitation (same class as the audio one below): reads the shared
-        // config's crackingDuration — a platform with overrideBehavior flipped on
-        // uses its local duration internally, so the landing bite would be scaled
-        // slightly off there. The test scenes don't override behavior.
+        // Known limitation: reads the shared config, so a platform with overrideBehavior on
+        // uses a different duration internally and the landing bite is scaled slightly off.
         float CrackingDuration()
         {
             var config = ice.ResolvedConfig;
@@ -365,10 +322,8 @@ namespace SlimeJumping.Platforms
             timerField.SetValue(ice, current - amount);
         }
 
-        // Known limitation: reads the shared config only — a platform with its
-        // per-instance audio override (overrideAudio) flipped on will crack with the
-        // config's clips here, not its own. Honoring the override would need another
-        // reflection surface into private fields; not worth it for a sound.
+        // Known limitation: shared config only — a platform with overrideAudio on still cracks
+        // with the config's clips; honoring it needs more reflection, not worth it for a sound.
         void PlayCrackSound()
         {
             var config = ice.ResolvedConfig;
@@ -382,32 +337,23 @@ namespace SlimeJumping.Platforms
 
         void Collapse()
         {
-            // A previous pole can still be lying around (its lifetime outlives the respawn).
-            // One corpse slot: clear the old one rather than orphaning it.
+            // One corpse slot: a previous pole may still be lying around (lifetime outlives respawn).
             if (corpse != null) PoofCorpse("replaced by a new fall");
 
             collapsed = true;
             collapsedAt = Time.time;
 
-            // Detach a rider cleanly before its surface disappears. Keeps its current
-            // velocity; the launch clearance guard inside ForceAirborneWithVelocity
-            // prevents an instant re-stick, and the slime then lands on the corpse
-            // and rides it down (carrier picks up the corpse motor).
+            // Detach before the surface disappears; ForceAirborneWithVelocity's launch
+            // clearance guard prevents an instant re-stick, then the slime rides the corpse down.
             DetachSlimeFrom(bamboo.transform);
 
-            // Snapshot the live spring pose before hiding the original — the corpse
-            // must keep the exact bend and inherit the swing.
+            // Snapshot the live spring pose before hiding the original.
             float bendDeg = bamboo.CurrentDeflectionDeg;
             float length = bamboo.BambooLength;
             float swingOmegaDeg = bamboo.AngularVelocity;
 
-            // Deactivate FIRST so the clone is born inactive: its BambooPlatformV3
-            // then never runs Awake and can be removed synchronously below. Without
-            // this there is a one-frame Destroy-deferral window in which the corpse
-            // carries BOTH the dead spring and the corpse motor, and the corpse
-            // colliders have no reattach guard — PlatformCarrier's
-            // GetComponentInParent<PlatformMotor> (and the probe's
-            // ISurfaceAnchorProvider lookup) could resolve the dead spring.
+            // Deactivate FIRST so the clone is born inactive and its BambooPlatformV3 can be
+            // removed synchronously — else PlatformCarrier can resolve the dead spring.
             bamboo.gameObject.SetActive(false);
             SpawnCorpse(bendDeg, length, swingOmegaDeg);
 
@@ -419,26 +365,21 @@ namespace SlimeJumping.Platforms
 
         void SpawnCorpse(float bendDeg, float length, float swingOmegaDeg)
         {
-            // Explicit world pose: the bamboo may be authored as a child of the ice
-            // or a moving parent, and Instantiate(go) alone re-roots local values.
-            // The source is inactive, so the clone spawns inactive too — no component
-            // on it runs Awake until the SetActive(true) at the end.
+            // Explicit world pose: the bamboo may be a child of the ice or a moving parent, and
+            // Instantiate(go) alone re-roots local values. Source inactive → clone inactive.
             corpse = Instantiate(bamboo.gameObject, bamboo.transform.position, bamboo.transform.rotation);
             corpse.name = bamboo.name + " (Fallen)";
 
-            // The clone must not BE a spring. Removing the component synchronously
-            // while the clone is still inactive means the corpse is never seen with
-            // two PlatformMotors on it. Segment child transforms keep the bent pose
-            // they were cloned with.
+            // Remove synchronously while the clone is inactive: the corpse must never be seen
+            // with two PlatformMotors on it.
             var cloneStalk = corpse.GetComponent<BambooPlatformV3>();
             if (cloneStalk != null)
             {
                 DestroyImmediate(cloneStalk);
             }
 
-            // Bend is normally pushed per-frame via MaterialPropertyBlock, which
-            // Instantiate does NOT copy — re-push it once so the corpse keeps the
-            // exact bent shape instead of snapping straight.
+            // Instantiate does NOT copy MaterialPropertyBlock — re-push the bend or the
+            // corpse snaps straight.
             var visual = corpse.transform.Find("Visual");
             if (visual != null)
             {
@@ -460,18 +401,15 @@ namespace SlimeJumping.Platforms
             // The corpse is still a bamboo: underhang slip runs off the stalk's own knobs.
             corpseMotor.bambooSettings = bamboo.Settings;
 
-            // Activate: the corpse motor's Awake runs here (PlatformMotor resets the
-            // body to Kinematic), so the Dynamic switch below must come after.
+            // PlatformMotor.Awake resets the body to Kinematic, so the Dynamic switch must follow.
             corpse.SetActive(true);
 
             // Segment colliders carry the bent pose — zone-exit tests against these, not an AABB.
             corpseColliders = corpse.GetComponentsInChildren<Collider2D>();
             corpseRestSeconds = 0f;
 
-            // FallingTrainPlatform recipe: Dynamic, heavy, continuous collision so the
-            // pole cannot tunnel through thin terrain. Seeding the rigidbody with the
-            // spring's current angular velocity carries the visible swing straight
-            // into the topple instead of starting the fall from a frozen pose.
+            // Continuous, else the pole tunnels through thin terrain. Seeding angular velocity
+            // carries the spring's visible swing into the topple instead of a frozen pose.
             var rb = corpse.GetComponent<Rigidbody2D>();
             corpseRb = rb;
             rb.bodyType = RigidbodyType2D.Dynamic;
@@ -488,9 +426,7 @@ namespace SlimeJumping.Platforms
 
         void Restore()
         {
-            // The original was only deactivated, never mutated: still Kinematic, pivot
-            // and serialized state untouched. Its spring resumes from the bend it had
-            // at the moment of collapse and settles on its own damping.
+            // Only deactivated, never mutated — the spring resumes from its collapse bend.
             bamboo.gameObject.SetActive(true);
             // Same dust burst the pole leaves behind, now covering the stalk popping in.
             SpawnPuffs(bamboo.transform, bamboo.CurrentDeflectionDeg, bamboo.BambooLength);
@@ -503,8 +439,7 @@ namespace SlimeJumping.Platforms
 
         // --- Corpse poof: dust puffs along the pole, corpse destroyed same frame ----
 
-        // Three independent exits, whichever comes first: too old, at rest long enough,
-        // or rolled out of the zone.
+        // Three exits, whichever comes first: too old, at rest, or out of the zone.
         void TickCorpseLifetime()
         {
             if (corpse == null) return;
@@ -515,8 +450,7 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
-            // "Stopped" = Box2D's own rest verdict (or the Static snap the motor does on
-            // ground), so no separate stillness threshold to tune.
+            // "Stopped" = Box2D's own rest verdict, so no stillness threshold to tune.
             bool atRest = corpseRb != null &&
                           (corpseRb.bodyType == RigidbodyType2D.Static || corpseRb.IsSleeping());
             corpseRestSeconds = atRest ? corpseRestSeconds + Time.fixedDeltaTime : 0f;
@@ -558,8 +492,7 @@ namespace SlimeJumping.Platforms
             corpseColliders = null;
         }
 
-        // A row of dust puffs along a bent pole's centerline — used both when the fallen
-        // pole vanishes and when the stalk stands back up.
+        // Dust puffs along a bent pole's centerline — used by both poof and restore.
         void SpawnPuffs(Transform root, float bendDeg, float length)
         {
             if (config.corpsePoofPrefab == null) return;
@@ -605,8 +538,7 @@ namespace SlimeJumping.Platforms
             if (crb == null || crb.bodyType != RigidbodyType2D.Dynamic) return;
             crb.AddForceAtPosition(-vel * config.corpseRecoilImpulse, pos, ForceMode2D.Impulse);
 
-            // Whatever the pole is resting on feels the jump too — the recoil half of the
-            // same channel that hands landings down (see TransmitToStalks).
+            // Whatever the pole rests on feels the jump too (recoil half of TransmitToStalks).
             var motor = corpse.GetComponent<FallingBambooCorpseMotor>();
             if (motor != null) motor.TransmitToStalks(-vel, config.ridingSlimeMass);
         }
@@ -628,19 +560,11 @@ namespace SlimeJumping.Platforms
         }
     }
 
-    /// Runtime-only motor for the fallen stalk corpse, added by BambooOnThinIce at
-    /// collapse. Physics owns the Dynamic body; hides PlatformMotor.FixedUpdate so
-    /// MovePosition never touches it (see below). Sleeps on plain ground → snapped
-    /// Static (walkable debris). Resting on a live stalk → stays Dynamic and feeds
-    /// bambooMass into that stalk's spring via the public rider contract.
-    ///
-    /// Implements ISurfaceAnchorProvider with the SAME closed-form arc centerline as
-    /// BambooPlatformV3 / BambooBend.shader, frozen at the collapse bend angle. The
-    /// corpse keeps the stalk's overlapping-capsule collider chain, and SurfaceProbe's
-    /// default ClosestPoint pass jitters across those caps — that flicker breaks
-    /// attach stability on the fallen pole, which played as "can't jump off it".
-    /// Local-space math rides the rigidbody transform, so the anchor stays valid
-    /// however the pole tumbled.
+    /// Runtime-only motor for the fallen stalk corpse. Physics owns the Dynamic body;
+    /// hides PlatformMotor.FixedUpdate so MovePosition never touches it. Sleeps on plain
+    /// ground → snapped Static; on a live stalk it stays Dynamic and loads that spring.
+    /// ISurfaceAnchorProvider uses the frozen arc centerline: SurfaceProbe's ClosestPoint
+    /// pass jitters across the capsule chain, which played as "can't jump off it".
     public class FallingBambooCorpseMotor : PlatformMotor, ISurfaceAnchorProvider
     {
         bool snapped;
@@ -651,12 +575,10 @@ namespace SlimeJumping.Platforms
         /// Mass a live stalk feels from this pole (config bambooMass); independent of rb.mass.
         public float bambooMass = 2f;
 
-        /// Extra mass a supporting stalk feels while the slime rides this pole (config
-        /// ridingSlimeMass) — weight, landing kick and launch recoil all scale on it.
+        /// Extra mass a supporting stalk feels while the slime rides this pole.
         public float ridingSlimeMass = 1f;
 
-        /// Seconds the slime must be off this pole before touching it counts as a new landing
-        /// (config landingDebounceSeconds) — attach flicker is not a second landing.
+        /// Seconds off this pole before a touch counts as a new landing (flicker is not one).
         public float landingDebounce = 0.1f;
 
         /// Stalk tuning the corpse inherits at spawn (underhang cling + reland lockout).
@@ -685,14 +607,12 @@ namespace SlimeJumping.Platforms
             stalkRadius = Mathf.Max(0.001f, radius);
         }
 
-        // Hides PlatformMotor.FixedUpdate (Unity calls only the most-derived). The base
-        // tick MovePositions every frame, which on a Dynamic body stomps the integrated
-        // velocity each step: no gravity accel, phantom rb velocity, never sleeps.
+        // Hides PlatformMotor.FixedUpdate (Unity calls only the most-derived): the base tick
+        // MovePositions a Dynamic body, stomping integrated velocity so it never sleeps.
         void FixedUpdate()
         {
             TickRiderCollisionIgnore();
-            // throwCapable: false — a fallen pole has no spring, so no swing is ever coming to
-            // throw a slime off its underside. The cling window is the only way down.
+            // throwCapable: false — a fallen pole has no spring, so the cling window is the only way down.
             if (bambooSettings != null)
                 underhang.Tick(cachedSlime, transform, bambooSettings.underhangClingTime,
                     bambooSettings.relandLockoutTime, false, Time.fixedDeltaTime);
@@ -704,24 +624,15 @@ namespace SlimeJumping.Platforms
 
         // --- Rider contact: the slime must not brake the fall ----------------------
 
-        // SlimeController owns the slime's rigidbody and overwrites its velocity every
-        // FixedUpdate, so every contact impulse the corpse spends against its own rider
-        // is energy that never comes back — a slime stuck to the underside braked the
-        // fall to a crawl. Every other platform is Kinematic and never feels its rider;
-        // the corpse is the one Dynamic platform, so it opts out explicitly. The rider
-        // is held by the surface anchor, not by contact.
-        //
-        // Narrow on purpose: only while FALLING (Dynamic) and only against the collider
-        // the slime is actually attached to this pole with. A settled Static corpse
-        // keeps stock collision, and a tumbling corpse still shoves a slime that is
-        // standing somewhere else.
+        // SlimeController overwrites its rigidbody velocity every FixedUpdate, so every impulse
+        // the corpse spends on its own rider is energy gone — a clinging slime braked the fall
+        // to a crawl. Narrow: only while Dynamic and only against the attached collider.
         void TickRiderCollisionIgnore()
         {
             if (cachedSlime == null) cachedSlime = Object.FindFirstObjectByType<Controller.SlimeController>();
 
-            // Tracked as the collider pair we actually suppressed, not a bool: a slime that
-            // gets destroyed and replaced mid-fall would otherwise leave the flag set and the
-            // NEW rider would keep braking the corpse.
+            // Tracked as the suppressed collider, not a bool: a slime destroyed and replaced
+            // mid-fall would leave the flag set and the new rider would keep braking the corpse.
             Collider2D want = null;
             if (cachedSlime != null && rb.bodyType == RigidbodyType2D.Dynamic)
             {
@@ -787,12 +698,8 @@ namespace SlimeJumping.Platforms
 
         // --- Slime on the pole -> the stalks holding the pole up ---------------------
 
-        // A stalk is Kinematic and driven by its own ODE, so nothing the slime does on this
-        // pole reaches it through contact physics, and the rider contract cannot carry it
-        // either: ApplyRiderInfluence only kicks on the firstAttach edge, and the pole holds
-        // that slot for as long as it rests there. So the pole hands each channel over
-        // explicitly — weight below (mass term), landing here, launch recoil from
-        // BambooOnThinIce.OnSlimeLaunched.
+        // A Kinematic stalk feels nothing through contact, and ApplyRiderInfluence only fires on
+        // the firstAttach edge which this pole holds — so each channel is handed over explicitly.
         void TickRiderLandingTransfer()
         {
             if (!SlimeIsRiding())
@@ -801,17 +708,14 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
-            // Debounced like the ice's landing count (same knob): attach flickers off and back
-            // on across this pole's overlapping capsules, and an undebounced edge would inject
-            // the same landing into the supporting stalks over and over.
+            // Debounced: attach flickers across this pole's overlapping capsules, and an
+            // undebounced edge injects the same landing into the supports over and over.
             if (offPoleSeconds >= landingDebounce) TransmitToStalks(SlimeImpactVelocity(), ridingSlimeMass);
             offPoleSeconds = 0f;
         }
 
-        // The landing velocity is already gone from slime.Velocity by the time this edge is
-        // visible — PlatformMotor runs at order -100, so SlimeController lands and zeroes its
-        // velocity AFTER this tick. SlimeController keeps the captured impact instead, split
-        // into surface-relative normal (unsigned, into the surface) and tangent (signed).
+        // PlatformMotor runs at order -100, so SlimeController zeroes the landing velocity AFTER
+        // this tick — read its captured impact instead (normal unsigned, tangent signed).
         Vector2 SlimeImpactVelocity()
         {
             if (cachedSlime == null) return Vector2.zero;
@@ -819,11 +723,7 @@ namespace SlimeJumping.Platforms
                    + cachedSlime.SurfaceTangent * cachedSlime.ImpactTangentSpeed;
         }
 
-        /// <summary>
-        /// Hands an impact down to every live stalk currently holding this pole up, split
-        /// between them — a pole bridging two stalks loads each with half. No-op once the
-        /// pole has settled Static on the ground (it touches no stalks then).
-        /// </summary>
+        /// <summary>Hands an impact down to every live stalk holding this pole up, split between them.</summary>
         public void TransmitToStalks(Vector2 velocity, float mass)
         {
             if (mass <= 0f || touchedStalks.Count == 0) return;
@@ -839,20 +739,14 @@ namespace SlimeJumping.Platforms
             return surf != null && surf.transform.IsChildOf(transform);
         }
 
-        // Dead weight, not a rider: ApplyExternalLoad leaves the stalk's single rider slot to
-        // the slime. Holding that slot is what made a stalk with a pole on it stop reacting to
-        // the slime landing on it (firstAttach never fired), and made every contact flicker a
-        // RemoveRider — which registers the stalk's reland lockout on the slime.
-        //
-        // Nothing to release: stop calling and the load is gone next tick. Contact flicker just
-        // drops the weight for a frame, and the new-contact kick below reads ~0 once the pole
-        // has settled (its velocity relative to the stalk surface is what feeds the impulse).
+        // Dead weight, not a rider: ApplyExternalLoad leaves the stalk's single rider slot to the
+        // slime — holding it made the stalk stop reacting to slime landings (firstAttach never
+        // fired) and made every contact flicker a RemoveRider, registering a reland lockout.
         void TickStalkWeightCoupling()
         {
             if (touchedStalks.Count == 0) return;
 
-            // A slime standing on this pole is weight the supports carry too, split between
-            // them exactly like the impact channel.
+            // A slime on this pole is weight the supports carry too, split like the impact channel.
             float mass = bambooMass;
             if (SlimeIsRiding()) mass += ridingSlimeMass / touchedStalks.Count;
 
@@ -861,11 +755,8 @@ namespace SlimeJumping.Platforms
                 var stalk = touchedStalks[i];
                 stalk.ApplyExternalLoad(touchedPoints[i], mass);
 
-                // Fresh contact = the pole arriving. That slam is the impulse the old
-                // firstAttach landing kick used to deliver. GetPointVelocity, not
-                // rb.linearVelocity: a pole rocking on its other support has a moving centre
-                // but a nearly still contact point, and the local approach speed is what the
-                // stalk actually receives.
+                // GetPointVelocity, not rb.linearVelocity: a pole rocking on its other support
+                // has a moving centre but a near-still contact point, and that is what lands.
                 if (RecentContactIndex(stalk) < 0)
                     stalk.ApplyExternalImpact(touchedPoints[i], rb.GetPointVelocity(touchedPoints[i]), bambooMass);
             }
@@ -873,10 +764,8 @@ namespace SlimeJumping.Platforms
             TickRecentContacts();
         }
 
-        // Contact with one stalk can blink out for a frame or two while the pole rests across
-        // several, and treating the reappearance as a fresh slam would pump the spring — the
-        // impulse has no reaction on the pole, so a repeat is free energy. A stalk stays
-        // "recently touched" for landingDebounce (same knob as the ice landing count).
+        // Contact with one stalk can blink out for a frame while the pole rests across several;
+        // treating the reappearance as a fresh slam pumps the spring (the impulse has no reaction).
         readonly List<BambooPlatformV3> recentStalks = new List<BambooPlatformV3>();
         readonly List<float> recentOffSeconds = new List<float>();
 
@@ -915,8 +804,7 @@ namespace SlimeJumping.Platforms
 
         Vector2 CenterlinePoint(float t) => ArcLocalPoint(bendAngleDeg, stalkLength, t);
 
-        /// Local-space point on a bamboo's bent centerline, t = 0 (base) .. 1 (tip).
-        /// Same arc as BambooBend.shader, so a live stalk and a frozen corpse share it.
+        /// Local-space point on the bent centerline, t = 0 (base) .. 1 (tip); same arc as BambooBend.shader.
         public static Vector2 ArcLocalPoint(float bendDeg, float length, float t)
         {
             float bendRad = bendDeg * Mathf.Deg2Rad;
@@ -992,9 +880,8 @@ namespace SlimeJumping.Platforms
             Vector2 anchorWorldPos = transform.TransformPoint(anchorLocal);
             Vector2 normalWorld = ((Vector2)transform.TransformVector(outward)).normalized;
             Vector2 tangentWorld = new Vector2(-normalWorld.y, normalWorld.x);
-            // consumesPlatformCarry: the anchor is recomputed against the corpse's
-            // CURRENT transform every probe, so stacking the carrier's rigid-TRS carry
-            // on top would double-correct while the pole is still moving.
+            // consumesPlatformCarry: the anchor is recomputed against the corpse's current
+            // transform every probe, so the carrier's rigid-TRS carry would double-correct.
             anchorInfo = new SurfaceAnchorInfo(anchorWorldPos, normalWorld, tangentWorld, true, name);
             return true;
         }

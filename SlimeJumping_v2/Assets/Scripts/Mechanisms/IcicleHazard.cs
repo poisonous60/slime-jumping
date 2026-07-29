@@ -4,20 +4,11 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// Icicle hanging from a ceiling. When the slime enters a box-shaped detection
-    /// zone beneath it, the icicle shakes in place, then drops at a constant speed.
-    /// On impact with a configured ground layer it breaks — particles, sound, and
-    /// the solid collider disables. The solid collider travels with the icicle
-    /// during the fall so the slime can ride it.
-    ///
-    /// When `respawnTime >= 0`, the icicle restores to its spawn position after a
-    /// cooldown and plays a scale-in regen animation; `respawnTime < 0` makes it
-    /// one-shot (matches ThinIcePlatform's respawn semantics).
-    ///
-    /// Visual shake is applied to a separate `visualRoot` child so the collider is
-    /// untouched by the tremor (per project rule: divide visual and collider).
-    // Order -100: ApplyPreset (incl. audio) must run before IcicleAudioManager
-    // (-50) so the manager's per-instance audio broadcast can win when present.
+    /// Ceiling icicle: Idle → Shaking (slime in detection box) → Falling → Broken → Regenerating.
+    /// The solid collider rides along during the fall so the slime can stand on it.
+    /// `respawnTime < 0` = one-shot. Shake moves `visualRoot` only, never the collider.
+    // Order -100: ApplyPreset (incl. audio) must run before IcicleAudioManager (-50),
+    // else the manager's broadcast audio is overwritten by the preset.
     [DefaultExecutionOrder(-100)]
     [RequireComponent(typeof(Rigidbody2D))]
     public class IcicleHazard : MonoBehaviour
@@ -85,10 +76,7 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private AudioClip impactSound;
         [Range(0f, 1f)][SerializeField] private float soundVolume = 1f;
 
-        /// <summary>
-        /// Overwrites the per-icicle audio clips + volume. Called by
-        /// IcicleAudioManager to broadcast a shared set across the scene.
-        /// </summary>
+        /// <summary>Overwrites the per-icicle clips + volume; called by IcicleAudioManager's scene-wide broadcast.</summary>
         public void ApplyAudioSettings(AudioClip shakeStart, AudioClip falling, AudioClip impact, float volume)
         {
             shakeStartSound = shakeStart;
@@ -124,9 +112,6 @@ namespace SlimeJumping.Mechanisms
 
         private void Awake()
         {
-            // Apply preset (incl. audio) before caching state. This component
-            // runs at order -100 so IcicleAudioManager (-50) overrides audio
-            // afterwards when present.
             ApplyPreset(preset);
 
             rb = GetComponent<Rigidbody2D>();
@@ -146,8 +131,7 @@ namespace SlimeJumping.Mechanisms
 
         private void OnValidate()
         {
-            // Re-apply only when the preset reference itself changes — local
-            // field edits with the same preset still attached survive untouched.
+            // Only on preset reference change, else inspector edits to the inline fields get stomped.
             if (preset != _lastAppliedPreset)
             {
                 _lastAppliedPreset = preset;
@@ -206,9 +190,8 @@ namespace SlimeJumping.Mechanisms
                 Mathf.Abs(detectionSize.y * worldScale.y));
             float angle = transform.eulerAngles.z;
 
-            // OverlapBox returns only one collider, so a non-slime collider in the
-            // mask (e.g. a Default-layer ground under the icicle) can shadow the
-            // slime and silently block detection. Iterate every overlap instead.
+            // Iterate all overlaps: the single-result OverlapBox lets a non-slime collider in the
+            // mask (Default-layer ground below) shadow the slime and silently kill detection.
             ContactFilter2D filter = new ContactFilter2D
             {
                 useLayerMask = true,
@@ -252,9 +235,8 @@ namespace SlimeJumping.Mechanisms
             fallElapsed += Time.fixedDeltaTime;
             bool armed = fallElapsed >= breakImmunityDuration;
 
-            // Sweep the solid collider downward so high fall speeds can't tunnel
-            // through thin ground, and slime riding on top can't falsely trigger
-            // a break via OnCollisionEnter2D. Deterministic and layer-filtered.
+            // Cast instead of OnCollisionEnter2D: high fall speed tunnels through thin ground,
+            // and a slime riding on top would otherwise trigger the break itself.
             if (armed && solidCollider != null)
             {
                 ContactFilter2D filter = new ContactFilter2D
@@ -285,8 +267,7 @@ namespace SlimeJumping.Mechanisms
                 timer -= Time.fixedDeltaTime;
                 if (timer > 0f) return;
                 respawnReady = true;
-                // Return to spawn position (invisible, collider still off) so the
-                // overlap check below tests the regen footprint, not the impact point.
+                // Move home first so the block check below tests the regen footprint, not the impact point.
                 rb.position = spawnPosition;
             }
 
@@ -318,8 +299,8 @@ namespace SlimeJumping.Mechanisms
                 useTriggers = false,
             };
 
-            // Overlap() requires the collider to be enabled. Flip it on for one
-            // query, then back off so nothing can rest on a mid-regen icicle.
+            // Collider2D.Overlap() silently returns 0 on a disabled collider — enable for the
+            // query only, so nothing can land on a mid-regen icicle.
             solidCollider.enabled = true;
             int hits = solidCollider.Overlap(filter, overlapResults);
             solidCollider.enabled = false;
@@ -366,8 +347,7 @@ namespace SlimeJumping.Mechanisms
                     PlaySound(impactSound);
                     if (breakParticles != null)
                     {
-                        // Only detach in one-shot mode — otherwise the respawning
-                        // icicle still needs its particle system child for the next break.
+                        // Detach only when one-shot; a respawning icicle needs this child for the next break.
                         if (IsOneShot) breakParticles.transform.SetParent(null, true);
                         breakParticles.Play(true);
                     }
@@ -387,8 +367,7 @@ namespace SlimeJumping.Mechanisms
                         visualRoot.localScale = originalVisualScale * 0f;
                     }
                     if (meshRenderer != null) meshRenderer.enabled = true;
-                    // solidCollider stays OFF during fade-in so slime can pass through
-                    // a not-yet-solid icicle; Idle re-enables it.
+                    // Collider stays OFF through fade-in; Idle re-enables it.
                     if (regenDuration <= 0f)
                     {
                         SetState(IcicleState.Idle);

@@ -11,15 +11,13 @@ namespace SlimeJumping.Platforms
         Rigidbody2D rb;
         SlimeController slime;
         PlatformMotor currentPlatform;
-        // Tracks the SurfaceMaterial we pushed onto the slime so we can pop the same
-        // instance later — needs to survive the platform's own field changing mid-attach.
+        // Kept so the pop targets the same instance even if the platform swaps its field mid-attach.
         SurfaceMaterial pushedSurfaceMaterial;
 
         [SerializeField] float slimeMass = 1f;
 
         public bool IsOnPlatform => currentPlatform != null;
-        /// <summary>The motor the rider is currently attached to, or null. Read-only; lets a
-        /// diagnostic tell "attached to THIS platform" apart from "attached to something".</summary>
+        /// <summary>The motor the rider is currently attached to, or null.</summary>
         public PlatformMotor CurrentPlatform => currentPlatform;
 
         void Awake()
@@ -39,8 +37,7 @@ namespace SlimeJumping.Platforms
             if (nextPlatform == currentPlatform) return;
 
             if (currentPlatform != null) currentPlatform.RemoveRider();
-            // Pop the previous platform's override before resolving the new one so a
-            // chain of springy-branch hops doesn't leak overrides onto the stack.
+            // Pop before taking the new platform, else chained hops leak overrides onto the stack.
             PopSurfaceOverride();
 
             currentPlatform = nextPlatform;
@@ -81,10 +78,7 @@ namespace SlimeJumping.Platforms
 
         bool RiderIsCharging => slime != null && slime.IsCharging;
 
-        /// <summary>
-        /// Platform velocity including rotational tangential contribution.
-        /// Used at launch/detach to inherit platform momentum into slime velocity.
-        /// </summary>
+        /// <summary>Platform velocity including rotational tangential contribution.</summary>
         public Vector2 GetEffectiveVelocity()
         {
             if (currentPlatform == null) return Vector2.zero;
@@ -101,23 +95,15 @@ namespace SlimeJumping.Platforms
             return vel;
         }
 
-        /// <summary>
-        /// Effective velocity scaled by VelocityTransferScale. Use only at launch/hop
-        /// to bake platform momentum into the slime's internal velocity.
-        /// </summary>
+        /// <summary>Effective velocity scaled by VelocityTransferScale; use only at launch/hop.</summary>
         public Vector2 GetLaunchVelocity()
         {
             if (currentPlatform == null) return Vector2.zero;
             return GetEffectiveVelocity() * currentPlatform.VelocityTransferScale;
         }
 
-        /// <summary>
-        /// Translate the rider by the platform's position delta this frame, plus the
-        /// rotational displacement of the rider's arm around the platform pivot.
-        /// Carries the rider as a position offset rather than baking platform velocity
-        /// into the rider's linearVelocity — avoids dynamic/kinematic integration
-        /// jitter on moving platforms.
-        /// </summary>
+        /// <summary>Carry the rider as a position offset (not linearVelocity) — velocity baking
+        /// gives dynamic/kinematic integration jitter on moving platforms.</summary>
         public void ApplyPositionCarry(float carryScale)
         {
             if (currentPlatform == null || carryScale == 0f) return;

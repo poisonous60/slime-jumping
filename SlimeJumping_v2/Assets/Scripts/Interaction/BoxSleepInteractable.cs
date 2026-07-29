@@ -50,18 +50,14 @@ namespace SlimeJumping.Interaction
             if (boundAnimator == null) boundAnimator = slime.GetComponentInChildren<BoxSleepAnimator>();
 
             slime.OverrideVelocity(Vector2.zero);
-            // CLAUDE.md: use rb.position (not transform.position). Z untouched
-            // (Rigidbody2D.position is Vector2). Visual depth handled below by
-            // ApplySitDepthShift.
+            // rb.position is Vector2 so Z stays put; ApplySitDepthShift handles visual depth.
             var rb = slime.GetComponent<Rigidbody2D>();
             if (rb != null) rb.position = sitAnchor.position;
 
             if (boundAnimator != null && boundVisual != null)
             {
-                // Order matches SitPoseInteractable: open the gate (which calls
-                // ResetDeformationState and writes body3d.localPosition = rest) BEFORE
-                // ApplySitDepthShift so the Z write survives into the first
-                // SetExternalDeform call (which preserves body3d.localPosition.z).
+                // Open the gate BEFORE ApplySitDepthShift — the gate resets body3d.localPosition
+                // to rest, so a Z written earlier is lost.
                 boundVisual.IsExternallyAnimated = true;
                 boundVisual.SetExternalSurfaceNormal(Vector2.up);
                 boundVisual.ApplySitDepthShift(sitAnchor.position.z);
@@ -100,8 +96,7 @@ namespace SlimeJumping.Interaction
             if (zEmitter != null && boundAnimator != null)
                 zEmitter.IsEmitting = boundAnimator.IsSleeping;
 
-            // Any-key wake: only while actually Sleeping, so the E press that
-            // initiated the sit-down doesn't instantly wake during Settling.
+            // Sleeping only, else the E press that started the sit-down wakes it during Settling.
             if (boundAnimator != null && boundAnimator.IsSleeping && AnyButtonPressedThisFrame())
                 boundAnimator.RequestWake();
         }

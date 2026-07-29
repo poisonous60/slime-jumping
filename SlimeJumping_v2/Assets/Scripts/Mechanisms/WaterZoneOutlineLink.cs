@@ -5,12 +5,8 @@ using UnityEditor;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// Keeps this WaterZone_v2's outline points in sync with a source zone's.
-    /// Intended use: a laid-flat (XZ-plane) decorative/visual water zone mirrors
-    /// the authoritative vertical (XY-plane) zone's polygon, so editing the
-    /// source automatically reshapes the horizontal pool. Points are copied
-    /// verbatim as Vector2 — this object's transform rotation (e.g. 90° around
-    /// X) re-maps the shared local XY plane into whatever orientation is needed.
+    /// Mirrors a source WaterZone_v2's outline onto this zone (flat pool follows the authored vertical zone).
+    /// Points are copied verbatim as local Vector2 — this transform's rotation re-maps the plane.
     [ExecuteAlways]
     [DisallowMultipleComponent]
     [RequireComponent(typeof(WaterZone_v2))]
@@ -74,9 +70,7 @@ namespace SlimeJumping.Mechanisms
             }
 
             self.ReplaceOutlinePoints(buf);
-            // RebuildRuntime only touches shape/collider/mesh buffers — it is
-            // safe in edit mode, and lets the SceneView preview update live as
-            // the source outline is dragged.
+            // RebuildRuntime touches only shape/collider/mesh buffers — safe in edit mode.
             self.RebuildRuntime();
 #if UNITY_EDITOR
             if (!Application.isPlaying)

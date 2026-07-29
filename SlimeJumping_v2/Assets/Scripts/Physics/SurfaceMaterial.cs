@@ -4,13 +4,11 @@ namespace SlimeJumping.Physics
 {
     public enum LaunchInertiaBlendMode
     {
-        // Pure vector add: velocity = launchVec + inheritedVec. Legacy / current behavior.
+        // velocity = launchVec + inheritedVec.
         Sum,
-        // Magnitude lerps between max(|L|,|I|) and |L+I|; direction follows (L+I).
-        // launchInertiaLerpFactor 0 = max, 1 = sum.
+        // Magnitude lerps max(|L|,|I|) -> |L+I| by launchInertiaLerpFactor; direction follows (L+I).
         LerpMaxToSum,
-        // Magnitude is the p-norm of the two magnitudes; direction follows (L+I).
-        // launchInertiaPNorm 1 = sum, 2 = energy-style, large p -> max.
+        // Magnitude is the p-norm (launchInertiaPNorm) of both magnitudes; direction follows (L+I).
         PNorm
     }
 

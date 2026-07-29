@@ -4,11 +4,7 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Platform effect that launches the slime on contact.
-    /// Attach this component to a platform GameObject.
-    /// Uses ForceAirborneWithVelocity (shared code path with Launch/Hop).
-    /// </summary>
+    /// <summary>Platform effect that launches the slime on contact.</summary>
     public class JumpPad : MonoBehaviour, IPlatformEffect
     {
         [Header("Jump Pad")]
@@ -42,8 +38,6 @@ namespace SlimeJumping.Mechanisms
             if (cooldownTimer > 0f)
                 cooldownTimer -= Time.fixedDeltaTime;
         }
-
-        // --- Gizmos ---
 
         void OnDrawGizmos()
         {

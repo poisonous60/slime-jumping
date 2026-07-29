@@ -7,12 +7,11 @@ namespace SlimeJumping.Controller
     {
         public void TeleportTo(Vector2 worldPos, Vector2 newVelocity)
         {
-            // Clear stale gravity fields (trigger exit won't fire for old location)
+            // Trigger exit never fires for the old location — stale fields would stick forever.
             gravityFieldStack.Clear();
             gravityUp = Vector2.up;
             gravityRight = Vector2.right;
 
-            // Charging cleanup
             if (CurrentDragZone != null)
             {
                 CurrentDragZone.ForceExit();
@@ -28,15 +27,12 @@ namespace SlimeJumping.Controller
             cachedSurfaceCollider = null;
             hasPrevSmoothedNormal = false;
 
-            // Carrier detach
             if (carrier != null) carrier.Detach();
             ClearPlatformEffect();
             surfaceMod = settings.BuildDefaultModifiers();
 
-            // Clear ignored colliders (old location irrelevant)
             ignoredColliderList.Clear();
 
-            // Timers
             stickTimer = 0f;
             stickDeccelTimer = 0f;
             slideRampTimer = 0f;
@@ -51,13 +47,11 @@ namespace SlimeJumping.Controller
             blockAttachCount = 0;
             inFluidCount = 0;
 
-            // Position and velocity
             rb.position = worldPos;
             velocity = newVelocity;
             externalDeltaV = Vector2.zero;
             rb.linearVelocity = newVelocity;
 
-            // Energy tracking
             launchSpeed = newVelocity.magnitude;
             launchPosition = worldPos;
             conversionCount = 0;
@@ -65,7 +59,6 @@ namespace SlimeJumping.Controller
             // Unity doesn't fire OnTriggerExit2D after teleport — clear stale candidates
             interactionDetector.ClearCandidates();
 
-            // Force Airborne
             ChangeState(SlimeState.Airborne, intentional: true);
         }
     }

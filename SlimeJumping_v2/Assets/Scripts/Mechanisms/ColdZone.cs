@@ -5,13 +5,8 @@ using UnityEngine;
 namespace SlimeJumping.Mechanisms
 {
     /// <summary>
-    /// Trigger zone that freezes the slime visually while inside.
-    /// Pure visual: no dynamics modifier — flagged as forwarded to
-    /// <see cref="SlimeFrostController"/> on the slime, which handles
-    /// the freezeT timeline + body MPB push + trail-stamp routing.
-    ///
-    /// Stage2 single-slime assumption — EnvironmentalZone tracks one
-    /// trackedSlime, which lines up with manager-side single freezeT.
+    /// Visual-only frost flag; <see cref="SlimeFrostController"/> owns the freezeT timeline
+    /// and MPB push. Single-slime assumption: EnvironmentalZone tracks one trackedSlime.
     /// </summary>
     [AddComponentMenu("SlimeJumping/Mechanisms/Cold Zone")]
     public class ColdZone : EnvironmentalZone

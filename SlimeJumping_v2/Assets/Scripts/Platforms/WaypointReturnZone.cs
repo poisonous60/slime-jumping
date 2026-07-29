@@ -4,18 +4,8 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Platforms
 {
-    /// Authored trigger box that commands a group of <see cref="WaypointPlatformV2"/> to return
-    /// when the slime leaves the box. Direct mirror of <c>ThinIceV2.ThinIceRespawnZone</c>: the
-    /// platforms still depart on their own (slime mounts the leader), but RETURN is owned by this
-    /// single zone so the whole group retracts together the instant the slime is out — no per-deck
-    /// proximity poll, no destination asymmetry.
-    ///
-    /// Membership: child WaypointPlatformV2 components are auto-collected on Awake. Use
-    /// <see cref="explicitMembers"/> to add platforms outside this GO's hierarchy (e.g. a sandwich
-    /// partner sitting elsewhere in the scene).
-    ///
-    /// Layer policy: stays on the same layer as the rest of the scene; isTrigger guarantees no
-    /// physical collision. OnTriggerEnter/Exit filter to the slime via GetComponentInParent.
+    /// Trigger box owning RETURN for a group of <see cref="WaypointPlatformV2"/>: departure stays
+    /// per-platform, but the whole group retracts together on exit — no per-deck proximity poll.
     [RequireComponent(typeof(BoxCollider2D))]
     [RequireComponent(typeof(Rigidbody2D))]
     public class WaypointReturnZone : MonoBehaviour
@@ -115,8 +105,7 @@ namespace SlimeJumping.Platforms
             Gizmos.matrix = prev;
 
             if (!drawMemberLines) return;
-            // Cached members may be empty in edit mode (Awake hasn't run); fall back to a
-            // shallow scan so the gizmo is useful before Play.
+            // members is empty before Awake runs, so scan children to keep the gizmo useful in edit mode.
             IEnumerable<WaypointPlatformV2> drawList = members.Count > 0
                 ? (IEnumerable<WaypointPlatformV2>)members
                 : GetComponentsInChildren<WaypointPlatformV2>(true);

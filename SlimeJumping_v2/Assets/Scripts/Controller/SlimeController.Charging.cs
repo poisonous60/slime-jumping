@@ -10,14 +10,10 @@ namespace SlimeJumping.Controller
 
         private void FixedUpdateCharging(float dt)
         {
-            // Aim logic (drift, WASD, angular clamp, auto-launch) — runs on fixed timestep for framerate independence
-
-            // Auto-drift outward (compensated for expanded radius)
             float radiusRatio = activeChargeRadius / settings.chargeRadius;
             float activeDriftSpeed = settings.autoDriftSpeed * Mathf.Lerp(1f, radiusRatio, settings.aimDriftRadiusScale);
-            // Tip-grab fills the charge faster: A/D is routed to bamboo tilt (not aim), so
-            // the charge can only build from auto-drift — scale it up so a mid-swing charge
-            // doesn't require holding as long as a flat-ground charge.
+            // On tip-grab A/D goes to bamboo tilt, not aim, so the charge can only build from
+            // auto-drift — scale it up or a mid-swing charge takes far longer than on ground.
             if (currentBambooGrab != null)
                 activeDriftSpeed *= currentBambooGrab.GrabChargeFillScale;
 
@@ -26,12 +22,10 @@ namespace SlimeJumping.Controller
             else
                 aimOffset += driftDirection * activeDriftSpeed * dt;
 
-            // WASD: 2D acceleration on aim offset
             Vector2 input = inputReader.AimInput;
             Vector2 prevAim = aimOffset;
             aimOffset += input * settings.inputAcceleration * dt;
 
-            // Clamp angular speed
             if (prevAim.sqrMagnitude > 0.0001f && aimOffset.sqrMagnitude > 0.0001f)
             {
                 float prevAngle = Mathf.Atan2(prevAim.y, prevAim.x) * Mathf.Rad2Deg;
@@ -45,9 +39,8 @@ namespace SlimeJumping.Controller
                 aimOffset = new Vector2(Mathf.Cos(clampedAngle), Mathf.Sin(clampedAngle)) * radius;
             }
 
-            // Auto-launch when reaching edge (with aim grace period). Tip-grab can override
-            // the grace/hold window (surface-tag-style) so a bamboo charge can hold longer
-            // or fire instantly at full, independent of the flat-ground default.
+            // Auto-launch at the aim edge. Tip-grab can override the full-aim hold window, so a
+            // bamboo charge may fire instantly or hold longer than on ground.
             if (aimOffset.magnitude >= activeChargeRadius)
             {
                 aimOffset = aimOffset.normalized * activeChargeRadius;
@@ -69,13 +62,9 @@ namespace SlimeJumping.Controller
                 return;
             }
 
-            // Surface/coyote physics — with probe hysteresis (absorb 1-frame misses).
-            // Any touched surface (including a ceiling) is a valid charge surface: unlike
-            // Attached, a charge always ends in a launch — never a permanent attach — so holding
-            // on a ceiling mid-charge can't leave the slime hanging. This lets a ceiling jump
-            // (Airborne→Charging on a ceiling) hold while the player aims the downward plunge,
-            // and tip-grab stays valid through bamboo bend past the ceiling dot. isTouchingSurface
-            // still gates the off-edge → coyote → cancel path.
+            // Probe hysteresis absorbs 1-frame misses. Any touched surface counts, ceilings included:
+            // a charge always ends in a launch, so it can never leave the slime hanging.
+            // isTouchingSurface still gates the off-edge → coyote → cancel path.
             bool probeValid = (currentBambooGrab != null) || isTouchingSurface;
 
             bool onValidSurface;
@@ -101,10 +90,8 @@ namespace SlimeJumping.Controller
 
             if (onValidSurface)
             {
-                // Rotate aim offset to follow surface normal change on curved surfaces.
-                // Skipped while tip-grabbed: bamboo bend rotates surfaceNormal in a way that
-                // is unrelated to player aim intent, so coupling aimOffset to it would let
-                // A/D tilt input silently steer the launch direction.
+                // Follow surface-normal rotation on curves. Skipped on tip-grab: bamboo bend rotates
+                // surfaceNormal independently of aim intent, so A/D tilt would steer the launch.
                 if (currentBambooGrab == null)
                 {
                     float prevAngleRad = Mathf.Atan2(prevSurfaceNormal.y, prevSurfaceNormal.x);

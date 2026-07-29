@@ -5,12 +5,7 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Spike v2: Pogostuck-style warp. On contact, takes override control and sweeps
-    /// the slime along a 3D arc (XY eased from entry to exitPoint, Z arcing forward
-    /// toward the camera at the midpoint, plus an initial bounce perpendicular to
-    /// the spike). Releases at exitPoint with velocity 0.
-    /// </summary>
+    /// <summary>On contact takes override control and sweeps the slime along a 3D arc (XY ease to exitPoint + Z toward camera + spike-normal bounce), releasing at exitPoint with zero velocity.</summary>
     [RequireComponent(typeof(Collider2D))]
     public class SpikeHazardV2 : MonoBehaviour, IExternalController
     {

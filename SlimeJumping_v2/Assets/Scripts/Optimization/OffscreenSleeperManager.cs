@@ -5,27 +5,9 @@ using Unity.Cinemachine;
 
 namespace SlimeJumping.Optimization
 {
-    /// <summary>
-    /// Per-FixedUpdate proximity gate that toggles registered <see cref="OffscreenSleepable"/>
-    /// GameObjects on/off based on the slime's distance to each one's bounds. Goal: reclaim
-    /// idle simulation cost (e.g. TautLine.SyncShapes / WaterZone_v2.SimulateWaves) for
-    /// platforms the player can't see.
-    ///
-    /// Hysteresis: enable radius is the camera viewport diagonal × marginMultiplier; disable
-    /// radius is enable × hysteresisFactor. Slime entering the smaller circle wakes a sleeper;
-    /// only leaves the larger circle puts it back to sleep, so jitter near the boundary
-    /// doesn't thrash SetActive.
-    ///
-    /// Drop one of these into MainScene as a GameObject. Sleepers self-register via OnEnable.
-    /// Manager listens to <see cref="SlimeController.OnSpawned"/> / OnDespawned for slime
-    /// reference rather than per-frame polling.
-    ///
-    /// Range Out of Scope:
-    ///   - Does NOT address the SurfaceProbe 33ms regression (that fires for ON-screen curve
-    ///     platforms, beyond this manager's reach).
-    ///   - Single-scene assumption — extending to additive scenes requires lifecycle review
-    ///     (sleeper list cleanup, DontDestroyOnLoad, etc.).
-    /// </summary>
+    /// <summary>Proximity gate that SetActive-toggles registered OffscreenSleepable objects by slime distance.</summary>
+    /// Enable radius = camera diagonal × margin, disable = enable × hysteresisFactor — the band
+    /// keeps boundary jitter from thrashing SetActive. Single-scene assumption.
     [DefaultExecutionOrder(-9999)]
     public class OffscreenSleeperManager : MonoBehaviour
     {
@@ -58,7 +40,6 @@ namespace SlimeJumping.Optimization
         float cachedCameraDiagonal;
         int tickPhase;
 
-        // Inspector observability — counts updated each FU.
         public int SleeperCount => sleepers.Count;
         public int ActiveSleeperCount { get; private set; }
         public int SleepingSleeperCount { get; private set; }
@@ -76,9 +57,8 @@ namespace SlimeJumping.Optimization
             SlimeController.OnSpawned += HandleSlimeSpawned;
             SlimeController.OnDespawned += HandleSlimeDespawned;
 
-            // Slime may already be live by the time this manager wakes (DefaultExecutionOrder
-            // doesn't guarantee order across MonoBehaviour types in the same scene). Catch any
-            // already-spawned slime so we don't wait an extra frame for the next OnEnable.
+            // Slime may already be live: DefaultExecutionOrder doesn't guarantee we Awake
+            // before it, so the OnSpawned event alone would cost an extra frame.
             cachedSlime = FindFirstObjectByType<SlimeController>();
         }
 
@@ -99,14 +79,8 @@ namespace SlimeJumping.Optimization
         public void Register(OffscreenSleepable s)
         {
             if (s == null) return;
-            // A marker can outlive the condition that made it valid — e.g. a SnowField gets
-            // added under a MeshCollider2DWrapper that already had a marker from an earlier
-            // Attach-All run. RuntimeFallbackScan only ADDS markers, never removes them, so
-            // the stale marker survives. If we let it into the active list, the manager would
-            // SetActive(false) the wrapper when the slime moves away, cascading into the child
-            // SnowField (whose OnDisable wipes its strips) → the snow vanishes until the slime
-            // returns. Reject gated GameObjects here so the marker stays physically present
-            // but completely inert. Clean it up properly via Tools/Optimization/Cleanup.
+            // Stale markers survive (nothing removes them), and sleeping e.g. a wrapper above a
+            // SnowField wipes its strips on OnDisable. Reject gated objects so they stay inert.
             if (OffscreenSleeperCandidates.ShouldSkipAttach(s.gameObject)) return;
             if (!sleepers.Contains(s)) sleepers.Add(s);
         }
@@ -118,9 +92,7 @@ namespace SlimeJumping.Optimization
 
         void FixedUpdate()
         {
-            // Slime null = freeze toggle state (we don't know who's "near" anything). Better
-            // to leave content visible than to flip half the scene off when the player is
-            // mid-respawn.
+            // Slime null (mid-respawn) = freeze toggle state, else half the scene flips off.
             if (cachedSlime == null) return;
 
             if (cachedCam == null) ResolveCamera();
@@ -133,16 +105,9 @@ namespace SlimeJumping.Optimization
             tickPhase = (tickPhase + 1) % Mathf.Max(1, tickStride);
             int stride = Mathf.Max(1, tickStride);
 
-            // Backward iteration: SetSleeping(true) → SetActive(false) → OnDisable →
-            // Unregister → sleepers.Remove(s) mutates the list mid-loop. Forward iteration
-            // would shift unvisited elements left and skip one each toggle. Going backward
-            // means removed indices are always behind us — already visited.
-            //
-            // Tick striding: each sleeper is owned by one of `stride` phases (i % stride).
-            // We only run the toggle decision for sleepers in this FU's phase, then visit
-            // every other sleeper just to count its current sleep state for stats. The
-            // toggle path is the bulk of the work (bounds query + distance compare); the
-            // counting branch is effectively free.
+            // Must iterate backward: SetSleeping(true) → OnDisable → Unregister removes from
+            // this list mid-loop, and forward iteration would skip one sleeper per toggle.
+            // Striding: only phase-owned sleepers run the toggle decision; the rest just count.
             for (int i = sleepers.Count - 1; i >= 0; i--)
             {
                 var s = sleepers[i];
@@ -203,8 +168,7 @@ namespace SlimeJumping.Optimization
             cachedCam = UnityEngine.Camera.main;
             if (cachedCam != null) return;
 
-            // Cinemachine setups sometimes don't tag the brain camera "MainCamera" — fall back
-            // to grabbing the brain's output camera directly.
+            // Cinemachine setups sometimes don't tag the brain camera "MainCamera".
             var brain = FindAnyObjectByType<CinemachineBrain>();
             if (brain != null) cachedCam = brain.GetComponent<UnityEngine.Camera>();
         }
@@ -213,18 +177,15 @@ namespace SlimeJumping.Optimization
         {
             if (!drawDebugGizmos) return;
 
-            // Center on slime if available (play mode + edit mode auto-find), otherwise on
-            // this manager's transform so the radius is at least previewable in edit mode.
-            // Edit mode: SlimeController.Awake hasn't run so `rb` is null and reading
-            // `Position` (= rb.position) throws — fall back to transform.position.
+            // Edit mode: SlimeController.Awake hasn't run, so `rb` is null and reading
+            // `Position` (= rb.position) throws — use transform.position there.
             Vector3 center;
             SlimeController slime = cachedSlime;
             if (slime == null) slime = FindFirstObjectByType<SlimeController>();
             if (slime == null) center = transform.position;
             else center = Application.isPlaying ? (Vector3)slime.Position : slime.transform.position;
 
-            // Camera resolution may be stale in edit mode (cachedCam set during play). Resolve
-            // a fresh camera ref so the diagonal calc uses current ortho size / fov.
+            // cachedCam is only set during play; resolve fresh so edit-mode ortho size is current.
             UnityEngine.Camera cam = cachedCam;
             if (cam == null)
             {
@@ -257,21 +218,11 @@ namespace SlimeJumping.Optimization
             Gizmos.DrawWireSphere(center, disableR);
         }
 
-        /// <summary>
-        /// Safety net for any candidate GameObject that the editor batch tool didn't catch
-        /// (e.g. authored after the last batch run, or from a runtime-instantiated prefab).
-        /// Adds a default-config OffscreenSleepable so the proximity gate still applies.
-        ///
-        /// Per-instance overrides (margin, manual bounds, force-active) are NOT preserved by
-        /// this path — they only exist if the marker was authored explicitly. Editor batch
-        /// tool remains the primary attach mechanism.
-        /// </summary>
+        /// <summary>Attaches default-config markers to candidates the editor batch tool missed; per-instance overrides are lost on this path.</summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void RuntimeFallbackScan()
         {
-            // No manager in the loaded scene → no point scanning. Adding markers without a
-            // manager just adds inert components (their OnEnable would early-out anyway since
-            // Instance is null). Saves 13 FindObjectsByType calls in any scene without a manager.
+            // No manager = markers would be inert anyway; skips 13 FindObjectsByType calls.
             if (Instance == null) return;
 
             int added = 0;

@@ -40,17 +40,11 @@ namespace SlimeJumping.Interaction
             _breathing.Configure(profile.breathAmplitude, profile.breathFrequency, profile.amplitudeVariation);
             _pendingGetUp = false;
             EnterState(State.SittingDown);
-            // Push t=0 immediately to prevent a one-frame (1,1,1) flicker
-            // between IsExternallyAnimated reset and the next Update().
+            // t=0 now, else a one-frame (1,1,1) flicker between IsExternallyAnimated reset and Update.
             Evaluate(0f);
         }
 
-        // RequestGetUp behavior by state:
-        //   Inactive    → ignore
-        //   SittingDown → queue _pendingGetUp (handled at end of sit anim)
-        //   Idle        → transition to GettingUp
-        //   GettingUp   → ignore (already getting up)
-        //   Released    → ignore
+        // Inactive / GettingUp / Released deliberately ignore the request.
         public void RequestGetUp()
         {
             switch (_state)
@@ -174,9 +168,8 @@ namespace SlimeJumping.Interaction
             _lastScale = scale;
             _lastAsymmetry = asym;
             _lastDip = dip;
-            // Sprite has center pivot, so pure Y scale lifts/drops both edges equally.
-            // Compensate localPos.y so the edge selected by profile.verticalAnchor stays fixed.
-            //   anchor=0 → top glued, anchor=0.5 → center, anchor=1 → bottom glued.
+            // Center pivot moves both edges under Y scale; localPos.y compensates so the edge at
+            // profile.verticalAnchor (0=top, 1=bottom) stays put.
             float halfHeight = slimeVisual != null ? slimeVisual.BodyNativeHeight * 0.5f : 0.5f;
             float anchorBias = (_profile.verticalAnchor * 2f) - 1f;
             float bobY = (_state == State.Idle) ? _idleBobY : 0f; // method A — Idle only

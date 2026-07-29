@@ -4,14 +4,7 @@ using SlimeJumping.Mechanisms;
 
 namespace SlimeJumping.EditorTools
 {
-    /// <summary>
-    /// Adds a pipe shortcut into the active SampleScene. Layout: a tall room with
-    /// two walls; one PipeEntrance is mounted on the left wall near the floor,
-    /// the other on the right wall near the ceiling. The slime sticks to a wall
-    /// next to an entrance and pushes the input toward the wall to enter; it
-    /// emerges from the paired exit on the opposite wall after a short in-wall
-    /// traversal animated by the PipeDotTrail.
-    /// </summary>
+    /// <summary>Builds a pipe-shortcut test room in the active scene: two PipeEntrances on opposite walls, paired through an in-wall PipePath.</summary>
     public static class PipeShortcutTestSetup
     {
         private const float OriginX = 90f;
@@ -20,11 +13,8 @@ namespace SlimeJumping.EditorTools
         [MenuItem("SlimeJumping/Mechanism/Setup Pipe Shortcut Test")]
         public static void SetupPipeShortcutTest()
         {
-            // Remove any prior copy so the menu can be re-run during iteration
-            // without duplicating geometry or stale field values. Preserve the
-            // prior root world position so a designer who has already nudged the
-            // test setup into a custom spot doesn't have to re-aim it after every
-            // rebuild.
+            // Re-runnable: destroy the prior copy, but keep its world position so a
+            // designer-nudged setup doesn't jump back to the default origin.
             Vector3 spawnPos = new Vector3(OriginX, OriginY, 0f);
             var prior = GameObject.Find("PipeShortcutTest");
             if (prior != null)
@@ -38,10 +28,8 @@ namespace SlimeJumping.EditorTools
             root.transform.position = spawnPos;
 
             // ---- Geometry: vertical shaft (two walls + floor + roof) ----
-            // Two layers per side: a thin inner wall (slime sticks to its inner face)
-            // plus a thick outer back-wall, with a 3-unit gap between them. The pipe
-            // path runs through that gap so it visibly snakes through wall material
-            // rather than empty void.
+            // Thin inner wall (slime surface) + thick outer back-wall with a gap between them;
+            // the pipe path runs through that gap so it snakes through wall material, not void.
             float shaftWidth = 8f;
             float wallH = 18f;
             float wallGap = 3f;             // gap between inner and outer wall faces (= visible wall thickness)
@@ -57,8 +45,7 @@ namespace SlimeJumping.EditorTools
                 new Vector3(1f, wallH, 1f),
                 new Color(0.55f, 0.55f, 0.6f));
 
-            // Outer back walls — visually fill the wall thickness so the pipe path
-            // reads as "inside the wall". Slightly darker shade so the layering reads.
+            // Outer back walls fill the wall thickness so the path reads as "inside the wall".
             float outerWallCenterX = shaftWidth / 2f + 1f + wallGap + outerWallThickness / 2f;
             BuildPlatform("OuterWallLeft", root.transform,
                 new Vector3(-outerWallCenterX, 0f, 0f),
@@ -79,8 +66,7 @@ namespace SlimeJumping.EditorTools
                 new Vector3(shaftWidth + 2f, 1f, 1f),
                 new Color(0.55f, 0.55f, 0.6f));
 
-            // Outer back floor / roof — enclose the under-floor and over-roof path
-            // segments so they sit inside material instead of open space.
+            // Enclose the under-floor and over-roof path segments so they sit inside material.
             float outerSlabCenterY = wallH / 2f + 1f + wallGap + outerWallThickness / 2f;
             float outerSlabWidth = shaftWidth + 2f + (1f + wallGap + outerWallThickness) * 2f;
             BuildPlatform("OuterFloor", root.transform,
@@ -92,9 +78,7 @@ namespace SlimeJumping.EditorTools
                 new Vector3(outerSlabWidth, outerWallThickness, 1f),
                 new Color(0.32f, 0.32f, 0.36f));
 
-            // Connecting wall-thickness slabs at the corners — fills the gap
-            // between OuterWall and OuterFloor/Roof so the back-wall reads as one
-            // continuous "wall material" surrounding the shaft.
+            // Corner slabs close the gap between OuterWall and OuterFloor/Roof.
             float cornerSlabH = wallGap + outerWallThickness;
             float cornerSlabW = wallGap + 1f; // bridges from inner wall outer face to outer wall inner face
             float cornerSlabCenterX = shaftWidth / 2f + 1f + (wallGap) / 2f;
@@ -116,24 +100,20 @@ namespace SlimeJumping.EditorTools
                 new Vector3(cornerSlabW, cornerSlabH, 1f),
                 new Color(0.32f, 0.32f, 0.36f));
 
-            // Entry ramp from outside the shaft so the slime can walk in.
-            // Now sits below the outer floor level so it leads UP into the shaft.
+            // Entry ramp outside the shaft so the slime can walk in.
             BuildPlatform("EntryRamp", root.transform,
                 new Vector3(-shaftWidth / 2f - 5f, -wallH / 2f, 0f),
                 new Vector3(8f, 1f, 1f),
                 new Color(0.4f, 0.4f, 0.4f));
 
             // ---- Pipe path: left-bottom → (down a bit, across, up) → right-top ----
-            // Runs inside the wall thickness, with a couple of bends so the dot
-            // trail visibly snakes through the wall.
             float wallSurfaceXLeft = -shaftWidth / 2f;        // left wall's inner face (slime side)
             float wallSurfaceXRight = shaftWidth / 2f;        // right wall's inner face
             float entranceLeftY = -wallH / 2f + 3f;
             float entranceRightY = wallH / 2f - 3f;
 
-            // Entrance positions sit slightly INSIDE the wall so the trigger box
-            // overlaps the wall surface — slime sticks to the wall while the
-            // trigger fires.
+            // Entrances sit slightly INSIDE the wall so the trigger box overlaps the
+            // surface — the slime can stay stuck to the wall while the trigger fires.
             float entranceInset = 0.4f;
             Vector3 entranceLeftWorld = new Vector3(
                 wallSurfaceXLeft - entranceInset, entranceLeftY, 0f);
@@ -143,20 +123,12 @@ namespace SlimeJumping.EditorTools
             var pipeRootGo = new GameObject("Pipe");
             pipeRootGo.transform.SetParent(root.transform, worldPositionStays: false);
 
-            // PipePath lives on the Pipe root. Path goes from the left entrance,
-            // dips down inside the left wall, runs across UNDER the floor at the
-            // shaft midline, comes up inside the right wall, lands at the right
-            // entrance.
             var pathGo = new GameObject("PipePath");
             pathGo.transform.SetParent(pipeRootGo.transform, worldPositionStays: false);
             var path = pathGo.AddComponent<PipePath>();
 
-            // Path waypoints are kept inside the wall corridor (the gap between
-            // inner wall and outer back wall) so the dot trail is visibly drawn
-            // ON wall material rather than crossing the inner floor / inner wall.
-            // Stored in PipePath's LOCAL space (PipePath sits at root.position with
-            // identity scale), so the whole path follows when designers move the
-            // PipeShortcutTest root in the editor.
+            // Waypoints stay in the wall corridor and are in PipePath LOCAL space (path sits
+            // at root with identity scale), so the path follows when the root is moved.
             float bottomCorridorY = -(wallH / 2f + 1f + wallGap * 0.5f);
             float leftCorridorX = -(shaftWidth / 2f + 1f + wallGap * 0.5f);
             float rightCorridorX = shaftWidth / 2f + 1f + wallGap * 0.5f;
@@ -176,8 +148,6 @@ namespace SlimeJumping.EditorTools
             var trail = pathGo.AddComponent<PipeDotTrail>();
 
             // ---- Two endpoints ----
-            // Convert local entrance offsets to world by adding the (possibly user-moved)
-            // root position so entrances spawn at the right place.
             Vector3 origin = root.transform.position;
             var leftEntrance = BuildEntrance(
                 "PipeEntrance_Left", pipeRootGo.transform,
@@ -190,7 +160,6 @@ namespace SlimeJumping.EditorTools
                 Vector2.right,       // inward = +X (into the right wall)
                 path);
 
-            // Pair them.
             var soLeft = new SerializedObject(leftEntrance);
             soLeft.FindProperty("pairedExit").objectReferenceValue = rightEntrance;
             soLeft.ApplyModifiedProperties();
@@ -198,15 +167,12 @@ namespace SlimeJumping.EditorTools
             soRight.FindProperty("pairedExit").objectReferenceValue = leftEntrance;
             soRight.ApplyModifiedProperties();
 
-            // Mark each entrance with three horizontal stripes (Rain World pipe
-            // mouth motif). Outward direction is opposite of the inward dir, so
-            // the bars poke out from the wall face into the shaft — visible to
-            // the player approaching the wall.
+            // Three-stripe pipe-mouth marker. Outward = opposite of inward, so the bars poke
+            // out of the wall face into the shaft where the approaching player sees them.
             BuildEntranceMarker(leftEntrance.transform, Vector2.right);
             BuildEntranceMarker(rightEntrance.transform, Vector2.left);
 
-            // Force the dot trail to build NOW so the dots show up in the editor
-            // before play. PipeDotTrail.RebuildEditor handles re-init safely.
+            // Build now so the dots are visible in the editor before play.
             trail.RebuildEditor();
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
@@ -229,9 +195,7 @@ namespace SlimeJumping.EditorTools
             col.size = new Vector2(1.2f, 2.5f);
 
             var entrance = go.AddComponent<PipeEntrance>();
-            // PipeEntrance.Awake() will create the controller component if missing,
-            // but adding it explicitly here makes the inspector cleaner and lets us
-            // surface its tunables to the designer right away.
+            // Awake would create this anyway; adding it here surfaces its tunables in the inspector.
             var controller = go.AddComponent<PipeTraversalController>();
 
             var so = new SerializedObject(entrance);
@@ -245,10 +209,7 @@ namespace SlimeJumping.EditorTools
 
         private static void BuildEntranceMarker(Transform parent, Vector2 outwardDir)
         {
-            // Three horizontal stripes stacked vertically, poking OUT from the wall
-            // face into the shaft so the player sees them when approaching. Each bar
-            // is wide along the wall-tangent (X here, since walls are vertical) and
-            // short along the stack axis (Y).
+            // Bars are wide along the wall tangent (X — walls are vertical), short along Y.
             const float stripeWidth = 0.7f;
             const float stripeHeight = 0.18f;
             const float stripeSpacing = 0.45f;

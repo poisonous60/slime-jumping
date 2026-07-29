@@ -8,9 +8,8 @@ namespace SlimeJumping.UI
         public const string MainMenuScene = "MainMenuScene";
         public const string GameplayScene = "MainScene";
 
-        // Read by SlimeStartStateManager so the start-interaction only fires after
-        // a real menu → gameplay transition, not when MainScene is played directly
-        // from the editor for testing.
+        // SlimeStartStateManager reads this so the start interaction is skipped when
+        // MainScene is played directly from the editor instead of via the menu.
         public static bool WasStartedFromMenu { get; private set; }
 
         public static void LoadMainMenu()

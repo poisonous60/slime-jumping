@@ -5,11 +5,8 @@ using UnityEngine;
 
 namespace SlimeJumping.EditorTools
 {
-    /// On scene/prefab save, warns about AudioSource components with null
-    /// Output AudioMixerGroup. Such sources route direct to Master and bypass
-    /// the option sliders (BGM / Player SFX / World SFX / UI). Warning only —
-    /// save proceeds regardless. Scenes are only inspected if already loaded
-    /// (no forced loads, keeps Ctrl+S fast).
+    /// On save, warns about AudioSources with a null Output AudioMixerGroup — they route
+    /// direct to Master and bypass the option sliders. Only already-loaded scenes are checked.
     public class AudioSourceMixerGroupValidator : UnityEditor.AssetModificationProcessor
     {
         static string[] OnWillSaveAssets(string[] paths)

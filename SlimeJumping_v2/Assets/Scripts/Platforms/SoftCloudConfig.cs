@@ -2,12 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms
 {
-    /// <summary>
-    /// Shared tuning for every <see cref="SoftCloudPlatform"/> in the game. The canonical asset
-    /// lives at <c>Assets/Resources/SoftCloudConfig.asset</c> and is auto-loaded — clouds carry no
-    /// per-instance numbers, only an optional override for a special variant (mirrors
-    /// <see cref="ThinIceV2.ThinIceV2Config"/>).
-    /// </summary>
+    /// <summary>Shared tuning for every <see cref="SoftCloudPlatform"/>; canonical asset auto-loaded
+    /// from <c>Assets/Resources/SoftCloudConfig.asset</c>, per-cloud override optional.</summary>
     [CreateAssetMenu(fileName = "SoftCloudConfig",
         menuName = "SlimeJumping/Soft Cloud/Config", order = 0)]
     public sealed class SoftCloudConfig : ScriptableObject
@@ -85,11 +81,7 @@ namespace SlimeJumping.Platforms
         const string ResourcesPath = "SoftCloudConfig";
         static SoftCloudConfig fallback;
 
-        /// <summary>
-        /// Returns the override if assigned, otherwise the canonical asset at
-        /// <c>Assets/Resources/SoftCloudConfig.asset</c>. If neither exists, returns a shared
-        /// in-memory instance holding the defaults above so a fresh scene still behaves.
-        /// </summary>
+        /// <summary>Override, else the Resources asset, else a shared in-memory defaults instance.</summary>
         public static SoftCloudConfig Resolve(SoftCloudConfig @override)
         {
             if (@override != null) return @override;

@@ -4,9 +4,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Debug helper: E saves slime position, R teleports slime back with cleared physics state.
-    /// </summary>
+    /// <summary>Debug helper: hotkey saves the slime position, another teleports back with cleared physics state.</summary>
     public class TeleportDebugger : MonoBehaviour
     {
         [SerializeField] private SlimeController slimeController;

@@ -2,17 +2,10 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Piano
 {
-    /// A steppable piano pedal. It does NOT affect the notes/sound — purely a physical/visual prop.
-    ///
-    /// Implemented as a PlatformMotor so the slime is carried properly: while the slime rests on it
-    /// the pedal (and its PolygonCollider2D) sinks straight DOWN with a damped spring, and the
-    /// standard PlatformCarrier path rides the slime down with it; it springs back up when the slime
-    /// leaves. On top of that the visual mesh tilts about X (cosmetic hinge tilt that goes into the
-    /// screen — it does NOT move the 2D collider) for a natural pedal-press look.
-    ///
-    /// The collider that carries the rider is the PolygonCollider2D on this GameObject (reshape it to
-    /// the pedal outline). The tilting mesh lives under a separate pivot child, so the collider only
-    /// translates in Y while the visual tilts — the rider rides the clean vertical sink.
+    /// A steppable piano pedal. Does NOT affect notes/sound — physical/visual prop only.
+    /// PlatformMotor so the PolygonCollider2D sinks straight down on a damped spring and the normal
+    /// carrier path rides the slime with it; the mesh tilts under a separate pivot child so the
+    /// collider only ever translates in Y.
     [RequireComponent(typeof(Rigidbody2D))]
     public class PianoPedal : PlatformMotor
     {
@@ -42,8 +35,7 @@ namespace SlimeJumping.Platforms.Piano
             if (visualPivot != null) restPivotRot = visualPivot.localRotation;
         }
 
-        // PlatformCarrier calls this every frame the slime is attached, and RemoveRider on detach.
-        // The first call of a press carries the impact velocity (before the slime zeroes it on landing).
+        // Only the first call of a press carries the impact velocity — the slime zeroes it on landing.
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity, bool isCharging)
         {
             if (!hasRider) pressSpeed = riderVelocity.magnitude;
@@ -52,8 +44,7 @@ namespace SlimeJumping.Platforms.Piano
 
         public override void RemoveRider() => hasRider = false;
 
-        /// Is the slime standing on this pedal right now? Read by PianoKeyboard's harmonize layer to
-        /// lengthen note tails (damper up = strings ring on), the way a real sustain pedal works.
+        /// Is the slime standing on this pedal? PianoKeyboard reads it to lengthen note tails.
         public bool IsPressed => hasRider;
 
         protected override (Vector2 position, float rotation) ComputeMotion(float dt)

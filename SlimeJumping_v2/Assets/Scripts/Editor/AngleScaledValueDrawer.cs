@@ -34,10 +34,8 @@ namespace SlimeJumping.Editor
             float lineHeight = EditorGUIUtility.singleLineHeight;
             float spacing = EditorGUIUtility.standardVerticalSpacing;
 
-            // First line: toggle + label + value
             Rect firstLine = new Rect(position.x, position.y, position.width, lineHeight);
 
-            // Toggle button
             Rect toggleRect = new Rect(firstLine.x, firstLine.y, ToggleWidth, lineHeight);
             string toggleLabel = property.isExpanded ? "\u25BC" : "\u25B6";
             if (GUI.Button(toggleRect, toggleLabel, EditorStyles.miniButton))
@@ -50,7 +48,6 @@ namespace SlimeJumping.Editor
 
             if (!property.isExpanded)
             {
-                // Collapsed: single float field editing baseValue, sync fullValue
                 EditorGUI.BeginChangeCheck();
                 float newVal = EditorGUI.FloatField(fieldRect, label, baseVal.floatValue);
                 if (EditorGUI.EndChangeCheck())
@@ -61,30 +58,25 @@ namespace SlimeJumping.Editor
             }
             else
             {
-                // Expanded header
                 EditorGUI.LabelField(fieldRect, label);
 
-                // Indent sub-fields
                 int indent = EditorGUI.indentLevel;
                 EditorGUI.indentLevel = indent + 1;
 
                 float y = position.y + lineHeight + spacing;
                 float labelW = EditorGUIUtility.labelWidth;
 
-                // Row 1: baseValue / fullValue
                 Rect baseRect = new Rect(position.x, y, position.width * 0.5f, lineHeight);
                 Rect fullRect = new Rect(position.x + position.width * 0.5f, y, position.width * 0.5f, lineHeight);
                 baseVal.floatValue = EditorGUI.FloatField(baseRect, "Base", baseVal.floatValue);
                 fullVal.floatValue = EditorGUI.FloatField(fullRect, "Full", fullVal.floatValue);
 
-                // Row 2: angleMin / angleMax
                 y += lineHeight + spacing;
                 Rect minRect = new Rect(position.x, y, position.width * 0.5f, lineHeight);
                 Rect maxRect = new Rect(position.x + position.width * 0.5f, y, position.width * 0.5f, lineHeight);
                 angleMin.floatValue = EditorGUI.FloatField(minRect, "Angle Min", angleMin.floatValue);
                 angleMax.floatValue = EditorGUI.FloatField(maxRect, "Angle Max", angleMax.floatValue);
 
-                // Row 3: preview bar
                 y += lineHeight + spacing;
                 Rect previewRect = new Rect(position.x + labelW * 0.5f, y,
                     position.width - labelW * 0.5f, lineHeight);
@@ -138,7 +130,6 @@ namespace SlimeJumping.Editor
                 EditorGUI.DrawRect(barRect, barColor);
             }
 
-            // Labels
             if (s_MiniLabelLeft == null)
             {
                 s_MiniLabelLeft = new GUIStyle(EditorStyles.miniLabel)

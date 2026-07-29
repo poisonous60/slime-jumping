@@ -5,16 +5,9 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Debugging
 {
-    // Read-only diagnostic for the "slime drifts sideways while resting on a TautLine" bug.
-    // Pulls everything from SlimeController + TautLine public getters — writes nothing back.
-    // Runs at order 3001 so it samples AFTER TautLine's order-200 position snap, i.e. the
-    // final resting state each FixedUpdate.
-    //
-    // Separates the two possible drift channels:
-    //   velocity channel  — controller's commanded Velocity (slide/crawl) moves the slime.
-    //   position channel  — TautLine's per-FU rb.position snap (riderT projection) moves it
-    //                       even when commanded Velocity is ~0.
-    // Compare net dPos vs Velocity*dt: if dPos.x >> velX*dt the snap is the mover.
+    // Read-only diagnostic for sideways drift while resting on a TautLine.
+    // Order 3001 samples AFTER TautLine's order-200 position snap, i.e. the final state each FU.
+    // dPos.x >> vel.x*dt means the rope's snap is the mover, not commanded velocity.
     [DefaultExecutionOrder(3001)]
     [DisallowMultipleComponent]
     [AddComponentMenu("SlimeJumping/Debug/TautLine Slide Debugger")]
@@ -82,7 +75,6 @@ namespace SlimeJumping.Debugging
             float slideV = slime.TangentSpeed - slime.CrawlVelocity; // inertial slideVelocity channel
             float crawlV = slime.CrawlVelocity;
 
-            // Expected position move from commanded velocity vs actual net move.
             float expectedDx = vel.x * dt;
             float snapDx = dPos.x - expectedDx;                  // residual from TautLine snap / projection
 

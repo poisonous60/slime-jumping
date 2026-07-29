@@ -3,12 +3,8 @@ using SlimeJumping.Effects;
 
 namespace SlimeJumping.Debugging
 {
-    /// Test helper: press the configured key in Play mode to invoke HitStopService.
-    /// Three selectable modes so you can isolate each channel (hitstop-only, impact-
-    /// frame-only, or both).
-    ///
-    /// Note: HitStopGuards still applies — if slime is charging or options panel is
-    /// open, the press is a no-op. A Debug.Log reports each outcome.
+    /// Test helper: press the key in Play mode to invoke HitStopService, one mode per channel.
+    /// HitStopGuards still applies — charging or an open options panel makes the press a no-op.
     public class HitStopTestTrigger : MonoBehaviour
     {
         public enum TriggerMode { HitStopOnly, ImpactFrameOnly, Both }

@@ -7,16 +7,16 @@ namespace SlimeJumping.TerrainShape.Editor
     [CreateAssetMenu(fileName = "ShapePreset", menuName = "SlimeJumping/Shape Preset", order = 201)]
     public class ShapePreset : ScriptableObject
     {
-        // Closed polygon outline in normalized centered space — centroid at (0,0). When stamped,
-        // multiplied by stampScale and rotated by stampRotationDeg, then offset to click position.
+        // Closed outline in normalized centered space (centroid at 0,0); stamping scales, rotates
+        // and offsets it to the click position.
         public List<Vector2> outline = new List<Vector2>();
 
         // 96×96 RGBA32 thumbnail for picker UI. Stored as a sub-asset of this preset.
         public Texture2D thumbnail;
     }
 
-    // Generates a transparent-background outline thumbnail. Used at preset save time and never
-    // during Inspector repaints — thumbnails live as sub-assets on the preset.
+    // Transparent-background outline thumbnail, generated at preset save time only — never
+    // during Inspector repaints.
     internal static class ShapePresetThumbnail
     {
         public static Texture2D Generate(IList<Vector2> outline, int size = 96)
@@ -35,8 +35,8 @@ namespace SlimeJumping.TerrainShape.Editor
             const float pad = 0.15f;
             float fit = maxDim * (1f + pad);
 
-            // Hidden/Internal-Colored is bundled with Unity but can be stripped in unusual setups.
-            // Bail out cleanly rather than NRE-ing inside SetPass.
+            // Hidden/Internal-Colored can be stripped from a build/setup — bail rather than
+            // NRE inside SetPass.
             var lineShader = Shader.Find("Hidden/Internal-Colored");
             if (lineShader == null) return null;
 
@@ -56,8 +56,7 @@ namespace SlimeJumping.TerrainShape.Editor
             GL.PushMatrix();
             GL.LoadOrtho();
             GL.Begin(GL.LINES);
-            // White on dark editor theme, black on light. Internal-Colored doesn't antialias —
-            // 1px stroke is usually readable enough for 96×96.
+            // Internal-Colored doesn't antialias; the 1px stroke still reads at 96×96.
             Color stroke = EditorGUIUtility.isProSkin ? new Color(0.95f, 0.95f, 0.95f, 1f) : new Color(0.1f, 0.1f, 0.1f, 1f);
             GL.Color(stroke);
 

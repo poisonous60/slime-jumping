@@ -1,9 +1,7 @@
 namespace SlimeJumping.UI.Framework
 {
-    /// Role tags that panel controllers use to resolve their children at Awake.
-    /// Adding a new role = extend the enum + tag the child in the prefab.
-    /// Controllers look up by tag, not by hardcoded child path, so rearranging
-    /// the prefab hierarchy in the editor doesn't break code.
+    /// Role tags panel controllers use to resolve children at Awake — lookup is by tag, not by
+    /// child path, so rearranging the prefab hierarchy doesn't break code.
     public enum UISlotType
     {
         None = 0,
@@ -34,9 +32,7 @@ namespace SlimeJumping.UI.Framework
         Slider = 50,
         Dropdown = 51,
 
-        // Options-panel row anchors (used so OptionsPanel can grab each row
-        // group without walking the hierarchy). Each value corresponds to one
-        // option row in the OptionsPanel prefab.
+        // Options-panel row anchors — one per option row in the OptionsPanel prefab.
         Row_FrameLimit = 100,
         Row_PlayerSfx = 101,
         Row_WorldSfx = 102,

@@ -15,22 +15,18 @@ namespace SlimeJumping.Editor
             float baseX = 4f;
             float baseY = 0f;
 
-            // Ground floor
             CreatePlatform("Floor", root.transform,
                 new Vector3(baseX, baseY - 5f, 0f),
                 new Vector3(30f, 1f, 1f));
 
-            // Left launcher platform — slingshot onto pendulums from here
             CreatePlatform("LaunchPad_Left", root.transform,
                 new Vector3(baseX - 12f, baseY + 2f, 0f),
                 new Vector3(3f, 1f, 1f));
 
-            // Right launcher platform
             CreatePlatform("LaunchPad_Right", root.transform,
                 new Vector3(baseX + 12f, baseY + 2f, 0f),
                 new Vector3(3f, 1f, 1f));
 
-            // Pendulum 1: default tuning — moderate impulse + torque
             CreatePendulum("Pendulum_Default", root.transform,
                 new Vector3(baseX - 6f, baseY + 2f, 0f),
                 localPivot: new Vector2(0f, 3f),
@@ -40,7 +36,6 @@ namespace SlimeJumping.Editor
                 riderPosAngAccelScale: 0.1f,
                 damping: 0.02f);
 
-            // Pendulum 2: high impulse, low torque — emphasize landing inertia
             CreatePendulum("Pendulum_HighImpulse", root.transform,
                 new Vector3(baseX, baseY + 2f, 0f),
                 localPivot: new Vector2(0f, 3f),
@@ -50,7 +45,6 @@ namespace SlimeJumping.Editor
                 riderPosAngAccelScale: 0.05f,
                 damping: 0.02f);
 
-            // Pendulum 3: low impulse, high torque — emphasize standing-weight swing
             CreatePendulum("Pendulum_HighTorque", root.transform,
                 new Vector3(baseX + 6f, baseY + 2f, 0f),
                 localPivot: new Vector2(0f, 3f),
@@ -60,7 +54,6 @@ namespace SlimeJumping.Editor
                 riderPosAngAccelScale: 0.4f,
                 damping: 0.05f);
 
-            // Pendulum 4: long rope — slow period, easier to observe physics
             CreatePendulum("Pendulum_Long", root.transform,
                 new Vector3(baseX - 3f, baseY + 6f, 0f),
                 localPivot: new Vector2(0f, 5f),

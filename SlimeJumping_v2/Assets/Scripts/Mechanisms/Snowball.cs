@@ -9,11 +9,8 @@ using SlimeJumping.Visual;
 namespace SlimeJumping.Mechanisms
 {
     /// <summary>
-    /// Stage 2 의 굴러가는 / 날아오는 눈덩이. 슬라임이 위에서 밟으면 자동 점프, 옆에서 부딪히면 밀려남.
-    /// 어느 쪽이든 눈덩이는 부서짐. 단일 배치 + 스포너 둘 다 지원.
-    ///
-    /// 옵션 C 하이브리드: 위치는 raycast 로 스크립트 제어 (Rigidbody2D 는 Kinematic),
-    /// 콜라이더는 trigger 로 슬라임 감지만 담당. JumpBall 패턴.
+    /// Stage 2 눈덩이. 위에서 밟으면 점프, 옆에서 부딪히면 밀려남 — 어느 쪽이든 부서짐.
+    /// 위치는 raycast 로 스크립트 제어 (Rigidbody2D 는 Kinematic), 콜라이더는 trigger 감지 전용.
     /// </summary>
     [RequireComponent(typeof(Rigidbody2D))]
     [RequireComponent(typeof(Collider2D))]
@@ -21,7 +18,6 @@ namespace SlimeJumping.Mechanisms
     {
         public enum Mode { Rolling, Flying }
 
-        // Crumbling / Gone 은 Phase 5, Falling 은 Phase 3 에서 사용. 현재 Phase 1 은 Active 만.
         enum SnowballPhase { Active, Falling, Crumbling, Gone }
 
         [Header("Mode")]
@@ -182,8 +178,7 @@ namespace SlimeJumping.Mechanisms
         Vector2 fallVelocity;
         float phaseTimer;
 
-        // Rolling 전용 수명 카운터. phaseTimer 는 Falling 의 maxFallTime 으로 덮어쓰이므로 분리.
-        // EnterActive/Initialize 에서 rollingMaxLifetime 으로 리셋. Falling 중에는 정지.
+        // phaseTimer 는 Falling 의 maxFallTime 으로 덮어쓰이므로 Rolling 수명은 별도 카운터.
         float rollingLifeRemaining;
 
         // Respawn state
@@ -207,8 +202,6 @@ namespace SlimeJumping.Mechanisms
 
         void OnValidate()
         {
-            // 인스펙터에서 radius 변경 즉시 collider + visual 에 반영. Edit-time 에서도
-            // 즉시 보이도록 — Awake 가 또 돌면 동일 작업 반복 (idempotent).
             ApplySizeFromRadius();
         }
 
@@ -217,8 +210,7 @@ namespace SlimeJumping.Mechanisms
             rb = GetComponent<Rigidbody2D>();
             // Kinematic 으로 강제 — Dynamic 으로 잘못 두면 자체 중력으로 떨어짐
             rb.bodyType = RigidbodyType2D.Kinematic;
-            // Interpolate + MovePosition 조합 — frame 사이를 보간해 끊김 제거.
-            // rb.position 직접 할당은 텔레포트라 보간 안 됨 → 연속 이동은 MovePosition 사용.
+            // rb.position 직접 할당은 텔레포트라 보간 안 됨 → 연속 이동은 MovePosition.
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
             myColliders = GetComponents<Collider2D>();
 
@@ -250,8 +242,7 @@ namespace SlimeJumping.Mechanisms
             if (visualRoot != null)
                 visualRoot.localScale = Vector3.one * (radius * 2f);
 
-            // Collider: 같은 GO 의 CircleCollider2D 반지름 동기화. CapsuleCollider2D 등 다른
-            // 콜라이더 타입은 디자이너가 수동 설정 (자동 추론은 의도 추측이라 위험).
+            // CircleCollider2D 만 동기화 — 다른 콜라이더 타입은 디자이너 수동 설정.
             var circle = GetComponent<CircleCollider2D>();
             if (circle != null) circle.radius = radius;
         }
@@ -259,8 +250,7 @@ namespace SlimeJumping.Mechanisms
         void Update()
         {
             if (WorldTimeFreezeService.IsFrozen) return;
-            // 시각 회전을 frame rate 로 적분 — FixedUpdate 만으로는 60fps 위에서 끊김.
-            // Position 은 Rigidbody2D.Interpolate 가 처리.
+            // 시각 회전은 frame rate 로 적분 — FixedUpdate 만으로는 60fps 위에서 끊김.
             visualAngleRad += spinRateRad * Time.deltaTime;
             UpdateVisualRotation();
         }
@@ -287,7 +277,7 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // ---------- Rolling (Phase 1) ----------
+        // ---------- Rolling ----------
 
         void ProbeInitialSurface()
         {
@@ -312,8 +302,7 @@ namespace SlimeJumping.Mechanisms
                 if (rollingLifeRemaining <= 0f) { SilentCleanup(); return; }
             }
 
-            // 표면 tangent 따라 중력 가속. motionDir.y > 0 → 오르막 → 감속, < 0 → 내리막 → 가속.
-            // 오르막 정점에서 currentSpeed 가 음수가 되면 direction 을 뒤집어 양의 속력으로 복귀.
+            // 표면 tangent 중력. 오르막 정점에서 속력이 음수가 되면 direction 을 뒤집어 복귀.
             if (gravity > 0f)
             {
                 currentSpeed += -gravity * motionDir.y * dt;
@@ -329,9 +318,8 @@ namespace SlimeJumping.Mechanisms
             Vector2 step = motionDir * (currentSpeed * dt);
             Vector2 nextPos = rb.position + step;
 
-            // 0) Forward wall probe — motionDir 으로 raycast. forward-down probe 는 -surfaceNormal
-            //    방향만 봐서 수직 벽을 놓침 (벽 옆을 지나치며 floor 만 hit). 이 probe 가 정면의
-            //    표면을 잡고 breakSlopeDelta 와 동일 임계로 판정 — 벽 / 가파른 코너에서 부서짐.
+            // 0) Forward wall probe — forward-down probe 는 -surfaceNormal 방향만 봐서 수직 벽을
+            //    놓친다 (벽 옆을 지나치며 floor 만 hit).
             RaycastHit2D wallHit = Physics2D.Raycast(
                 rb.position, motionDir, radius + lookahead, terrainMask);
             if (wallHit.collider)
@@ -347,12 +335,9 @@ namespace SlimeJumping.Mechanisms
                 }
             }
 
-            // 1) Forward-down preview probe — slope-delta break 판정 *전용*. 단독으로 EnterFalling
-            //    트리거하지 않는다. 코너 직전 (lookahead 안쪽) 에서 forward 너머만 비어 있어도
-            //    EnterFalling 으로 흘러가면, 다음 frame Falling 의 CircleCast 가 아직 surface 와
-            //    tangent 인 상태에서 distance=0 hit 으로 ResumeRollingFromLanding 을 호출 → 같은
-            //    자리로 잡아당겨져 Active↔Falling phase 진동 (떨림) 발생. 절벽 판정은 snap probe
-            //    까지 실패했을 때로 미룬다.
+            // 1) Forward-down preview probe — break 판정 전용, 단독으로 EnterFalling 금지.
+            //    코너 직전에 EnterFalling 하면 Falling 의 CircleCast 가 아직 tangent 인 상태에서
+            //    distance=0 hit → 같은 자리로 복귀, Active↔Falling 진동.
             Vector2 forwardProbeOrigin = nextPos + motionDir * lookahead;
             RaycastHit2D forwardHit = Physics2D.Raycast(
                 forwardProbeOrigin, -surfaceNormal, rayDepth + radius, terrainMask);
@@ -372,9 +357,7 @@ namespace SlimeJumping.Mechanisms
                     Break();
                     return;
                 }
-                // 볼록 코너 (내리막 꺾임) — surface snap 으로 따라 내려가지 않고 ballistic
-                // 으로 이탈. nextPos 까지 진행 후 EnterFalling 이 fallVelocity =
-                // motionDir * currentSpeed 로 속도 보존.
+                // 볼록 코너 — surface snap 대신 ballistic 이탈, 속도는 EnterFalling 이 보존.
                 if (oldSlopeDeg - newSlopeDeg > detachSlopeDelta)
                 {
                     rb.MovePosition(nextPos);
@@ -383,8 +366,7 @@ namespace SlimeJumping.Mechanisms
                 }
             }
 
-            // 2) Snap probe — nextPos *바로 아래* 의 표면에 안착. surface normal 위 radius 에서
-            //    아래로 캐스트해 hit 지점 + normal*radius 로 정렬. 이게 실제 위치 갱신.
+            // 2) Snap probe — nextPos 바로 아래 표면에 안착. 여기가 실제 위치 갱신.
             Vector2 snapOrigin = nextPos + surfaceNormal * radius;
             RaycastHit2D snapHit = Physics2D.Raycast(
                 snapOrigin, -surfaceNormal, radius * 2f + rayDepth, terrainMask);
@@ -399,18 +381,15 @@ namespace SlimeJumping.Mechanisms
             }
             else if (forwardHit.collider)
             {
-                // nextPos 바로 아래 표면이 사라진 좁은 gap — forward-probed surface 정보로
-                // fallback. forward probe 가 hit 했으므로 다음 프레임이면 정상 raycast 복귀.
+                // 좁은 gap — forward-probed surface 로 fallback, 다음 프레임이면 정상 복귀.
                 surfaceNormal = forwardNormal;
                 motionDir = forwardMotion;
                 rb.MovePosition(nextPos);
             }
             else
             {
-                // forward / snap 모두 실패 — 진짜 절벽. nextPos 까지 forward step 진행한 뒤
-                // EnterFalling — tangent 에서 벗어나야 다음 Falling 프레임의 CircleCast 가
-                // 즉시 hit 으로 다시 잡혀 phase 가 진동하지 않는다. forward velocity 는
-                // EnterFalling 이 fallVelocity = motionDir * currentSpeed 로 보존.
+                // 진짜 절벽. nextPos 까지 진행해 tangent 에서 벗어난 뒤 EnterFalling —
+                // 안 그러면 다음 CircleCast 가 즉시 hit 으로 잡혀 phase 가 진동한다.
                 rb.MovePosition(nextPos);
                 EnterFalling();
                 return;
@@ -419,9 +398,7 @@ namespace SlimeJumping.Mechanisms
             // 시각 회전: 진행 방향에 따라 시계/반시계. 우측 진행 = 시계 (-Z). Update 가 적분.
             spinRateRad = -(direction * currentSpeed) / radius;
 
-            // Snow interaction — carve / grow / rolling VFX. snapHit.collider 가 SnowField host
-            // 로 등록되어 있고 그 지점에 잔여 눈 비율이 임계 위면 활성. forwardHit fallback
-            // 케이스에선 snapHit.collider == null 이라 자연 비활성.
+            // forwardHit fallback 케이스에선 snapHit.collider == null 이라 snow 상호작용이 자연 비활성.
             SnowField field = null;
             bool onActiveSnow = false;
             if (snapHit.collider != null
@@ -434,13 +411,11 @@ namespace SlimeJumping.Mechanisms
 
             if (onActiveSnow)
             {
-                // Continuous carve — 매 FixedUpdate 누적, depth 시간 기준, 폭은 ball 크기 비례.
                 if (carveDepthPerSec > 0f)
                     field.Carve(snapHit.point,
                                 carveDepthPerSec * dt,
                                 radius * carveRadiusMultiplier);
 
-                // Growth — 굴러간 거리 × 현재 반경별 곡선. maxRadius 캡.
                 if (growthPerMeterByRadius != null && radius < maxRadius)
                 {
                     float growth = growthPerMeterByRadius.Evaluate(radius) * step.magnitude;
@@ -461,27 +436,23 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // 진행 방향 motion 의 horizontal 대비 각도 (deg). +X 진행이든 -X 진행이든
-        // 오르막은 양수, 내리막은 음수.
+        // 진행 방향의 경사각 (deg). 진행 부호와 무관하게 오르막 양수, 내리막 음수.
         static float SignedSlopeAngleDeg(Vector2 motion)
         {
             return Mathf.Atan2(motion.y, Mathf.Abs(motion.x)) * Mathf.Rad2Deg;
         }
 
-        // ---------- Slime / Snowball trigger (Phase 2) ----------
+        // ---------- Slime / Snowball trigger ----------
 
         void OnTriggerEnter2D(Collider2D other) => HandleTrigger(other);
         void OnTriggerStay2D(Collider2D other) => HandleTrigger(other);
 
         void HandleTrigger(Collider2D other)
         {
-            // Active = Rolling/Flying 게임플레이, Falling = 절벽에서 떨어지는 ballistic 구간.
-            // 둘 다 공중/지면에서 슬라임·다른 눈덩이와 부딪힐 수 있어야 함.
-            // Crumbling/Gone 은 콜라이더가 이미 disabled 라 도달하지 않지만 안전상 차단.
+            // Falling (절벽 낙하 구간) 도 충돌 유효. Crumbling/Gone 은 콜라이더가 이미 disabled.
             if (phase != SnowballPhase.Active && phase != SnowballPhase.Falling) return;
 
-            // 다른 눈덩이와 부딪히면 양쪽 모두 부서짐 — 상대 눈덩이도 자기 trigger
-            // 이벤트로 자체 break 하므로 여기서는 자기 자신만 break.
+            // 상대 눈덩이도 자기 trigger 로 break 하므로 여기서는 자기 자신만.
             var otherSnowball = other.GetComponentInParent<Snowball>();
             if (otherSnowball != null && otherSnowball != this)
             {
@@ -508,8 +479,7 @@ namespace SlimeJumping.Mechanisms
 
         void StompJump(SlimeController slime)
         {
-            // 점프 방향: 슬라임이 표면에 attached 면 SurfaceNormal, airborne 이면 world up.
-            // 굴러가는 눈덩이가 회전 중이라 transform.up 은 흔들림 — 슬라임 기준이 안전.
+            // 굴러가는 눈덩이는 회전 중이라 transform.up 이 흔들림 — 슬라임 기준을 쓴다.
             Vector2 jumpDir = slime.CurrentState == SlimeController.SlimeState.Airborne
                 ? Vector2.up
                 : slime.SurfaceNormal;
@@ -530,7 +500,6 @@ namespace SlimeJumping.Mechanisms
 
         void KnockbackPush(SlimeController slime, Vector2 toSlime)
         {
-            // 방향: 눈덩이 → 슬라임 + 위쪽 bias 섞어 정규화.
             Vector2 dir = (toSlime + Vector2.up * knockbackUpBias).normalized;
             slime.ForceAirborneWithVelocity(dir * knockbackSpeed);
 
@@ -541,12 +510,11 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // ---------- Falling sub-state (Phase 3) ----------
+        // ---------- Falling sub-state ----------
 
         void EnterFalling()
         {
             phase = SnowballPhase.Falling;
-            // 절벽 진입 순간의 motion 을 보존하고 중력 적분 시작
             fallVelocity = motionDir * currentSpeed;
             phaseTimer = maxFallTime;
         }
@@ -555,13 +523,11 @@ namespace SlimeJumping.Mechanisms
         {
             float dt = Time.fixedDeltaTime;
 
-            // 수평 감쇠 (1/s 단위 지수 감쇠)
             if (horizontalDecay > 0f)
             {
                 float decayFactor = Mathf.Exp(-horizontalDecay * dt);
                 fallVelocity.x *= decayFactor;
             }
-            // 자체 중력 적분
             fallVelocity.y -= fallGravity * dt;
 
             Vector2 step = fallVelocity * dt;
@@ -573,7 +539,6 @@ namespace SlimeJumping.Mechanisms
                 return;
             }
 
-            // CircleCast 으로 발판/벽 충돌 검출 — 반지름 고려해 공-회전 자연스럽게 멈춤
             RaycastHit2D hit = Physics2D.CircleCast(
                 rb.position, radius, step / stepDistance, stepDistance, terrainMask);
 
@@ -587,7 +552,6 @@ namespace SlimeJumping.Mechanisms
                 return;
             }
 
-            // 미충돌 — 위치 적분 + 시각 회전 + 타이머
             rb.MovePosition(rb.position + step);
             spinRateRad = -fallVelocity.x / radius;
 
@@ -595,7 +559,7 @@ namespace SlimeJumping.Mechanisms
             if (phaseTimer <= 0f) SilentCleanup();
         }
 
-        // ---------- Flying mode (Phase 4) ----------
+        // ---------- Flying mode ----------
 
         void FixedUpdateFlying()
         {
@@ -628,28 +592,22 @@ namespace SlimeJumping.Mechanisms
 
         void ResumeRollingFromLanding(RaycastHit2D hit, Vector2 lastFallVel)
         {
-            // 새 표면에 정렬
             surfaceNormal = hit.normal;
             Vector2 perp = new Vector2(hit.normal.y, -hit.normal.x);
             // 수평 운동량 부호로 새 motion 방향 선택. 정지에 가까우면 원래 direction 유지.
             float horizontalSign = Mathf.Abs(lastFallVel.x) > 0.05f
                 ? Mathf.Sign(lastFallVel.x)
                 : direction;
-            // perp 의 x 부호를 horizontalSign 에 맞춤
             motionDir = (perp.x * horizontalSign >= 0f ? perp : -perp).normalized;
-            // direction 필드도 갱신 — Crumbling 후 respawn 시점에 시작 direction 으로 복원되므로
-            // Falling 도중 변경은 안전하다.
+            // direction 은 respawn 때 startDirection 으로 복원되므로 여기서 바꿔도 안전.
             direction = motionDir.x >= 0f ? 1 : -1;
 
             rb.position = hit.point + hit.normal * radius;
-            // 낙하 운동량을 표면 tangent 로 투영 — 가파르게 떨어졌으면 빠르게 굴러감.
-            // motionDir 부호가 horizontalSign 에 맞춰져 있으므로 dot 은 보통 양수.
+            // 낙하 운동량을 표면 tangent 로 투영. motionDir 부호가 맞춰져 있어 dot 은 보통 양수.
             currentSpeed = Mathf.Clamp(Vector2.Dot(lastFallVel, motionDir), 0f, maxSpeed);
             phase = SnowballPhase.Active;
             fallVelocity = Vector2.zero;
 
-            // Landing splash — host 가 SnowField 이고 임계 속도 위면 분화구 + 둔덕 + burst VFX.
-            // Soft landing 은 splashMinImpactSpeed 컷오프로 무시.
             float impactSpeed = lastFallVel.magnitude;
             if (impactSpeed >= splashMinImpactSpeed
                 && hit.collider != null
@@ -668,15 +626,9 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // ---------- Public API for spawner (Phase 6) ----------
+        // ---------- Public API for spawner ----------
 
-        /// <summary>
-        /// Pool 매니지드 Snowball 을 시작 위치/발사 방향으로 재무장. Spawner.Get 후 호출.
-        /// launchDir 은 정규화 안 된 값 OK — 내부에서 정규화. Rolling 모드 + 수평 (|y| < 0.05)
-        /// 이면 ProbeInitialSurface 로 표면 snap, 그 외 (대각선/수직) 는 Falling phase 로
-        /// ballistic 발사 → 표면 닿으면 ResumeRollingFromLanding 가 Rolling 으로 전환.
-        /// 자체 respawn 을 비활성화 (respawnTime = -1) 하여 일회용으로 만든다 — 풀에서 cadence 관리.
-        /// </summary>
+        /// <summary>Pool 매니지드 Snowball 을 시작 위치/발사 방향으로 재무장. Spawner.Get 후 호출.</summary>
         public void Initialize(Vector2 worldPos, Vector2 launchDir)
         {
             // 풀 매니지드 인스턴스가 자체 부활하면 풀에 영영 안 돌아감 — 명시적으로 비활성화.
@@ -687,8 +639,7 @@ namespace SlimeJumping.Mechanisms
                 : Vector2.right;
 
             rb.position = worldPos;
-            // direction 부호는 ResumeRollingFromLanding 의 fallback (수평 속도 거의 0 일 때) 과
-            // EnterActive 의 motionDir 복원에 사용.
+            // direction 부호는 ResumeRollingFromLanding fallback 과 EnterActive 의 motionDir 복원에 쓰임.
             direction = dirN.x >= 0f ? 1 : -1;
             startPosition = worldPos;
             startDirection = direction;
@@ -697,8 +648,7 @@ namespace SlimeJumping.Mechanisms
             motionDir = dirN;
             fallVelocity = Vector2.zero;
             currentSpeed = initialSpeed;
-            // SnowField 위에서 자라난 반경을 인스펙터 시작 값으로 되돌림.
-            // ApplySizeFromRadius 가 visualRoot scale + CircleCollider2D radius 동기화.
+            // SnowField 위에서 자라난 반경을 시작 값으로 되돌림.
             radius = startRadius;
             ApplySizeFromRadius();
             ResetVisualState();
@@ -709,7 +659,7 @@ namespace SlimeJumping.Mechanisms
             {
                 // Rolling 수명 리셋 — Falling 분기로 발사돼도 착지 후 Rolling 진입 시 사용됨.
                 rollingLifeRemaining = rollingMaxLifetime;
-                // 수평이면 표면 snap (기존 동작 유지), 대각선/수직이면 Falling phase 로 ballistic 발사.
+                // 수평이면 표면 snap, 대각선/수직이면 Falling phase 로 ballistic 발사.
                 bool nearHorizontal = Mathf.Abs(dirN.y) < 0.05f;
                 if (nearHorizontal)
                 {
@@ -736,15 +686,13 @@ namespace SlimeJumping.Mechanisms
 
         void ResetVisualState()
         {
-            // 풀에서 재사용되는 인스턴스가 옛 회전 값을 한 프레임이라도 보이지 않도록
-            // accumulator + transform 둘 다 리셋. UpdateVisualRotation 의 다음 호출이
-            // 항상 identity 에서 시작.
+            // 풀 재사용 인스턴스가 옛 회전 값을 한 프레임도 보이지 않도록 accumulator + transform 둘 다 리셋.
             visualAngleRad = 0f;
             spinRateRad = 0f;
             if (visualRoot != null) visualRoot.localRotation = Quaternion.identity;
         }
 
-        // ---------- Lifecycle: Break / Crumbling / Gone (Phase 5) ----------
+        // ---------- Lifecycle: Break / Crumbling / Gone ----------
 
         void Break() => EnterCrumbling();
 
@@ -808,7 +756,6 @@ namespace SlimeJumping.Mechanisms
 
             if (respawnTime < 0f)
             {
-                // 일회용 — pool 매니지드면 OnDespawn 으로 풀에 반환, 아니면 destroy.
                 if (OnDespawn != null) OnDespawn.Invoke(this);
                 else Destroy(gameObject);
                 return;
@@ -867,7 +814,7 @@ namespace SlimeJumping.Mechanisms
             EnterGone();
         }
 
-        // ---------- Audio (Phase 8) ----------
+        // ---------- Audio ----------
 
         void StartLoop()
         {
@@ -886,17 +833,13 @@ namespace SlimeJumping.Mechanisms
             if (loopSource.isPlaying) loopSource.Stop();
         }
 
-        /// <summary>
-        /// SnowballAudioManager 가 씬 내 모든 Snowball 에 broadcast 하는 진입점.
-        /// JumpBall.ApplyAudioSettings 패턴.
-        /// </summary>
+        /// <summary>SnowballAudioManager 가 씬 내 모든 Snowball 에 broadcast 하는 진입점.</summary>
         public void ApplyAudioSettings(AudioClip rolling, AudioClip flying, AudioClip breakSfx, float volume)
         {
             rollingClip = rolling;
             flyingClip  = flying;
             breakClip   = breakSfx;
             sfxVolume   = volume;
-            // 현재 재생 중인 loop 가 있으면 새 clip/volume 으로 갱신
             if (loopSource != null && loopSource.isPlaying)
             {
                 AudioClip current = mode == Mode.Rolling ? rollingClip : flyingClip;
@@ -935,13 +878,11 @@ namespace SlimeJumping.Mechanisms
             Vector3 pos = Application.isPlaying ? (Vector3)rb.position : transform.position;
             Vector3 mDir = Application.isPlaying ? (Vector3)motionDir : Vector3.right * Mathf.Sign(direction);
 
-            // Forward-down ray 시각화
             Gizmos.color = new Color(0.6f, 0.85f, 1f, 0.8f);
             Vector3 rayOrigin = pos + mDir * lookahead;
             Vector3 normalDir = Application.isPlaying ? (Vector3)surfaceNormal : Vector3.up;
             Gizmos.DrawLine(rayOrigin, rayOrigin - normalDir * (rayDepth + radius));
 
-            // 진행 방향 화살표
             Gizmos.color = Color.white;
             Vector3 tip = pos + mDir * (radius + 0.4f);
             Gizmos.DrawLine(pos, tip);

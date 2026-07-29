@@ -4,14 +4,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Snow
 {
-    /// Diagnose why SnowField's overlap mask is dropping snow tris in regions that
-    /// don't appear to overlap anything visually. Mirrors SnowField.RebuildNow's
-    /// extract → subdivide → MaskOutOverlap pipeline 1:1, but instead of building
-    /// the snow mesh it records per-tri:
-    ///   - whether the tri was dropped by the mask
-    ///   - which Collider2D was hit, at which of the 4 sample points
-    /// and aggregates how many tris each masker is responsible for. Log appears in
-    /// Console; OnDrawGizmosSelected draws kept (green) / dropped (red) tris.
+    /// Replays SnowField.RebuildNow's extract → subdivide → MaskOutOverlap per tri and reports which
+    /// Collider2D dropped it at which sample point. Gizmos: green kept, red dropped.
     [ExecuteAlways]
     [RequireComponent(typeof(SnowField))]
     [AddComponentMenu("SlimeJumping/Platforms/Snow/Snow Mask Debug")]
@@ -201,8 +195,7 @@ namespace SlimeJumping.Platforms.Snow
 #endif
         }
 
-        // Mirrors SnowField.SamplePointHitsOther exactly. Returns the first masker
-        // (or null if none). Uses the same priority arbitration / InstanceID tiebreak.
+        // Mirrors SnowField.SamplePointHitsOther, including the priority / InstanceID tiebreak.
         static Collider2D FirstMaskerAt(Vector2 worldXY, SnowField field,
             ContactFilter2D filter, Collider2D[] hits, int myId)
         {

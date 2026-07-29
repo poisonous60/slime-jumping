@@ -3,11 +3,8 @@ using UnityEngine;
 
 namespace SlimeJumping.UI.Animation
 {
-    /// Tunable knobs for every UI juice effect. One profile asset is shared by
-    /// default; panels or buttons can override per-instance by assigning a
-    /// different profile in the inspector. Keeping the values on an SO means
-    /// the procedurally rebuilt prefabs don't lose their tuning when the setup
-    /// scripts run again.
+    /// Tunable knobs for every UI juice effect; panels/buttons may assign their own
+    /// profile. Values live on an SO so rebuilt prefabs keep tuning when setup re-runs.
     [CreateAssetMenu(menuName = "SlimeJumping/UI/Juice Profile", fileName = "JuiceProfile")]
     public class JuiceProfile : ScriptableObject
     {

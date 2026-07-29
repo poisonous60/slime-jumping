@@ -4,15 +4,10 @@ using MegaFiers;
 
 namespace SlimeJumping.Platforms
 {
-    // Keeps a PolygonCollider2D / EdgeCollider2D in sync with a MegaFiers-deformed mesh.
-    // Strategy: at bake time, `contourIndices` stores an ordered list of source-mesh
-    // vertex indices that describe the desired 2D silhouette (closed polygon OR open
-    // polyline). Each frame we read those deformed verts out of `source.mesh` and
-    // push them into the collider's points in the collider's local space.
-    //
-    // Runs with DefaultExecutionOrder = int.MaxValue so its LateUpdate fires AFTER
-    // MegaModifyObject.LateUpdate in the same frame — MegaFiers' own jobs all
-    // Complete() inside SetMesh() before returning, so mesh.GetVertices is safe.
+    // Keeps a PolygonCollider2D / EdgeCollider2D in sync with a MegaFiers-deformed mesh:
+    // baked `contourIndices` (closed polygon or open polyline) re-read from source.mesh each frame.
+    // Execution order int.MaxValue puts LateUpdate after MegaModifyObject.LateUpdate; MegaFiers
+    // Complete()s its jobs inside SetMesh(), so mesh.GetVertices is only safe from there.
     [ExecuteAlways]
     [DefaultExecutionOrder(int.MaxValue)]
     [AddComponentMenu("SlimeJumping/Platforms/Mega Deform 2D Collider")]
@@ -43,9 +38,8 @@ namespace SlimeJumping.Platforms
             var mesh = source.mesh;
             if (mesh == null)
             {
-                // MegaModifyObject binds `mesh` in Start / MeshChanged. Before that
-                // point (e.g. first edit-mode frame after domain reload) we fall back
-                // to originalMesh so the collider at least tracks the rest pose.
+                // MegaModifyObject binds `mesh` in Start / MeshChanged; before that
+                // (first edit-mode frame after domain reload) only originalMesh exists.
                 mesh = source.originalMesh;
                 if (mesh == null) return;
             }

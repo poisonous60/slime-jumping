@@ -4,15 +4,9 @@ using UnityEngine;
 namespace SlimeJumping.Platforms.Snow
 {
     /// <summary>
-    /// Barycentric recursive subdivision of a TopPatch. Each level splits every triangle
-    /// into 4 sub-triangles by inserting midpoint vertices on each edge; midpoints are
-    /// shared between adjacent triangles via canonical edge keying. Boundary edges split
-    /// along with their parent edges so the patch perimeter stays intact (and dense).
-    ///
-    /// Phase 2 needs this so vertex displacement shaders have enough vertices for visible
-    /// carve dips on low-poly hosts. The host's 3D triangulation shape is preserved —
-    /// midpoint positions/normals are linear interpolation of endpoints, no Loop-style
-    /// smoothing.
+    /// Recursive 1→4 triangle subdivision of a TopPatch, giving displacement shaders enough
+    /// vertices on low-poly hosts. Midpoints shared via canonical edge keys; boundary edges
+    /// split with their parents. Linear interpolation only — shape is preserved, not smoothed.
     /// </summary>
     public static class SnowPatchSubdivider
     {
@@ -24,9 +18,7 @@ namespace SlimeJumping.Platforms.Snow
             return p;
         }
 
-        // Note: deliberately not `in` — the local function GetMidpoint captures src,
-        // and C# disallows `in` parameter capture in nested functions. The struct
-        // is just a few array refs anyway, so the by-value copy is essentially free.
+        // Not `in`: C# forbids capturing an `in` parameter inside the nested GetMidpoint.
         static SnowTopSurfaceExtractor.TopPatch SubdivideOnce(
             SnowTopSurfaceExtractor.TopPatch src)
         {
@@ -51,8 +43,7 @@ namespace SlimeJumping.Platforms.Snow
                 else mn = src.vertNormals[a]; // degenerate fallback
                 newVerts.Add(mp);
                 newNormals.Add(mn);
-                // Midpoint sits ON the parent edge — if both parents are slope-cut adjacent,
-                // the midpoint also lies on that slope-cut edge; otherwise it doesn't.
+                // Midpoint is slope-cut adjacent only if both parents are.
                 if (newIsSlopeCut != null)
                     newIsSlopeCut.Add(src.isSlopeCutAdjacent[a] && src.isSlopeCutAdjacent[b]);
                 edgeMidpoints[key] = idx;
@@ -73,8 +64,7 @@ namespace SlimeJumping.Platforms.Snow
                 newTris.Add(mab); newTris.Add(mbc); newTris.Add(mca);
             }
 
-            // Each boundary edge (a → b) splits into two boundary edges (a → mab) + (mab → b).
-            // Direction preserved so downstream "interior on the left" assumption still holds.
+            // Edge direction preserved — downstream assumes "interior on the left".
             int beLen = src.boundaryEdges != null ? src.boundaryEdges.Length : 0;
             var newBoundary = new List<int>(beLen * 2);
             for (int e = 0; e < beLen; e += 2)

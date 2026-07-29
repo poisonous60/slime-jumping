@@ -4,13 +4,7 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Editor
 {
-    /// <summary>
-    /// GameObject-menu spawners for DeformablePlatform. Each menu item creates a
-    /// fully-wired platform (collider + mesh + clay material + double-sided render)
-    /// at the scene view pivot with a preset shape. Sizes are encoded in the menu
-    /// path so the designer can drop in short/long/wide variants without duplicating
-    /// anything.
-    /// </summary>
+    /// <summary>GameObject-menu spawners that drop a fully-wired DeformablePlatform at the scene view pivot; sizes are encoded in the menu path.</summary>
     public static class DeformablePlatformSpawner
     {
         const int GroundLayer = 7;
@@ -69,8 +63,7 @@ namespace SlimeJumping.Editor
             var rb  = go.AddComponent<Rigidbody2D>();
             var col = go.AddComponent<CircleCollider2D>();
             go.AddComponent<DeformablePlatformActivator>();
-            // AddComponent in script skips Reset() — apply runtime config explicitly so the
-            // Inspector reflects the intended state before Play.
+            // AddComponent from script skips Reset(), so apply the config explicitly.
             rb.bodyType = RigidbodyType2D.Kinematic;
             rb.useFullKinematicContacts = true;
             rb.gravityScale = 0f;
@@ -89,7 +82,6 @@ namespace SlimeJumping.Editor
             var go = new GameObject(name);
             Undo.RegisterCreatedObjectUndo(go, $"Create {name}");
 
-            // Parent to the right-clicked object if applicable; otherwise to scene view pivot.
             GameObjectUtility.SetParentAndAlign(go, cmd.context as GameObject);
             if (cmd.context == null)
             {

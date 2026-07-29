@@ -9,10 +9,8 @@ namespace SlimeJumping.Editor
     {
         const string RootName = "BambooPlatformV3Test";
         const string SettingsAssetPath = "Assets/Settings/BambooV3Settings.asset";
-        // Pushed onto the slime's SurfaceMaterial override stack by PlatformCarrier while it
-        // rides a stalk, popped on detach. Kills gravity slide so the slime stays where it
-        // landed instead of running down to the base — at the base the moment arm is ~0, which
-        // zeroes both the throw velocity and the launch carrier bonus.
+        // Kills gravity slide while riding; without it the slime runs to the base where the
+        // moment arm is ~0 and both throw velocity and carrier bonus go to zero.
         const string SurfaceAssetPath = "Assets/Settings/SurfaceMaterials/BambooV3_Surface.asset";
 
         // Floor cube sits at y = -6 with half-height 0.5.
@@ -21,9 +19,7 @@ namespace SlimeJumping.Editor
         [MenuItem("SlimeJumping/Platform/Setup BambooPlatform V3 Test")]
         public static void SetupBambooV3Test()
         {
-            // Remove any stale test root left over from a previous menu run — those still
-            // reference last-build's material/shader and won't pick up the latest defaults
-            // until the GameObject is recreated.
+            // A stale root keeps the previous run's material/shader; only recreation picks up defaults.
             var existing = GameObject.Find(RootName);
             if (existing != null) Object.DestroyImmediate(existing);
 
@@ -46,18 +42,10 @@ namespace SlimeJumping.Editor
             CreateStaticPlatform("LaunchPad", root.transform,
                 new Vector3(-24f, -4f, 0f), new Vector3(3f, 1f, 1f));
 
-            // The whole point of V3 is being hit from BELOW on a tilted stalk, so most of
-            // these are raised on pedestals and lean out over open floor. A stalk based on
-            // the floor has no reachable underside near the base, which is exactly the setup
-            // that made v1's failure hard to see.
-            //
-            // Tilt is the root Transform's Z rotation and nothing else — negative Z leans the
-            // stalk's local +Y toward +X, so a slime launched from the left pad flies up-right
-            // into the underside.
+            // Tilt is the root Transform Z rotation only — negative Z leans local +Y toward +X, so a
+            // slime launched from the left pad flies up-right into the underside.
 
-            // Baseline: vertical. Rider weight torque is ZERO here (arm.x = 0), so this stalk
-            // only ever moves from an impact. Compare against the tilted ones to see the
-            // static sag that only a tilt produces.
+            // Vertical control: arm.x = 0 so rider weight makes no torque; any sag here is something else.
             CreateBamboo(root.transform, "V3_Vertical",
                 new Vector3(-20f, FloorTop, 0f), tiltZ: 0f, length: 5f, segments: 12, settings, surface);
 
@@ -69,23 +57,18 @@ namespace SlimeJumping.Editor
             CreateBamboo(root.transform, "V3_Tilt50",
                 new Vector3(-2f, 3f, 0f), tiltZ: -50f, length: 7f, segments: 16, settings, surface);
 
-            // Nearly horizontal — the strongest "hit the underside straight on" case, and the
-            // largest rider-weight sag.
+            // Nearly horizontal: strongest straight-on underside hit, largest rider-weight sag.
             CreatePedestal(root.transform, "Pedestal_Tilt70", 9f, topY: 1f);
             CreateBamboo(root.transform, "V3_Tilt70",
                 new Vector3(9f, 1f, 0f), tiltZ: -70f, length: 6f, segments: 14, settings, surface);
 
-            // Long stalk on the same settings asset. V3 has no length-normalised curve, so
-            // this should read consistently with the short ones instead of barely bending —
-            // that mismatch across a 4 m..20 m grove is what broke v1's tuning.
+            // Long stalk on the same settings asset — checks that bend stays consistent across lengths.
             CreatePedestal(root.transform, "Pedestal_Long", 19f, topY: 0f);
             CreateBamboo(root.transform, "V3_Long",
                 new Vector3(19f, 0f, 0f), tiltZ: -40f, length: 13f, segments: 26, settings, surface);
 
-            // The chain diagnostic now lives on the SLIME: it follows the slime and resolves,
-            // each fixed step, whichever V3 stalk the slime is on or nearest to. This way it
-            // also sees the impulse the rider injects while charging — the "pressing jump kicks
-            // the stalk" signal — regardless of which stalk is involved.
+            // Diagnostic lives on the slime, not a stalk, so it also catches the rider impulse
+            // injected while charging regardless of which stalk is involved.
             AttachChainDebugToSlime();
 
             EditorSceneManager_MarkActiveDirty();
@@ -120,15 +103,14 @@ namespace SlimeJumping.Editor
                                  float length, int segments, BambooV3Settings settings,
                                  SlimeJumping.Physics.SurfaceMaterial surface)
         {
-            // returns the stalk GameObject so the caller can bolt a diagnostic onto one of them
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.position = basePos;
             go.transform.rotation = Quaternion.Euler(0f, 0f, tiltZ);
             go.layer = 7;
 
-            // The platform adds Rigidbody2D itself in RebuildSegments, but the serialized
-            // fields have to be in place first so RebuildSegments builds to them.
+            // The platform adds Rigidbody2D itself in RebuildSegments; the serialized fields below
+            // must be in place before that call.
             var rb = go.AddComponent<Rigidbody2D>();
             rb.bodyType = RigidbodyType2D.Kinematic;
 
@@ -139,8 +121,7 @@ namespace SlimeJumping.Editor
             so.FindProperty("bambooSurfaceMaterial").objectReferenceValue = surface;
             so.FindProperty("bambooLength").floatValue = length;
             so.FindProperty("segmentCount").intValue = segments;
-            // Set the stalk colours explicitly so leftover serialized data from any prior
-            // component layout cannot leak into the new material.
+            // Explicit colours: leftover serialized data from a prior layout otherwise leaks into the material.
             so.FindProperty("stalkColorBase").colorValue = new Color(0.30f, 0.52f, 0.20f, 1f);
             so.FindProperty("stalkColorTip").colorValue = new Color(0.50f, 0.68f, 0.28f, 1f);
             so.FindProperty("shadowDarken").floatValue = 0.60f;
@@ -166,8 +147,7 @@ namespace SlimeJumping.Editor
                 Undo.AddComponent<SlimeJumping.Debugging.BambooV3ChainDebug>(slime.gameObject);
         }
 
-        // Thin column from the floor up to the stalk's base, so the tilted stalk has open
-        // air underneath it to be hit from.
+        // Thin column from floor to stalk base, leaving open air under the tilt.
         static void CreatePedestal(Transform parent, string name, float x, float topY)
         {
             float height = topY - FloorTop;

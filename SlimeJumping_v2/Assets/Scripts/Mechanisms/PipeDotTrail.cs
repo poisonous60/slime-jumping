@@ -2,13 +2,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// World-space dotted line that visualizes pipe traversal. At Awake, spawns N
-    /// SpriteRenderer dots along the path at uniform arc-length spacing. Idle, all
-    /// dots sit at idleColor (very dim or black). During traversal,
-    /// SetProgress(0..1) brightens a sliding window of dots near the slime's
-    /// current position so the player sees the slime moving inside the wall.
-    /// </summary>
+    /// <summary>Dotted line along a PipePath; SetProgress brightens a sliding window of dots.</summary>
     [RequireComponent(typeof(PipePath))]
     public class PipeDotTrail : MonoBehaviour
     {
@@ -51,7 +45,6 @@ namespace SlimeJumping.Mechanisms
 
         private void BuildDots()
         {
-            // Tear down any prior dots (in case the trail is re-built at edit time).
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
                 var ch = transform.GetChild(i);
@@ -104,11 +97,7 @@ namespace SlimeJumping.Mechanisms
                 if (dots[i] != null) dots[i].color = idleColor;
         }
 
-        /// <summary>
-        /// Brighten dots near the slime's current arc-length position. Progress is
-        /// 0..1, mapped onto the path. Falloff is linear in arc-length within
-        /// windowRadius.
-        /// </summary>
+        /// <summary>Brighten dots within windowRadius of progress01 mapped onto the path.</summary>
         public void SetProgress(float progress01)
         {
             if (dots == null || dots.Length == 0 || pathLength < 0.001f) return;
@@ -124,10 +113,7 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        /// <summary>
-        /// Editor-time helper for the test setup util to (re)build the dot chain
-        /// after the path has been wired.
-        /// </summary>
+        /// <summary>Editor-time rebuild of the dot chain after the path is wired.</summary>
         public void RebuildEditor()
         {
             if (path == null) path = GetComponent<PipePath>();

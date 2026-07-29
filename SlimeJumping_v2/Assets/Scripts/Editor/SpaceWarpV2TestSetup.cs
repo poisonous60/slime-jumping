@@ -6,21 +6,15 @@ using SlimeJumping.Mechanisms;
 namespace SlimeJumping.Editor
 {
     /// <summary>
-    /// V2 stretch-warp comparison rig. Spawns four jump pads side-by-side, each
-    /// driving a different SpaceWarp_BulbShatter material so shape (Bulb-on-Neck /
-    /// Inverted Teardrop / Dumbbell) and crack (Voronoi / Radial Wedges) variants
-    /// can be tried back-to-back during play. Materials auto-create on first run.
+    /// Spawns a row of jump pads, each with its own SpaceWarp_BulbShatter variant material.
     /// </summary>
     public static class SpaceWarpV2TestSetup
     {
         const string ShaderName  = "SlimeJumping/SpaceWarp_BulbShatter";
         const string MatFolder   = "Assets/Art/Shader";
 
-        // Quad y-scale stays CONSTANT — the bulb radius is sized for the slime
-        // and shouldn't grow with stretch (slime size is constant). The BOTTOM
-        // (anchor) widens with stretch via the shader's _AnchorScale instead,
-        // animated by SpaceWarpEffect.cs from 0.3 → 1.0 across stretchT.
-        // QuadHeight ≈ 2 × bulb-world-radius so the bulb fills the quad cross-section.
+        // Quad y-scale stays CONSTANT (≈ 2 × bulb-world-radius); stretch widens the
+        // anchor end via the shader's _AnchorScale, not the quad.
         const float QuadHeight      = 2.0f;
         const float JumpPadSpacing  = 6.0f;
         const int   QueueForeground = 3500;
@@ -34,10 +28,8 @@ namespace SlimeJumping.Editor
             public int    crackMode;   // 0=Voronoi, 1=Radial wedges
         }
 
-        // Two pads — both Horn shape, comparing crack modes (Voronoi vs Radial
-        // wedges). Existing .mat names are reused so prior asset references stay
-        // valid; the unused Teardrop / Dumbbell mat files are now leftover but
-        // harmless (no pad references them).
+        // .mat names intentionally don't match the shape — reused so existing asset
+        // references stay valid.
         static readonly Variant[] Variants =
         {
             new Variant { label = "Horn_Voronoi", matName = "Mat_SWPad_v2_BulbNeck_Voronoi", shapeMode = 3, crackMode = 0 },
@@ -90,8 +82,6 @@ namespace SlimeJumping.Editor
 
             var jumpPad = pad.AddComponent<JumpPad>();
 
-            // Warp quad — constant Y-scale (= QuadHeight). The bulb stays sized
-            // to the slime; the bottom widens via shader _AnchorScale instead.
             var warpGo = GameObject.CreatePrimitive(PrimitiveType.Quad);
             warpGo.name = "SpaceWarp";
             Object.DestroyImmediate(warpGo.GetComponent<MeshCollider>());
@@ -102,16 +92,14 @@ namespace SlimeJumping.Editor
 
             var warp = warpGo.AddComponent<SpaceWarpEffect>();
 
-            // Wire references through SerializedObject so they survive variants/undo.
+            // SerializedObject, not direct field writes — private fields + undo support.
             var soWarp = new SerializedObject(warp);
             soWarp.FindProperty("targetRenderer").objectReferenceValue = warpGo.GetComponent<MeshRenderer>();
             soWarp.FindProperty("baseWidth").floatValue   = QuadHeight;
             soWarp.FindProperty("tipWidth").floatValue    = QuadHeight;
             soWarp.FindProperty("flareScale").floatValue  = 1f;
-            // tipLead — distance the quad tip extends past the slime. Sized so the
-            // hemispherical cap lands cleanly past the slime: ~bulb-world-radius.
+            // tipLead ≈ bulb-world-radius, else the hemisphere cap clips the slime.
             soWarp.FindProperty("tipLead").floatValue     = 0.7f;
-            // Generous max stretch so the comparison spans a meaningful arc.
             soWarp.FindProperty("maxStretchLength").floatValue   = 9f;
             soWarp.FindProperty("maxStretchDuration").floatValue = 0.55f;
             soWarp.FindProperty("popDuration").floatValue        = 0.35f;
@@ -121,7 +109,6 @@ namespace SlimeJumping.Editor
             soPad.FindProperty("warpEffect").objectReferenceValue = warp;
             soPad.ApplyModifiedProperties();
 
-            // World-space label so each pad is identifiable in the scene view.
             var labelGo = new GameObject("Label");
             labelGo.transform.SetParent(padRoot.transform, worldPositionStays: false);
             labelGo.transform.localPosition = new Vector3(0f, -1.2f, 0f);
@@ -144,15 +131,13 @@ namespace SlimeJumping.Editor
 
             mat = new Material(Shader.Find(ShaderName));
 
-            // Cyan tint, kept consistent across variants.
             mat.SetColor("_BaseColor",         new Color(0.7f, 0.85f, 1.0f, 1.0f));
             mat.SetFloat("_TintStrength",      0.04f);
 
             mat.SetFloat("_ShapeMode",         v.shapeMode);
             mat.SetFloat("_CrackMode",         v.crackMode);
 
-            // Shape — defaults tuned per mode. v-axis is normalized (-1..1 with
-            // mid at 0), so radii here are in fractions of the half-quad height.
+            // Radii are fractions of the half-quad height (shader v-axis is -1..1).
             switch (v.shapeMode)
             {
                 case 0: // Bulb on Neck
@@ -177,9 +162,8 @@ namespace SlimeJumping.Editor
                     mat.SetFloat("_AnchorBulbAspect", 1.0f);
                     break;
                 case 3: // Horn — flat anchor edge, flare to bulb cap
-                    // _NeckWidth is the FULL-STRETCH anchor half-width fraction.
-                    // Driver scales it down by _AnchorScale (0.3..1.0) at runtime
-                    // so early stretch shows a thinner back, full stretch a wider one.
+                    // _NeckWidth = FULL-STRETCH anchor half-width; runtime scales it
+                    // down by _AnchorScale (0.3..1.0).
                     mat.SetFloat("_NeckWidth",        0.45f);
                     mat.SetFloat("_BulbCenter",       0.78f);  // where flare ends, hemisphere begins
                     mat.SetFloat("_BulbRadius",       0.65f);  // bulb v-fraction (round in world via _QuadAspect)
@@ -187,9 +171,8 @@ namespace SlimeJumping.Editor
                     break;
             }
 
-            // Persistent warp — domain noise + swirl on by default so the
-            // membrane reads as "warped space" rather than a single-direction
-            // concave mirror. Tune down per-mat in the inspector if too busy.
+            // Domain noise + swirl on by default; without them the membrane reads as
+            // a single-direction concave mirror, not warped space.
             mat.SetFloat("_PersistStrength",   0.06f);
             mat.SetFloat("_PersistScale",      4.0f);
             mat.SetVector("_PersistScroll",    new Vector4(0.06f, 0.10f, 0f, 0f));
@@ -202,7 +185,6 @@ namespace SlimeJumping.Editor
             mat.SetFloat("_PulseRippleWidth",  0.2f);
             mat.SetFloat("_PulseMaxRadius",    1.0f);
 
-            // Crack — defaults differ per crack mode.
             if (v.crackMode == 0) // Voronoi
             {
                 mat.SetFloat("_ShardScale",        14f);

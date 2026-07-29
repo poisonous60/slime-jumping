@@ -30,10 +30,8 @@ namespace SlimeJumping.Editor
             ConvertToPushDoorV2(target);
         }
 
-        // Wraps the selected door instance in an empty parent with the same world
-        // transform. The door's local rotation resets to (0,0,0) so the BoxCollider2D
-        // shape lives axis-aligned (2D physics only honors Z rotation; Y/X rotations
-        // collapse the collider footprint in the X-Y play plane).
+        // Wraps the door in a parent holding its placement, resetting the door's local
+        // rotation: 2D physics only honors Z, X/Y rotation collapses the collider footprint.
         [MenuItem("SlimeJumping/Mechanism/Wrap Selection in Axis-Aligned Parent")]
         public static void WrapInAxisAlignedParent()
         {
@@ -52,17 +50,13 @@ namespace SlimeJumping.Editor
             var wrapper = new GameObject(target.name + "_Wrapper");
             Undo.RegisterCreatedObjectUndo(wrapper, "Wrap Door");
 
-            // Wrapper inherits target's transform (so visual placement stays put)
             wrapper.transform.SetParent(target.transform.parent, worldPositionStays: false);
             wrapper.transform.localPosition = target.transform.localPosition;
             wrapper.transform.localRotation = target.transform.localRotation;
             wrapper.transform.localScale = target.transform.localScale;
 
-            // Re-parent target under wrapper, keeping world transform
             Undo.SetTransformParent(target.transform, wrapper.transform, "Reparent into wrapper");
 
-            // Reset target's local transform: identity rotation, zero offset.
-            // Wrapper holds the original placement; target is now axis-aligned.
             target.transform.localPosition = Vector3.zero;
             target.transform.localRotation = Quaternion.identity;
             target.transform.localScale = Vector3.one;
@@ -72,10 +66,8 @@ namespace SlimeJumping.Editor
                 $"Door is now axis-aligned for 2D physics. Apply scene placement (rotation/position) on the wrapper.");
         }
 
-        // For 3D door asset packs (frame+leaf+handle as nested mesh children) where
-        // child names don't match the Leaf/Hinge convention. Detects the leaf by
-        // picking the smaller-bounds MeshRenderer child (frame is usually larger),
-        // computes hinge as one edge of the leaf bounds, and wires PushDoorV2.
+        // For 3D door packs whose child names don't match the Leaf/Hinge convention:
+        // detects the leaf by mesh bounds and wires PushDoorV2.
         [MenuItem("SlimeJumping/Mechanism/Convert 3D Door Prefab to PushDoorV2")]
         public static void Convert3DDoorPrefab()
         {
@@ -92,11 +84,8 @@ namespace SlimeJumping.Editor
         {
             Undo.RegisterFullObjectHierarchyUndo(root, "Convert 3D Door to PushDoorV2");
 
-            // 0. Warn about non-Z rotation. BoxCollider2D's shape lives in the GO's
-            //    local X-Y; rotation around X or Y collapses the collider footprint
-            //    in world X-Y plane (2D physics ignores depth). Use the
-            //    'Wrap Selection in Axis-Aligned Parent' menu before running this if
-            //    the door inherits non-Z rotation from its scene/prefab placement.
+            // 0. X/Y rotation collapses the BoxCollider2D footprint in the world X-Y plane;
+            //    'Wrap Selection in Axis-Aligned Parent' must be run first in that case.
             Vector3 worldEuler = root.transform.eulerAngles;
             float ex = Mathf.DeltaAngle(0f, worldEuler.x);
             float ey = Mathf.DeltaAngle(0f, worldEuler.y);
@@ -108,10 +97,8 @@ namespace SlimeJumping.Editor
                     $"convert the inner GameObject.");
             }
 
-            // 1. Remove ALL 3D colliders first. Unity refuses to add Rigidbody2D to a
-            //    GameObject that has any 3D collider (MeshCollider/BoxCollider/etc.),
-            //    even on the same GO. We delete them on root and disable them on
-            //    children so 2.5D physics is the sole source of truth.
+            // 1. Unity refuses to add Rigidbody2D to a GameObject carrying any 3D collider,
+            //    so root colliders must go before step 7.
             var rootMC = root.GetComponent<MeshCollider>();
             if (rootMC != null) Undo.DestroyObjectImmediate(rootMC);
             foreach (var c3 in root.GetComponents<Collider>())
@@ -123,15 +110,14 @@ namespace SlimeJumping.Editor
                 c3.enabled = false;
             }
 
-            // 2. Find the leaf: largest child MeshRenderer (frame is at root, skipped;
-            //    handle is small, deprioritized). Fall back to "most offset from root".
+            // 2. Find the leaf: largest child MeshRenderer (frame sits on root, handle is small).
             var meshRenderers = root.GetComponentsInChildren<MeshRenderer>(includeInactive: true);
             Transform leafTransform = null;
             float bestScore = -1f;
             foreach (var mr in meshRenderers)
             {
                 if (mr.transform == root.transform) continue; // skip frame on root
-                // Use mesh's local bounds (independent of rotation/world placement).
+                // Mesh-local bounds, so rotation/world placement doesn't skew the comparison.
                 var mf = mr.GetComponent<MeshFilter>();
                 Vector3 size = (mf != null && mf.sharedMesh != null)
                     ? mf.sharedMesh.bounds.size
@@ -166,18 +152,14 @@ namespace SlimeJumping.Editor
                 if (leafMR != null) leafBoundsSize = leafMR.bounds.size;
             }
 
-            // 4. Hinge = leaf pivot. (FBX door assets typically place origin at hinge edge,
-            //    so bounds.center is offset from origin in the leaf's "forward" direction.)
+            // 4. Hinge = leaf pivot. FBX door assets put the origin at the hinge edge.
             Vector3 hingeLocal = leafTransform.localPosition;
 
-            // 5. Detect leafForwardLocal: direction from pivot to mesh center.
-            //    Pick the dominant axis (X or Z, since rotation is around Y by default).
-            //    If pivot is at edge: bounds.center is offset (e.g. (0.45, 0, 0)) → +X.
-            //    If pivot is at center: bounds.center is near zero → fall back to +X.
+            // 5. leafForwardLocal = pivot → mesh center. Near-zero center means the pivot is
+            //    centered, not edged, and the direction is unrecoverable → fall back to +X.
             Vector3 leafForwardLocal;
             if (leafBoundsCenter.sqrMagnitude > 0.001f)
             {
-                // Use the dominant horizontal axis (zero out Y so leaf is in horizontal plane)
                 Vector3 horiz = new Vector3(leafBoundsCenter.x, 0f, leafBoundsCenter.z);
                 if (horiz.sqrMagnitude > 0.0001f)
                     leafForwardLocal = horiz.normalized;
@@ -189,9 +171,7 @@ namespace SlimeJumping.Editor
                 leafForwardLocal = Vector3.right; // fallback
             }
 
-            // 6. doorDepth: distance from pivot to far end of leaf along leafForwardLocal.
-            //    If pivot is at edge: depth ≈ 2 * |bounds.center along leafForward|.
-            //    If pivot is at center: depth ≈ projected size along leafForward.
+            // 6. doorDepth: pivot to far end along leafForwardLocal.
             float depthFromCenter = Mathf.Abs(Vector3.Dot(leafBoundsCenter, leafForwardLocal));
             float depthFromSize = Mathf.Abs(Vector3.Dot(
                 new Vector3(leafBoundsSize.x, 0f, leafBoundsSize.z),
@@ -223,9 +203,8 @@ namespace SlimeJumping.Editor
             var v2 = root.GetComponent<PushDoorV2>();
             if (v2 == null) v2 = root.AddComponent<PushDoorV2>();
 
-            // 9. Wire PushDoorV2 fields. Default rotationAxis = Z (out-of-screen) for
-            //    2.5D doors so the leaf swings IN the X-Y play plane (slime can push it
-            //    via X velocity). User can change to Y for salloon-style depth swing.
+            // 9. rotationAxis = Z so the leaf swings in the X-Y play plane and the slime's
+            //    X velocity can push it; switch to Y for saloon-style depth swing.
             var so = new SerializedObject(v2);
             so.FindProperty("visualTransform").objectReferenceValue = leafTransform;
             so.FindProperty("hingeOffset").vector3Value = hingeLocal;
@@ -266,11 +245,8 @@ namespace SlimeJumping.Editor
         {
             Undo.RegisterFullObjectHierarchyUndo(target, "Convert 3D Door to PushDoorV3");
 
-            // BoxCollider2D's footprint lives in the host GO's local X-Y plane and 2D
-            // physics only honors Z rotation; X/Y rotation skews / collapses the
-            // collider in world space. If target has X/Y rotation, build an
-            // axis-aligned parent wrapper and host physics on it so the FBX mesh keeps
-            // its authoring rotation untouched.
+            // 2D physics only honors Z rotation; X/Y rotation collapses the collider in world
+            // space, so host physics on an axis-aligned wrapper and leave the FBX rotation be.
             Vector3 worldEuler = target.transform.eulerAngles;
             float ex = Mathf.DeltaAngle(0f, worldEuler.x);
             float ey = Mathf.DeltaAngle(0f, worldEuler.y);
@@ -297,7 +273,6 @@ namespace SlimeJumping.Editor
                 root = target;
             }
 
-            // Remove 3D colliders on root, disable on children.
             var rootMC = root.GetComponent<MeshCollider>();
             if (rootMC != null) Undo.DestroyObjectImmediate(rootMC);
             foreach (var c3 in root.GetComponents<Collider>())
@@ -354,7 +329,6 @@ namespace SlimeJumping.Editor
                     leafForwardLocal = leafBoundsCenter.normalized;
             }
 
-            // Add 2D physics components.
             var rb = root.GetComponent<Rigidbody2D>();
             if (rb == null) rb = root.AddComponent<Rigidbody2D>();
             rb.bodyType = RigidbodyType2D.Kinematic;
@@ -434,12 +408,10 @@ namespace SlimeJumping.Editor
                     doorHeight: doorHeight, doorDepth: 2f);
             }
 
-            // --- Left ramp (approach from left) ---
             var leftRamp = CreatePlatform("LeftRamp", root.transform,
                 new Vector3(baseX - 3f, baseY + 0.25f, 0f),
                 new Vector3(3f, 0.5f, 1f));
 
-            // --- Right ramp (approach from right) ---
             var rightRamp = CreatePlatform("RightRamp", root.transform,
                 new Vector3(baseX + 3f, baseY + 0.25f, 0f),
                 new Vector3(3f, 0.5f, 1f));
@@ -563,16 +535,14 @@ namespace SlimeJumping.Editor
             door.transform.position = hingePos;
             door.layer = 7;
 
-            // Rigidbody2D (Kinematic)
             var rb = door.AddComponent<Rigidbody2D>();
             rb.bodyType = RigidbodyType2D.Kinematic;
 
-            // BoxCollider2D — thin cross-section at Z=0 (the door edge the slime sees)
+            // Thin cross-section at Z=0 — the door edge the slime sees.
             var col = door.AddComponent<BoxCollider2D>();
             col.size = new Vector2(doorThickness, doorHeight);
             col.offset = Vector2.zero;
 
-            // PushDoor component
             door.AddComponent<PushDoor>();
 
             // VisualPivot — PushDoor.cs positions this via hingeOffset each frame
@@ -593,7 +563,6 @@ namespace SlimeJumping.Editor
                 new Material(Shader.Find("Universal Render Pipeline/Lit"))
                 { color = new Color(0.6f, 0.35f, 0.15f) };
 
-            // Wire PushDoor fields
             var so = new SerializedObject(door.GetComponent<PushDoor>());
             so.FindProperty("visualTransform").objectReferenceValue = pivot.transform;
             so.FindProperty("hingeOffset").vector3Value = new Vector3(0f, 0f, doorDepth);

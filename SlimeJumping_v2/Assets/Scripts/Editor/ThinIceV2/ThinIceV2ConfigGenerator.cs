@@ -6,16 +6,8 @@ using SlimeJumping.Platforms.ThinIceV2;
 
 namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
 {
-    /// One-click generator for the canonical ThinIce v2 config + the two VFX prefabs
-    /// it references. Idempotent: re-running picks up existing assets at the canonical
-    /// paths and only re-creates what's missing, so designer-tweaked prefabs survive.
-    ///
-    /// Outputs:
-    ///   - Assets/Resources/ThinIceV2Config.asset      (auto-loaded by ThinIcePlatformV2)
-    ///   - Assets/Prebs/ThinIceV2/DebrisVFX.prefab
-    ///   - Assets/Prebs/ThinIceV2/FrostCloudVFX.prefab
-    ///   - Assets/GeneratedShards/SharedThinIceShardSet.asset (delegated)
-    ///   - Assets/Prebs/ThinIceV2_ShardRuntime.prefab          (preexisting, just picked up)
+    /// One-click generator for the ThinIce v2 config + the two VFX prefabs it references.
+    /// Idempotent: only missing assets are created — existing prefabs and sub-asset gradients survive re-runs.
     public static class ThinIceV2ConfigGenerator
     {
         const string ConfigPath          = "Assets/Resources/ThinIceV2Config.asset";
@@ -65,9 +57,8 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
             EditorUtility.SetDirty(config);
             AssetDatabase.SaveAssets();
 
-            // Quibli toon shading needs a ramp texture in `_GradientRamp` to produce
-            // the signature stepped shadow — without one the shader falls back to
-            // Unity's white default texture and looks flat-lit.
+            // Quibli toon shading needs a ramp in `_GradientRamp`; without one the shader falls
+            // back to Unity's white default texture and looks flat-lit.
             EnsureDefaultRampAssigned();
 
             Selection.activeObject = config;
@@ -82,10 +73,8 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
                 $"- frostCloudVFXPrefab = {frostPrefab.name}", config);
         }
 
-        // --------------------------------------------------------------------
 
-        // Idempotent prefab create-or-load. If the prefab exists, return it untouched —
-        // designers may have hand-tuned the curves/colors and we don't want to stomp.
+        // An existing prefab is returned untouched so hand-tuned curves/colors survive.
         static GameObject LoadOrCreatePrefab(string path, string goName, System.Action<ParticleSystem> configure)
         {
             var existing = AssetDatabase.LoadAssetAtPath<GameObject>(path);
@@ -100,9 +89,8 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
             return saved;
         }
 
-        // Telegraph debris: small mesh chips emerging from across the platform face.
-        // The platform itself reconfigures the emit shape to a Box matching the collider
-        // bounds in Awake, so we just set the renderer + base curves here.
+        // The platform reconfigures the emit shape to a Box matching its collider bounds in
+        // Awake, so only the renderer + base curves are set here.
         static void ConfigureDebrisVFX(ParticleSystem ps)
         {
             var main = ps.main;
@@ -188,22 +176,8 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
             AssetDatabase.CreateFolder(parent, leaf);
         }
 
-        // --------------------------------------------------------------------
-        // Default toon gradient. The shader uses Quibli's [Gradient] attribute to
-        // expose an inline Unity Gradient picker — the picker bakes its result into
-        // a sub-asset of the .mat with a name encoding "z_<prop>Tex<json>" (Quibli's
-        // MaterialGradientDrawer convention). To give the user a sensible starting
-        // point we mirror that convention here: bake a cool-blue→white step gradient
-        // as a sub-asset of the .mat the first time the generator runs. After that
-        // the inspector's gradient picker takes over — the user can edit inline and
-        // the drawer reuses the same sub-asset.
-        //
-        // Older versions of this generator wrote a separate PNG at
-        // Assets/Settings/ThinIceV2/ThinIceV2_DefaultRamp.png. We migrate by
-        // detecting that asset reference and clearing it (the PNG file itself is
-        // left on disk so designers can recover it, but the folder is removed if
-        // empty).
-        // --------------------------------------------------------------------
+        // Default toon gradient, baked as a .mat sub-asset named "z_<prop>Tex<json>" — Quibli's
+        // MaterialGradientDrawer convention, so the inspector's inline picker can decode it.
 
         const string GradientPropName = "_GradientRamp";
 
@@ -219,8 +193,7 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
 
             MigrateLegacyRampPng(mat);
 
-            // Skip if the material already points at a sub-asset gradient — leaves
-            // designer-tweaked gradients alone on re-runs (idempotent).
+            // Already a sub-asset gradient = designer-tweaked; leave it alone on re-runs.
             var existing = mat.GetTexture(GradientPropName) as Texture2D;
             if (existing != null && AssetDatabase.IsSubAsset(existing)) return;
 
@@ -228,9 +201,8 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
             BakeGradientIntoMaterialSubAsset(mat, GradientPropName, grad);
         }
 
-        // If the material currently references the legacy generator-written PNG,
-        // clear that reference and remove the (now-empty) folder so the gradient
-        // drawer's first-paint state is clean.
+        // Clear the material's reference to the legacy generator-written PNG before deleting it,
+        // so the gradient drawer's first-paint state is clean.
         static void MigrateLegacyRampPng(Material mat)
         {
             var legacy = AssetDatabase.LoadAssetAtPath<Texture2D>(LegacyRampPngPath);
@@ -241,7 +213,6 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
                 mat.SetTexture(GradientPropName, null);
                 EditorUtility.SetDirty(mat);
             }
-            // Delete the PNG outright — fully replaced by the inline gradient picker.
             AssetDatabase.DeleteAsset(LegacyRampPngPath);
             if (AssetDatabase.IsValidFolder(LegacyRampFolder) &&
                 AssetDatabase.FindAssets(string.Empty, new[] { LegacyRampFolder }).Length == 0)
@@ -252,9 +223,8 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
 
         static Gradient BuildDefaultIceGradient()
         {
-            // Cool-blue → near-white step. Two pairs of tightly-spaced keys at 0.47
-            // and 0.53 produce the characteristic Quibli toon "step" — the linear
-            // interpolation between them looks like a hard edge at NdotL ≈ 0.5.
+            // Cool-blue → near-white. The tightly-spaced key pair at 0.47/0.53 is what reads as
+            // Quibli's hard toon step at NdotL ≈ 0.5.
             var g = new Gradient { mode = GradientMode.Blend };
             g.SetKeys(
                 new[]
@@ -272,10 +242,8 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
             return g;
         }
 
-        // Bake gradient into a Texture2D and add it as a sub-asset of `mat`.
-        // The texture's name encodes the gradient JSON in the exact format
-        // Quibli's MaterialGradientDrawer uses, so the inspector's gradient picker
-        // can decode and display the current state.
+        // The texture name must encode the gradient JSON in the exact format Quibli's
+        // MaterialGradientDrawer uses, or the inspector's picker can't decode it.
         static void BakeGradientIntoMaterialSubAsset(Material mat, string propName, Gradient grad)
         {
             const int W = 256;
@@ -302,9 +270,8 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
             AssetDatabase.SaveAssetIfDirty(mat);
         }
 
-        // Mirror of MaterialGradientDrawer.GradientRepresentation. JsonUtility
-        // matches by field shape, so as long as the names + types align the
-        // drawer's Decode() will recover the gradient on inspector open.
+        // Mirror of MaterialGradientDrawer.GradientRepresentation. JsonUtility matches by field
+        // shape, so names + types must stay aligned for the drawer's Decode() to work.
         [System.Serializable]
         class GradientRepresentation
         {

@@ -15,21 +15,16 @@ namespace SlimeJumping.Editor
             float baseX = 4f;
             float baseY = 0f;
 
-            // --- Pool structure ---
-            // Floor
             CreatePlatform("PoolFloor", root.transform,
                 new Vector3(baseX, baseY - 4f, 0f),
                 new Vector3(12f, 1f, 1f));
-            // Left wall
             CreatePlatform("PoolWallLeft", root.transform,
                 new Vector3(baseX - 6.5f, baseY - 1f, 0f),
                 new Vector3(1f, 7f, 1f));
-            // Right wall
             CreatePlatform("PoolWallRight", root.transform,
                 new Vector3(baseX + 6.5f, baseY - 1f, 0f),
                 new Vector3(1f, 7f, 1f));
 
-            // --- Dry platform (entry point, above water) ---
             CreatePlatform("DryPlatform_Left", root.transform,
                 new Vector3(baseX - 8.5f, baseY + 1f, 0f),
                 new Vector3(3f, 0.5f, 1f));
@@ -38,7 +33,6 @@ namespace SlimeJumping.Editor
                 new Vector3(baseX + 8.5f, baseY + 1f, 0f),
                 new Vector3(3f, 0.5f, 1f));
 
-            // --- Water Zone (fills the pool) ---
             var waterGo = new GameObject("WaterZone");
             waterGo.transform.parent = root.transform;
             waterGo.transform.position = new Vector3(baseX, baseY - 1f, 0f);
@@ -57,7 +51,6 @@ namespace SlimeJumping.Editor
             so.FindProperty("blockAttach").boolValue = true;
             so.ApplyModifiedProperties();
 
-            // Water visual
             var waterVis = waterGo.AddComponent<SpriteRenderer>();
             waterVis.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
             waterVis.drawMode = SpriteDrawMode.Sliced;
@@ -65,12 +58,10 @@ namespace SlimeJumping.Editor
             waterVis.color = new Color(0.2f, 0.5f, 1f, 0.2f);
             waterVis.sortingOrder = 1;
 
-            // --- Submerged platform (test blockAttach) ---
             CreatePlatform("SubmergedPlatform", root.transform,
                 new Vector3(baseX, baseY - 2f, 0f),
                 new Vector3(4f, 0.5f, 1f));
 
-            // --- Spike in water (test stunned + water interaction) ---
             var spikeGo = new GameObject("Spike_InWater");
             spikeGo.transform.parent = root.transform;
             spikeGo.transform.position = new Vector3(baseX + 3f, baseY - 3.5f, 0f);

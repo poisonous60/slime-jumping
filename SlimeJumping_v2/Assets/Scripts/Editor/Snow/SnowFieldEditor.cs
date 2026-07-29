@@ -29,8 +29,7 @@ namespace SlimeJumping.Platforms.Snow.EditorScripts
                 RebuildAllInScene();
             }
 
-            // Auto-rebuild watcher: when the host mesh changes (different asset assigned, or
-            // an in-place edit), poll a hash on inspector repaint and surface a reminder.
+            // Host mesh hash polled on repaint — catches in-place mesh edits, not just reassignment.
             if (mesh != null)
             {
                 int currentHash = SnowField.ComputeHostMeshHash(mesh);

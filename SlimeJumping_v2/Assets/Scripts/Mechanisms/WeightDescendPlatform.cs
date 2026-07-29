@@ -37,14 +37,12 @@ namespace SlimeJumping.Mechanisms
             target.y = Mathf.Clamp(target.y, topPos.y - maxDrop, topPos.y);
             rb.MovePosition(target);
 
-            // Fire signal at bottom
             if (!firedAtBottom && topPos.y - target.y >= maxDrop - 0.01f)
             {
                 Activate();
                 firedAtBottom = true;
             }
 
-            // Re-arm when returned to top
             if (firedAtBottom && drop <= 0.01f)
             {
                 firedAtBottom = false;

@@ -3,22 +3,12 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Beam line for <see cref="GraniteBlastEmitter"/>'s Beam mode and Burst-mode flashes.
-    /// Projectile-style: the visible reach grows from muzzle along the locked direction
-    /// at <c>travelSpeed</c> world units per second, doing a per-frame CircleCast sweep
-    /// from the previous tip to the current tip. On the first slime/terrain encountered
-    /// at that moment the beam halts at the hit point and stays there for the remainder
-    /// of <c>duration</c>; if nothing intercepts, the tip reaches maxRange and the beam
-    /// stays full-length until duration. travelSpeed = 0 falls back to instant
-    /// full-length (hitscan-style).
-    /// </summary>
+    /// <summary>Beam line for <see cref="GraniteBlastEmitter"/>: the tip grows from muzzle at travelSpeed, halts on the first hit, and lives out <c>duration</c>; travelSpeed 0 = instant full length.</summary>
     [RequireComponent(typeof(LineRenderer))]
     public class GraniteBlastBeam : MonoBehaviour
     {
-        // Min reach for the visible line. Without this, a zero-distance hit
-        // (muzzle inside a hit-mask collider) would collapse both LR endpoints to the
-        // same point and leave only the cap circle visible.
+        // Without a floor, a zero-distance hit (muzzle inside a hit-mask collider) collapses
+        // both LR endpoints to one point and only the cap circle is visible.
         private const float MinVisibleReach = 0.5f;
 
         private GraniteBlastEmitter owner;
@@ -45,8 +35,7 @@ namespace SlimeJumping.Mechanisms
 
         void Awake()
         {
-            // Pre-create + pre-configure the LineRenderer so it can render on the very
-            // first frame without depending on Init's call timing.
+            // Configure here so the LR can draw on the first frame regardless of Init's timing.
             lr = GetComponent<LineRenderer>();
             lr.useWorldSpace = true;
             lr.numCapVertices = 4;
@@ -65,10 +54,8 @@ namespace SlimeJumping.Mechanisms
             this.owner = emitter;
             this.muzzle = muzzle;
             Vector2 d = fireDir;
-            // When tracking is enabled, snapshot the initial direction from the lagged
-            // trail position so both modes start aimed N seconds behind the slime —
-            // InitialLagThenLive gets its head-start, ContinuousLag stays consistent
-            // with its first frame's rotation target.
+            // Snapshot the start dir from the lagged trail so both track modes begin aimed
+            // trackLag seconds behind the slime.
             if (trackAngularSpeed > 0f && emitter != null && emitter.Target != null && muzzle != null)
             {
                 Vector2 laggedPos = emitter.GetLaggedTargetPosition(Mathf.Max(0f, trackLag));
@@ -85,9 +72,8 @@ namespace SlimeJumping.Mechanisms
             this.trackAngularSpeed = Mathf.Max(0f, trackAngularSpeed);
             this.trackLag = Mathf.Max(0f, trackLag);
 
-            // travelSpeed <= 0 → instant full-length (hitscan fallback). The first
-            // Update tick will still resolve the halt point via a single sweep across
-            // [0, maxRange] because prevReach=0 < currentReach=maxRange.
+            // travelSpeed <= 0 → instant full length; the first tick still resolves the halt
+            // point with one sweep over [0, maxRange] because prevReach stays 0.
             currentReach = this.travelSpeed > 0f ? 0f : (owner != null ? owner.MaxRange : 0f);
             prevReach = 0f;
 
@@ -144,13 +130,8 @@ namespace SlimeJumping.Mechanisms
             Vector3 origin = muzzle.position;
             float maxRange = owner.MaxRange;
 
-            // Angular tracking — rotate lockedDir at trackAngularSpeed toward a target
-            // that depends on the mode:
-            //   InitialLagThenLive — Init() already snapshot the initial dir at the
-            //     lagged position; from this point on the rotation target is the LIVE
-            //     slime position (Target.position).
-            //   ContinuousLag — every frame the rotation target is the lagged trail
-            //     position (slime's pos N sec ago).
+            // Rotation target by mode: InitialLagThenLive → live slime pos (Init already
+            // lagged the start dir); ContinuousLag → the lagged trail pos every frame.
             if (trackAngularSpeed > 0f && owner.Target != null)
             {
                 Vector2 targetPos = owner.BeamTrackingMode == GraniteBlastEmitter.BeamTrackMode.ContinuousLag
@@ -190,9 +171,8 @@ namespace SlimeJumping.Mechanisms
                     currentReach = maxRange;
                 }
 
-                // Per-frame collision sweep from prevTip to currTip. On hit, halt at
-                // the hit point — slime that's no longer there at this moment doesn't
-                // get hit (projectile semantics).
+                // Projectile semantics: only what sits in this frame's [prevTip, currTip]
+                // window is hit — a slime that already moved away is missed.
                 if (currentReach > prevReach && owner.BulletHitMask != 0)
                 {
                     Vector2 castStart = new Vector2(origin.x + dir.x * prevReach,
@@ -211,9 +191,8 @@ namespace SlimeJumping.Mechanisms
                             Vector2 pushDir = away.sqrMagnitude > 0.0001f ? away.normalized : dir;
                             if (!owner.TryApplyStunOnHit(slime, pushDir, owner.KnockbackImpulse, hit.point))
                             {
-                                // Single-shot mode also honors overwrite — wipe prior slide
-                                // momentum on the one impulse so the kick fully replaces
-                                // existing velocity. The additive impulse rides on top.
+                                // Wipe prior slide momentum so the kick replaces velocity;
+                                // the additive impulse then rides on top.
                                 if (owner.BeamOverwriteSlide)
                                 {
                                     float pinned = owner.BeamOverwritePinnedSpeed * owner.BeamGroundedSlideScale;
@@ -221,10 +200,8 @@ namespace SlimeJumping.Mechanisms
                                 }
                                 slime.ApplyHazardPush(ScaleGroundedSlide(slime, pushDir * owner.KnockbackImpulse), hit.point);
                             }
-                            // Carve snow under/near the slime so a beam halting on the
-                            // slime body still bites the snow (in addition to the
-                            // pass-through ground carve below, which only fires if
-                            // the beam direction continues to ground past the slime).
+                            // A beam halting on the slime body still bites snow; the
+                            // pass-through carve below only fires when it reaches ground.
                             owner.CarveSnowNearSlime(slime, hit.point);
                             owner.TryFireHitStopFeedback();
                             owner.SpawnGroundExplosion(hit.point, hit.normal);
@@ -234,10 +211,8 @@ namespace SlimeJumping.Mechanisms
 
                         if (isSlime)
                         {
-                            // Pass-through: the beam visibly continues past the slime to
-                            // the ground behind it (so slime block doesn't suppress
-                            // ground carve / explosion). Ground sweep starts just past
-                            // the slime hit and ignores further slime colliders.
+                            // Continue past the slime so a slime block doesn't suppress the
+                            // ground carve / explosion behind it.
                             float passOffset = 0.05f;
                             Vector2 passStart = (Vector2)origin + dir * (prevReach + hit.distance + passOffset);
                             float passDist = currentReach - (prevReach + hit.distance + passOffset);
@@ -256,14 +231,13 @@ namespace SlimeJumping.Mechanisms
                                         owner.PlayGroundImpactSound(groundHit.point);
                                     }
                                 }
-                                // else: no ground past slime within the advance window —
-                                // beam passes through, currentReach already at the
-                                // window's far edge so the visible tip extends naturally.
+                                // else: no ground in the window — currentReach is already at
+                                // its far edge, so the tip just extends.
                             }
                             else
                             {
-                                // Slime is at the very tip of the advance window — halt
-                                // here this frame; next frame's advance will sweep past.
+                                // Slime sits at the tip of this frame's window — halt now,
+                                // next frame's advance sweeps past it.
                                 tipHalted = true;
                                 currentReach = prevReach + hit.distance;
                             }
@@ -309,18 +283,13 @@ namespace SlimeJumping.Mechanisms
             if (age >= duration) Destroy(gameObject);
         }
 
-        // Sustained-hit mode: every frame, re-sweep from muzzle to maxRange and resolve
-        // hit live. The visible reach is what was actually hit *this frame* — so a slime
-        // that moves out of the path lets the beam pass through to whatever is behind
-        // it next frame. Slime hits accumulate KB acceleration each frame instead of a
-        // one-shot impulse. tipHalted is never used in this branch; reach is rewritten
-        // from scratch every frame.
+        // Sustained: re-sweep muzzle→maxRange every frame and rewrite reach from scratch,
+        // so a slime that steps out lets the beam through. tipHalted unused in this branch.
         private void UpdateSustainedSweep(Vector3 origin, Vector2 dir, float maxRange)
         {
             float dt = Time.deltaTime;
-            // Tip still respects travelSpeed for the very first frames so the beam
-            // visibly grows from muzzle the first time it appears. After that it
-            // saturates at maxRange and is cropped per-frame by the live hit.
+            // Still grow at travelSpeed on the first frames so the beam visibly leaves the
+            // muzzle; afterwards it saturates at maxRange and the live hit crops it.
             if (travelSpeed > 0f && currentReach < maxRange)
                 currentReach = Mathf.Min(currentReach + travelSpeed * dt, maxRange);
             else
@@ -343,27 +312,15 @@ namespace SlimeJumping.Mechanisms
                         bool firstSlimeContact = !hitResolved;
                         if (firstSlimeContact && owner.TryApplyStunOnHit(slime, pushDir, owner.KnockbackImpulse, hit.point))
                         {
-                            // Stun took the impulse — skip overwrite-slide + accel
-                            // channel for the rest of this beam's life.
-                            // ApplyHazardEffect's currentState==Stunned guard
-                            // handles same-frame re-entries.
+                            // Stun took the impulse; ApplyHazardEffect's Stunned guard
+                            // absorbs same-frame re-entries.
                             hitResolved = true;
                         }
                         else if (owner.BeamOverwriteSlide)
                         {
-                            // Overwrite mode — every frame is treated as a fresh "first
-                            // contact" so a slime attempting to hop / charge-jump out of
-                            // the beam keeps feeling the kick. No acceleration channel.
-                            // Per frame:
-                            //   1) Pin tangent slide via overwrite (wipes crawl/slide).
-                            //   2) Re-fire the KnockbackImpulse (additive). This is safe
-                            //      against compounding while grounded — FixedUpdateAttached
-                            //      rebuilds velocity from crawl each frame and externalDeltaV
-                            //      is consumed-then-zeroed, so the impulse + pin land at
-                            //      a constant per-frame velocity instead of accumulating.
-                            //      Airborne/Stunned: ApplyHazardPushOverwriteSlide falls
-                            //      back to additive too, so both calls compound — feature,
-                            //      not bug (the beam keeps blasting an in-air slime).
+                            // Every frame is a fresh "first contact" so a slime hopping out keeps feeling
+                            // the kick. Grounded can't compound — externalDeltaV is consumed-then-zeroed;
+                            // airborne compounds by design.
                             float pinned = owner.BeamOverwritePinnedSpeed * owner.BeamGroundedSlideScale;
                             slime.ApplyHazardPushOverwriteSlide(pushDir * pinned, hit.point);
                             slime.ApplyHazardPush(ScaleGroundedSlide(slime, pushDir * owner.KnockbackImpulse), hit.point);
@@ -371,9 +328,7 @@ namespace SlimeJumping.Mechanisms
                         }
                         else
                         {
-                            // Legacy additive hybrid: one-shot KnockbackImpulse on first
-                            // frame ("퍽"), then ongoing KnockbackAcceleration*dt every
-                            // frame ("지지직"). hitResolved gates the impulse to once.
+                            // Additive hybrid: one-shot impulse ("퍽") + per-frame accel ("지지직").
                             if (!hitResolved)
                             {
                                 hitResolved = true;
@@ -381,25 +336,19 @@ namespace SlimeJumping.Mechanisms
                             }
                             slime.ApplyHazardPush(ScaleGroundedSlide(slime, pushDir * owner.KnockbackAcceleration * dt), hit.point);
                         }
-                        // Carve snow under/near the slime on the first contact frame —
-                        // covers cases where pass-through (below) doesn't find snow
-                        // because beam direction is sideways/upward instead of toward
-                        // the snow surface. Once per beam.
+                        // Covers sideways/upward beams where the pass-through sweep below
+                        // never reaches snow. Once per beam.
                         if (firstSlimeContact)
                         {
                             owner.CarveSnowNearSlime(slime, hit.point);
                             owner.TryFireHitStopFeedback();
                         }
-                        // Explosion VFX fires every frame the beam stays on the slime —
-                        // visually punctuates a sustained beam that's continuously biting
-                        // the slime. Sound + carve still gated to once per beam.
+                        // Explosion VFX every frame; sound + carve stay once per beam.
                         owner.SpawnGroundExplosion(hit.point, hit.normal);
                     }
                     else
                     {
-                        // Sound + snow carve fire once per beam on first ground contact
-                        // (gate via groundImpactPlayed). Explosion VFX is ungated so a
-                        // sustained beam pinning the ground keeps puffing each frame.
+                        // Explosion ungated so a pinned beam keeps puffing; sound + carve once.
                         owner.SpawnGroundExplosion(hit.point, hit.normal);
                         if (!groundImpactPlayed)
                         {
@@ -410,10 +359,8 @@ namespace SlimeJumping.Mechanisms
                         }
                     }
 
-                    // Pass-through ground sweep when the primary hit was the slime —
-                    // beam visually reaches the ground behind it so SnowField carve and
-                    // ground impact still fire. Re-uses the same groundImpactPlayed gate
-                    // (1x per beam) for VFX/sound; carve also gated by it currently.
+                    // Primary hit was the slime: sweep on to the ground behind it so the
+                    // SnowField carve and ground impact still fire.
                     if (isSlime)
                     {
                         float passOffset = 0.05f;
@@ -437,8 +384,7 @@ namespace SlimeJumping.Mechanisms
                             }
                             else
                             {
-                                // No ground behind slime within range — beam reaches
-                                // currentReach (full length) past the slime.
+                                // No ground behind the slime — beam reaches full length.
                                 reachThisFrame = currentReach;
                             }
                         }
@@ -449,12 +395,9 @@ namespace SlimeJumping.Mechanisms
             prevReach = currentReach;
         }
 
-        // Pre-scales the surface-tangent component of a push deltaV when the slime
-        // is grounded. SlimeController.cs line 592 projects externalDeltaV onto
-        // surfaceTangent for grounded slime — so subtracting (1-scale) of the
-        // tangent component here makes the post-projection velocity gain land at
-        // exactly tangent * scale. Airborne/Stunned: full deltaV passes through
-        // (the projection branch is skipped in SlimeController).
+        // SlimeController projects externalDeltaV onto surfaceTangent while grounded, so
+        // pre-subtracting (1-scale) of the tangent lands the gain at exactly tangent*scale.
+        // Airborne/Stunned skip that projection, so the full deltaV passes through.
         private Vector2 ScaleGroundedSlide(SlimeController slime, Vector2 deltaV)
         {
             float scale = owner.BeamGroundedSlideScale;

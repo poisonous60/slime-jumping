@@ -4,10 +4,7 @@ using SlimeJumping.Physics;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Hotkey toggle between SingleContactSurfaceProbe and MultiContactSurfaceProbe
-    /// for live A/B comparison in Play mode. Draws the current mode in a corner label.
-    /// </summary>
+    /// <summary>Hotkey toggle between Single/Multi surface probe for live A/B comparison in Play mode.</summary>
     public class SurfaceProbeModeToggle : MonoBehaviour
     {
         [SerializeField] private SlimeController slime;

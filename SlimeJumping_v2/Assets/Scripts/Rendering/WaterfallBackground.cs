@@ -2,13 +2,9 @@ using UnityEngine;
 
 namespace SlimeJumping.Rendering
 {
-    /// Inspector-side tuner for the 3-layer Waterfall_Background prefab.
-    /// Writes to MaterialPropertyBlock (per-renderer overrides) so the shared
-    /// .mat assets stay clean — the component captures each layer's material
-    /// value as the baseline and applies master multipliers on top.
-    ///
-    /// Scene-view animation: requires the Scene View "Animated Materials"
-    /// toggle to be ON, since the shader uses _Time.y for scroll.
+    /// Inspector-side tuner for the 3-layer Waterfall_Background prefab. Master multipliers go into a
+    /// MaterialPropertyBlock over each layer's material baseline, so the shared .mat assets stay clean.
+    /// Scene-view animation needs the "Animated Materials" toggle ON — the shader scrolls on _Time.y.
     [ExecuteAlways]
     [DisallowMultipleComponent]
     [AddComponentMenu("SlimeJumping/Rendering/Waterfall Background")]

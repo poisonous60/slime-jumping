@@ -2,15 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms
 {
-    /// <summary>
-    /// Procedural straight cylinder for bamboo stalks. Base at y=0, tip at y=length,
-    /// positionOS in world-equivalent units so SlimeJumping/BambooBend can apply its
-    /// vertex bend in place without knowing any Transform scale.
-    ///
-    /// Used by BambooPlatformV3. BambooPlatform (v1) still carries its own private copy
-    /// of this function — v1 is deliberately left untouched, so the duplication stands
-    /// until someone has a reason to edit v1 anyway.
-    /// </summary>
+    /// <summary>Procedural straight cylinder, base y=0 tip y=length. positionOS is in
+    /// world-equivalent units so BambooBend can bend it without knowing Transform scale.</summary>
     public static class BambooStalkMesh
     {
         public static Mesh Build(int radialSegments, int heightSegments, float radius, float length)

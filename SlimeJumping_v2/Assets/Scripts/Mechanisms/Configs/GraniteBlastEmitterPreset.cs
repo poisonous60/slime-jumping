@@ -2,17 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Bundled preset for emitter-level tuning (detection, FSM timings, hit
-    /// mask / range, knockback, hit feedback, stun, visual colors, telegraph,
-    /// audio, snow impact, VFX prefabs). When assigned to a
-    /// <see cref="GraniteBlastEmitter"/>, the preset's values OVERWRITE the
-    /// emitter's inline inspector values as one set — applied on OnValidate
-    /// (edit-time, when the reference changes) and again on Start (runtime).
-    /// Per-mode tuning (Branching/Beam/Burst) is owned by separate SOs; scene
-    /// references (target / muzzle / chargeGlow / hitShakeEmitter / navGraph
-    /// / detectionIndicator) stay on the emitter.
-    /// </summary>
+    /// <summary>Emitter-level preset; when assigned its values OVERWRITE the emitter's inline fields as one set, on OnValidate and Start.</summary>
+    /// Per-mode tuning (Branching/Beam/Burst) lives in separate SOs; scene refs stay on the emitter.
     [CreateAssetMenu(fileName = "GraniteBlastEmitterPreset",
         menuName = "SlimeJumping/Granite Blast/Emitter Preset", order = -1)]
     public class GraniteBlastEmitterPreset : ScriptableObject

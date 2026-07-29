@@ -4,12 +4,7 @@ using SlimeJumping.Platforms.Snow;
 
 namespace SlimeJumping.Platforms.Snow.EditorScripts
 {
-    /// <summary>
-    /// Custom inspector for SnowSettings that adds a one-click button to rebuild every
-    /// SnowField in the open scene that references this settings asset. After tweaking
-    /// rest thickness / slope / Phase 3 textures or keywords, designers click once here
-    /// instead of selecting each SnowField and pressing Rebuild Now.
-    /// </summary>
+    /// <summary>SnowSettings inspector: shadow-ramp generation plus one-click rebuild of the SnowFields in the open scene.</summary>
     [CustomEditor(typeof(SnowSettings))]
     public sealed class SnowSettingsEditor : UnityEditor.Editor
     {

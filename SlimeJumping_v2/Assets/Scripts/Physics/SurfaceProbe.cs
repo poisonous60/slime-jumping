@@ -5,13 +5,7 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Physics
 {
-    /// <summary>
-    /// Abstract surface contact detector. Subclasses implement two hooks:
-    ///   - PopulateContacts: how per-collider contacts are produced from the broad-phase list.
-    ///   - DepenetratePass:  one iter of Phase A push (how depenetration queries the colliders).
-    /// The rest (SelectPrimary, EffectiveNormal, ProjectVelocityAgainstContacts, Phase B, diagnostics)
-    /// is shared so swapping the mode at runtime does not drift from the shared behavior.
-    /// </summary>
+    /// <summary>Abstract surface contact detector; subclasses supply PopulateContacts + DepenetratePass, the rest is shared.</summary>
     public abstract class SurfaceProbe
     {
         protected readonly Rigidbody2D rb;
@@ -26,23 +20,14 @@ namespace SlimeJumping.Physics
         protected readonly Vector2[] contactNormals = new Vector2[16];
         protected readonly float[] contactDistances = new float[16];
         protected readonly bool[] contactActive = new bool[16];
-        // True for contacts whose closest-point clamped to a polygon vertex (i.e. the
-        // contact is a corner-bisector, not a real edge-perpendicular). Excluded from
-        // EffectiveNormal so corner artefacts don't fake a 20–45° slope on flat ground.
+        // Closest-point clamped to a polygon vertex (corner bisector, not edge-perpendicular).
+        // Excluded from EffectiveNormal, else corner artefacts fake a 20–45° slope on flat ground.
         protected readonly bool[] contactClamped = new bool[16];
-        // Strict subset of contactClamped: the clamped vertex sits within
-        // smallLedgeStepHeight above the slime's foot AND has open space directly above
-        // it — i.e. it's a low lip / step the slime should ride over, not the base of a
-        // tall wall or a tessellated wall segment (where a short edge's top vertex can
-        // fall within stepHeight but more wall continues above). Set by edge-enumerating
-        // probes when surfaceProbeSmoothSmallLedges is on; always false otherwise.
-        // Used to skip the velocity clip (ProjectVelocityAgainstContacts) and to exempt
-        // the ledge collider from the teleport CCD sweep so the slide carries the slime in.
+        // Subset of contactClamped: a low lip within smallLedgeStepHeight of the foot WITH open space
+        // above (not a tall/tessellated wall). Skips the velocity clip and the teleport CCD sweep.
         protected readonly bool[] contactLowLedge = new bool[16];
-        // Per-contact ceiling threshold (cos of ceilingAngle). Resolved from each contact's
-        // SurfaceTag in CheckSurface so different materials at a multi-contact corner each
-        // get their own attachable arc — Step 1.5 ceiling filter and EffectiveNormal use
-        // this instead of a single global threshold.
+        // Per-contact cos(ceilingAngle) from each contact's SurfaceTag, so mixed materials at one
+        // corner each keep their own attachable arc instead of a single global threshold.
         protected readonly float[] contactCeilingThreshold = new float[16];
         protected int contactCount;
 
@@ -51,19 +36,14 @@ namespace SlimeJumping.Physics
         protected int selectedIdx = -1;
         protected int phaseAIterCount;
         protected float phaseARemainPen;
-        // Last applied Phase A push (overwritten each DepenetratePass call). Reset
-        // to zero by SnapToSurface before the iter loop. Diagnostics read these to
-        // verify the smoothed depenetration converges to ~0 push in steady state.
+        // Last applied Phase A push; SnapToSurface zeroes it before the iter loop.
         protected Vector2 lastDepenPushDir;
         protected float lastDepenPushMag;
 
-        // Cached gravity context from last CheckSurface (used by EffectiveNormal
-        // and ProjectVelocityAgainstContacts — they run after CheckSurface in the same frame).
+        // Cached from last CheckSurface; EffectiveNormal / ProjectVelocityAgainstContacts run after it in the same frame.
         protected Vector2 lastGravityUp = Vector2.up;
-        // Broadphase detect range used by the most recent CheckSurface call. Edge-enumerating
-        // probes filter contacts to within (slimeRadius + lastDetectRange) so they match the
-        // broadphase OverlapCircle radius and don't overflow the contact buffer with far edges
-        // of large polygons.
+        // Broadphase detect range of the last CheckSurface. Edge-enumerating probes filter to
+        // (slimeRadius + this) so far edges of large polygons don't overflow the contact buffer.
         protected float lastDetectRange;
 
         // Diagnostic accessors
@@ -79,9 +59,7 @@ namespace SlimeJumping.Physics
         public float GetContactDistance(int i) => contactDistances[i];
         public bool IsContactActive(int i) => contactActive[i];
         public bool IsContactLowLedge(int i) => contactLowLedge[i];
-        // True if any contact this frame is a small-ledge lip on the given collider.
-        // SlimeController exempts that collider from the teleport CCD so the forward
-        // slide can carry the slime into the lip for Phase A's radial push to lift over.
+        // True if any contact this frame is a small-ledge lip on the given collider (teleport CCD exemption).
         public bool IsLowLedgeCollider(Collider2D c)
         {
             if (c == null) return false;
@@ -89,33 +67,25 @@ namespace SlimeJumping.Physics
                 if (contactLowLedge[i] && contactColliders[i] == c) return true;
             return false;
         }
-        // Count of edge contacts classified as "buried inside another collider" during the
-        // most recent CheckSurface (Multi probe + surfaceProbeRejectBuriedContacts only;
-        // 0 otherwise). Includes any that were later promoted back via the fallback.
+        // Edge contacts rejected as "buried inside another collider" (Multi probe only; includes fallback-promoted ones).
         public virtual int RejectedBuriedCount => 0;
-        // Count of clamped contacts whose velocity clip was skipped this frame by the
-        // small-ledge passthrough (surfaceProbeSmoothSmallLedges only; 0 otherwise).
+        // Clamped contacts whose velocity clip was skipped by the small-ledge passthrough.
         public int LowLedgePassthroughCount => lowLedgePassthroughCount;
         protected int lowLedgePassthroughCount;
 
-        // Finding 1: preserve last valid normal for deep penetration fallback
+        // Fallback normal for deep-penetration frames.
         protected Vector2 lastGoodNormal = Vector2.up;
 
         // --- Body scale (slime-cut: "a cut slime is a smaller slime") ---
-        // SlimeController pushes its bodyScaleRatio here whenever it changes. Every
-        // radius-derived length in the probes uses EffRadius so collision matches the scaled
-        // CircleCollider2D. 1 = full size, byte-for-byte the original circle.
+        // SlimeController pushes bodyScaleRatio here; radius-derived lengths use EffRadius so collision matches the scaled CircleCollider2D.
         protected float radiusScale = 1f;
         public void SetRadiusScale(float s) { radiusScale = Mathf.Max(0.05f, s); }
         protected float EffRadius => settings.slimeRadius * radiusScale;
 
         // --- Cut SHAPE (directional reach) ---
-        // LEGACY of the cut-plane slice design: with planes set, the probe collides as the cut
-        // shape via a DIRECTIONAL reach (support length of disk R ∩ cut half-planes). The
-        // cut-as-smaller-slime redesign (SlimeController.BodyScale.cs) has NO caller for
-        // SetCutShape, so cutPlaneCount stays 0 and Reach() is identically EffRadius — the
-        // machinery is inert and byte-for-byte the plain circle. Kept because contactReach[]
-        // threads through SelectPrimary / EffectiveNormal / ProjectVelocityAgainstContacts.
+        // LEGACY cut-plane slice design: the cut-as-smaller-slime redesign left NO caller for
+        // SetCutShape, so cutPlaneCount stays 0 and Reach() is identically EffRadius. Kept because
+        // contactReach[] threads through SelectPrimary / EffectiveNormal / ProjectVelocityAgainstContacts.
         protected readonly Vector3[] cutPlanes = new Vector3[3];  // xy = world unit normal (→ removed side), z = off (world, from center)
         protected int cutPlaneCount;
         public void SetCutShape(Vector3[] planes, int count)
@@ -125,8 +95,7 @@ namespace SlimeJumping.Physics
         }
         public void ClearCutShape() { cutPlaneCount = 0; }
 
-        // Support length of the cut shape toward a surface whose outward (toward-slime) normal is
-        // contactNormal — i.e. how far the slime reaches in direction d = -contactNormal.
+        // Support length of the cut shape toward a surface whose outward normal is contactNormal.
         protected float Reach(Vector2 contactNormal)
         {
             float R = EffRadius;
@@ -146,8 +115,7 @@ namespace SlimeJumping.Physics
             }
             return Mathf.Max(h, R * 0.1f);
         }
-        // Per-contact reach, filled in CheckSurface (parallel to contactNormals) so SelectPrimary /
-        // EffectiveNormal / ProjectVelocityAgainstContacts read it without recomputing.
+        // Per-contact reach, filled in CheckSurface (parallel to contactNormals).
         protected readonly float[] contactReach = new float[16];
 
         protected SurfaceProbe(Rigidbody2D rb, SlimeSettings settings, List<Collider2D> ignoredColliders)
@@ -156,14 +124,11 @@ namespace SlimeJumping.Physics
             this.settings = settings;
             this.ignoredColliders = ignoredColliders;
         }
-        // NOTE: a probe-mode swap does NOT need an explicit cut-shape transfer — the controller
-        // re-applies splitCutPlanes via ApplySplitCollisionShape() right after DecideProbeMode()
-        // every FixedUpdate, so the new probe gets the shape before its first CheckSurface.
+        // NOTE: probe-mode swap needs no cut-shape transfer — the controller re-applies
+        // splitCutPlanes right after DecideProbeMode() every FixedUpdate.
 
-        // Called on runtime mode swap. Without this, a new probe starts with
-        // lastGoodNormal=Vector2.up — a slime attached to a ceiling/wall at swap
-        // time would fall back to "up" on the next deep-penetration frame and
-        // get snapped off its surface.
+        // Called on runtime mode swap. Without it a new probe starts lastGoodNormal=up, so a
+        // ceiling/wall-attached slime gets snapped off on the next deep-penetration frame.
         public void TransferStateFrom(SurfaceProbe other)
         {
             if (other == null) return;
@@ -188,7 +153,6 @@ namespace SlimeJumping.Physics
             col = null;
             contactCount = 0;
 
-            // Find all nearby colliders
             int overlapCount = Physics2D.OverlapCircleNonAlloc(pos, radius + detectRange, overlapBuffer, mask);
 
             bool hasNearby = PopulateContacts(pos, overlapCount);
@@ -197,8 +161,7 @@ namespace SlimeJumping.Physics
             {
                 activeCount = 0;
                 selectedIdx = -1;
-                // Edge case: all nearby colliders deeply penetrated
-                // Use prevCollider with last known normal; otherwise treat as no surface
+                // All nearby colliders deeply penetrated: fall back to prevCollider + last known normal.
                 if (hasNearby && prevCollider != null)
                 {
                     col = prevCollider;
@@ -208,25 +171,18 @@ namespace SlimeJumping.Physics
                 return false;
             }
 
-            // Resolve per-contact ceiling threshold from each collider's SurfaceTag.
-            // SelectPrimary's ceiling filter and EffectiveNormal both index into this array
-            // so a sticky overhang at 130° can mix with a normal-tagged 30° floor without
-            // the global threshold dictating a uniform answer.
+            // Per-contact ceiling threshold from SurfaceTag, so a sticky 130° overhang can mix
+            // with a normal-tagged 30° floor instead of one global answer.
             for (int i = 0; i < contactCount; i++)
             {
                 SurfaceTag.ResolveCeilingThresholds(contactColliders[i], settings,
                     out contactCeilingThreshold[i], out _);
             }
 
-            // Directional reach per contact — how far the CUT SHAPE extends toward each contact's
-            // surface. Equals settings.slimeRadius when not cut. SelectPrimary / EffectiveNormal /
-            // ProjectVelocityAgainstContacts read this instead of a constant radius so the slime
-            // rests on / sticks by its flat cut face and never collides past the removed region.
+            // Directional reach per contact — how far the cut shape extends toward each contact.
             for (int i = 0; i < contactCount; i++)
                 contactReach[i] = Reach(contactNormals[i]);
 
-            // Identify active contacts (within slimeRadius + contactSkin)
-            // and select primary using 5-step fallback
             int selected = SelectPrimary(radius, settings.contactSkin, inputX, prevCollider, gravityUp, gravityRight);
             selectedIdx = selected;
             normal = contactNormals[selected];
@@ -235,18 +191,12 @@ namespace SlimeJumping.Physics
             return true;
         }
 
-        /// <summary>
-        /// Populate contactColliders/contactNormals/contactDistances from the broad-phase
-        /// overlap list in overlapBuffer[0..overlapCount). Returns true if any non-ignored
-        /// collider was seen (used to decide the deep-penetration fallback path).
-        /// Subclasses decide how many contacts per collider to emit.
-        /// </summary>
+        /// <summary>Fill the contact arrays from overlapBuffer[0..overlapCount); returns true if any non-ignored collider was seen.</summary>
         protected abstract bool PopulateContacts(Vector2 pos, int overlapCount);
 
         private int SelectPrimary(float radius, float contactSkin, float inputX, Collider2D prevCollider,
             Vector2 gravityUp, Vector2 gravityRight)
         {
-            // Count active contacts and find closest overall
             int localActiveCount = 0;
             int firstActive = -1;
             int closestIdx = 0;
@@ -275,12 +225,8 @@ namespace SlimeJumping.Physics
             // Step 1: Single active contact — no choice needed
             if (localActiveCount == 1) return firstActive;
 
-            // Step 1.5: Ceiling filter — when active contacts mix ceiling and
-            // non-ceiling, exclude ceiling contacts from steps 2-5.
-            // Prevents a marginally-deeper ceiling from winning over a valid floor.
-            // "Ceiling" is per-contact: each collider's SurfaceTag may override the
-            // attachable arc, so a sticky-tagged overhang stays attachable while an
-            // adjacent normal-tagged surface still treats the same angle as ceiling.
+            // Step 1.5: Ceiling filter — when active contacts mix, exclude ceilings from steps 2-5,
+            // else a marginally-deeper ceiling wins over a valid floor. Threshold is per-contact.
             bool filterCeiling = false;
             {
                 int attachableCount = 0;
@@ -301,12 +247,9 @@ namespace SlimeJumping.Physics
                 }
             }
 
-            // Step 1.7: IPlatformEffect priority — if exactly one active non-ceiling
-            // contact has an effect on its parent, pick it so effects (JumpPad etc.) fire
-            // even when a floor contact is tied or deeper. Multiple effects fall through
-            // to normal selection to avoid arbitrary choice between them.
-            // Dedupe by IPlatformEffect instance so Multi-probe samples of the same
-            // effect-bearing collider count once.
+            // Step 1.7: IPlatformEffect priority — exactly one active non-ceiling effect contact wins,
+            // so JumpPad etc. fire even when a floor is tied or deeper. Dedupe by effect instance
+            // so Multi-probe samples of the same collider count once; multiple effects fall through.
             {
                 int effectCount = 0;
                 int effectIdx = -1;
@@ -336,12 +279,8 @@ namespace SlimeJumping.Physics
                 if (effectCount == 1) return effectIdx;
             }
 
-            // Step 2: Continuity with penetration guard — if prev primary is still in the
-            // active non-ceiling set AND no other contact beats it in penetration by more
-            // than primaryContactHysteresis, keep it. Eliminates frame-to-frame primary
-            // flipping at corners without letting the primary lock onto a losing surface.
-            // With multi-probe, a collider can appear multiple times: pick the deepest
-            // prevCollider sample so the hysteresis check uses the best view of prev.
+            // Step 2: Continuity with penetration guard — keep the prev primary unless another
+            // contact beats it by > primaryContactHysteresis; stops primary flipping at corners.
             float hysteresis = settings.primaryContactHysteresis;
             if (prevCollider != null)
             {
@@ -422,7 +361,6 @@ namespace SlimeJumping.Physics
             }
 
             // Step 5: Gravity alignment — most floor-like
-            // (Continuity check from previous design is now handled by Step 2 hysteresis.)
             {
                 int bestIdx = firstActive;
                 float bestGrav = float.MinValue;
@@ -441,29 +379,17 @@ namespace SlimeJumping.Physics
             }
         }
 
-        // Scratch buffer for Step 1.7 effect-instance dedupe. Persisted on the instance
-        // so SelectPrimary stays allocation-free.
+        // Scratch for Step 1.7 dedupe; instance-held so SelectPrimary stays allocation-free.
         private readonly IPlatformEffect[] selectPrimaryEffectsScratch = new IPlatformEffect[16];
 
-        /// <summary>
-        /// Penetration-weighted average of active non-ceiling contact normals.
-        /// Used as the slide/crawl/aim axis — smooth across polygon vertices and
-        /// concave corners where primary selection would flip frame-to-frame.
-        /// Returns the fallback (last good normal, typically the primary) when:
-        /// no active non-ceiling contacts, or weighted sum ≈ 0 (opposing walls).
-        /// </summary>
+        /// <summary>Penetration-weighted average of active non-ceiling normals (slide/crawl/aim axis); falls back to lastGoodNormal when the sum ≈ 0 (opposing walls).</summary>
         public Vector2 EffectiveNormal
         {
             get
             {
                 float contactSkin = settings.contactSkin;
-                // Soft band: contacts within (radius + fullBand) contribute, weighted
-                // by a smoothstep ramp. Replaces the old hard "active or not" gate.
-                // Without the soft band, aC=0 returned stale lastGoodNormal and aC>=1
-                // returned a fresh weighted sum — that step discontinuity drove the
-                // Ice-curve judder (vel direction flipping every frame as the slime
-                // overshot the curve and re-touched it). multiplier=1 reproduces the
-                // legacy hard threshold.
+                // Smoothstep soft band instead of a hard active/inactive gate — the step
+                // discontinuity drove the Ice-curve judder. multiplier=1 = legacy hard threshold.
                 float fullBand = contactSkin * Mathf.Max(1f, settings.effectiveNormalSoftBandMultiplier);
                 float rampWidth = fullBand * Mathf.Clamp01(settings.effectiveNormalWeightRampBand);
                 Vector2 sum = Vector2.zero;
@@ -486,31 +412,9 @@ namespace SlimeJumping.Physics
             }
         }
 
-        /// <summary>
-        /// Velocity clipping for surface contacts.
-        ///
-        /// Step 1 (always): full clip into fallbackNormal. fallbackNormal is the
-        ///   smoothed primary surface axis; this provides the stable "no into-surface"
-        ///   constraint. Even when no contact is in the soft band (slime briefly
-        ///   detached from curve at high speed), this still anchors velocity to be
-        ///   tangent to the smoothed primary.
-        ///
-        /// Step 2: weighted multi-clip ONLY against contacts whose normal differs
-        ///   from fallbackNormal by more than acos(projectVelocitySameDirectionDot)
-        ///   degrees. Same-direction contacts are multi-probe samples of the same
-        ///   surface — clipping against them produces step changes in vel as the
-        ///   active set toggles (the Ice judder). Different-direction contacts
-        ///   (true corners, opposing walls) still get multi-clipped, soft-banded.
-        ///   Exception: a contact the probe classified as a small-ledge lip
-        ///   (contactLowLedge) has its clip skipped when surfaceProbeSmoothSmallLedges
-        ///   is on, so the forward slide is preserved and Phase A's tangent-stripped
-        ///   radial push (TryAddPolygonEdgePush) lifts the slime over the lip.
-        ///   lowLedgePassthroughCount counts only the clips actually skipped this way —
-        ///   so the ledge-pass diagnostic doesn't fire on curve facets or non-opposing
-        ///   contacts.
-        ///
-        /// Two Gauss-Seidel passes converge for typical 2-3 contact corners.
-        /// </summary>
+        /// <summary>Clips v into fallbackNormal, then multi-clips only contacts more than
+        /// acos(projectVelocitySameDirectionDot) off it — clipping same-surface samples steps vel as the
+        /// active set toggles (Ice judder). contactLowLedge lips skip the clip.</summary>
         public void ProjectVelocityAgainstContacts(ref Vector2 v, Vector2 fallbackNormal, int passes = 2)
         {
             // Step 1: primary-axis clip (always).
@@ -550,13 +454,8 @@ namespace SlimeJumping.Physics
                     }
                     if (weight < 1e-4f) continue;
 
-                    // Small-ledge passthrough: this contact is a low lip the slime should ride
-                    // over (probe-classified — vertex within stepHeight of the foot, open space
-                    // above it). Skip the clip so the forward slide survives; Phase A's
-                    // tangent-stripped radial push lifts the slime over the lip and the teleport
-                    // CCD exempts the ledge collider so the slide actually carries it in.
-                    // Counted only here — once per real skipped clip — so the diagnostic stays
-                    // quiet on curve facets and non-opposing contacts.
+                    // Small-ledge passthrough: skip the clip so the forward slide survives and Phase A's
+                    // radial push lifts the slime over the lip. Counted once per actually-skipped clip.
                     if (smoothLedges && contactLowLedge[i])
                     {
                         if (pass == 0) lowLedgePassthroughCount++;
@@ -576,8 +475,7 @@ namespace SlimeJumping.Physics
             float contactSkin = settings.contactSkin;
             Vector2 pos = rb.position;
 
-            // Phase A: Depenetrate against all nearby colliders (push only).
-            // Implementation delegates to DepenetratePass for single- vs multi-probe style.
+            // Phase A: depenetrate against nearby colliders (push only), via DepenetratePass.
             lastDepenPushDir = Vector2.zero;
             lastDepenPushMag = 0f;
             bool anyPush = false;
@@ -609,25 +507,16 @@ namespace SlimeJumping.Physics
                 }
             }
 
-            // Phase B: Primary pull — anchor to primary surface every frame so the
-            // slime sits on the chord-offset boundary instead of bouncing between
-            // "barely penetrating (Phase A pushes)" and "just outside (no push)".
-            // Without this, smoothed Phase A leaves a 50 Hz magnitude oscillation
-            // because some frames have penetration to fix and some don't.
+            // Phase B: primary pull — anchor to the chord-offset boundary every frame. Without it
+            // smoothed Phase A leaves a 50 Hz oscillation between "penetrating" and "just outside".
             {
                 Vector2 closest = surfaceCollider.ClosestPoint(pos);
                 Vector2 toSlime = pos - closest;
                 float dist = toSlime.magnitude;
-                // Reach toward THIS surface = how far the cut shape extends here. Anchoring at the
-                // reach (not the full radius) is what rests the slime on its flat cut face: toward
-                // the cut the reach is the cut plane, so the cut face sits on the surface.
+                // Anchor at the reach, not the full radius, so the cut face rests on the surface.
                 float reach = dist > 0.0001f ? Reach(toSlime / dist) : EffRadius;
-                // Small-ledge climb: while a passthrough is active, loosen the re-anchor
-                // tolerance by stepHeight so Phase A's "up the slope" push can raise the
-                // slime onto the ledge before Phase B yanks it back to the primary. Without
-                // this the slime can only rise ~contactSkin above the slope — far too little
-                // to climb even a tiny lip. Reverts to the tight tolerance once the slime is
-                // on the ledge top and the primary has switched to it (no more passthrough).
+                // Small-ledge climb: loosen the re-anchor tolerance by stepHeight while a passthrough
+                // is active, else the slime can only rise ~contactSkin before Phase B yanks it back.
                 float anchorTolerance = reach + contactSkin;
                 if (lowLedgePassthroughCount > 0)
                     anchorTolerance += settings.smallLedgeStepHeight;
@@ -638,12 +527,7 @@ namespace SlimeJumping.Physics
             rb.position = pos;
         }
 
-        /// <summary>
-        /// One iteration of Phase A depenetration. Should re-query overlapping ground-layer
-        /// colliders at the current pos, compute per-collider push vectors, and apply them
-        /// (possibly combined across multi-probe samples). Returns true if any push was
-        /// applied this iteration.
-        /// </summary>
+        /// <summary>One Phase A depenetration iteration: re-query at pos, apply push vectors, return true if any was applied.</summary>
         protected abstract bool DepenetratePass(ref Vector2 pos);
 
         public static float GetSurfaceAngle(Vector2 surfaceNormal, Vector2 gravityUp)

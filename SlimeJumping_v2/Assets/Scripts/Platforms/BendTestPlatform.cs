@@ -3,10 +3,8 @@ using MegaFiers;
 
 namespace SlimeJumping.Platforms
 {
-    // Validation harness for MegaFiers Bend + LocalTrail RT combo.
-    // Collider stays rigid; only the visual mesh deforms. Drive bend.angle from the
-    // inspector to verify trail marks painted at θ=0 stay glued to the deforming
-    // surface at other angles (i.e. the UV-channel trail sampling is correct).
+    // MegaFiers Bend + LocalTrail RT harness: collider stays rigid, only the visual mesh bends.
+    // Drive the angle to check trail marks painted at θ=0 stay glued to the deformed surface.
     [AddComponentMenu("SlimeJumping/Debug/Bend Test Platform")]
     public class BendTestPlatform : MonoBehaviour
     {
@@ -21,9 +19,7 @@ namespace SlimeJumping.Platforms
 
         void Update()
         {
-            // Update in Update (not LateUpdate) so MegaModifyObject's LateUpdate sees
-            // the new angle before it issues the deform job. Writing in LateUpdate
-            // would race against the modifier's own LateUpdate read.
+            // Must write in Update: MegaModifyObject reads the angle in its own LateUpdate deform job.
             if (bend == null) return;
             bend.axis = bendAxis;
             bend.angle = manualAngle;

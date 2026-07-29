@@ -4,13 +4,8 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Debug-only logger for the "slime stuck under snake" bug. Reads SlimeController's
-    /// public API + SurfaceProbe diagnostic accessors only — never writes back.
-    /// Activates while the slime is Airborne AND in contact with the assigned SnakeSpine's
-    /// collider (or any collider if snake is not assigned). Logs every fixed frame so the
-    /// trace shows how custom velocity evolves vs rb.linearVelocity and actual position.
-    /// </summary>
+    /// <summary>Debug-only trace of the slime while Airborne on a SnakeSpine collider.
+    /// Reads SlimeController's public API + SurfaceProbe accessors only, never writes back.</summary>
     public class SnakeUndersideLogger : MonoBehaviour
     {
         [SerializeField] SlimeController slime;
@@ -29,9 +24,8 @@ namespace SlimeJumping.Debugging
         int counter;
         bool prevInitialized;
 
-        // References only — no API calls here. SlimeController.Position reads its internal
-        // Rigidbody2D which is assigned in SlimeController.Awake; running our Awake first
-        // would NullRef, so any call into slime/slimeRb is deferred to FixedUpdate.
+        // References only: this Awake can run before SlimeController.Awake assigns its
+        // Rigidbody2D, so every call into slime/slimeRb waits for FixedUpdate.
         void Awake()
         {
             if (slime == null) slime = FindAnyObjectByType<SlimeController>();

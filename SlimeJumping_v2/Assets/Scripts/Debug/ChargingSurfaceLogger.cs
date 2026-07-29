@@ -3,11 +3,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Diagnostic logger for charging surface detection issues (corner oscillation bug).
-    /// Logs charging state details every FixedUpdate and state transitions.
-    /// Attach to the same GameObject as SlimeController, or assign via inspector.
-    /// </summary>
+    /// <summary>Logs state transitions and Charging-state surface data every FixedUpdate.</summary>
     public class ChargingSurfaceLogger : MonoBehaviour
     {
         [SerializeField] private SlimeController slimeController;
@@ -29,14 +25,12 @@ namespace SlimeJumping.Debugging
 
             var state = slimeController.CurrentState;
 
-            // State transition log
             if (state != prevState)
             {
                 Debug.Log($"[F{Time.frameCount}] State: {prevState} → {state}");
                 prevState = state;
             }
 
-            // Charging detail log
             if (state == SlimeController.SlimeState.Charging)
             {
                 var col = slimeController.SurfaceCollider;

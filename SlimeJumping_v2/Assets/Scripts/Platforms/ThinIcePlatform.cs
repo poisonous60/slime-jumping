@@ -5,10 +5,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Platforms
 {
-    /// CrumblingPlatform's extended cousin. Adds:
-    ///   - crack/shatter/regen AudioClips routed through SoundService
-    ///   - shatter ParticleSystem triggered at the moment of collapse
-    ///   - smooth scale + alpha regen animation before re-enabling colliders
+    /// CrumblingPlatform plus crack/shatter/regen audio, a shatter ParticleSystem, and a scale+alpha regen animation.
     public class ThinIcePlatform : MonoBehaviour
     {
         [Header("Timing")]
@@ -67,10 +64,7 @@ namespace SlimeJumping.Platforms
         Vector3 originalScale = Vector3.one;
         static readonly int ColorID = Shader.PropertyToID("_Color");
 
-        /// <summary>
-        /// Overwrites the per-tile audio clips + volume. Called by
-        /// ThinIcePlatformAudioManager to broadcast a shared set across the scene.
-        /// </summary>
+        /// <summary>Overwrites the per-tile clips + volume; ThinIcePlatformAudioManager broadcasts a shared set across the scene.</summary>
         public void ApplyAudioSettings(AudioClip crack, AudioClip shatter, AudioClip regen, float volume)
         {
             crackSound = crack;
@@ -139,7 +133,6 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
-            // Ramp tint from original toward crackingTint + shake scaling up.
             float t = 1f - timer / triggerDelay;
             Color c = Color.Lerp(originalColor, crackingTint, t);
             ApplyVisual(c, 1f, maxShakeOffset * 0.4f * t, 1f);
@@ -154,7 +147,6 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
-            // Strong shake + fast alpha fade (tint held at crackingTint).
             float t = 1f - timer / crumbleDuration;
             ApplyVisual(crackingTint, 1f - t, maxShakeOffset, 1f);
         }
@@ -171,8 +163,7 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
-            // Overlap pre-check: do NOT enable colliders yet — the regen animation
-            // will play first with colliders off, and we only commit if clear.
+            // Pre-check only: colliders stay off through the regen animation, commit only if clear.
             if (IsRegenBlocked())
                 return;
 
@@ -185,7 +176,6 @@ namespace SlimeJumping.Platforms
             float elapsed = Mathf.Max(0f, regenDuration - timer);
             float t = regenDuration > 0f ? Mathf.Clamp01(elapsed / regenDuration) : 1f;
 
-            // Ease-out for a softer settle.
             float eased = 1f - Mathf.Pow(1f - t, 2f);
 
             ApplyVisual(originalColor, eased, 0f, eased);
@@ -252,8 +242,7 @@ namespace SlimeJumping.Platforms
 
                 case IceState.Regenerating:
                     timer = regenDuration;
-                    // Colliders stay OFF during the fade-in so the slime can pass
-                    // through a not-yet-solid platform. Re-enabled on entry to Idle.
+                    // Colliders off through the fade-in so the slime passes through a not-yet-solid tile; Idle re-enables.
                     foreach (var col in myColliders) col.enabled = false;
                     if (visualRenderer != null) visualRenderer.enabled = true;
                     if (visualRoot != null)
@@ -281,8 +270,7 @@ namespace SlimeJumping.Platforms
                 useTriggers = false
             };
 
-            // Temporarily enable each collider only to test overlap, then turn
-            // it back off so the slime cannot briefly rest on a mid-regen tile.
+            // Re-disable right after each Overlap, else the slime can rest on a mid-regen tile.
             foreach (var col in myColliders)
             {
                 col.enabled = true;

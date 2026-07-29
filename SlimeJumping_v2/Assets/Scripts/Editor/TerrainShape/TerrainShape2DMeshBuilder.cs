@@ -15,9 +15,7 @@ namespace SlimeJumping.TerrainShape.Editor
         {
             public Mesh mesh;
             public List<List<Vector2>> sampledOutlinesPerLayer; // index 0 = front; loop 0 of that layer (back-compat)
-            // Multi-loop normalized front face — what the mesh actually shows. Outer loops are CCW
-            // (signed area > 0), holes are CW. Editor hit-tests should use this for consistency
-            // with what the user sees.
+            // Multi-loop normalized front face. Outer loops are CCW (signed area > 0), holes CW.
             public List<List<Vector2>> normalizedFrontLoops;
             public Vector3[] frontFaceVerts;
             public int[] frontFaceTris;
@@ -39,10 +37,8 @@ namespace SlimeJumping.TerrainShape.Editor
 
             int L = src.layers.Count;
 
-            // v2 invariant: every layer has identical XY per-id, only z differs. So we sample
-            // the FRONT layer's loops once and reuse the topology for every layer. Then run
-            // Clipper2 normalize so TriangleNet's hole-fill flood doesn't get confused by weird
-            // user states (e.g. hole vertex dragged outside its outer).
+            // v2 invariant: layers share XY, only z differs → sample the front layer once and reuse.
+            // Clipper2 normalize first, else a hole dragged outside its outer breaks TriangleNet's hole flood.
             var sampled = SampleLayerLoops(src.FrontLayer, src.subdivisionsPerSegment, src.curveSubdivisionMultiplier);
             if (sampled.Count == 0)
             {
@@ -65,8 +61,7 @@ namespace SlimeJumping.TerrainShape.Editor
             }
 
             result.normalizedFrontLoops = normalized;
-            // Back-compat: per-layer first-loop sampling. Stage 5 (editor multi-loop) replaces
-            // this with full multi-loop iteration. Until then several callsites use loop[0].
+            // Back-compat: several callsites still read loop[0] only.
             for (int li = 0; li < L; li++)
                 result.sampledOutlinesPerLayer.Add(new List<Vector2>(normalized[0]));
 
@@ -137,9 +132,8 @@ namespace SlimeJumping.TerrainShape.Editor
             TriangulateFaceMultiLoop(normalized, src.layers[L - 1].z, null, null, src,
                 allVerts, allTris, frontFacing: false, out _, out _);
 
-            // Side walls: per-loop quad strips connecting layer N to N+1. Hole loops (CW) need
-            // reversed tri winding so their wall normals point INTO the hole (toward the camera
-            // when the user looks down through the hole).
+            // Side walls: per-loop quad strips from layer N to N+1. Hole loops (CW) need reversed
+            // winding so their wall normals point INTO the hole.
             int loopCount = normalized.Count;
             var loopBaseStart = new int[L, loopCount]; // [layerIdx, loopIdx] = first vert index
             for (int li = 0; li < L; li++)
@@ -174,7 +168,6 @@ namespace SlimeJumping.TerrainShape.Editor
                         }
                         else
                         {
-                            // Reverse triangle winding so the wall normal points into the hole.
                             allTris.Add(aT); allTris.Add(aB); allTris.Add(bB);
                             allTris.Add(aT); allTris.Add(bB); allTris.Add(bT);
                         }
@@ -211,9 +204,8 @@ namespace SlimeJumping.TerrainShape.Editor
             return result;
         }
 
-        // Box projection: each vertex takes the plane its normal faces most, so front/back faces
-        // read XY and side walls read ZY or XZ. Texel density stays uniform in world units no
-        // matter how big the shape is.
+        // Box projection: each vertex takes the plane its normal faces most, so texel density
+        // stays uniform in world units regardless of shape size.
         static Vector2[] BuildBoxUVs(Vector3[] verts, Vector3[] normals, float scale)
         {
             var uv = new Vector2[verts.Length];
@@ -228,9 +220,8 @@ namespace SlimeJumping.TerrainShape.Editor
             return uv;
         }
 
-        // Triangulates a multi-loop face (outer + holes) using TriangleNet. Outer loops (CCW) are
-        // added as solid contours; CW loops are added as holes (TriangleNet's hole-fill flood
-        // removes their triangles). Interior + forced edges are honored on the front face only.
+        // Triangulates outer (CCW) + hole (CW) loops via TriangleNet.
+        // Interior points + forced edges are honored on the front face only.
         static void TriangulateFaceMultiLoop(
             List<List<Vector2>> loops, float layerZ,
             List<InteriorPoint> interior, List<ForcedEdge> forcedEdges, TerrainShape2D src,
@@ -308,8 +299,7 @@ namespace SlimeJumping.TerrainShape.Editor
                 int c = t.GetVertex(2).ID;
                 if (frontFacing)
                 {
-                    // Front face on -Z side, normal must point -Z. TriangleNet emits CCW from +Z
-                    // view → +Z normal, so reverse winding to flip to -Z.
+                    // TriangleNet emits CCW from the +Z view (= +Z normal); reverse to face -Z.
                     outTris.Add(faceStart + a);
                     outTris.Add(faceStart + c);
                     outTris.Add(faceStart + b);
@@ -327,8 +317,7 @@ namespace SlimeJumping.TerrainShape.Editor
             localTrisOut = localTris.ToArray();
         }
 
-        // Multi-loop bezier sampling. Each loop sampled independently. Returns one sampled list
-        // per loop, in input order.
+        // Multi-loop bezier sampling: one sampled list per loop, in input order.
         public static List<List<Vector2>> SampleLayerLoops(OutlineLayer layer, int subdivisionsPerSegment, int curveMultiplier = 4)
         {
             var result = new List<List<Vector2>>();
@@ -354,7 +343,6 @@ namespace SlimeJumping.TerrainShape.Editor
             int n = points != null ? points.Count : 0;
             if (n < 2) return samples;
             int subsStraight = Mathf.Max(2, subdivisionsPerSegment);
-            // Curved segments deserve more samples than straight ones — bezier curvature wants fine subdivision.
             int mult = Mathf.Max(1, curveMultiplier);
             int subsCurved = Mathf.Max(subsStraight, subdivisionsPerSegment * mult);
             for (int i = 0; i < n; i++)
@@ -398,8 +386,7 @@ namespace SlimeJumping.TerrainShape.Editor
             return a * 0.5f;
         }
 
-        // Allocation-free overload — used by editor draw paths that just need the sign and don't
-        // want to materialize a List<Vector2> per Repaint.
+        // Allocation-free overload for editor draw paths — no List<Vector2> per Repaint.
         public static float SignedArea(IList<OutlinePoint> poly)
         {
             float a = 0f;
@@ -426,9 +413,7 @@ namespace SlimeJumping.TerrainShape.Editor
             return inside;
         }
 
-        // Multi-loop point-in-polygon: even-odd parity across all loops. With outer loops (CCW)
-        // and holes (CW), a point inside outer-but-not-in-hole crosses 1 edge (odd → inside),
-        // inside outer AND inside hole crosses 2 (even → outside). Donuts are handled correctly.
+        // Multi-loop point-in-polygon: even-odd parity across all loops, so donuts work.
         public static bool IsPointInside(IList<List<Vector2>> loops, Vector2 p)
         {
             if (loops == null) return false;

@@ -35,13 +35,10 @@ namespace SlimeJumping.Platforms
         public float spin = 220f;         // deg/s 빠른 회전.
         [Range(1f, 1.6f)] public float popScale = 1.25f; // 초반 살짝 부풀기.
 
-        // ---------------------------------------------------------------------
 
         const string ResourcesPath = "CloudPlatformConfig";
         static CloudPlatformConfig fallback;
 
-        // override 지정 시 그걸, 아니면 Assets/Resources/CloudPlatformConfig.asset,
-        // 둘 다 없으면 위 기본값의 공유 인스턴스(새 씬에서도 동작하게).
         public static CloudPlatformConfig Resolve(CloudPlatformConfig @override)
         {
             if (@override != null) return @override;

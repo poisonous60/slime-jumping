@@ -3,12 +3,8 @@ using UnityEngine;
 namespace SlimeJumping.Rendering
 {
     /// <summary>
-    /// Snowball renderer 에 부착해 base material 을 runtime clone 으로 교체하고
-    /// per-instance 텍스처/컬러/키워드를 push. 원본 .mat 자산은 read-only 유지.
-    ///
-    /// SnowField.cs (line 2120-2162) 의 패턴을 압축한 버전 — 디자이너 워크플로우
-    /// 동일성 위해 SnowField 와 같은 `_GradientRamp` 텍스처를 공유하면 그늘 톤
-    /// 자동 통일.
+    /// base material 을 runtime clone 으로 교체하고 per-instance 텍스처/컬러/키워드 push.
+    /// 원본 .mat 자산은 read-only 유지. SnowField 와 `_GradientRamp` 공유하면 그늘 톤 통일.
     /// </summary>
     [ExecuteAlways]
     [RequireComponent(typeof(Renderer))]
@@ -54,7 +50,6 @@ namespace SlimeJumping.Rendering
         void OnValidate()
         {
             if (!isActiveAndEnabled) return;
-            // OnValidate 는 prefab edit / inspector 변경 시 호출. 즉시 재구성.
             Rebuild();
         }
 

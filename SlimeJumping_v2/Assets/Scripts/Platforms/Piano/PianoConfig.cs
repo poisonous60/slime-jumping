@@ -3,9 +3,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Piano
 {
-    /// Single tuning asset for a whole piano — keys, keyboard detection, and pedals. Referenced by
-    /// PianoKeyboard and the PianoPedal motors so one .asset drives the entire instrument (mirrors
-    /// the project's other platform config assets, e.g. BambooV2Settings / SoundSettings).
+    /// Single tuning asset for a whole piano — keys, keyboard detection, pedals.
     [CreateAssetMenu(fileName = "PianoConfig", menuName = "SlimeJumping/Piano Config")]
     public class PianoConfig : ScriptableObject
     {
@@ -54,8 +52,7 @@ namespace SlimeJumping.Platforms.Piano
     public enum MelodySnapMode { Pentatonic, ChordTones, ScaleFull }
     public enum LandingZone { Left, Center, Right }
 
-    /// One authored candidate for "what chord comes next", with a relative weight. The dice only ever
-    /// pick from this list, so every outcome is one the designer already approved.
+    /// One weighted candidate for "what chord comes next". The dice only ever pick from this list.
     [System.Serializable]
     public class NextOption
     {
@@ -65,9 +62,8 @@ namespace SlimeJumping.Platforms.Piano
         [Min(0f)] public float weight = 1f;
     }
 
-    /// One step of the chord progression. Voicing is authored as semitone offsets from the tonic
-    /// (so changing HarmonizeSettings.tonicMidi transposes the whole progression). Low offsets are
-    /// the bass — keep them wide (octave/5th) and put 3rds/2nds high (Low Interval Limit).
+    /// One progression step, voiced as semitone offsets from the tonic (so tonicMidi transposes all).
+    /// Low offsets are bass — keep them wide, 3rds/2nds go high (Low Interval Limit).
     [System.Serializable]
     public class ChordStep
     {
@@ -86,11 +82,8 @@ namespace SlimeJumping.Platforms.Piano
         public MelodySnapMode snapMode = MelodySnapMode.ChordTones;
     }
 
-    /// Per-landing performance ornaments. Every one of these fires FROM the landing (the first note is
-    /// always instant — only the notes after it are offset), so nothing here runs on a clock and nothing
-    /// can drift out of sync with the player. Each is an independent on/off for A/B listening.
-    ///
-    /// When several chord figures are on at once the precedence is: chiptune > Alberti > rolled > block.
+    /// Per-landing ornaments. All fire FROM the landing (first note always instant, never clocked) so
+    /// nothing can drift out of sync. Chord-figure precedence: chiptune > Alberti > rolled > block.
     [System.Serializable]
     public class OrnamentSettings
     {
@@ -169,10 +162,8 @@ namespace SlimeJumping.Platforms.Piano
         [Range(0f, 1f)] public float glissVolume = 0.4f;
     }
 
-    /// Opt-in "progression harmonize" tuning. When disabled the keyboard plays each key's literal
-    /// note (current behavior). When enabled, every landing advances the progression one step, plays
-    /// that chord's voicing through a voice pool, snaps the landed key(s) to a melody note on top,
-    /// and visually sinks the chord's keys. All parameters are designer-editable on the PianoConfig.
+    /// Opt-in "progression harmonize" tuning. Off = each key's literal note; on = every landing
+    /// advances the progression, voices the chord, and snaps the landed key to a melody note on top.
     [System.Serializable]
     public class HarmonizeSettings
     {
@@ -185,11 +176,8 @@ namespace SlimeJumping.Platforms.Piano
         public ScaleType scale = ScaleType.Major;
 
         // ── Runtime-only key / ornament override ────────────────────────────────────────────────
-        // The auto-play song in rotation decides what key the slime is playing in, so the slime's
-        // own chords already belong to the piece before it starts. That has to be a RUNTIME value:
-        // writing tonicMidi/scale/ornaments on the ScriptableObject would persist into the .asset the
-        // moment it happens in the editor and silently overwrite the designer's tuning.
-        // [NonSerialized] is what keeps it off disk; the inspector still edits the real fields live.
+        // The rotation song sets the key at runtime. Must be [NonSerialized]: writing tonicMidi /
+        // scale / ornaments on the ScriptableObject persists into the .asset in the editor.
         [System.NonSerialized] private bool hasKeyOverride;
         [System.NonSerialized] private int overrideTonicMidi;
         [System.NonSerialized] private ScaleType overrideScale;
@@ -204,15 +192,12 @@ namespace SlimeJumping.Platforms.Piano
         /// The ornament preset actually in force — the song's if it authored one.
         public OrnamentSettings Ornaments => overrideOrnaments != null ? overrideOrnaments : ornaments;
 
-        /// The progression actually in force — the rotation song's own opening loop if it brought
-        /// one, else the authored schemas. Landing code must read THIS, never the field, so the
-        /// shared asset's progression is never mutated.
+        /// The progression in force (song's loop, else the authored schemas). Landing code must read
+        /// THIS, never the `progression` field, or the shared asset gets mutated.
         public List<ChordStep> Progression =>
             overrideProgression != null && overrideProgression.Count > 0 ? overrideProgression : progression;
 
-        /// The rotation song's measured strikes, index-aligned with Progression — the landing plays
-        /// step[i] verbatim instead of rebuilding a chord. Null = no song in force (ornament
-        /// figures / block apply, unchanged).
+        /// Song's measured strikes, index-aligned with Progression; null = no song, rebuild the chord.
         public ScorePreviewStep[] PreviewSteps => overridePreviewSteps;
 
         public void SetKeyOverride(int midi, ScaleType s)
@@ -270,9 +255,7 @@ namespace SlimeJumping.Platforms.Piano
                 nextOptions = new[] { Opt(12, 0.24f), Opt(0, 0.08f), Opt(4, 0.08f), Opt(8, 0.08f),
                                       Opt(20, 0.23f), Opt(24, 0.23f), Opt(16, 0.06f) } },
 
-            // ── S5 (16-19) 희귀 색채: IV–V–♭VI–♭VII (병행단조 차용, "승리 테마" 관용구) ──
-            // 각 루프 끝에서 6% 확률로만 진입 → 평균 12~13바퀴에 한 번. 리서치: 차용화음은 드물게,
-            // 그리고 반드시 해결. 자기 반복 없음(끝나면 항상 일반 스키마로 복귀).
+            // ── S5 (16-19) 희귀 색채: IV–V–♭VI–♭VII (병행단조 차용) ──
             // ♭VI/♭VII는 조성 밖이라 멜로디 스냅을 코드톤으로 강제 — 안 그러면 라♮/미♮이 반음으로 부딪침.
             new ChordStep { label = "S5 IV Fmaj9",  offsetsFromTonic = ChordIV },
             new ChordStep { label = "S5 V  G(add9)",offsetsFromTonic = ChordV },
@@ -283,8 +266,7 @@ namespace SlimeJumping.Platforms.Piano
                 nextOptions = new[] { Opt(0, 0.20f), Opt(4, 0.20f), Opt(8, 0.15f), Opt(12, 0.15f), Opt(20, 0.15f), Opt(24, 0.15f) } },
 
             // ── M1 (20-23) 나란한단조 A aeolian: i–VI–VII–i ──
-            // 흰건반만 사용(임시표 없음). C장조 펜타토닉 = A단조 펜타토닉이라 멜로디 스냅도 그대로 안전.
-            // Am으로 시작하고 Am으로 끝나야 귀의 중심이 실제로 A로 옮겨간다.
+            // 흰건반만(임시표 없음). C장조 펜타토닉 = A단조 펜타토닉이라 멜로디 스냅 그대로 안전.
             new ChordStep { label = "M1 i   Am",    offsetsFromTonic = ChordAmTonic },
             new ChordStep { label = "M1 VI  Fmaj9", offsetsFromTonic = ChordIV },
             new ChordStep { label = "M1 VII G",     offsetsFromTonic = ChordV },
@@ -330,9 +312,6 @@ namespace SlimeJumping.Platforms.Piano
         [Tooltip("멜로디 음을 보이싱 최상단보다 최소 이 반음 위로 띄운다.")]
         public float minMelodyGap = 3f;
 
-        // ── 연주 표현 ───────────────────────────────────────────────────────────────────────────
-        // 같은 화음이라도 곡이 다르게 들리는 층. 전사에 노트별 세기·길이가 이미 있는데 전부 같은
-        // 음량·같은 길이로 뭉개던 것이 "샘플 재생 같다"의 원인이었다. 아래 값들은 그 층의 노브다.
         [Header("Performance expression")]
         [Tooltip("★ 곡의 실측 타건 재현. 끄면 기존 화음 재구성 + 장식 경로(스키마 폴백과 동일).")]
         public bool previewGesture = true;
@@ -426,17 +405,9 @@ namespace SlimeJumping.Platforms.Piano
         public AnimationCurve velocityToReverb = AnimationCurve.Linear(0f, -20f, 1f, 0f);
     }
 
-    /// Idle auto-play: after the slime has actually played the piano and then left it alone, the
-    /// instrument plays a recorded piece by itself. The AUDIO is the recording (so it sounds like a
-    /// real performance, not a sampler); the KEYS are driven from a transcription of that same
-    /// recording, clocked off the clip's own playhead so picture and sound cannot drift apart.
-    ///
-    /// Key visuals deliberately reuse HarmonizeSettings' Visual block — same instrument, same look —
-    /// so there is only ever one place to tune how a sounding key reads.
-    /// One piece in the auto-play rotation. The song is the harmonic authority: the moment it is
-    /// selected (the slime steps onto the piano) the whole progression transposes into its key and its
-    /// ornament preset takes over, so everything the slime plays already belongs to the piece that is
-    /// going to start when it walks away.
+    /// One piece in the auto-play rotation. Audio is the recording itself; keys are driven from its
+    /// transcription clocked off the clip playhead, so picture and sound cannot drift apart.
+    /// Selecting a song is what transposes the whole progression into its key.
     [System.Serializable]
     public class PianoSong
     {

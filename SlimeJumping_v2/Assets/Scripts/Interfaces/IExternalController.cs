@@ -2,12 +2,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Interfaces
 {
-    /// <summary>
-    /// When set as the active override on SlimeController, receives
-    /// full control of Update and FixedUpdate. SlimeController's own
-    /// state machine, input handlers, and physics are suspended.
-    /// Used by: snake/big slime swallow, bench sitting, puzzle overlay, cinematic intro.
-    /// </summary>
+    /// <summary>Active override on SlimeController: takes over Update/FixedUpdate; the controller's state machine, input and physics are suspended.</summary>
     public interface IExternalController
     {
         void OnTakeControl(SlimeController slime);

@@ -60,7 +60,6 @@ namespace SlimeJumping.Editor
         [MenuItem("SlimeJumping/Setup Simple Slime")]
         public static void SetupSimpleSlime()
         {
-            // Find or create Slime object
             var slimeGo = GameObject.Find("Slime");
             if (slimeGo == null)
             {
@@ -70,7 +69,6 @@ namespace SlimeJumping.Editor
 
             CleanMissingScripts(slimeGo);
 
-            // Remove old children (SlimeVisual, AimLine, CircleOutline)
             string[] oldChildren = { "SlimeVisual", "AimLine", "CircleOutline" };
             foreach (var name in oldChildren)
             {
@@ -82,7 +80,6 @@ namespace SlimeJumping.Editor
                 }
             }
 
-            // --- Rigidbody2D ---
             var rb = slimeGo.GetComponent<Rigidbody2D>();
             if (rb == null) rb = slimeGo.AddComponent<Rigidbody2D>();
             rb.gravityScale = 0f;
@@ -90,14 +87,12 @@ namespace SlimeJumping.Editor
             rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
 
-            // --- CircleCollider2D ---
             var col = slimeGo.GetComponent<CircleCollider2D>();
             if (col == null) col = slimeGo.AddComponent<CircleCollider2D>();
             col.radius = 0.4f;
             var phyMat = new PhysicsMaterial2D("SlimeFrictionless") { friction = 0f, bounciness = 0f };
             col.sharedMaterial = phyMat;
 
-            // --- SpriteRenderer ---
             var sr = slimeGo.GetComponent<SpriteRenderer>();
             if (sr == null) sr = slimeGo.AddComponent<SpriteRenderer>();
             sr.sprite = MakeCircleSprite();
@@ -105,7 +100,6 @@ namespace SlimeJumping.Editor
             sr.sortingOrder = 1;
             slimeGo.transform.localScale = new Vector3(0.8f, 0.8f, 1f);
 
-            // --- SlimeInputReader ---
             var inputReader = slimeGo.GetComponent<SlimeInputReader>();
             if (inputReader == null) inputReader = slimeGo.AddComponent<SlimeInputReader>();
 
@@ -117,15 +111,13 @@ namespace SlimeJumping.Editor
                 soInput.ApplyModifiedProperties();
             }
 
-            // --- Charge Visual ---
             var chargeVis = slimeGo.GetComponent<SlimeChargeVisual>();
             if (chargeVis == null) chargeVis = slimeGo.AddComponent<SlimeChargeVisual>();
 
-            // Clean legacy UI canvas if it lingers from older setups
+            // Legacy canvas from older setups, removed if it lingers.
             var legacyCanvas = GameObject.Find("ChargeVisualCanvas");
             if (legacyCanvas != null) Object.DestroyImmediate(legacyCanvas);
 
-            // --- ChargeRing (world-space, child of Slime, SDF shader) ---
             var ringT = slimeGo.transform.Find("ChargeRing");
             GameObject ringGo;
             if (ringT == null)
@@ -142,7 +134,6 @@ namespace SlimeJumping.Editor
             ringSR.sortingOrder = 1;
             ringGo.SetActive(false);
 
-            // --- AimLine (world-space LineRenderer, child of Slime) ---
             var aimLineT = slimeGo.transform.Find("ChargeAimLine");
             GameObject aimLineGo;
             if (aimLineT == null)
@@ -164,7 +155,6 @@ namespace SlimeJumping.Editor
             aimLineLR.sharedMaterial = LoadOrCreateAimLineMaterial();
             aimLineGo.SetActive(false);
 
-            // --- SlimeController ---
             var controller = slimeGo.GetComponent<SlimeController>();
             if (controller == null) controller = slimeGo.AddComponent<SlimeController>();
 

@@ -3,16 +3,7 @@ using UnityEngine.InputSystem;
 
 namespace SlimeJumping.Platforms.Snow
 {
-    /// <summary>
-    /// Runtime debug helper: left-click on a SnowField host (or hold the button to
-    /// stamp continuously) and the snow carves at the click point as if the slime
-    /// had just landed there with the configured impact speed. Re-uses the existing
-    /// HandleLanded → Carve → strip → recovery pipeline — no separate write path.
-    ///
-    /// Designed for live tuning of the snow feel: stamp a few craters, watch them
-    /// recover, tweak SnowSettings curves, repeat. Add to any scene GameObject;
-    /// no slime / collider relationship required.
-    /// </summary>
+    /// <summary>Click a SnowField host to carve as if the slime landed there, through the normal HandleLanded pipeline; for live tuning.</summary>
     [AddComponentMenu("SlimeJumping/Platforms/Snow/Snow Mouse Debug")]
     public sealed class SnowMouseDebug : MonoBehaviour
     {
@@ -56,9 +47,7 @@ namespace SlimeJumping.Platforms.Snow
             if (!trigger) return;
 
             Vector2 screenPos = mouse.position.ReadValue();
-            // Slime project is 2.5D — the camera looks down -Z at z=0 platforms.
-            // ScreenToWorldPoint with z = -cam.transform.position.z lands on the z=0
-            // plane regardless of perspective vs orthographic.
+            // z = |cam.z| makes ScreenToWorldPoint land on the z=0 platform plane under both perspective and ortho.
             float z = Mathf.Abs(cam.transform.position.z);
             Vector3 world = cam.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, z));
             Vector2 worldXY = new Vector2(world.x, world.y);

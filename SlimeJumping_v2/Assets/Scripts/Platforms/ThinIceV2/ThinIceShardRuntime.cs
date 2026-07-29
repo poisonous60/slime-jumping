@@ -2,9 +2,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.ThinIceV2
 {
-    /// Per-instance runtime behavior on a flying shard. Drives lifetime + alpha fade and
-    /// destroys itself when its time runs out. No Collider2D is attached — shards are
-    /// purely visual (gravity + spin, no collisions with anything).
+    /// Flying shard: lifetime + alpha fade, self-destructs. No Collider2D — purely visual (gravity + spin only).
     [RequireComponent(typeof(MeshFilter))]
     [RequireComponent(typeof(MeshRenderer))]
     [RequireComponent(typeof(Rigidbody2D))]
@@ -30,9 +28,8 @@ namespace SlimeJumping.Platforms.ThinIceV2
             mpb = new MaterialPropertyBlock();
             fadePropID = string.IsNullOrEmpty(fadeProperty) ? FadeAlphaID : Shader.PropertyToID(fadeProperty);
 
-            // Lock the shader to object-space Voronoi sampling so cells stay attached
-            // to this shard's mesh as it translates / rotates after launch (the
-            // platform's shared material samples in world space — see ThinIceV2.shader).
+            // Object-space Voronoi sampling so cells stay glued to the shard as it moves;
+            // the platform's shared material samples in world space (ThinIceV2.shader).
             rend.GetPropertyBlock(mpb);
             mpb.SetFloat(WorldSpaceSamplingID, 0f);
             rend.SetPropertyBlock(mpb);

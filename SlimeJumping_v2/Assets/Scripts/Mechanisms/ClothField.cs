@@ -4,21 +4,11 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    // Passable 3D-oriented cloth (#16). Verlet mass-spring grid simulated in the
-    // cloth's local XY plane — transform.rotation places the plane anywhere in
-    // world space (a "doorway curtain" uses Euler(0, 90, 0) so local +X maps to
-    // world +Z). Mesh is extruded along local ±Z/2 for authored thickness; side
-    // skirts close the front/back layers around the perimeter.
-    //
-    // Slime passes through (no collider), nodes get pushed out of the slime's
-    // 3D sphere (spherical collision in local frame), cloth drags the slime
-    // with three commitment safeguards (per-step cap, accumulated clamp, zero
-    // during Attached/Charging). Ground collision uses Physics2D.OverlapCircle
-    // + Collider2D.ClosestPoint in world XY — correct for rotated cloth because
-    // Collider2D is infinite in world Z.
-    //
-    // Reference: docs/기능_구현_가이드.md §16, docs/클로드 연구/Unity 2D 플랫포머를
-    // 위한 천 시뮬레이션 완전 가이드.md. Jakobsen 2003 + pikuma.com tutorial.
+    // Passable 3D-oriented cloth (#16). Verlet mass-spring grid: topology is a 2D grid, nodes move
+    // in full 3D local space, so transform.rotation can place the plane anywhere in world space.
+    // Slime passes through (no collider) — nodes push out of its sphere; drag on the slime is capped
+    // per step, clamped per traversal, and zero during Attached/Charging.
+    // Ground queries stay in world XY: Collider2D is infinite in world Z, so rotation is harmless.
     [ExecuteAlways]
     [DefaultExecutionOrder(-100)]
     [RequireComponent(typeof(MeshFilter))]
@@ -99,9 +89,6 @@ namespace SlimeJumping.Mechanisms
 
 
         // === Runtime state ===
-        // Nodes simulate in FULL 3D local space (Vector3). Topology stays 2D grid (c,r)
-        // but each node is free to move in local X, Y, and Z — so slime passing through
-        // can bulge the cloth out of its initial plane, and the mesh reacts volumetrically.
         Vector3[] localPos;
         Vector3[] localPrevPos;
         bool[] pinned;
@@ -123,11 +110,9 @@ namespace SlimeJumping.Mechanisms
         readonly List<SlimeController> trackedSlimes = new List<SlimeController>(4);
         float slimeRescanTimer;
 
-        // Per-slime drag session state — keyed by SlimeController.
         struct DragSession { public bool insideLastTick; public float entrySpeed; public float removed; }
         readonly Dictionary<SlimeController, DragSession> dragSessions = new Dictionary<SlimeController, DragSession>();
 
-        // Collider query buffer (shared across the ground loop).
         readonly Collider2D[] overlapBuf = new Collider2D[4];
         ContactFilter2D groundContactFilter;
 
@@ -136,19 +121,17 @@ namespace SlimeJumping.Mechanisms
         readonly Plane[] frustumPlanes = new Plane[6];
 
 
-        // Per-substep snapshot of each slime in cloth local frame. Populated once per substep,
-        // then used by the per-iteration collision resolver inside the constraint loop so
-        // push-outs survive subsequent distance-constraint passes.
+        // Per-substep slime snapshot in cloth local frame, reused by the per-iteration collision
+        // resolvers so push-outs survive the later distance-constraint passes.
         struct SlimeContact
         {
             public Vector3 localCenter;      // slime local XYZ at substep start
-            public float radius;             // slime collision radius (SlimeController.SlimeRadius)
+            public float radius;
             public Vector3 localVel;         // 3D local velocity (for trailing transfer)
-            public Vector3 fallbackDir;      // local gravity-up 3D normalized, used when node sits exactly on slime center
+            public Vector3 fallbackDir;      // used when a node sits exactly on the slime center
         }
         readonly List<SlimeContact> slimeContacts = new List<SlimeContact>(4);
 
-        // Warn-once flags for author mistakes we can detect but not fix.
         bool warnedNonUniformScale;
 
 
@@ -201,8 +184,7 @@ namespace SlimeJumping.Mechanisms
             float width = (nodeColCount - 1) * cellSize;
             localOriginX = -width * 0.5f;
 
-            // Rest: flat grid in the cloth's local XY plane at local Z = 0. Sim is 3D,
-            // so nodes can drift off this plane under forces / collision.
+            // Rest: flat grid at local Z = 0; the 3D sim lets nodes drift off this plane.
             for (int r = 0; r < nodeRowCount; r++)
             {
                 for (int c = 0; c < nodeColCount; c++)
@@ -230,17 +212,14 @@ namespace SlimeJumping.Mechanisms
             {
                 case PinPreset.None: return false;
                 case PinPreset.TopRow: return r == 0;
-                // Defensive: unrecognized enum value falls back to curtain (top-row) pinning
-                // rather than silently pinning nothing.
+                // Unknown enum → curtain pinning, not a silently unpinned cloth.
                 default: return r == 0;
             }
         }
 
         // === External driver API (e.g. ClothWrapAnimator) ===
-        // Sets pin state and target world position for one node. The Verlet pin
-        // enforcement inside StepOnce holds pinned nodes at localRestPos every
-        // iteration, so the driver only needs to call this once per FixedUpdate
-        // (before ClothField's own FixedUpdate — use a lower DefaultExecutionOrder).
+        // StepOnce re-clamps pinned nodes to localRestPos every iteration, so a driver calls this
+        // once per FixedUpdate — from a LOWER DefaultExecutionOrder than this component's -100.
         public void SetNodeTarget(int col, int row, Vector3 worldPos, bool pin)
         {
             if (localPos == null) return;
@@ -254,9 +233,8 @@ namespace SlimeJumping.Mechanisms
         public int GridRows => nodeRowCount;
         public float CellSize => cellSize;
 
-        // Returns the natural rest position (in this ClothField's local space) for the
-        // node at (col, row), matching what Rebuild() lays out at startup. Useful for
-        // external drivers that want to pin non-authored nodes at their default rest.
+        // Local-space rest position Rebuild() lays out for (col, row) — for drivers pinning nodes
+        // at their default rest.
         public Vector3 GetNodeRestLocalPos(int col, int row)
         {
             if ((uint)col >= (uint)nodeColCount || (uint)row >= (uint)nodeRowCount) return Vector3.zero;
@@ -291,8 +269,6 @@ namespace SlimeJumping.Mechanisms
         {
             float dt2 = dt * dt;
 
-            // All forces projected to local 3D (not just XY) so nodes can move out of
-            // the initial cloth plane — the core requirement for 3D cloth behavior.
             Vector3 gravWorld = (Vector3)Physics2D.gravity * nodeGravityScale;
             Vector3 windWorldBase = windAccelerationWorld;
             Vector3 gravLocal = transform.InverseTransformDirection(gravWorld);
@@ -304,11 +280,8 @@ namespace SlimeJumping.Mechanisms
             float freq = windFrequency;
             float windMag = windLocalBase.magnitude;
 
-            // (1) Verlet integration in full 3D. Wind turbulence uses TWO per-node Perlin
-            // samples: one scales the main wind magnitude (gives gusty variation), the other
-            // drives a PERPENDICULAR (local-Z, out-of-plane) force. The perpendicular kick is
-            // what creates wrinkles — without it, all nodes get parallel force and the cloth
-            // translates rigidly instead of rippling.
+            // (1) Verlet integration in full 3D. The second, PERPENDICULAR (local-Z) noise channel
+            // is what creates wrinkles — with parallel force only the cloth translates rigidly.
             for (int i = 0; i < localPos.Length; i++)
             {
                 if (pinned[i])
@@ -329,7 +302,7 @@ namespace SlimeJumping.Mechanisms
 
                     if (flutter > 0f)
                     {
-                        // Decorrelated noise channel for Z (cloth-plane-perpendicular) flutter.
+                        // Decorrelated noise channel for the out-of-plane (local-Z) flutter.
                         float zNoise = Mathf.PerlinNoise(t * freq * 1.3f + i * 0.31f,
                                                          t * freq * 0.91f + i * 0.53f) * 2f - 1f;
                         accel.z += zNoise * windMag * flutter;
@@ -342,13 +315,11 @@ namespace SlimeJumping.Mechanisms
                 localPos[i] = next;
             }
 
-            // (2) Snapshot slime contacts for this substep — used by per-iteration collision
-            // resolver so push-outs stay enforced through all constraint iterations.
+            // (2) Snapshot slime contacts once per substep for the resolvers below.
             BuildSlimeContacts();
 
-            // (3) Constraint iteration — structural + shear + bend + collisions (slime + ground).
-            // Collisions must run INSIDE this loop; otherwise the distance constraints of the
-            // next iteration would pull collision-corrected nodes back through the slime sphere.
+            // (3) Constraint iteration. Collisions must run INSIDE this loop, else the next
+            // iteration's distance constraints pull corrected nodes back through the slime sphere.
             int iters = Mathf.Max(1, constraintIterations);
             float structScale = 1f - Mathf.Clamp01(structuralSoftness);
             float shearScale = 1f - Mathf.Clamp01(shearSoftness);
@@ -378,12 +349,9 @@ namespace SlimeJumping.Mechanisms
                     for (int c = 0; c < nodeColCount; c++)
                         SolveDistance(Idx(c, r), Idx(c, r + 2), bendRest, bendScale);
 
-                // Collision passes — treated as hard position constraints. Applied LAST each
-                // iteration so they're the final word on node placement at iteration boundary,
-                // but earlier constraints still get multiple passes to distribute the push-out
-                // across the mesh (neighbors stretch to accommodate, giving the "wrap" look).
-                // Edge resolver runs after node resolver so segments between coarse-grid nodes
-                // can't chord through the slime sphere when no node sits inside it.
+                // Hard position constraints, applied LAST each iteration so they get the final word
+                // while earlier passes still distribute the push-out (the "wrap" look). Edge resolver
+                // after the node resolver, else segments chord through with no node inside.
                 ResolveSlimeContactsOnce();
                 ResolveSlimeEdgeContactsOnce();
                 ResolveGroundContactsOnce();
@@ -393,8 +361,7 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // Build the per-substep slime snapshot in cloth local frame. Uses current slime.Position
-        // so substep-to-substep resampling remains correct at high slime speeds.
+        // Resampled per substep (not per FixedUpdate) so fast slimes stay correct.
         void BuildSlimeContacts()
         {
             slimeContacts.Clear();
@@ -432,9 +399,7 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // Per-iteration 3D slime sphere resolver. For each node inside any slime's sphere,
-        // push it out radially in FULL 3D. Applied inside the constraint loop so subsequent
-        // iterations can't pull nodes back through the slime.
+        // Pushes every node inside a slime's sphere out radially in full 3D.
         void ResolveSlimeContactsOnce()
         {
             if (slimeContacts.Count == 0) return;
@@ -461,8 +426,7 @@ namespace SlimeJumping.Mechanisms
                     else
                         newPos = sc.localCenter + delta * (target / dist);
 
-                    // Trailing: shift prevPos by slime velocity so Verlet inertia drags the
-                    // node along with the slime next substep.
+                    // Shifting prevPos is how Verlet inertia drags the node along next substep.
                     if (transferScale > 0f)
                         localPrevPos[i] = newPos - sc.localVel * (fdt * transferScale);
 
@@ -471,13 +435,9 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // Per-iteration edge-vs-sphere resolver. The node resolver above only corrects nodes
-        // strictly INSIDE the sphere — when the grid is coarse relative to the slime (e.g. 0.25
-        // cell vs 0.4 radius, only 2-3 nodes inside) the segments between adjacent nodes can
-        // chord straight through the sphere even though every endpoint is on/outside it. This
-        // pass closes that gap by checking each structural and shear edge's closest point to
-        // the slime center, and pushing the segment out if it dips inside the sphere.
-        // Bend (skip-1) edges are intentionally excluded — they aren't visible mesh boundaries.
+        // The node resolver only fixes nodes strictly INSIDE the sphere; on a coarse grid (0.25 cell
+        // vs 0.4 radius) a segment chords through it with both endpoints outside. Structural + shear
+        // edges only — bend (skip-1) edges aren't visible mesh boundaries.
         void ResolveSlimeEdgeContactsOnce()
         {
             if (slimeContacts.Count == 0) return;
@@ -537,9 +497,8 @@ namespace SlimeJumping.Mechanisms
             }
             else
             {
-                // Distribute by (1-t, t) and rescale by 1/((1-t)²+t²) so the closest point at
-                // parameter t moves by the full disp this pass (without the rescale a midpoint
-                // contact would only move 0.5*disp and need extra iterations to escape).
+                // Rescale by 1/((1-t)²+t²) so the closest point moves the full disp this pass;
+                // without it a midpoint contact moves only 0.5*disp and needs extra iterations.
                 float w = (1f - t) * (1f - t) + t * t;
                 float scale = w > 1e-5f ? 1f / w : 1f;
                 localPos[ia] += disp * ((1f - t) * scale);
@@ -547,13 +506,11 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // Per-iteration ground resolver. Same rationale as slime: inside the loop so
-        // distance constraints can't pull nodes back through the floor.
+        // Inside the constraint loop, same reason as the slime resolver.
         void ResolveGroundContactsOnce()
         {
             if (groundLayerMask.value == 0) return;
 
-            // Lazy-init the contact filter once; layerMask kept in sync each tick.
             groundContactFilter.useTriggers = false;
             groundContactFilter.useLayerMask = true;
             groundContactFilter.layerMask = groundLayerMask;
@@ -562,8 +519,8 @@ namespace SlimeJumping.Mechanisms
             {
                 if (pinned[i]) continue;
 
-                // Node's true 3D local position mapped to world. Collider2D is infinite in
-                // world Z so the XY query is valid regardless of the node's world Z drift.
+                // Collider2D is infinite in world Z, so the XY query stays valid however far the
+                // node has drifted in Z.
                 Vector3 worldNode3D = transform.TransformPoint(localPos[i]);
                 Vector2 worldNode2D = new Vector2(worldNode3D.x, worldNode3D.y);
 
@@ -585,7 +542,7 @@ namespace SlimeJumping.Mechanisms
                     worldNode2D = closest + out2D * nodeCollisionRadius;
                 }
 
-                // Preserve the node's world Z (= whatever the 3D sim produced); only update XY.
+                // Keep the node's world Z from the 3D sim; the query only corrected XY.
                 Vector3 newWorld = new Vector3(worldNode2D.x, worldNode2D.y, worldNode3D.z);
                 localPos[i] = transform.InverseTransformPoint(newWorld);
             }
@@ -618,8 +575,7 @@ namespace SlimeJumping.Mechanisms
 
         void RefreshTrackedSlimes()
         {
-            // Re-scan on first tick, when any tracked slime went null, or every ~0.5s
-            // for respawn-race coverage (see audit limitation #4).
+            // Also re-scanned every ~0.5s: a respawn can swap the slime without nulling this one.
             bool needsRescan = trackedSlimes.Count == 0;
             if (!needsRescan)
             {
@@ -643,7 +599,6 @@ namespace SlimeJumping.Mechanisms
             trackedSlimes.AddRange(FindObjectsOfType<SlimeController>());
 #endif
 
-            // Prune drag sessions for slimes that no longer exist.
             var stale = new List<SlimeController>();
             foreach (var kv in dragSessions)
                 if (kv.Key == null || !trackedSlimes.Contains(kv.Key)) stale.Add(kv.Key);
@@ -655,9 +610,6 @@ namespace SlimeJumping.Mechanisms
             if (slimeRadiusOverride > 0f) return slimeRadiusOverride;
             return slime != null ? slime.SlimeRadius : 0.4f;
         }
-
-        // (Slime + ground collision resolvers moved inline into StepOnce's constraint loop —
-        //  see ResolveSlimeContactsOnce / ResolveGroundContactsOnce above.)
 
         // === Drag ===
 
@@ -798,7 +750,6 @@ namespace SlimeJumping.Mechanisms
             int cellRows = nodeRowCount - 1;
             int vertCount = nodeCount * 2;
 
-            // Fix (audit #1): only reallocate arrays when topology changes.
             if (allocatedVertCount != vertCount)
             {
                 frontVertOffset = 0;
@@ -817,7 +768,7 @@ namespace SlimeJumping.Mechanisms
                 allocatedVertCount = vertCount;
             }
 
-            // UVs and vertex colors — cheap, rewrite every Rebuild (pin state may have changed).
+            // Rewritten every Rebuild even when nothing was reallocated — pin state may have changed.
             for (int r = 0; r < nodeRowCount; r++)
             {
                 for (int c = 0; c < nodeColCount; c++)
@@ -917,9 +868,6 @@ namespace SlimeJumping.Mechanisms
             int nodeCount = localPos.Length;
             float half = clothThickness * 0.5f;
 
-            // Nodes now have full 3D local positions. Thickness offsets the front/back mesh
-            // layers around the node's 3D position, so cloth displacement in local Z carries
-            // into the mesh naturally.
             for (int i = 0; i < nodeCount; i++)
             {
                 Vector3 p = localPos[i];

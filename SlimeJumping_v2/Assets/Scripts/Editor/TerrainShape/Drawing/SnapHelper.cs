@@ -14,9 +14,8 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
 
     public static class SnapHelper
     {
-        // Resolves the cursor position with snap precedence: Vertex > Edge > Grid > raw cursor.
-        // `raw` is the unsnapped local-XY projection of the cursor on the layer plane. Returns
-        // a SnapResult containing the snapped (or raw) position and which snap fired.
+        // Snap precedence: Vertex > Edge > Grid > raw. `raw` is the unsnapped local-XY cursor
+        // projection on the layer plane.
         public static SnapResult Resolve(
             Vector2 raw,
             Transform xfm, float planeZ,
@@ -111,8 +110,8 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
             Handles.DrawWireDisc(wp, xfm.forward, r * 0.6f);
         }
 
-        // Renders a faint grid in the active layer plane. Limited to a window around the cursor
-        // to keep handle count low even with small grid sizes and large viewports.
+        // Windowed around the cursor — a full-viewport grid blows up the handle count at small
+        // grid sizes.
         public static void DrawGridLines(Transform xfm, float planeZ, float gridSize, Vector2 cursorLocalXY,
             float halfExtentLocal = 4f, int maxLinesPerAxis = 24)
         {
@@ -140,9 +139,8 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
             }
         }
 
-        // Snaps an angle (radians) to the nearest multiple of a step (degrees). The reference is
-        // the world +X axis in local 2D space — i.e., absolute angle. Returns a unit-length
-        // direction vector pointing along the snapped angle.
+        // Snaps to the nearest multiple of stepDeg measured from +X (absolute, not relative to the
+        // previous segment). Returns a unit direction.
         public static Vector2 SnapAngleAbsolute(Vector2 dir, float stepDeg)
         {
             if (dir.sqrMagnitude < 1e-12f) return Vector2.right;

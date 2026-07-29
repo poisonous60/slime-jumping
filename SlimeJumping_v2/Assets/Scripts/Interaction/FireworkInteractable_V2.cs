@@ -6,10 +6,7 @@ using SlimeJumping.Effects;
 
 namespace SlimeJumping.Interaction
 {
-    /// <summary>
-    /// v2: the interactable itself is a firework rocket. On E, the rocket visual
-    /// flies upward, explodes at apex (VFX + slime launch), hides, then respawns.
-    /// </summary>
+    /// <summary>Rocket visual flies up, explodes at apex (VFX + slime launch), hides, respawns.</summary>
     public class FireworkInteractable_V2 : InteractableBase
     {
         [Header("Rocket Visual")]
@@ -187,8 +184,7 @@ namespace SlimeJumping.Interaction
             {
                 var main = rootPs.main;
                 if (forceNonLooping) main.loop = false;
-                // World sim space + explicit EmitParams lets us control direction regardless of
-                // the prefab's shape/rotation/randomization.
+                // World sim + explicit EmitParams: direction survives the prefab's shape/rotation/randomization.
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
                 main.startLifetime = flightDuration;
             }
@@ -227,7 +223,6 @@ namespace SlimeJumping.Interaction
             };
             rootPs.Emit(emitParams, 1);
 
-            // Wait for first particle to appear
             Transform psTf = rootPs.transform;
             ParticleSystemSimulationSpace simSpace = rootPs.main.simulationSpace;
             var buf = new ParticleSystem.Particle[1];
@@ -333,13 +328,11 @@ namespace SlimeJumping.Interaction
             Vector3 worldDir = transform.TransformVector(dir3);
             Vector3 visualEnd = visualStart + worldDir * flightDistance;
 
-            // Flight path — tracks the mesh's visual center (not pivot)
             Gizmos.color = new Color(1f, 0.7f, 0.2f, 0.9f);
             Gizmos.DrawLine(visualStart, visualEnd);
             Gizmos.DrawWireSphere(visualEnd, 0.3f);
             Gizmos.DrawWireSphere(visualStart, 0.12f);
 
-            // Pivot-to-visual-center offset indicator (magenta line from pivot to visual center)
             if (visualPivotOffset.sqrMagnitude > 1e-6f)
             {
                 Gizmos.color = new Color(1f, 0.2f, 0.8f, 0.9f);

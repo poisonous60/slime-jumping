@@ -8,9 +8,7 @@ using SlimeJumping.UI.Framework;
 
 namespace SlimeJumping.EditorTools.UI
 {
-    /// Builds Assets/Prefabs/UI/UIRoot.prefab: 4 layer canvases, EventSystem,
-    /// UIManager, click-sound installer, and the two fullscreen-effect children
-    /// (Flash + Jumpscare) under the FullscreenLayer canvas.
+    /// Builds UIRoot.prefab: 4 layer canvases, EventSystem, UIManager, click-sound installer, Flash/Jumpscare children.
     public static class UIRootSetup
     {
         public const string UIRootPrefabPath = "Assets/Prefabs/UI/UIRoot.prefab";
@@ -35,21 +33,17 @@ namespace SlimeJumping.EditorTools.UI
             rootRT.offsetMin = Vector2.zero;
             rootRT.offsetMax = Vector2.zero;
 
-            // EventSystem
             var eventSystemGO = UISetupCommon.CreateChild(root.transform, "EventSystem",
                 typeof(EventSystem), typeof(InputSystemUIInputModule));
 
-            // Layer canvases (sortingOrder enforces z stacking)
             var hud = UISetupCommon.CreateOverlayCanvas(root.transform, "HudLayer", 100);
             var menu = UISetupCommon.CreateOverlayCanvas(root.transform, "MenuLayer", 500);
             var modal = UISetupCommon.CreateOverlayCanvas(root.transform, "ModalLayer", 800);
             var fullscreen = UISetupCommon.CreateOverlayCanvas(root.transform, "FullscreenLayer", 9000);
 
-            // Fullscreen effect children (Flash + Jumpscare) inside FullscreenLayer
             BuildFullscreenEffect(fullscreen.transform, "FlashCanvas", addFlash: true);
             BuildFullscreenEffect(fullscreen.transform, "JumpscareCanvas", addFlash: false);
 
-            // UIManager on root, wired to the layer canvases
             var manager = root.AddComponent<UIManager>();
             var managerSO = new SerializedObject(manager);
             managerSO.FindProperty("hudLayer").objectReferenceValue = hud;
@@ -58,7 +52,6 @@ namespace SlimeJumping.EditorTools.UI
             managerSO.FindProperty("fullscreenLayer").objectReferenceValue = fullscreen;
             managerSO.ApplyModifiedPropertiesWithoutUndo();
 
-            // Click-sound installer on root covers all buttons under UIRoot
             var clickInstaller = root.AddComponent<UIClickSoundInstaller>();
             var clickSO = new SerializedObject(clickInstaller);
             var clip = UISetupCommon.LoadByGuid<AudioClip>(UISetupCommon.UIClickClipGuid);

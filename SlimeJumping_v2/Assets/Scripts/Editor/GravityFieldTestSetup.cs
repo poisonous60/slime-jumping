@@ -132,9 +132,8 @@ namespace SlimeJumping.Editor
             return go;
         }
 
-        // --- Pogostuck-style visual ---
-        // Translucent purple fill matching the collider shape + particle flow in gravity direction.
-        // Kept as a child GameObject so visual transform never affects the collider.
+        // Fill + flow particles live on a child GameObject so the visual transform never
+        // affects the collider.
 
         static readonly Color FieldFillColor   = new Color(0.55f, 0.25f, 0.95f, 0.22f);
         static readonly Color ParticleTint     = new Color(0.88f, 0.60f, 1.00f, 0.90f);
@@ -254,7 +253,7 @@ namespace SlimeJumping.Editor
             {
                 // Emit across the whole area; velocityOverLifetime drives the flow.
                 main.startSpeed = 0f;
-                float extentAlongFlow = 1f; // default fallback
+                float extentAlongFlow = 1f;
                 if (col is BoxCollider2D b)
                 {
                     shape.shapeType = ParticleSystemShapeType.Rectangle;
@@ -280,10 +279,8 @@ namespace SlimeJumping.Editor
                     extentAlongFlow = Mathf.Max(bb.x, bb.y);
                 }
 
-                // Particles travel at FlowSpeed in the gravity direction.
-                // Lifetime = half the zone extent → avg travel = quarter extent.
-                // Most die of old age before reaching the boundary;
-                // the TriggerModule below catches any stragglers.
+                // Lifetime = half the zone extent so particles die of age before the boundary;
+                // the TriggerModule below kills the stragglers.
                 main.startLifetime = Mathf.Max(0.3f, extentAlongFlow * 0.5f / FlowSpeed);
 
                 Vector2 dir = fixedDown.sqrMagnitude > 0.0001f ? fixedDown.normalized : Vector2.down;
@@ -302,7 +299,7 @@ namespace SlimeJumping.Editor
 
                 if (invert)
                 {
-                    // Outward: emit near pivot, push out. Lifetime = radius / speed.
+                    // Outward: emit near pivot, push out.
                     shape.shapeType = ParticleSystemShapeType.Circle;
                     shape.radius = Mathf.Max(0.15f, r * 0.1f);
                     shape.radiusThickness = 1f;
@@ -326,7 +323,6 @@ namespace SlimeJumping.Editor
             float avgLifetime = main.startLifetime.constant;
             emission.rateOverTime = Mathf.Clamp(EstimateEmissionRate(col) / Mathf.Max(0.5f, avgLifetime), 8f, 60f);
 
-            // Hard bound: kill any particle that leaves the field's collider.
             var trigger = ps.trigger;
             trigger.enabled = true;
             trigger.SetCollider(0, col);
@@ -335,7 +331,6 @@ namespace SlimeJumping.Editor
             trigger.enter = ParticleSystemOverlapAction.Ignore;
             trigger.exit = ParticleSystemOverlapAction.Ignore;
 
-            // Alpha fade at birth/death.
             var colMod = ps.colorOverLifetime;
             colMod.enabled = true;
             var grad = new Gradient();
@@ -354,7 +349,6 @@ namespace SlimeJumping.Editor
                 });
             colMod.color = grad;
 
-            // Slight size swell.
             var sizeMod = ps.sizeOverLifetime;
             sizeMod.enabled = true;
             var sizeCurve = new AnimationCurve(
@@ -363,7 +357,7 @@ namespace SlimeJumping.Editor
                 new Keyframe(1f, 0.4f));
             sizeMod.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
 
-            // Renderer: additive-ish soft dots, behind gameplay but above the field fill.
+            // sortingOrder 0 keeps the dots above the field fill (-1).
             var psr = ps.GetComponent<ParticleSystemRenderer>();
             psr.renderMode = ParticleSystemRenderMode.Billboard;
             psr.material = MakeParticleMaterial();

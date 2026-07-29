@@ -3,10 +3,7 @@ using UnityEngine;
 
 namespace SlimeJumping.UI.Animation
 {
-    /// Drop-on retrofit. Plays a one-shot effect whenever the GameObject is
-    /// enabled or disabled. Use sparingly — new code should route visibility
-    /// through UIPanel.Open()/Close(). This exists for legacy UI that wasn't
-    /// authored against the panel framework.
+    /// Legacy-UI retrofit: plays a one-shot effect on enable. New code routes visibility through UIPanel.Open()/Close().
     [DisallowMultipleComponent]
     [RequireComponent(typeof(RectTransform))]
     public class UIAutoTween : MonoBehaviour
@@ -22,9 +19,8 @@ namespace SlimeJumping.UI.Animation
 
         private void Awake() => rt = GetComponent<RectTransform>();
 
-        // OnEnable only. OnDisable triggers would race PrimeTween against a
-        // deactivating GameObject — for close animations route through
-        // UIPanel.Close() which sequences the tween before SetActive(false).
+        // OnEnable only — an OnDisable hook would race PrimeTween against a deactivating
+        // GameObject; UIPanel.Close() sequences the tween before SetActive(false).
         private void OnEnable() => Play();
 
         public void Play()

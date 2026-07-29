@@ -7,18 +7,14 @@ using Paths64 = System.Collections.Generic.List<System.Collections.Generic.List<
 
 namespace SlimeJumping.TerrainShape.Editor.Drawing
 {
-    // Multi-loop boolean operations on polygon outlines via Clipper2. All inputs/outputs are
-    // open-form (no duplicated final vertex). Output preserves Clipper2's NonZero winding —
-    // outer loops are CCW (signed area > 0), holes are CW (signed area < 0). Callers infer
-    // outer/hole role from winding rather than a stored flag.
+    // Multi-loop polygon booleans via Clipper2. Loops are open-form (no repeated final vertex).
+    // Winding carries the role: outer = CCW, hole = CW. Callers infer role from winding, not a flag.
     public static class PolygonOps
     {
-        // Clipper2 uses long integer coordinates. We multiply Vector2 (in local units, typically <100)
-        // by 1e5 so a 1e-5 unit is the smallest distinguishable step — well below visible precision.
+        // Clipper2 takes long integer coords; 1e5 scale makes 1e-5 local units the smallest step.
         const double SCALE = 100000.0;
 
-        // Union of `existing` (multi-loop) with `drawn` (single closed loop).
-        // Disjoint result is preserved as separate outer loops in the output.
+        // Union of `existing` (multi-loop) with `drawn`; disjoint parts stay separate outer loops.
         public static List<List<Vector2>> Union(IList<List<Vector2>> existing, IList<Vector2> drawn)
         {
             var cleanDrawn = Sanitize(drawn);
@@ -27,7 +23,6 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
             var subject = MultiLoopToPaths64(existing);
             if (subject.Count == 0)
             {
-                // No existing geometry — drawn becomes the lone outer.
                 return new List<List<Vector2>> { cleanDrawn };
             }
 
@@ -35,8 +30,7 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
             return RunClipper(subject, clip, ClipType.Union);
         }
 
-        // Difference: `existing` minus `eraser`. Splits, holes, or full deletion are all natural
-        // outcomes — the caller decides what to do (e.g. reject empty results).
+        // `existing` minus `eraser`. Splits, holes and empty results are all valid — caller decides.
         public static List<List<Vector2>> Subtract(IList<List<Vector2>> existing, IList<Vector2> eraser)
         {
             var cleanEraser = Sanitize(eraser);
@@ -49,14 +43,12 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
             return RunClipper(subject, clip, ClipType.Difference);
         }
 
-        // Cleans up self-overlaps, fixes winding to NonZero convention. Used by mesh build to
-        // keep TriangleNet's hole-point flood-fill from being confused by weird user states.
+        // Fixes self-overlaps/winding; mesh build needs this or TriangleNet's hole flood-fill misfires.
         public static List<List<Vector2>> Normalize(IList<List<Vector2>> loops)
         {
             var subject = MultiLoopToPaths64(loops);
             if (subject.Count == 0) return new List<List<Vector2>>();
-            // Self-union — empty clip set. Re-runs the NonZero fill rule and outputs in canonical
-            // outer-CCW / hole-CW form regardless of input winding.
+            // Self-union with empty clip: NonZero re-fill normalizes to outer-CCW / hole-CW.
             return RunClipper(subject, new Paths64(), ClipType.Union);
         }
 
@@ -104,8 +96,7 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
             return result;
         }
 
-        // Removes consecutive duplicates (sqrMagnitude < 1e-8 ≈ 1e-4 unit) and the closed-form
-        // final-equals-first duplicate.
+        // Drops consecutive duplicates and the closed-form final-equals-first vertex.
         static List<Vector2> Sanitize(IList<Vector2> pts)
         {
             const float DEDUP_SQR = 1e-8f;

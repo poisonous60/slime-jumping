@@ -2,11 +2,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Rendering
 {
-    /// <summary>
-    /// Binds a ParticleSystem's start color to the VFXColorPalette.
-    /// Attach to a GameObject with a ParticleSystem. Select a VFXType in the inspector
-    /// and the particle colors update automatically (edit-time via OnValidate, runtime via Awake).
-    /// </summary>
+    /// <summary>Binds the ParticleSystem's start color to the VFXColorPalette entry for the chosen VFXType.</summary>
     [ExecuteAlways]
     [RequireComponent(typeof(ParticleSystem))]
     public class ParticlePaletteBinder : MonoBehaviour

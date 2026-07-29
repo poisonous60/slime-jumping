@@ -6,10 +6,7 @@ using SlimeJumping.Effects;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// 일정 간격으로 Snowball 인스턴스를 spawn. Unity 6 의 ObjectPool<T> 로 풀링.
-    /// 단일 배치를 원하면 이 컴포넌트 없이 Snowball 만 씬에 두고 Snowball.respawnTime 양수 사용.
-    /// </summary>
+    /// <summary>일정 간격으로 Snowball 을 ObjectPool 풀링해 spawn. 단일 배치는 이 컴포넌트 없이 Snowball.respawnTime 으로.</summary>
     public class SnowballSpawner : MonoBehaviour
     {
         [Header("Prefab")]
@@ -52,9 +49,7 @@ namespace SlimeJumping.Mechanisms
                     s.OnDespawn += HandleDespawn;
                     return s;
                 },
-                // 위치 먼저 → SetActive — 활성화 직전에 transform 을 옮겨야 첫 render
-                // frame 에 옛 위치 (지난번 부서졌던 자리) 가 안 보임. Initialize 가 뒤이어
-                // rb.position 도 같은 값으로 set 하므로 물리도 일관.
+                // 위치 먼저 → SetActive: 순서 뒤집으면 첫 render frame 에 옛 위치가 보임.
                 actionOnGet:     s =>
                 {
                     s.transform.position = transform.position;

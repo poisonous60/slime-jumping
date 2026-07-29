@@ -1,12 +1,9 @@
 using UnityEngine;
 using SlimeJumping.Platforms;
 
-// 구름 발판 소멸 비주얼 (low-poly + 캐주얼).
-// 비주얼 = 씬에 이미 있는 메시(sceneCloud, 자식). prefab instantiate 없음 → 에디터에서도 항상 보임.
-// 조각 = 같은 메시를 CloudFractureTool 로 쪼갠 prefab(조립 시 원본과 픽셀 단위 동일).
-// 평소: sceneCloud 표시, 조각 숨김. Disperse(): sceneCloud 숨김 + 조각 표시(동일 위치 = seam 없음)
-//   + 각 조각 "캐주얼 팝"(바깥+위로 빠르게 튐 + 빠른 spin + 초반 살짝 pop 후 scale→0, 짧은 lifetime, 약간 stagger).
-// dissolve/알파 페이드 없음(홀로그램 금지).
+// 구름 발판 소멸 비주얼. 비주얼 = 씬 메시(sceneCloud), prefab instantiate 없음.
+// Disperse(): sceneCloud 숨기고 CloudFractureTool 조각을 같은 위치에 표시(seam 없음) → 팝+spin+scale→0.
+// dissolve/알파 페이드 금지(홀로그램).
 public class CloudDisperser : MonoBehaviour
 {
     [Header("Config")]
@@ -42,7 +39,6 @@ public class CloudDisperser : MonoBehaviour
     public void Build()
     {
         if (cfg == null) cfg = CloudPlatformConfig.Resolve(configOverride);
-        // 정리.
         var op = transform.Find("Pieces"); if (op != null) DestroyImmediate(op.gameObject);
         piecesRoot = null; pieces = null;
 
@@ -52,8 +48,8 @@ public class CloudDisperser : MonoBehaviour
             piecesRoot.name = "Pieces";
             if (sceneCloud != null)
             {
-                // 조각 = sceneCloud 메시의 mesh-local 좌표. sceneCloud 와 world 변환을 일치시켜야
-                // 조립 위치가 정확히 겹침 (sceneCloud 가 collider wrapper 등으로 더 깊이 nested 여도 동작).
+                // 조각은 sceneCloud mesh-local 좌표 → world 변환을 sceneCloud 와 맞춰야 조립이 겹침
+                // (sceneCloud 가 wrapper 로 더 깊이 nested 여도 동작).
                 var st = sceneCloud.transform;
                 var pt = piecesRoot.transform;
                 pt.SetPositionAndRotation(st.position, st.rotation);
@@ -68,7 +64,6 @@ public class CloudDisperser : MonoBehaviour
 
             var childCount = piecesRoot.transform.childCount;
             pieces = new Piece[childCount];
-            // 클러스터 중심 = 조각 rest 위치 평균.
             Vector3 center = Vector3.zero;
             for (int i = 0; i < childCount; i++) center += piecesRoot.transform.GetChild(i).localPosition;
             if (childCount > 0) center /= childCount;

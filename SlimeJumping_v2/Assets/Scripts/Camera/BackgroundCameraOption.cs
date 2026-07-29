@@ -4,12 +4,8 @@ using SlimeJumping.Settings;
 
 namespace SlimeJumping.Camera
 {
-    /// Live-applies GameOptions.BackgroundCameraEnabled by toggling the BG
-    /// camera's culling mask and the TranslucentImage blur source on it. When
-    /// off, the BG camera still does its SolidColor clear (so the stage
-    /// backdrop color stays visible) but renders no Background-layer objects,
-    /// and the blur pass is skipped (Preview off + TIS disabled) to drop the
-    /// per-frame blit cost without leaving a stale preview frame on screen.
+    /// Live-applies GameOptions.BackgroundCameraEnabled: culling mask → 0 (the camera's clear still paints the
+    /// backdrop) and TranslucentImageSource Preview+enabled off — Preview must go too, else a stale frame stays.
     [RequireComponent(typeof(UnityEngine.Camera))]
     public class BackgroundCameraOption : MonoBehaviour
     {

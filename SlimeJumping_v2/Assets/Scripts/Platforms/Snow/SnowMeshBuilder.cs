@@ -4,27 +4,11 @@ using UnityEngine;
 namespace SlimeJumping.Platforms.Snow
 {
     /// <summary>
-    /// Builds the static snow mesh whose vertices the snow shader will displace at
-    /// runtime via _SnowHeightBuf (StructuredBuffer&lt;float&gt;). The mesh itself is
-    /// un-displaced — vertex positions equal patch.verts[i]; the per-vertex displacement
-    /// direction lives in tangent.xyz (typically patch.vertNormals[i] for surface verts,
-    /// zero for "base" boundary verts that should stay glued to the host); uv2.x carries
-    /// the raw vertex index (cast to uint in the shader to index _SnowHeightBuf),
-    /// uv2.y carries heightRest for that vertex. Phase 3 fragment shader reads both
-    /// to compute the carve mask 1 - heightCurrent/heightRest.
-    ///
-    /// Per-tri flat shading is preserved by re-emitting each triangle's three corners
-    /// per face with that face's normal, computed at REST positions (verts +
-    /// vertNormals * heightRest). Carve-time vertex displacement does tilt the actual
-    /// face slightly, but for typical dip depths the lighting deviation is invisible
-    /// — and updating face normals every frame would cost an order of magnitude more
-    /// than the upload itself.
-    ///
-    /// Top face: each patch triangle emitted twice (front + reversed back) so the
-    /// material can render double-sided without Cull Off. Side strip: per directed
-    /// boundary edge a→b, emits a 4-corner skirt where the two "base" verts have
-    /// tangent.xyz = 0 (anchored to the host surface) and the two "top" verts
-    /// displace fully along the patch vertex normal.
+    /// Static snow mesh; the shader displaces it at runtime via _SnowHeightBuf.
+    /// Shader contract: verts un-displaced, tangent.xyz = displacement dir (zero = base
+    /// vert glued to the host), uv2 = (raw vertex index, heightRest).
+    /// Flat shading via per-face corner re-emit, face normals taken at REST positions —
+    /// re-normalizing per frame would cost more than the buffer upload, carve tilt is invisible.
     /// </summary>
     public static class SnowMeshBuilder
     {
@@ -33,9 +17,7 @@ namespace SlimeJumping.Platforms.Snow
             public string meshName;
         }
 
-        // patch is passed by value (not `in`) because the local AddVert function captures
-        // it; C# disallows in-parameter capture in nested functions. TopPatch is just
-        // a handful of array references, so the copy is essentially free.
+        // patch is by value, not `in`: C# forbids capturing an in-parameter in a local function (AddVert).
         public static Mesh Build(SnowTopSurfaceExtractor.TopPatch patch, float[] heightRest, BuildParams p)
         {
             var mesh = new Mesh { name = p.meshName ?? "SnowPatch" };
@@ -69,14 +51,10 @@ namespace SlimeJumping.Platforms.Snow
                 norms.Add(normal);
                 tans.Add(tangent);
                 uvs.Add(new Vector2(pos.x, pos.y));
-                // uv2.x carries the raw vertex index (the shader casts to uint and
-                // indexes _SnowHeightBuf). uv2.y carries heightRest used by the
-                // fragment carve mask.
                 uvs2.Add(new Vector2(origIdx, heightRest[origIdx]));
             }
 
-            // Top face: per patch triangle, emit both winding orders so a single material
-            // renders front + back without needing Cull Off.
+            // Both winding orders per triangle: double-sided without needing Cull Off in the material.
             for (int t = 0; t < patch.tris.Length; t += 3)
             {
                 int ia = patch.tris[t], ib = patch.tris[t + 1], ic = patch.tris[t + 2];
@@ -103,10 +81,8 @@ namespace SlimeJumping.Platforms.Snow
                 tris.Add(v3); tris.Add(v3 + 1); tris.Add(v3 + 2);
             }
 
-            // Side strip: each directed boundary edge a→b spawns two triangles. Base
-            // verts (tangent = 0) stay on the host surface; top verts (tangent =
-            // vertNormal) ride heightCurrent. Skirt is visible only where boundary
-            // height > 0; collapses harmlessly when taper drives boundary to zero.
+            // Side skirt per boundary edge: base verts (tangent = 0) stay on the host,
+            // top verts ride heightCurrent. Collapses harmlessly when taper zeroes the boundary.
             int beLen = patch.boundaryEdges != null ? patch.boundaryEdges.Length : 0;
             for (int e = 0; e < beLen; e += 2)
             {
@@ -162,10 +138,8 @@ namespace SlimeJumping.Platforms.Snow
             mesh.SetTriangles(tris, 0);
             mesh.RecalculateBounds();
 
-            // Bounds account for un-displaced positions only. Pad by maxRest along each
-            // axis so frustum culling doesn't clip the displaced shell on grazing camera
-            // angles. (Bounds.Expand adds amount/2 to each side, so 2*maxRest yields
-            // maxRest padding on every axis.)
+            // Bounds cover un-displaced verts only — pad by maxRest or frustum culling clips the
+            // displaced shell at grazing angles. Expand() adds amount/2 per side, hence 2*maxRest.
             if (maxRest > 0f)
             {
                 var b = mesh.bounds;

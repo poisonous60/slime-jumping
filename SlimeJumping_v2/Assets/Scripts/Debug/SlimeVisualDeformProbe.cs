@@ -5,25 +5,7 @@ using SlimeJumping.Physics;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Diagnoses the "visual contracts then stretches in travel direction" symptom on
-    /// curved TerrainMaker surfaces. Samples per render frame the body's deform state
-    /// (body.localScale, body.up) and per fixed step the probe's normal/contact state,
-    /// then auto-dumps when one of three thresholds trips:
-    ///
-    ///   visualScaleJump   — |Δbody.localScale| spike (the symptom itself)
-    ///   bodyUpRotation    — body.up degrees rotated this frame (deform axis swing)
-    ///   surfaceNormalJump — slimeController.SurfaceNormal degrees rotated this fixed step
-    ///
-    /// Also dumps the current SurfaceCollider's polygon shape (edge length distribution +
-    /// inter-edge angle distribution) at startup and whenever the SurfaceCollider changes.
-    /// That dump answers "how faceted is the collider the slime is currently on?" — the
-    /// upstream cause of normal jumps. Compare the worst inter-edge angle to the
-    /// surfaceNormalJump samples: if they match, the collider's discretization is the
-    /// dominant source.
-    ///
-    /// Manual dump key: F5.
-    /// </summary>
+    /// <summary>Rings per-frame visual deform + per-fixed-step normal/contact state, auto-dumps on scale/normal/churn spikes, and dumps the SurfaceCollider's facet stats. F5 = ring, F6 = collider.</summary>
     [DefaultExecutionOrder(2200)]
     public class SlimeVisualDeformProbe : MonoBehaviour
     {
@@ -182,9 +164,8 @@ namespace SlimeJumping.Debugging
                 lastFixedContactCount = probe.ContactCount;
                 lastFixedActiveCount = probe.ActiveContactCount;
 
-                // Active churn vs prev fixed step. ContactCount can vary, so map by collider+normal
-                // is overkill — count per-index changes against prev snapshot. With multi-probe the
-                // active-set ordering is reasonably stable frame-to-frame.
+                // Per-index diff against the prev snapshot; multi-probe active-set ordering is
+                // stable enough frame-to-frame that mapping by collider+normal isn't worth it.
                 int churn = 0;
                 int n = lastFixedContactCount;
                 if (n > prevActiveSnapshot.Length) n = prevActiveSnapshot.Length;
@@ -207,7 +188,6 @@ namespace SlimeJumping.Debugging
             if (lastFixedEffNDeltaDeg > maxEffNJumpWindow) maxEffNJumpWindow = lastFixedEffNDeltaDeg;
             if (lastFixedActiveChurn > maxChurnWindow) maxChurnWindow = lastFixedActiveChurn;
 
-            // Re-dump collider shape if the slime moved to a different collider.
             if (slime.SurfaceCollider != null && slime.SurfaceCollider != lastReportedCollider)
             {
                 lastReportedCollider = slime.SurfaceCollider;
@@ -359,9 +339,8 @@ namespace SlimeJumping.Debugging
             DumpColliderShape(col, reason);
         }
 
-        // Reports edge length distribution and inter-edge turn angles for the polygon
-        // path the slime is currently on. The worst inter-edge angle is the upper bound
-        // on a per-vertex normal jump as the slime crawls across that vertex.
+        // Worst inter-edge turn angle is the upper bound on the normal jump as the slime
+        // crawls across that vertex — the upstream cause of surfN spikes.
         private void DumpColliderShape(Collider2D col, string reason)
         {
             if (col is PolygonCollider2D poly)

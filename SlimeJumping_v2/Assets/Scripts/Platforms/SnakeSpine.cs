@@ -5,13 +5,9 @@ using SlimeJumping.Controller;
 namespace SlimeJumping.Platforms
 {
     /// <summary>
-    /// Multi-segment snake that follows an ISnakePath. Head advances along the path at
-    /// per-path-segment speeds; body follows via a trail-vs-chain blend (followness knob).
-    /// A single root PolygonCollider2D receives one simple quad path per on-plane segment
-    /// (DeformablePlatform-style multi-path). Visuals are plain child Transforms (cubes
-    /// for the prototype; head's visual is separately swappable for a face-decorated model).
-    /// Rider carry is custom: slime's arc-offset-from-head is captured on attach, and each
-    /// FixedUpdate the slime is MovePosition'd by the surface delta at that arc offset.
+    /// Head advances along an ISnakePath; body follows via a trail-vs-chain blend (followness).
+    /// One root PolygonCollider2D gets one path per on-plane segment run. Rider carry is custom:
+    /// arc-offset-from-head captured on attach, MovePosition by the surface delta each FixedUpdate.
     /// </summary>
     [ExecuteAlways]
     [DefaultExecutionOrder(-150)]
@@ -93,10 +89,8 @@ namespace SlimeJumping.Platforms
         ISnakePath path;
         PolygonCollider2D poly;
 
-        // Prefab-instantiated head, tracked separately from the serialized headVisual so the
-        // auto-created instance never gets written into the serialized field (which would dirty
-        // the scene / leak a reference to a non-persistent preview object). ActiveHead resolves
-        // to the user-authored headVisual when assigned, else this instance.
+        // Prefab-instantiated head, kept out of the serialized headVisual field — writing it there
+        // dirties the scene and leaks a reference to a non-persistent preview object.
         Transform headInstance;
         Transform ActiveHead => headVisual != null ? headVisual : headInstance;
 
@@ -112,7 +106,6 @@ namespace SlimeJumping.Platforms
         int SegmentCount => 1 + Mathf.Max(0, bodySegmentCount);
 
         // Dynamic body ribbon — one MeshRenderer under the root, rebuilt every FixedUpdate.
-        // Replaces the old N-cube body layout; smoothly connected cross-sections hide bend seams.
         GameObject bodyMeshGO;
         MeshFilter bodyMeshFilter;
         MeshRenderer bodyMeshRenderer;
@@ -126,14 +119,12 @@ namespace SlimeJumping.Platforms
         Vector2[] segPerp;
         bool[]    segOnPlane;
 
-        // Per-segment half-width / radius (meters). Drives the polygon collider's perp extrusion
-        // along the coarse spine; the visual tube samples its own (interpolated) radii from these.
+        // Per-segment half-width (meters). Drives the collider's perp extrusion; the visual tube
+        // interpolates its own radii from these.
         float[] segHalfW;
 
-        // Fine sample arrays — (bodySegmentCount) * visualRingsPerSegment + 1 entries, rebuilt
-        // each frame inside RebuildBodyMesh. Positions come from Catmull-Rom interpolation of
-        // segPos3D; TNB frames are parallel-transported along the fine tangents so adjacent
-        // rings share a twist-free basis (smooth tube even at sharp bends).
+        // Fine samples rebuilt each frame in RebuildBodyMesh: Catmull-Rom positions on segPos3D,
+        // TNB parallel-transported so adjacent rings share a twist-free basis.
         Vector3[] fineWorldPos;
         Vector3[] fineTangent;
         Vector3[] fineNormal;
@@ -149,24 +140,17 @@ namespace SlimeJumping.Platforms
         bool riderAttachedPrev;
         float riderArcOffsetFromHead;
 
-        // Fallback material when neither snakeMaterial nor a head material is available. Shared
-        // across all SnakeSpines so we don't leak a material per instance. Normally unused —
-        // snakeMaterial (Quibli white) drives the look.
+        // Fallback material, static so we don't leak one per instance. Normally unused.
         static Material _sharedBodyMat;
 
         // ---- Unity ----
 
         void Awake()
         {
-            // Static collider pattern (mirrors DeformablePlatform / CrumblingPlatform).
-            // Earlier versions attached a Kinematic Rigidbody2D with no MovePosition calls —
-            // Unity then treated the snake as a zero-velocity kinematic body whose polygon
-            // path morphed each frame, causing ambiguous depenetration (rider stuck under
-            // the body, land/jump detection flipping). Removing the Rigidbody2D lets the
-            // changing path be processed as a static-world rebuild, same as DeformablePlatform.
+            // No Rigidbody2D on purpose: a Kinematic body with a per-frame morphing polygon path
+            // gives ambiguous depenetration (rider stuck under the body, land/jump flipping).
             poly = GetComponent<PolygonCollider2D>();
-            // Only reset the collider when actually simulating. In edit mode the snake's collider
-            // is meant to stay empty (runtime-built); writing pathCount here would dirty the scene.
+            // Edit mode: the collider stays empty (runtime-built) — writing pathCount dirties the scene.
             if (Application.isPlaying) poly.pathCount = 0;
 
             ResolvePath();
@@ -177,10 +161,8 @@ namespace SlimeJumping.Platforms
 
         void EnsureHeadVisual()
         {
-            // Prefab path: if nothing is wired to headVisual yet, instantiate the prefab as a
-            // child of the snake root and track it via headInstance (NOT the serialized field).
-            // The prefab keeps its authored scale — SnakeSpine never writes to localScale, so
-            // whatever size the prefab is authored at is exactly what ships on screen.
+            // Instance goes to headInstance, never the serialized field. SnakeSpine never writes
+            // localScale, so the prefab ships at its authored size.
             if (headVisual != null) { headInstance = null; return; }
             if (headPrefab == null) return;
             if (headInstance != null) return; // already have a live instance this session
@@ -188,27 +170,22 @@ namespace SlimeJumping.Platforms
             go.name = headPrefab.name + " (Head Preview)";
             go.transform.localPosition = Vector3.zero;
             go.transform.localRotation = Quaternion.identity;
-            // In edit mode the instance is a transient preview — DontSave keeps it out of the
-            // scene file and lets a domain reload clean it up. At runtime it's a normal child.
+            // Edit mode: DontSave keeps the preview instance out of the scene file.
             go.hideFlags = Application.isPlaying ? HideFlags.None : HideFlags.DontSave;
             headInstance = go.transform;
         }
 
         void Start()
         {
-            // Deferred to Start so every component's Awake (especially WaypointSnakePath's
-            // Rebuild) has already run. Seeding in OnEnable would read a half-initialized
-            // path and spawn the body near the snake origin instead of along the route.
+            // Start, not OnEnable: WaypointSnakePath.Rebuild runs in Awake — seeding earlier reads
+            // a half-initialized path and spawns the body at the snake origin.
             SeedInitialPose();
         }
 
         void Update()
         {
-            // FixedUpdate drives the simulation in play mode. In edit mode Unity never calls
-            // FixedUpdate, so we rebuild a STATIC preview here (head at arc 0, body straight
-            // behind) every editor frame. This makes the scene view show the same head/body
-            // connection that ships at runtime — so headBodyJointLocal / headRotationOffsetEuler
-            // can be tuned live and WYSIWYG, instead of only being visible after pressing Play.
+            // Unity never calls FixedUpdate in edit mode, so rebuild a static preview here — the
+            // scene view then shows the shipped head/body join while tuning the joint offsets.
             if (Application.isPlaying) return;
             SeedInitialPose();
         }
@@ -216,7 +193,6 @@ namespace SlimeJumping.Platforms
 #if UNITY_EDITOR
         void OnValidate()
         {
-            // Resize scratch arrays live when bodySegmentCount changes in the inspector.
             UnityEditor.EditorApplication.delayCall += () =>
             {
                 if (this == null) return;
@@ -228,7 +204,6 @@ namespace SlimeJumping.Platforms
 
         void EnsureBodyMesh()
         {
-            // Look for an existing BodyMesh child from a prior session; otherwise create one.
             if (bodyMeshGO == null)
             {
                 var existing = transform.Find("BodyMesh");
@@ -241,8 +216,7 @@ namespace SlimeJumping.Platforms
                     bodyMeshGO.layer = gameObject.layer;
                 }
             }
-            // In edit mode the body ribbon is a transient preview — keep it out of the scene file
-            // (and let domain reload clean it). At runtime it's a normal child.
+            // Edit mode: DontSave keeps the preview ribbon out of the scene file.
             bodyMeshGO.hideFlags = Application.isPlaying ? HideFlags.None : HideFlags.DontSave;
             bodyMeshFilter = bodyMeshGO.GetComponent<MeshFilter>();
             if (bodyMeshFilter == null) bodyMeshFilter = bodyMeshGO.AddComponent<MeshFilter>();
@@ -257,16 +231,10 @@ namespace SlimeJumping.Platforms
             }
             bodyMeshFilter.sharedMesh = bodyMesh;
 
-            // Single material slot — the body is one uniform surface (the mesh is built with one
-            // submesh). ApplyMaterials drives both this renderer and the head to the same material.
             ApplyMaterials();
         }
 
-        /// <summary>
-        /// Resolve the one material the whole snake wears. Priority: explicit snakeMaterial
-        /// (assign the Quibli white here) → the head's own material (so body matches head even if
-        /// nothing is assigned) → a shared URP Lit fallback (never magenta).
-        /// </summary>
+        /// <summary>Material for the whole snake: snakeMaterial → head's own material → shared URP Lit fallback.</summary>
         Material ResolveSnakeMaterial()
         {
             if (snakeMaterial != null) return snakeMaterial;
@@ -287,13 +255,8 @@ namespace SlimeJumping.Platforms
             return _sharedBodyMat;
         }
 
-        /// <summary>
-        /// Drive BOTH the body tube renderer and the head's renderer(s) to the single snake
-        /// material, so head and body read as one continuous creature. Assignment is guarded on
-        /// inequality so the edit-mode preview doesn't re-dirty the scene every frame. When
-        /// snakeMaterial is unset this resolves to the head's own material, so applying it to the
-        /// head is a no-op and the body simply inherits the head look.
-        /// </summary>
+        /// <summary>Drives body tube and head renderers to one material; guarded on inequality so the
+        /// edit-mode preview doesn't re-dirty the scene every frame.</summary>
         void ApplyMaterials()
         {
             Material mat = ResolveSnakeMaterial();
@@ -306,9 +269,8 @@ namespace SlimeJumping.Platforms
                     bodyMeshRenderer.sharedMaterials = new Material[] { mat };
             }
 
-            // Head: override every material SLOT of every MeshRenderer under the active head, so a
-            // multi-submesh head (e.g., a separate dark mouth/underside material) turns fully into
-            // the snake material instead of leaving stray slots their original color.
+            // Every material slot of every child renderer, else a multi-submesh head leaves stray
+            // slots their original color.
             Transform head = ActiveHead;
             if (head != null)
             {
@@ -369,8 +331,7 @@ namespace SlimeJumping.Platforms
         {
             ResolvePath();
             AllocateSegmentArrays();
-            // Idempotent — guarantees the head instance + body mesh exist even when this is
-            // driven from the edit-mode Update tick (objects may have been wiped by a reload).
+            // Edit-mode Update path: a domain reload can wipe these, so re-ensure every tick.
             EnsureHeadVisual();
             EnsureBodyMesh();
             if (path == null || SegmentCount < 1) return;
@@ -379,10 +340,8 @@ namespace SlimeJumping.Platforms
             Vector3 headPos, headTan;
             path.SampleWorld(headArcLen, out headPos, out headTan);
 
-            // Use a finite-arc step to derive seed direction, not the Catmull-Rom analytic
-            // tangent. At a corner waypoint where the previous control point is far away
-            // (e.g. a long loop-close segment), the analytic tangent can point "backward" —
-            // which would lay the body ahead of the path direction instead of behind.
+            // Finite-arc step, not the analytic Catmull-Rom tangent: at a corner waypoint with a
+            // far previous control point the tangent can point backward, laying the body ahead.
             float stepArc = Mathf.Max(0.001f, Mathf.Min(segmentLength, path.TotalArcLen * 0.05f));
             Vector3 aheadPos; Vector3 _aheadTan;
             path.SampleWorld(stepArc, out aheadPos, out _aheadTan);
@@ -395,10 +354,7 @@ namespace SlimeJumping.Platforms
                 lastHeadTangent = Vector3.right;
 
 #if UNITY_EDITOR
-            // Authoring aid: in the edit-mode preview, override the seed direction so the snake
-            // lays out as a straight line. The path's tangent at the start is usually a diagonal,
-            // which makes judging head↔body alignment awkward. A clean horizontal reference makes
-            // headBodyJointLocal / headRotationOffsetEuler trivial to tune. Runtime is untouched.
+            // Edit preview only: a straight seed direction makes head↔body alignment tunable.
             if (!Application.isPlaying && editorPreviewStraight)
             {
                 Vector3 d = editorPreviewStraightDir;
@@ -408,15 +364,13 @@ namespace SlimeJumping.Platforms
 
             int n = SegmentCount;
             segPos3D[0] = headPos;
-            // Straight line behind head along -tangent. Back-sampling the loop would place the
-            // tail near the head when the loop is tight/short and the total arc is less than
-            // a few snake lengths; users expect "snake starts in a line" instead.
+            // Straight line behind the head, not back-sampled along the loop — a short/tight loop
+            // would place the tail next to the head.
             for (int i = 1; i < n; i++)
                 segPos3D[i] = headPos - lastHeadTangent * (i * segmentLength);
             System.Array.Copy(segPos3D, segPosPrev3D, n);
 
-            // Pre-fill trail with matching samples so followness=1 lookups work on frame 1
-            // and the trail is continuous with where the head will actually advance next.
+            // Pre-fill the trail so followness=1 lookups resolve on frame 1.
             trail.Clear();
             for (int i = n - 1; i >= 0; i--)
             {
@@ -432,8 +386,7 @@ namespace SlimeJumping.Platforms
             WriteVisuals();
             RebuildBodyMesh();
             ApplyMaterials();
-            // Collider is runtime-only — building it in edit mode would write the polygon path
-            // into the serialized component and dirty the scene. The preview is purely visual.
+            // Runtime only — building in edit mode serializes the path and dirties the scene.
             if (Application.isPlaying) RebuildCollider();
         }
 
@@ -445,12 +398,11 @@ namespace SlimeJumping.Platforms
 
             float dt = Time.fixedDeltaTime;
 
-            // 1. Advance head arc-length. SpeedAt is queried once per step; per-frame error across
-            //    waypoint boundaries is tiny at 50Hz and not worth a sub-stepping loop for the prototype.
+            // One SpeedAt query per step; the error across waypoint boundaries at 50Hz doesn't
+            // justify sub-stepping.
             float speed = path.SpeedAt(headArcLen);
             headArcLen += speed * dt;
 
-            // 2. Sample head.
             Vector3 headPos, headTan;
             path.SampleWorld(headArcLen, out headPos, out headTan);
             if (headTan.sqrMagnitude > 1e-8f) lastHeadTangent = headTan.normalized;
@@ -458,14 +410,12 @@ namespace SlimeJumping.Platforms
             // Snapshot prev positions before we overwrite (for rider carry delta).
             System.Array.Copy(segPos3D, segPosPrev3D, n);
 
-            // 3. Push trail.
             trail.Add(new TrailSample { worldPos = headPos, arcStamp = headArcLen });
             float oldestNeeded = headArcLen - (n + 2) * segmentLength;
             int drop = 0;
             while (drop < trail.Count - 1 && trail[drop + 1].arcStamp < oldestNeeded) drop++;
             if (drop > 0) trail.RemoveRange(0, drop);
 
-            // 4. Head position + body chain.
             segPos3D[0] = headPos;
             for (int i = 1; i < n; i++)
             {
@@ -557,11 +507,8 @@ namespace SlimeJumping.Platforms
             if (arcStamp >= trail[count - 1].arcStamp) return trail[count - 1].worldPos;
             if (arcStamp <= trail[0].arcStamp) return trail[0].worldPos;
 
-            // Find the bracket (i-1, i) whose stamps straddle arcStamp. Iterate from the tail
-            // because most lookups are near the end of the buffer. The previous version
-            // returned on the first `b.arcStamp >= arcStamp` hit without checking the lower
-            // bound — extrapolating from the two most recent entries for every body lookup
-            // (arcStamp is -i*segmentLength which is always below recent stamps).
+            // Bracket (i-1, i) straddling arcStamp, scanned from the tail. Both bounds must be
+            // tested — matching only the upper one extrapolates from the two newest entries.
             for (int i = count - 1; i > 0; i--)
             {
                 float sa = trail[i - 1].arcStamp;
@@ -577,12 +524,8 @@ namespace SlimeJumping.Platforms
             return trail[0].worldPos;
         }
 
-        /// <summary>
-        /// Computes local XY, smoothed perpendicular, and on-plane flag per segment.
-        /// Used by both the ribbon mesh and the polygon collider so they share edge geometry.
-        /// Perpendicular is derived from the central-difference XY tangent so adjacent segments
-        /// implicitly agree on the shared edge — no kinks at bends.
-        /// </summary>
+        /// <summary>Local XY, smoothed perpendicular and on-plane flag per segment, shared by mesh and
+        /// collider. Perp comes from the central-difference tangent so neighbours agree — no kinks at bends.</summary>
         void ComputeSegmentFrames()
         {
             int n = SegmentCount;
@@ -609,11 +552,8 @@ namespace SlimeJumping.Platforms
             }
         }
 
-        /// <summary>
-        /// Per-segment collider half-width, sampled from radiusProfile at i/(N-1). Driven here
-        /// (instead of inside the mesh builder) because the polygon collider needs the same
-        /// values every frame regardless of whether the mesh rebuild runs.
-        /// </summary>
+        /// <summary>Per-segment collider half-width from radiusProfile; kept out of the mesh builder
+        /// because the collider needs it every frame even when the mesh rebuild is skipped.</summary>
         void ComputeSegmentHalfWidths()
         {
             int n = SegmentCount;
@@ -624,8 +564,7 @@ namespace SlimeJumping.Platforms
             }
         }
 
-        // Catmull-Rom (tension 0.5). Same form used by WaypointSnakePath and scores of other
-        // spline utilities; pasted here to avoid adding a cross-class dependency for four lines.
+        // Catmull-Rom (tension 0.5). Duplicated from WaypointSnakePath to avoid a cross-class dep.
         static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
         {
             float t2 = t * t;
@@ -647,20 +586,16 @@ namespace SlimeJumping.Platforms
             Quaternion baseYaw;
             if (keepHeadUpright)
             {
-                // Build an orthonormal basis where local +X aims at the motion tangent in the
-                // XY plane and local +Y is projected onto world-up (so the head's top always
-                // points up in the world, never flips). Local +Z is then determined — and will
-                // rotate toward the back when motion reverses in X. That's the intentional
-                // trade-off: keeping upright costs face-visibility on leftward motion.
+                // +X = motion tangent, +Y projected onto world-up so the head never flips. Cost:
+                // +Z rotates away from the camera on leftward motion — can't have all three.
                 Vector3 motionDir = new Vector3(lastHeadTangent.x, lastHeadTangent.y, 0f);
                 if (motionDir.sqrMagnitude < 1e-10f) motionDir = Vector3.right;
                 motionDir.Normalize();
                 Vector3 yCandidate = Vector3.up - Vector3.Dot(Vector3.up, motionDir) * motionDir;
                 if (yCandidate.sqrMagnitude < 1e-6f)
                 {
-                    // Motion is (near-)parallel to world-up — yLocal is undefined. Fall back to
-                    // world +Z as "up", so local +Y points toward the camera and the face side
-                    // rotates to world +X rather than collapsing. It's the least-bad degenerate.
+                    // Motion (near-)parallel to world-up — yLocal undefined; world +Z is the
+                    // least-bad "up" here.
                     yCandidate = Vector3.forward;
                 }
                 yCandidate.Normalize();
@@ -672,13 +607,10 @@ namespace SlimeJumping.Platforms
                 float rotDeg = Mathf.Atan2(lastHeadTangent.y, lastHeadTangent.x) * Mathf.Rad2Deg;
                 baseYaw = Quaternion.Euler(0f, 0f, rotDeg);
             }
-            // Offset is pre-applied in local space (right-multiply) so the prefab's authored
-            // forward is first rotated onto +X, then the motion yaw turns +X toward the tangent.
+            // Right-multiply: the prefab's authored forward is rotated onto +X first, then yaw.
             Quaternion targetRot = baseYaw * Quaternion.Euler(headRotationOffsetEuler);
-            // Place the head so headBodyJointLocal (in head-local space) lands exactly on the
-            // path sample — this is where the body tube's front ring already sits, so choosing
-            // a joint point at the back of the head closes the neck gap automatically.
-            // Scale is never written: the head prefab/authored transform keeps its own size.
+            // headBodyJointLocal lands on the path sample, where the body tube's front ring sits,
+            // which is what closes the neck gap. Scale is never written.
             Vector3 targetPos = segPos3D[0] - targetRot * headBodyJointLocal;
 
             if (Application.isPlaying)
@@ -688,31 +620,15 @@ namespace SlimeJumping.Platforms
             }
             else
             {
-                // Edit-mode preview: snap the head onto the connected pose so the scene view shows
-                // the same head↔body join that ships at runtime. Only write when the pose actually
-                // differs — otherwise a serialized (user-assigned) head would re-dirty the scene
-                // every editor frame. The snap is non-destructive in intent: SnakeSpine fully
-                // drives the head at runtime, so its authored transform is throwaway anyway.
+                // Edit-mode preview snap. Only write when the pose differs, else a serialized head
+                // re-dirties the scene every editor frame.
                 if ((head.position - targetPos).sqrMagnitude > 1e-8f) head.position = targetPos;
                 if (Quaternion.Angle(head.rotation, targetRot) > 0.01f)  head.rotation = targetRot;
             }
         }
 
-        /// <summary>
-        /// Body visual: dynamic 3D tube sweeping the spine. Each spine band (i..i+1) is subdivided
-        /// into `visualRingsPerSegment` fine rings via Catmull-Rom interpolation of the spine
-        /// positions, producing a smooth curve that doesn't kink at bends even though the
-        /// simulation/collider only track `bodySegmentCount` coarse anchors. Fine tangents come
-        /// from central differences on the fine positions and the TNB frame is parallel-transported
-        /// along the fine sequence so the radial basis stays twist-free at sharp turns. Radii are
-        /// linearly interpolated between segHalfW values.
-        /// All triangles go into a single submesh — the snake wears one uniform material (head and
-        /// body share it), so there is no two-tone routing. Smooth (RecalculateNormals) shading
-        /// keeps the tube reading as one surface even where it folds over itself on tight bends.
-        /// segOnPlane is still consulted by RebuildCollider only (collider gating), not the visual.
-        /// Vertices are built in world space (using Z-bearing positions) and converted to local
-        /// via InverseTransformPoint, so Z excursions show up as the tube bowing out of the XY plane.
-        /// </summary>
+        /// <summary>Tube swept along the spine: visualRingsPerSegment Catmull-Rom rings per band, TNB frame
+        /// parallel-transported so the radial basis stays twist-free at sharp turns. Single submesh.</summary>
         void RebuildBodyMesh()
         {
             if (bodyMesh == null) return;
@@ -728,10 +644,8 @@ namespace SlimeJumping.Platforms
             int fineCount = (n - 1) * K + 1;
             EnsureFineArrays(fineCount);
 
-            // --- Fine positions & radii via Catmull-Rom on the spine.
-            // Virtual endpoint mirroring gives the first/last bands a smooth shape too — without
-            // it the tube would still crease at the head-adjacent ring if the neighbors form an
-            // angle. p0/p3 reflect p1/p2 around p1 (resp. p2) when no outer spine anchor exists.
+            // Virtual endpoint mirroring (p0/p3 reflected) — without it the tube creases at the
+            // head-adjacent and tail rings.
             for (int b = 0; b < n - 1; b++)
             {
                 Vector3 p1 = segPos3D[b];
@@ -752,9 +666,8 @@ namespace SlimeJumping.Platforms
             fineWorldPos[fineCount - 1]  = segPos3D[n - 1];
             fineRadius[fineCount - 1]    = segHalfW[n - 1];
 
-            // --- Fine tangents: central difference on fine positions (head-ward convention,
-            // i.e., tangent[j] points from j+1 toward j-1, matching the 2D perp convention so
-            // front/back cap offsets read naturally: +tangent goes "forward" off the head).
+            // Head-ward convention: tangent[j] points from j+1 toward j-1, matching the 2D perp
+            // convention so +tangent is "forward" off the head for the cap offsets.
             for (int j = 0; j < fineCount; j++)
             {
                 Vector3 t;
@@ -766,7 +679,6 @@ namespace SlimeJumping.Platforms
                 fineTangent[j] = t.normalized;
             }
 
-            // --- Parallel-transport TNB frame along the fine tangents.
             Vector3 refUp = Vector3.up;
             if (Mathf.Abs(Vector3.Dot(fineTangent[0], refUp)) > 0.99f) refUp = Vector3.forward;
             Vector3 b0 = Vector3.Cross(fineTangent[0], refUp);
@@ -798,7 +710,7 @@ namespace SlimeJumping.Platforms
                 }
             }
 
-            // --- Ring vertices: vert index = j*R + r for fine sample j, radial slot r.
+            // Ring vertices: vert index = j*R + r for fine sample j, radial slot r.
             for (int j = 0; j < fineCount; j++)
             {
                 float u = fineCount > 1 ? j / (float)(fineCount - 1) : 0f;
@@ -826,7 +738,6 @@ namespace SlimeJumping.Platforms
             scratchVerts.Add(transform.InverseTransformPoint(backCapWorld));
             scratchUVs.Add(new Vector2(1f, 0.5f));
 
-            // Body bands between fine ring j and j+1 — all into the single submesh (uniform material).
             for (int j = 0; j < fineCount - 1; j++)
             {
                 int ringA = j * R;
@@ -883,11 +794,8 @@ namespace SlimeJumping.Platforms
 
             scratchPaths.Clear();
 
-            // Walk on-plane runs same as the mesh, emitting a single multi-vertex polygon per
-            // run. Caps extend half a segmentLength past head (front) and tail (back), so the
-            // collider covers the full footprint of the visual — no more "slime falls off the
-            // front of the head" gap. Per-anchor half-width is read from segHalfW so the
-            // collider tapers along with the visual tube.
+            // One polygon per on-plane run, with caps half a segmentLength past head and tail so
+            // the collider covers the visual footprint — otherwise the slime falls off the head.
             int runStart = -1;
             for (int i = 0; i <= n; i++)
             {
@@ -913,7 +821,6 @@ namespace SlimeJumping.Platforms
             bool capFront = (s == 0);
             bool capBack  = (e == SegmentCount - 1);
 
-            // Build ordered list of spine anchor points (local XY) with a cap at each end.
             int anchorCount = count + (capFront ? 1 : 0) + (capBack ? 1 : 0);
             Vector2[] anchors = new Vector2[anchorCount];
             Vector2[] perps   = new Vector2[anchorCount];
@@ -967,12 +874,8 @@ namespace SlimeJumping.Platforms
             }
             if (rider == null || riderRb == null) return;
 
-            // SurfaceCollider alone isn't enough — SurfaceProbe sets it whenever the slime
-            // overlaps our polygon, including while the slime is Airborne and just grazing the
-            // underside. Carrying in that case MovePosition's the slime along the snake's surface
-            // delta, overriding velocity integration — slime appears to stick and drift upward
-            // with the snake despite a large downward rb.linearVelocity. Gate on state to only
-            // carry when the slime is actually resting on us.
+            // SurfaceCollider alone isn't enough — SurfaceProbe sets it while the slime is Airborne
+            // and merely grazing us; carrying then overrides velocity and the slime drifts upward.
             bool restingOnSnake = rider.CurrentState == SlimeController.SlimeState.Attached
                                   || rider.CurrentState == SlimeController.SlimeState.Charging;
             bool attached = restingOnSnake && rider.SurfaceCollider == poly;
@@ -987,7 +890,6 @@ namespace SlimeJumping.Platforms
 
             if (!riderAttachedPrev)
             {
-                // Find closest segment in XY; use that as the arc offset from head.
                 Vector2 rp = rider.Position;
                 int bestIdx = 0;
                 float bestD2 = float.MaxValue;
@@ -1002,7 +904,6 @@ namespace SlimeJumping.Platforms
                 return; // no carry on attach frame
             }
 
-            // Carry by the spine-surface delta at the rider's cached arc offset.
             Vector2 prev = SampleSegArrayXY(segPosPrev3D, riderArcOffsetFromHead);
             Vector2 cur  = SampleSegArrayXY(segPos3D,     riderArcOffsetFromHead);
             Vector2 delta = cur - prev;
@@ -1046,9 +947,8 @@ namespace SlimeJumping.Platforms
                 Gizmos.DrawLine(flat, segPos3D[i]);
             }
 
-            // Head-body joint marker — magenta sphere at segPos3D[0], which is exactly where
-            // the body tube's front ring sits and where headBodyJointLocal is pinned on the head.
-            // Makes it visually obvious where to aim the joint while tweaking in the inspector.
+            // Head-body joint marker at segPos3D[0] — where the body's front ring and
+            // headBodyJointLocal meet.
             Gizmos.color = new Color(1f, 0.25f, 0.9f, 0.9f);
             Gizmos.DrawWireSphere(segPos3D[0], 0.08f);
         }

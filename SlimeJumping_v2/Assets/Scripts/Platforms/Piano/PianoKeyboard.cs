@@ -4,13 +4,9 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Platforms.Piano
 {
-    /// Manager for a playable piano. Each FixedUpdate it figures out which white keys the slime is
-    /// resting on and drives them. Detection is by HORIZONTAL OVERLAP: a key is pressed when the
-    /// slime's body overlaps the key's x-span by more than overlapThreshold AND the slime is sitting
-    /// near the key's top. That means a slime landing in the seam between two keys presses BOTH.
-    /// The keys themselves are PlatformMotors that sink and carry the slime down (see PianoKey).
-    ///
-    /// Runs before the key motors (lower execution order) so each key reads fresh contact this frame.
+    /// Playable piano manager: each FixedUpdate drives the white keys the slime rests on.
+    /// Detection is x-span overlap + sitting near the key top, so a slime in the seam presses BOTH keys.
+    /// Order -150 runs ahead of the key motors so each key reads this frame's contact.
     [DefaultExecutionOrder(-150)]
     [AddComponentMenu("SlimeJumping/Platforms/Piano Keyboard")]
     public partial class PianoKeyboard : MonoBehaviour
@@ -90,10 +86,8 @@ namespace SlimeJumping.Platforms.Piano
                 key.Drive(contacting, impact, s);
             }
 
-            // ORDER MATTERS. Auto-play goes first because arriving at the piano is what picks the next
-            // piece and transposes the progression into its key — and harmonize plays the landing chord
-            // on this very same rising edge. Run harmonize first and the first chord of every visit
-            // sounds in the PREVIOUS piece's key, which is exactly the seam this feature exists to hide.
+            // Auto-play first: it picks and transposes the piece on the same rising edge harmonize plays
+            // the landing chord, so reversing them sounds that chord in the previous piece's key.
             AutoPlayStep(anyContacting);            // no-op unless config.autoPlay.enabled
             HarmonizeStep(anyContacting, impact);   // no-op unless config.harmonize.enabled
         }

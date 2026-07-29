@@ -4,8 +4,7 @@ using SlimeJumping.UI.Framework;
 
 namespace SlimeJumping.UI.Panels
 {
-    /// Replaces MainMenuController. Start / Options / Quit buttons resolved via
-    /// UISlot tags, so rearranging the prefab hierarchy doesn't break wiring.
+    /// Buttons resolved by UISlot tag, so prefab hierarchy changes don't break wiring.
     public class MainMenuPanel : UIPanel
     {
         private Button startButton;

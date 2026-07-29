@@ -38,23 +38,19 @@ namespace SlimeJumping.Editor
 
         static GameObject CreateWashing(string name, Transform parent, Vector3 hostPos)
         {
-            // Root — carries the collider (static) + component
             var go = new GameObject(name);
             go.transform.parent = parent;
             go.transform.position = hostPos;
             go.layer = InteractableLayer;
 
-            // Static outer collider box (2D trigger for interaction)
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size = new Vector2(1.4f, 1.4f);
 
-            // Visual root (the thing that vibrates)
             var visual = new GameObject("Visual");
             visual.transform.parent = go.transform;
             visual.transform.localPosition = Vector3.zero;
 
-            // Visual inner body
             var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
             body.name = "Body";
             Object.DestroyImmediate(body.GetComponent<BoxCollider>());
@@ -63,7 +59,6 @@ namespace SlimeJumping.Editor
             body.transform.localScale = new Vector3(1.2f, 1.2f, 0.8f);
             body.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.9f, 0.9f, 0.95f));
 
-            // Porthole
             var porthole = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             porthole.name = "Porthole";
             Object.DestroyImmediate(porthole.GetComponent<SphereCollider>());
@@ -72,12 +67,10 @@ namespace SlimeJumping.Editor
             porthole.transform.localScale = Vector3.one * 0.6f;
             porthole.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.2f, 0.2f, 0.25f));
 
-            // Audio
             var audio = go.AddComponent<AudioSource>();
             audio.spatialBlend = 1f;
             audio.playOnAwake = false;
 
-            // Component
             var wash = go.AddComponent<ApplianceInteractable_Washing>();
             var so = new SerializedObject(wash);
             so.FindProperty("visualRoot").objectReferenceValue = visual.transform;

@@ -9,8 +9,7 @@ namespace SlimeJumping.Editor
         const int GroundLayer = 7;
         // Slime can be on Default (0) or SlimeNode (6) depending on setup.
         static readonly int SlimeDetectMask = (1 << 0) | (1 << 6);
-        // Break only on Environment (ground). Excluding slime layers lets the slime
-        // ride a falling icicle without shattering it on contact.
+        // Environment only — including slime layers would shatter the icicle the slime rides.
         static readonly int BreakOnMask = (1 << GroundLayer);
 
         [MenuItem("SlimeJumping/Mechanism/Setup Icicle Test")]
@@ -43,7 +42,6 @@ namespace SlimeJumping.Editor
                 new Vector3(22f, 0.5f, 1f));
 
             // --- Icicle variants ---
-            // 1. Default — respawns after 3 s with a 0.6 s regen animation.
             CreateIcicle("Icicle_Default", root.transform,
                 new Vector3(baseX - 6f, baseY + 8.25f, 0f),
                 detectionOffset: new Vector2(0f, -3.5f),
@@ -53,7 +51,6 @@ namespace SlimeJumping.Editor
                 respawnTime: 3f,
                 regenDuration: 0.6f);
 
-            // 2. Fast — short shake, quick drop, fast respawn.
             CreateIcicle("Icicle_Fast", root.transform,
                 new Vector3(baseX - 2f, baseY + 8.25f, 0f),
                 detectionOffset: new Vector2(0f, -3.5f),
@@ -63,7 +60,6 @@ namespace SlimeJumping.Editor
                 respawnTime: 1.5f,
                 regenDuration: 0.3f);
 
-            // 3. Slow — long telegraph + lingering regen animation for observation.
             CreateIcicle("Icicle_Slow", root.transform,
                 new Vector3(baseX + 2f, baseY + 8.25f, 0f),
                 detectionOffset: new Vector2(0f, -4f),
@@ -73,7 +69,6 @@ namespace SlimeJumping.Editor
                 respawnTime: 5f,
                 regenDuration: 1.2f);
 
-            // 4. Permanent — one-shot, never respawns (respawnTime < 0).
             CreateIcicle("Icicle_Permanent", root.transform,
                 new Vector3(baseX + 6f, baseY + 8.25f, 0f),
                 detectionOffset: new Vector2(0f, -3f),
@@ -101,8 +96,7 @@ namespace SlimeJumping.Editor
             float shakeDuration, float fallSpeed,
             float respawnTime, float regenDuration)
         {
-            // Root — carries Rigidbody2D + IcicleHazard + solid collider. Collider stays
-            // put while the Visual child shakes, so the ride surface is stable.
+            // Collider stays put while the Visual child shakes — the ride surface must stay stable.
             var go = new GameObject(name);
             go.transform.parent = parent;
             go.transform.position = pos;
@@ -111,15 +105,13 @@ namespace SlimeJumping.Editor
             rb.bodyType = RigidbodyType2D.Kinematic;
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
 
-            // Solid collider — triangular polygon matching the cone silhouette.
-            // Points are in root-local space; the apex sits at (0,-1.2) so the
-            // icicle tapers to a point at the bottom. Winding is CCW.
+            // Triangular silhouette in root-local space, CCW, apex at the bottom.
             var poly = go.AddComponent<PolygonCollider2D>();
             poly.points = new Vector2[]
             {
-                new Vector2( 0.2f,  0.4f), // top-right (base corner)
-                new Vector2(-0.2f,  0.4f), // top-left  (base corner)
-                new Vector2( 0f,   -1.2f), // apex (bottom)
+                new Vector2( 0.2f,  0.4f),
+                new Vector2(-0.2f,  0.4f),
+                new Vector2( 0f,   -1.2f),
             };
 
             // --- Visual child (procedural cone mesh, apex pointing down) ---
@@ -163,8 +155,7 @@ namespace SlimeJumping.Editor
             so.FindProperty("breakParticles").objectReferenceValue = ps;
             so.FindProperty("respawnTime").floatValue = respawnTime;
             so.FindProperty("regenDuration").floatValue = regenDuration;
-            // Block regen if anything in Environment, Default, or SlimeNode is under the
-            // hang point — keeps the icicle from popping back on top of the slime.
+            // Anything under the hang point blocks regen — else the icicle pops back on top of the slime.
             so.FindProperty("regenBlockingLayers").intValue = BreakOnMask | SlimeDetectMask;
             so.FindProperty("soundVolume").floatValue = 1f;
             so.ApplyModifiedProperties();
@@ -213,9 +204,8 @@ namespace SlimeJumping.Editor
 
         static Mesh GetConeMesh()
         {
-            // Scene serialization drops unowned meshes, so the shared cache covers
-            // multi-instance Setup runs within the same editor session. Users re-run
-            // the menu if they reopen the project and the visual goes blank.
+            // Mesh is not an asset — scene serialization drops it, so the visual goes blank
+            // after a project reload and the menu has to be re-run.
             if (cachedConeMesh != null) return cachedConeMesh;
             cachedConeMesh = BuildConeMesh(16);
             return cachedConeMesh;
@@ -223,8 +213,7 @@ namespace SlimeJumping.Editor
 
         static Mesh BuildConeMesh(int segments)
         {
-            // Unit cone: apex at (0,-0.5,0) pointing DOWN, base ring at y=+0.5 radius=0.5.
-            // Layout: [0] apex, [1..segments] base ring (CCW from +y), [segments+1] base center.
+            // Unit cone, apex down. Layout: [0] apex, [1..segments] base ring, [segments+1] base center.
             var mesh = new Mesh { name = "Icicle_TestCone" };
 
             int vertCount = segments + 2;
@@ -240,9 +229,7 @@ namespace SlimeJumping.Editor
                 float x = Mathf.Cos(a) * 0.5f;
                 float z = Mathf.Sin(a) * 0.5f;
                 verts[i + 1] = new Vector3(x, 0.5f, z);
-                // Side normal: outward radial + slight downward tilt matching the
-                // cone's slope (apex at bottom → surface leans out going up → normal
-                // leans out going down).
+                // Outward radial with a downward tilt matching the cone slope.
                 norms[i + 1] = new Vector3(x, -0.25f, z).normalized;
             }
 
@@ -253,12 +240,10 @@ namespace SlimeJumping.Editor
             for (int i = 0; i < segments; i++)
             {
                 int next = (i + 1) % segments;
-                // Side triangle: (apex, base_i, base_next). Winding chosen so outward
-                // normal points away from the cone axis.
+                // Winding chosen so the side normal points away from the cone axis.
                 tris[i * 6 + 0] = 0;
                 tris[i * 6 + 1] = i + 1;
                 tris[i * 6 + 2] = next + 1;
-                // Base cap: (base_center, base_next, base_i). Normal points +y.
                 tris[i * 6 + 3] = segments + 1;
                 tris[i * 6 + 4] = next + 1;
                 tris[i * 6 + 5] = i + 1;

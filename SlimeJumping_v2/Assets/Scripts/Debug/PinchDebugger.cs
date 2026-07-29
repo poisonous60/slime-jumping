@@ -4,21 +4,9 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Debugging
 {
-    // Read-only diagnostic for the sandwich-PINCH (squeeze between two WaypointPlatformV2 plates).
-    // Pulls everything from SlimeController public getters — writes nothing back (CLAUDE.md rule:
-    // debug scripts pull from the controller, never push). Attach to the Slime and toggle `logging`
-    // in the inspector at runtime. Logs one tagged "[Pinch]" line per FixedUpdate while a pinch is
-    // active (plus an optional tail after release to see the exit).
-    //
-    // Runs at order 3002 so it samples AFTER the controller + UpdatePinch + platform writes — the
-    // slime's final resting state each FU.
-    //
-    // Tuning signals:
-    //   comp    = PinchCompression01 (squash depth 0..1) — is it actually squashing?
-    //   velTan  = slime velocity along the squeeze-out tangent — is the lateral spring pushing?
-    //   moveTan = realized lateral displacement / dt — is it ACTUALLY sliding out, or stuck?
-    //   velAxis = velocity along the squeeze axis (gravity / press direction).
-    //   gap/pen = derived from comp (gap = 2R(1−comp)) — how deep the plates closed.
+    // Read-only sandwich-pinch diagnostic: pulls from SlimeController getters, writes nothing back.
+    // Order 3002 so it samples after the controller + UpdatePinch + platform writes each FU.
+    // Log fields: comp = squash 0..1, velTan vs moveTan = commanded vs realized squeeze-out, gap = 2R(1−comp).
     [DefaultExecutionOrder(3002)]
     [DisallowMultipleComponent]
     [AddComponentMenu("SlimeJumping/Debug/Pinch Debugger")]

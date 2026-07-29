@@ -3,9 +3,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Snow.EditorScripts
 {
-    /// <summary>One-shot menu that creates Assets/Settings/Snow_Default.asset (if it
-    /// doesn't already exist) and seeds it with the shipped Ground_Quibli_Snow material.
-    /// Lives in Editor/ so it never bloats player builds.</summary>
+    /// <summary>Menu item that creates Snow_Default.asset seeded with the Ground_Quibli_Snow material.</summary>
     public static class SnowDefaultSettingsBootstrap
     {
         const string SettingsPath  = "Assets/Settings/Snow_Default.asset";

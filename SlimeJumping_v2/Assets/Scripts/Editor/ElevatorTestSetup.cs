@@ -16,17 +16,14 @@ namespace SlimeJumping.Editor
             float baseX = 4f;
             float baseY = 0f;
 
-            // --- Ground (slime spawn/start) ---
             CreatePlatform("Ground", root.transform,
                 new Vector3(baseX - 6f, baseY - 0.5f, 0f),
                 new Vector3(8f, 1f, 1f));
 
-            // --- Top landing (elevator destination) ---
             CreatePlatform("TopLanding", root.transform,
                 new Vector3(baseX + 6f, baseY + 5.5f, 0f),
                 new Vector3(8f, 1f, 1f));
 
-            // --- Elevator ---
             CreateElevator("Elevator", root.transform,
                 startPos: new Vector3(baseX, baseY, 0f),
                 travelUp: 5f,
@@ -49,8 +46,7 @@ namespace SlimeJumping.Editor
             Vector3 startPos, float travelUp, Vector2 deckSize,
             float speed, float waitTime)
         {
-            // Root — collider + motion body. Visual is a child so the jolt
-            // can shake the mesh without dragging the rider with it.
+            // Visual is a child so the jolt shakes the mesh without dragging the rider.
             var go = new GameObject(name);
             go.transform.parent = parent;
             go.transform.position = startPos;
@@ -75,7 +71,6 @@ namespace SlimeJumping.Editor
             wpSo.FindProperty("loop").boolValue = false;
             wpSo.ApplyModifiedProperties();
 
-            // Rider sensor child — trigger collider sitting just above the deck.
             var sensorGo = new GameObject("RiderSensor");
             sensorGo.transform.parent = go.transform;
             sensorGo.transform.localPosition = new Vector3(0f, deckSize.y * 0.5f + 0.3f, 0f);
@@ -100,7 +95,6 @@ namespace SlimeJumping.Editor
             visualGo.GetComponent<MeshRenderer>().sharedMaterial =
                 MakeMaterial(new Color(0.4f, 0.6f, 0.9f));
 
-            // Jolt — subscribe to OnSegmentArrived and shake the visual child only.
             var jolt = go.AddComponent<ElevatorJoltVisual>();
             var joltSo = new SerializedObject(jolt);
             joltSo.FindProperty("visualTransform").objectReferenceValue = visualGo.transform;

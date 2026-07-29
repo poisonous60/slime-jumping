@@ -33,7 +33,6 @@ namespace SlimeJumping.Editor
             flashHost.transform.SetParent(root.transform, false);
             flashHost.transform.position = new Vector3(baseX + 3f, baseY + 2f, 0f);
 
-            // Visual child — prefab mesh with its original 3D rotation, isolated.
             var prefabPath = "Assets/Prebs/building/studio_camera.prefab";
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             if (prefab != null)
@@ -52,7 +51,6 @@ namespace SlimeJumping.Editor
                 Debug.LogWarning($"[CameraFlashTestSetup] {prefabPath} not found — no visual mesh.");
             }
 
-            // Audio/Impulse on StudioCamera group (3D positional source + camera shake origin)
             var audio = flashHost.AddComponent<AudioSource>();
             audio.spatialBlend = 1f;
             audio.playOnAwake = false;
@@ -60,7 +58,7 @@ namespace SlimeJumping.Editor
             flashHost.AddComponent<CinemachineImpulseSource>();
             var emitter = flashHost.AddComponent<ImpulseEmitter>();
 
-            // Bulb light child (Light2D, point). Optional — only renders when URP 2D Renderer configured.
+            // Light2D only renders when the URP 2D Renderer is configured; optional otherwise.
             var bulbGo = new GameObject("BulbLight");
             bulbGo.transform.SetParent(flashHost.transform, false);
             bulbGo.transform.localPosition = new Vector3(0f, -0.2f, 0f);
@@ -82,7 +80,6 @@ namespace SlimeJumping.Editor
             triggerCol.offset = Vector2.zero;
             var hazard = triggerGo.AddComponent<CameraFlashHazard>();
 
-            // Shared FullscreenEffectCanvas → FlashEffect child
             var canvasRoot = FullscreenCanvasSetupUtility.GetOrCreateRoot();
             var effectGo = FullscreenCanvasSetupUtility.GetOrCreateEffectChild(canvasRoot, "FlashEffect");
             var img = FullscreenCanvasSetupUtility.AddFullscreenImage(effectGo, new Color(1f, 1f, 1f, 0.5f));
@@ -95,7 +92,6 @@ namespace SlimeJumping.Editor
             flashSo.FindProperty("fullscreenImage").objectReferenceValue = img;
             flashSo.ApplyModifiedProperties();
 
-            // Wire hazard
             var hazardSo = new SerializedObject(hazard);
             hazardSo.FindProperty("flashCanvas").objectReferenceValue = flashCanvas;
             hazardSo.FindProperty("shutterAudio").objectReferenceValue = audio;

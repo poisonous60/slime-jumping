@@ -4,11 +4,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Rendering
 {
-    /// <summary>
-    /// Fades a URP post-process Volume in/out based on SlimeController.InFluid.
-    /// Attach to any scene object (Main Camera is conventional) and wire the
-    /// Global Volume that holds the underwater profile.
-    /// </summary>
+    /// <summary>Fades the wired URP Volume (underwater profile) in/out with SlimeController.InFluid.</summary>
     public class UnderwaterVolumeBinder : MonoBehaviour
     {
         [SerializeField] Volume volume;

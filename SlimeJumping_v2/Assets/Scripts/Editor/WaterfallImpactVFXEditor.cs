@@ -42,7 +42,6 @@ namespace SlimeJumping.Editor
                 Handles.DrawLine(a, b, 2f);
             }
 
-            // Dashed ray from last point.
             {
                 Vector3 last = t.TransformPoint(vfx.GetPathPointLocal(n - 1));
                 SerializedProperty rayDirProp = serializedObject.FindProperty("rayDirection");
@@ -55,7 +54,6 @@ namespace SlimeJumping.Editor
                 Handles.DrawDottedLine(last, end, 4f);
             }
 
-            // Shift-click an edge to insert a new point at the projected location.
             if (e.type == EventType.MouseDown && e.button == 0 && e.shift)
             {
                 if (TryPickEdge(vfx, e.mousePosition, out int edgeIdx, out Vector2 localInsert))
@@ -68,7 +66,6 @@ namespace SlimeJumping.Editor
                 }
             }
 
-            // Per-point: yellow sphere handle, index label, ctrl-click delete.
             for (int i = 0; i < n; i++)
             {
                 Vector2 local = vfx.GetPathPointLocal(i);

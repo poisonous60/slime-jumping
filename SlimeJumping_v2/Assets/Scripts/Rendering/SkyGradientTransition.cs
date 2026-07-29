@@ -5,9 +5,8 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Rendering
 {
-    /// Two-way crossfade of the skybox between two stage materials, driven by the slime crossing a
-    /// world Y line. Blends the gradient ramp in linear space plus every scalar the sky shader
-    /// exposes. Source materials are never modified.
+    /// Crossfades the skybox between two stage materials as the slime crosses a world Y line.
+    /// Ramp blends in linear space; runtime works on clones, source materials are never modified.
     public class SkyGradientTransition : MonoBehaviour
     {
         [Header("Refs")]

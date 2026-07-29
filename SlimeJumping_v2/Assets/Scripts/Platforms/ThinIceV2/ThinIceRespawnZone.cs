@@ -5,8 +5,7 @@ using SlimeJumping.Controller;
 namespace SlimeJumping.Platforms.ThinIceV2
 {
     /// Trial group of ThinIcePlatformV2 that all regenerate when the slime exits this trigger.
-    /// Shape = any Collider2D on this GO (Reset drops a Box; swap for a Polygon to follow terrain).
-    /// Members: child components auto-collected on Awake, plus <see cref="explicitMembers"/>.
+    /// Shape = any Collider2D on this GO; members = children collected on Awake + <see cref="explicitMembers"/>.
     [RequireComponent(typeof(Rigidbody2D))]
     public class ThinIceRespawnZone : MonoBehaviour
     {
@@ -108,8 +107,6 @@ namespace SlimeJumping.Platforms.ThinIceV2
                 if (members[i] != null) members[i].RequestRegen();
         }
 
-        // --- Gizmos --------------------------------------------------------------
-
         void OnDrawGizmos()
         {
             var c = GetComponent<Collider2D>();
@@ -133,8 +130,7 @@ namespace SlimeJumping.Platforms.ThinIceV2
             }
 
             if (!drawMemberLines) return;
-            // Cached members may be empty in edit mode (Awake hasn't run); fall back to a
-            // shallow scan so the gizmo is useful before Play.
+            // members is empty in edit mode (Awake hasn't run), so scan for the gizmo.
             IEnumerable<ThinIcePlatformV2> drawList = members.Count > 0
                 ? (IEnumerable<ThinIcePlatformV2>)members
                 : GetComponentsInChildren<ThinIcePlatformV2>(true);

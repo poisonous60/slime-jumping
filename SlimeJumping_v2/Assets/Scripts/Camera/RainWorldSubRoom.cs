@@ -3,13 +3,7 @@ using Unity.Cinemachine;
 
 namespace SlimeJumping.Camera
 {
-    /// <summary>
-    /// One sub-room inside a RainWorldZone. The BoxCollider2D defines the room's
-    /// world bounds: it doubles as the contains-test surface (RainWorldZone polls
-    /// it every frame to decide which sub-room is active) and as the bounding
-    /// shape source for the sub-room's CinemachineConfiner2D, so the camera is
-    /// clamped to exactly the box the designer drew.
-    /// </summary>
+    /// <summary>One sub-room in a RainWorldZone; its BoxCollider2D is both the contains-test surface and the CinemachineConfiner2D bounding shape.</summary>
     [RequireComponent(typeof(BoxCollider2D))]
     public class RainWorldSubRoom : MonoBehaviour
     {
@@ -30,8 +24,7 @@ namespace SlimeJumping.Camera
 
         private void Reset()
         {
-            // Bounds collider is non-trigger by default — Confiner2D reads its shape
-            // either way, but a non-trigger here would block the slime physically.
+            // Confiner2D reads the shape either way; a non-trigger would physically block the slime.
             var col = GetComponent<BoxCollider2D>();
             col.isTrigger = true;
         }

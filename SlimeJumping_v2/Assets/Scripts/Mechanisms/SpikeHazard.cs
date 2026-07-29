@@ -47,7 +47,6 @@ namespace SlimeJumping.Mechanisms
             {
                 if (redirectTarget != null)
                 {
-                    // Redirect mode: knockback aims toward target position
                     Vector2 dir = (Vector2)redirectTarget.position - slime.Position;
                     effect.knockbackDirection = dir.sqrMagnitude > 0.0001f
                         ? dir.normalized
@@ -55,7 +54,6 @@ namespace SlimeJumping.Mechanisms
                 }
                 else
                 {
-                    // Auto mode: knockback from spike center toward slime
                     Vector2 dir = slime.Position - (Vector2)transform.position;
                     effect.knockbackDirection = dir.sqrMagnitude > 0.0001f
                         ? dir.normalized

@@ -7,32 +7,15 @@ using SlimeJumping.Optimization;
 
 namespace SlimeJumping.EditorTools.Optimization
 {
-    /// <summary>
-    /// Bulk-attaches <see cref="OffscreenSleepable"/> markers to every GameObject in the
-    /// project (prefabs + scenes) that hosts one of the candidate component types.
-    ///
-    /// Operates in two modes:
-    ///   - Dry Run: Reports which prefabs/scenes WOULD be modified, without writing.
-    ///     Use first to confirm the impact size before committing to the real run.
-    ///   - Attach All: Saves any unsaved scenes (prompting the user), then iterates prefabs
-    ///     and scenes, adding markers, saving, and finally restoring the originally-active
-    ///     scene. Idempotent — re-running adds 0.
-    ///
-    /// Recommendations:
-    ///   - Run after a clean git commit. The diff includes prefab + scene meta files for
-    ///     every modified asset, which is large and not trivial to revert mid-stream.
-    ///   - Inspect the Dry Run output first.
-    /// </summary>
+    /// <summary>Bulk-attaches OffscreenSleepable markers to prefabs/scenes hosting a candidate type. Idempotent; touches many assets, so run on a clean commit.</summary>
     public static class OffscreenSleepableBatchTool
     {
         const string kAttachMenu = "Tools/Optimization/Attach OffscreenSleepable to all candidates";
         const string kDryRunMenu = "Tools/Optimization/Dry Run — Report candidates without modifying";
         const string kCleanupMenu = "Tools/Optimization/Cleanup orphaned OffscreenSleepable markers";
 
-        // Skip third-party / plugin paths to avoid LoadAssetAtPath triggering the OnValidate
-        // hook on imported assets — some have null-defererencing OnValidate (e.g. DBK
-        // Building Pack's DBK_ColorThemeSelect). Also speeds up the scan: the 13 candidate
-        // types are all in SlimeJumping.* namespaces and never appear in third-party prefabs.
+        // LoadAssetAtPath fires OnValidate on imported assets; some third-party ones null-deref
+        // (DBK_ColorThemeSelect). Candidate types are SlimeJumping.* only, so skipping is safe.
         static readonly string[] SkipPathPrefixes = new string[]
         {
             "Assets/ThirdParty/",
@@ -151,8 +134,7 @@ namespace SlimeJumping.EditorTools.Optimization
         [MenuItem(kDryRunMenu)]
         static void DryRun()
         {
-            // Scene scan opens each scene single-mode, which would discard unsaved edits.
-            // Prompt user to save first.
+            // Scene scan opens each scene single-mode — unsaved edits would be discarded.
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
 
             int totalPrefabCandidates = 0, prefabAlreadyAttached = 0;
@@ -259,11 +241,7 @@ namespace SlimeJumping.EditorTools.Optimization
                 "OK");
         }
 
-        /// <summary>
-        /// Walks <paramref name="root"/> for each candidate type, accumulating into the
-        /// per-type counts and the totals. Returns the count of MISSING markers in this
-        /// hierarchy (not yet attached). Shared by prefab and scene scan paths.
-        /// </summary>
+        /// <summary>Accumulates per-type + total candidate counts under <paramref name="root"/>; returns how many markers are still missing.</summary>
         static int CountCandidates(GameObject root,
             Dictionary<System.Type, int> perTypeCounts,
             Dictionary<System.Type, int> perTypeMissing,
@@ -290,10 +268,7 @@ namespace SlimeJumping.EditorTools.Optimization
             return missing;
         }
 
-        /// <summary>
-        /// Adds OffscreenSleepable to every GameObject under <paramref name="root"/> that
-        /// hosts any candidate type and doesn't already have a marker. Returns count added.
-        /// </summary>
+        /// <summary>Adds a marker to each un-marked candidate GameObject under <paramref name="root"/>; returns count added.</summary>
         static int AttachToHierarchy(GameObject root)
         {
             int added = 0;
@@ -316,10 +291,7 @@ namespace SlimeJumping.EditorTools.Optimization
             return added;
         }
 
-        /// <summary>
-        /// Quick prefab scan to estimate work before showing the confirmation dialog. Doesn't
-        /// open scenes (would be slow). Active-scene scan is in <see cref="ScanActiveSceneCandidateCount"/>.
-        /// </summary>
+        /// <summary>Prefab-only estimate for the confirmation dialog — opening scenes here would be too slow.</summary>
         static int ScanCandidateCount()
         {
             int wouldAdd = 0;
@@ -346,10 +318,7 @@ namespace SlimeJumping.EditorTools.Optimization
             return wouldAdd;
         }
 
-        /// <summary>
-        /// Counts MISSING markers in the currently active scene only. Cheap — the scene is
-        /// already loaded, just walks root GameObjects.
-        /// </summary>
+        /// <summary>Counts missing markers in the active scene only.</summary>
         static int ScanActiveSceneCandidateCount()
         {
             int wouldAdd = 0;
@@ -374,12 +343,7 @@ namespace SlimeJumping.EditorTools.Optimization
             return wouldAdd;
         }
 
-        /// <summary>
-        /// Removes OffscreenSleepable markers from prefabs + active scene where the host
-        /// GameObject no longer hosts any candidate type (i.e. the type was removed from
-        /// CandidateTypes). Useful after deciding a previously-attached type shouldn't be
-        /// sleepable (e.g. SnowField — it's the ground, not a visual layer).
-        /// </summary>
+        /// <summary>Removes markers from prefabs + active scene whose host no longer hosts any CandidateTypes entry.</summary>
         [MenuItem(kCleanupMenu)]
         static void CleanupOrphanedMarkers()
         {
@@ -453,11 +417,7 @@ namespace SlimeJumping.EditorTools.Optimization
                 "OK");
         }
 
-        /// <summary>
-        /// Find every OffscreenSleepable in <paramref name="root"/>'s hierarchy and remove
-        /// the ones whose host GameObject no longer has any current candidate type.
-        /// Returns count removed.
-        /// </summary>
+        /// <summary>Removes orphaned markers under <paramref name="root"/>; returns count removed.</summary>
         static int RemoveOrphans(GameObject root)
         {
             int removed = 0;
@@ -476,12 +436,8 @@ namespace SlimeJumping.EditorTools.Optimization
                         break;
                     }
                 }
-                // Two reasons to remove a marker:
-                //   1) Host no longer has any candidate type (the type was removed from the
-                //      list, e.g. SnowField after the wake-cost decision).
-                //   2) Host is gated by ShouldSkipAttach (e.g. wrapper that hosts a SnowField
-                //      in its hierarchy — sleeping the wrapper would cascade SetActive into
-                //      the SnowField, breaking it).
+                // Gated hosts must lose the marker too: sleeping a wrapper cascades SetActive
+                // into a SnowField below it and breaks it.
                 bool gated = stillCandidate && OffscreenSleeperCandidates.ShouldSkipAttach(marker.gameObject);
                 if (!stillCandidate || gated)
                 {

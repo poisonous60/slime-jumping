@@ -4,10 +4,9 @@ using SlimeJumping.Physics;
 
 namespace SlimeJumping.Platforms
 {
-    // Hierarchy: BranchPivot (this) is world-fixed in position and rotates only.
-    // BranchBody (child) is offset along +X by halfLength so the collider extends outward.
-    // Returning a constant pivotWorldPos from ComputeMotion keeps motor.Velocity = 0,
-    // so PlatformCarrier.GetEffectiveVelocity only adds AngularVelocity * arm.
+    // BranchPivot (this) is world-fixed and rotates only; BranchBody child is offset +X by halfLength.
+    // Constant pivotWorldPos out of ComputeMotion keeps motor.Velocity = 0, so PlatformCarrier
+    // contributes only AngularVelocity * arm.
     public class SpringyBranchPlatform : PlatformMotor
     {
         [Header("Surface Override")]
@@ -92,13 +91,8 @@ namespace SlimeJumping.Platforms
 
         public float CurrentDeflectionDeg => currentAngle;
 
-        // Mirrors TautLine.GetLaunchBonus' boost-falloff gate. Queried by
-        // PlatformCarrier.GetLaunchVelocity at the launch moment, when slime.Velocity
-        // already contains aim power × charge ratio + hyperdash inheritance, but the
-        // carrier contribution is what we're about to scale. Falloff multiplier deletes
-        // the branch's tip-speed transfer when the slime is already going fast (e.g.
-        // big EnergyConversion of a high fall) so the branch can't stack extra speed
-        // on top of an already-converted launch.
+        // Mirrors TautLine.GetLaunchBonus' boost-falloff gate: drops the branch's tip-speed transfer
+        // when the slime is already fast, so it can't stack on an EnergyConversion launch.
         public override float VelocityTransferScale
         {
             get
@@ -149,10 +143,8 @@ namespace SlimeJumping.Platforms
                 }
             }
 
-            // On firstAttach SlimeController immediately zeroes its velocity after carrier.Attach
-            // (see SlimeController.Airborne.cs), which would otherwise be seen as a phantom Δv
-            // next tick and cancel the slam we just applied. Baseline from zero so the next-tick
-            // Δp measures real post-landing motion.
+            // SlimeController zeroes its velocity right after carrier.Attach; baselining from the
+            // pre-zero velocity reads as a phantom Δv next tick and cancels the slam just applied.
             previousRiderVel = firstAttach ? Vector2.zero : riderVelocity;
             hasPrevRiderVel = true;
 
@@ -213,8 +205,7 @@ namespace SlimeJumping.Platforms
             Gizmos.color = Color.cyan;
             Vector2 pivot = Application.isPlaying ? pivotWorldPos : (rb != null ? rb.position : (Vector2)transform.position);
             Gizmos.DrawSphere(pivot, 0.12f);
-            // Use transform.rotation: at edit time this matches Body's placement,
-            // at runtime PlatformMotor keeps it in sync with baseRotation + currentAngle.
+            // Edit time this matches Body's placement; runtime PlatformMotor keeps it in sync.
             float angleDeg = (rb != null ? rb.rotation : transform.eulerAngles.z);
             float rad = angleDeg * Mathf.Deg2Rad;
             Vector2 tip = pivot + new Vector2(Mathf.Cos(rad), Mathf.Sin(rad)) * branchLength;

@@ -5,22 +5,15 @@ namespace SlimeJumping.Physics
 {
     public enum IgnoreMode
     {
-        // Probe filter only. SurfaceProbe.Contains() skips the collider so reattach
-        // is suppressed, but Physics2D is untouched — slime still bounces off.
-        // Released when slime separates by (slimeRadius + clearanceThreshold) OR timer.
-        // Used for Launch/Hop/ForceAirborne clearance and stun-knockback guards.
+        // Probe filter only (physics stays on). Released on separation OR timer.
         ReattachGuard,
 
-        // Probe filter + Physics2D.IgnoreCollision — slime physically transits through.
-        // Timer only; caller (e.g. KnifeHazard) refreshes the duration while overlap
-        // persists and Unregisters explicitly.
+        // Probe filter + Physics2D.IgnoreCollision, slime transits through. Timer only;
+        // owner (KnifeHazard) refreshes while overlapping and Unregisters explicitly.
         Passthrough,
 
-        // Probe filter only, TIMER-ONLY release — no separation early-out. Physics stays
-        // on, so the collider physically shoves the slime instead of re-attaching it.
-        // For surfaces that MOVE and can chase the slime down after it separates
-        // (BambooPlatformV3 whip-back): a separation release would drop the guard the
-        // instant the slime clears, and the chasing surface would re-stick it mid-flight.
+        // Probe filter, timer-only release. For surfaces that MOVE and chase the slime
+        // (BambooPlatformV3 whip-back): separation release re-sticks it mid-flight.
         TimedReattachGuard,
     }
 
@@ -55,9 +48,8 @@ namespace SlimeJumping.Physics
                     continue;
                 }
 
-                // ReattachGuard: also release once slime has physically cleared the collider.
-                // Passthrough: timer only — distance oscillates while transiting a blade body,
-                // a clearance release mid-passthrough would re-collide.
+                // Only ReattachGuard gets the separation early-out: distance oscillates while
+                // transiting a blade body, so a Passthrough clearance release would re-collide.
                 if (modes[i] == IgnoreMode.ReattachGuard)
                 {
                     float dist = Vector2.Distance(rbPosition, c.ClosestPoint(rbPosition));
@@ -70,14 +62,8 @@ namespace SlimeJumping.Physics
             }
         }
 
-        // Registers every collider on `mask` overlapping the slime as ReattachGuard entries.
-        // Used by Launch/Hop/ForceAirborneWithVelocity — prevents instant re-stick to the
-        // surface the slime is leaving, without suppressing physical collision.
-        //
-        // Only REATTACH-GUARD entries are swept; Passthrough entries survive. Wiping them
-        // here used to re-enable Physics2D collision mid-overlap (launching while transiting
-        // a knife blade, or right after a cut while the severed chunk was still registered),
-        // because Passthrough owners register once / on a slow refresh — not every frame.
+        // Launch/Hop clearance: guards overlapping colliders without suppressing physics.
+        // Sweeps ReattachGuard entries only — wiping Passthrough re-enables collision mid-blade.
         public void RegisterOverlapping(Vector2 position, float radius, LayerMask mask)
         {
             for (int i = colliders.Count - 1; i >= 0; i--)
@@ -119,11 +105,8 @@ namespace SlimeJumping.Physics
                     SuppressCollision(col, mode);
                     modes[existing] = mode;
                 }
-                // ReattachGuard -> TimedReattachGuard upgrade: drop the separation early-out
-                // so the full timer holds. Matters when launch clearance already registered
-                // this collider (RegisterOverlapping runs before carrier.Detach in Launch());
-                // without the upgrade the entry would keep separation release and a chasing
-                // surface could still re-stick. No physics change — both modes keep it on.
+                // Upgrade drops the separation early-out: launch clearance registers this
+                // collider first, and a chasing surface would re-stick on separation release.
                 if (modes[existing] == IgnoreMode.ReattachGuard && mode == IgnoreMode.TimedReattachGuard)
                     modes[existing] = mode;
                 return;

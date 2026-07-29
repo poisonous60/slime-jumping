@@ -5,27 +5,13 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Granite Blast (그라니테 블라스트) — energy cannon with three configurable firing modes.
-    /// Branching: lightning tendrils that arc out and rain down on the ground around the target.
-    /// Beam: a sustained thick laser drawn from muzzle to first blocker.
-    /// Burst: a cone of fast bullet projectiles.
-    /// FSM: Idle → Detecting → PreFire (준비) → FireStart (시작) → Firing (중) → PostFire (이후) → Cooldown.
-    /// Hits push the slime via SlimeController.AddExternalVelocity (no stun, no input lockout).
-    ///
-    /// This is the Core partial: serialized fields, FSM dispatch, transitions, public API.
-    /// Mode-specific code lives in sibling partial files (Branching/Beam/Burst), and the
-    /// support helpers (Targeting/Telegraph/Impact) live next to them.
-    /// </summary>
+    /// <summary>Energy cannon. FSM: Idle → Detecting → PreFire → FireStart → Firing → PostFire → Cooldown. Core partial; mode code lives in the Branching/Beam/Burst/Mortar siblings.</summary>
     public partial class GraniteBlastEmitter : MonoBehaviour
     {
         public enum FireMode { Branching, Beam, Burst, Mortar }
         public enum State { Idle, Detecting, PreFire, FireStart, Firing, PostFire, Cooldown }
-        // Beam tracking strategies after spawn:
-        //   InitialLagThenLive — initial dir snapshots the lagged trail position, then
-        //                        deg/sec rotation tracks the LIVE slime (no lag).
-        //   ContinuousLag      — every frame the rotation target is the lagged trail
-        //                        position (slime's pos N seconds ago).
+        // InitialLagThenLive — initial dir from the lagged trail, then tracks the LIVE slime.
+        // ContinuousLag — rotation target is always the lagged trail position.
         public enum BeamTrackMode { InitialLagThenLive, ContinuousLag }
 
         [Header("Emitter Presets (per mode — each one overwrites the inspector blocks below as a set)")]
@@ -38,9 +24,8 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private GraniteBlastEmitterPreset burstPreset;
         [Tooltip("Preset applied when the active FireMode resolves to Mortar.")]
         [SerializeField] private GraniteBlastEmitterPreset mortarPreset;
-        // Per-slot 'last applied' caches so OnValidate detects which slot's
-        // reference changed and re-applies just that one — local field edits
-        // (with the same preset still attached) survive untouched.
+        // Per-slot 'last applied' caches: OnValidate re-applies only the slot whose
+        // reference changed, so local field edits survive.
         [FormerlySerializedAs("_lastAppliedPreset")]
         [SerializeField, HideInInspector] private GraniteBlastEmitterPreset _lastAppliedBranching;
         [SerializeField, HideInInspector] private GraniteBlastEmitterPreset _lastAppliedBeam;
@@ -145,11 +130,8 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Optional A* navigation graph. When set, Branching tendrils route through navGraph.FindPath(muzzle, slime) ONLY IF a direct line from muzzle to slime is blocked by walls (navWallMask). Scene reference — kept on the emitter (cannot live in a ScriptableObject asset).")]
         [SerializeField] private GraniteBlastNavGraph navGraph;
 
-        // --- proxy accessors: keep original field names so partial files
-        // (Branching/Beam/Burst/Targeting/Impact) read them unchanged. Each one
-        // pulls from the assigned config asset; if no config is assigned the
-        // proxy returns the original code default so a missing reference does
-        // not produce a NullReferenceException at runtime.
+        // --- config proxies: keep the original field names for the partial files.
+        // Fall back to code defaults when no config asset is assigned.
         private LayerMask navWallMask => branchingConfig != null ? branchingConfig.navWallMask : (LayerMask)(1 << 7);
         private float navPathCostJitter => branchingConfig != null ? branchingConfig.navPathCostJitter : 0.35f;
         private float navEntryJitter => branchingConfig != null ? branchingConfig.navEntryJitter : 0.3f;
@@ -192,7 +174,6 @@ namespace SlimeJumping.Mechanisms
         private float burstFlashInterval => burstConfig != null ? burstConfig.burstFlashInterval : 0f;
         private float burstFlashTravelSpeed => burstConfig != null ? burstConfig.burstFlashTravelSpeed : 150f;
 
-        // Mortar proxies — kept locally (used by GraniteBlastEmitter.Mortar.cs partial).
         public GraniteBlastMortarConfig MortarConfig => mortarConfig;
 
         [Header("Visual Colors")]
@@ -253,30 +234,23 @@ namespace SlimeJumping.Mechanisms
         private float graceTimer;
         private bool indicatorOn;
 
-        // Range zone tracking for the cooltime-skip toggles. -1 = unknown (first sample
-        // after enable), 0 = Close, 1 = Mid, 2 = Far. Updated each Update; on Close/Mid
-        // entry we optionally zero the Cooldown timer.
+        // -1 = unknown, 0 = Close, 1 = Mid, 2 = Far.
         private int lastRangeZone = -1;
 
         // Locked at PreFire entry so all phases use the same aim.
         private Vector3 lockedOrigin;
         private Vector2 lockedDir;
 
-        // Charge-glow runtime — base scale captured on first Play. Lives here (Core)
-        // because charge-glow drive is shared across modes.
         private Vector3 chargeGlowBaseScale = Vector3.one;
         private bool chargeGlowCaptured;
 
-        // Per-burst feedback gate. Branching mode fires up to tendrilCount
-        // tendrils per burst; without gating each one would fire its own
-        // freeze + camera impulse. Increment at FireStart, consume once.
+        // Per-burst feedback gate: Branching fires many tendrils per burst, each would
+        // otherwise trigger its own freeze + camera impulse.
         private int feedbackBurstId;
         private int lastFeedbackFiredBurstId = -1;
 
-        // Active Beam GameObject tracker — set by SpawnBeam, destroyed by Cancel.
-        // Lets external code (GraniteBlastEmitterAttackable) kill the in-flight laser
-        // mid-fire. Tendrils/burst flashes are NOT tracked here — they're allowed to
-        // finish their natural lifetime per design.
+        // Only the Beam is tracked so Cancel() can kill it mid-fire; tendrils / burst
+        // flashes are left to finish their natural lifetime by design.
         private GraniteBlastBeam activeBeam;
         internal void RegisterActiveBeam(GraniteBlastBeam beam) { activeBeam = beam; }
 
@@ -308,15 +282,13 @@ namespace SlimeJumping.Mechanisms
         public float StunOnHitDuration => stunOnHitDuration;
         public SlimeJumping.Interfaces.DamageType StunDamageType => stunDamageType;
 
-        // Routes a slime hit through ApplyHazardEffect (combined-channel, legacy
-        // stun path) when stun is configured, else returns false so the caller
-        // falls back to its own ApplyHazardPush logic.
+        // Routes the hit through the combined stun channel when stun is configured;
+        // false = caller should fall back to its own ApplyHazardPush.
         public bool TryApplyStunOnHit(SlimeController slime, Vector2 pushDir, float impulseMagnitude, Vector2 hitPoint)
         {
             if (stunOnHitDuration <= 0f || slime == null) return false;
-            // Routed through the (effect, hitPoint) overload so OnHazardPushed fires
-            // with the contact point — burn-mark + hit-flash visuals trigger the same
-            // way they do on the stun-less push channel.
+            // hitPoint overload: the 1-arg ApplyHazardEffect never fires OnHazardPushed, so
+            // the burn-mark / hit-flash visuals would be skipped.
             slime.ApplyHazardEffect(new SlimeJumping.Interfaces.HazardEffect
             {
                 knockbackForce = impulseMagnitude,
@@ -327,10 +299,8 @@ namespace SlimeJumping.Mechanisms
             return true;
         }
 
-        // One-time hit feedback (HitStop + camera shake) per burst. Branching
-        // mode fires up to tendrilCount tendrils per burst — gating here
-        // prevents Cinemachine impulse stacking and Time.timeScale dip
-        // re-extension on every same-burst hit.
+        // One HitStop + shake per burst — ungated, same-burst hits stack Cinemachine
+        // impulses and keep re-extending the Time.timeScale dip.
         public void TryFireHitStopFeedback()
         {
             if (lastFeedbackFiredBurstId == feedbackBurstId) return;
@@ -342,10 +312,8 @@ namespace SlimeJumping.Mechanisms
 
         void Start()
         {
-            // Apply the preset matching the currently-configured static `mode`
-            // so detection-phase values (detectionDelay / loseSightGrace / etc.)
-            // are sane before the first shot. EnterPreFire re-applies once the
-            // actual fire mode is locked (relevant for distance-based selection).
+            // Detection-phase values must be sane before the first shot; EnterPreFire
+            // re-applies once the actual fire mode is locked.
             ApplyPreset(GetPresetForMode(mode));
 
             if (target == null)
@@ -359,12 +327,8 @@ namespace SlimeJumping.Mechanisms
         }
 
 #if UNITY_EDITOR
-        // Edit-time auto-apply per slot: only when *that slot's* reference
-        // changes, so local field edits (with the same preset still attached)
-        // survive. If multiple slots are reassigned in the same validate pass
-        // they're applied in order — the inspector ends up showing the
-        // last-applied slot's values, which is fine since each shot re-applies
-        // the right one at runtime anyway.
+        // Applies only the slot whose reference changed, so local field edits survive.
+        // Multiple slots reassigned at once: inspector shows the last one applied.
         void OnValidate()
         {
             if (branchingPreset != _lastAppliedBranching)
@@ -402,9 +366,7 @@ namespace SlimeJumping.Mechanisms
             return null;
         }
 
-        // Copies every preset field onto the emitter's serialized field of the
-        // same name. No-op when source is null. Field-by-field (not reflection)
-        // so it stays trivially debuggable and rename-safe.
+        // Field-by-field copy rather than reflection — debuggable and rename-safe.
         private void ApplyPreset(GraniteBlastEmitterPreset p)
         {
             if (p == null) return;
@@ -475,10 +437,8 @@ namespace SlimeJumping.Mechanisms
             slimeWorldTrail.Clear();
         }
 
-        // External trigger entry point. Skips auto-detection and goes straight into
-        // PreFire (so the configured telegraph still plays). Ignored if the emitter
-        // is already firing — prevents trigger double-fires from chained re-entries.
-        // Returns true on accepted, false if rejected.
+        // External trigger entry: skips detection, straight to PreFire. Rejected while
+        // already firing so chained triggers can't double-fire.
         public bool FireOnce()
         {
             if (state != State.Idle && state != State.Cooldown) return false;
@@ -486,18 +446,14 @@ namespace SlimeJumping.Mechanisms
             return true;
         }
 
-        // External shutdown entry point. Aborts the firing FSM and destroys the
-        // currently active Beam GameObject (if any). In-flight tendrils / burst
-        // flashes are NOT touched — they keep their natural lifetime.
-        // Used by GraniteBlastEmitterAttackable when the slime contacts the emitter.
+        // External abort. Kills the active Beam; in-flight tendrils / burst flashes
+        // keep their natural lifetime.
         public void Cancel()
         {
             HideTelegraph();
             StopChargeGlow();
-            // StopChargeGlow uses StopEmitting so live particles play out their
-            // remaining lifetime — fine for normal PostFire, but on a hostile
-            // cancel the lingering charge glow looks like the blast is still
-            // winding up. Wipe the in-flight particles too.
+            // StopChargeGlow only stops emission; on a cancel the lingering particles
+            // read as "still charging", so wipe them too.
             if (chargeGlow != null) chargeGlow.Clear(true);
             if (muzzleFlash != null)
             {
@@ -510,10 +466,8 @@ namespace SlimeJumping.Mechanisms
                 activeBeam = null;
             }
             EnterIdle();
-            // Halt the FSM Update so the emitter cannot re-enter Detecting → PreFire
-            // while the slime is still inside detectionRange. Without this, the
-            // charge glow we just cleared would re-spawn within detectionDelay.
-            // OnDisable also runs StopChargeGlow + state reset as a safety net.
+            // Halt Update, else the emitter re-enters Detecting while the slime is still
+            // in range and the charge glow we just cleared respawns within detectionDelay.
             enabled = false;
         }
 
@@ -552,8 +506,7 @@ namespace SlimeJumping.Mechanisms
 
                 case State.FireStart:
                     UpdateChargeGlow(0f, preFireDuration); // hold full
-                    // Burst interval mode releases flashes one-at-a-time across the
-                    // FireStart + Firing window — drive its scheduler from FireStart too.
+                    // Burst interval mode spans FireStart + Firing, so drive it here too.
                     SpawnFiringWaveIfDue();
                     stateTimer -= dt;
                     if (stateTimer <= 0f) EnterFiring();
@@ -609,18 +562,13 @@ namespace SlimeJumping.Mechanisms
             stateTimer = preFireDuration;
             ApplyIndicator(true);
 
-            // Re-select mode by current distance before locking origin/direction so
-            // the telegraph (and all downstream FSM phases) commit to the chosen mode.
+            // Re-select before locking aim, so telegraph and all later phases agree on the mode.
             if (distanceBasedMode) mode = SelectModeByDistance();
 
-            // Apply the per-mode emitter preset now that the firing mode is
-            // locked — Phase Timing / Hit / Knockback / Audio / Visual / etc.
-            // all swap to whatever the chosen mode's preset specifies. Detection
-            // values applied here also take effect for the NEXT detection cycle.
+            // Detection values applied here take effect on the NEXT detection cycle.
             ApplyPreset(GetPresetForMode(mode));
 
-            // Lock origin and direction at the start of PreFire so the telegraph line
-            // matches the actual shot. (Even though spawning happens at FireStart.)
+            // Lock aim at PreFire so the telegraph matches the shot spawned at FireStart.
             lockedOrigin = AimOrigin();
             lockedDir = AimDirection2D();
 
@@ -638,14 +586,12 @@ namespace SlimeJumping.Mechanisms
             HideTelegraph();
 
             if (muzzleFlash != null) muzzleFlash.Play(true);
-            // Branching/Mortar play fireStartSound per-projectile (in their spawn loops)
-            // instead of one global hit at FireStart, so each bolt/mortar has its own
-            // muzzle crack.
+            // Branching/Mortar play fireStartSound per projectile inside their spawn loops.
             if (fireStartSound != null && mode != FireMode.Branching && mode != FireMode.Mortar)
                 SoundService.PlayAt(fireStartSound, lockedOrigin, SoundCategory.SFX_Object, fireStartVolume);
 
-            // Pre-plan muzzle parameters now; endpoints are resolved at spawn time
-            // against the live trail so post-PreFire movement is followed.
+            // Endpoints resolve at spawn time against the live trail, so movement after
+            // PreFire is still followed.
             switch (mode)
             {
                 case FireMode.Branching:
@@ -660,8 +606,7 @@ namespace SlimeJumping.Mechanisms
                     burstStartTime = Time.time;
                     if (burstFlashInterval > 0f)
                     {
-                        // Interval mode: release just the first flash now; the rest are
-                        // dispatched by SpawnFiringWaveIfDue based on elapsed time.
+                        // Interval mode: first flash now, rest dispatched by SpawnFiringWaveIfDue.
                         SpawnBulletsUpTo(1);
                     }
                     else
@@ -689,9 +634,8 @@ namespace SlimeJumping.Mechanisms
             // Make sure all planned spawns went out, even at low frame rates.
             if (mode == FireMode.Branching) SpawnTendrilsUpTo(pendingTendrils.Count);
             else if (mode == FireMode.Burst) SpawnBulletsUpTo(pendingBullets.Count);
-            // Mortar mode does NOT flush remaining spawns at PostFire — by design,
-            // spawning stops the moment Firing ends so the trailing projectiles
-            // arrive within the same fire window.
+            // Mortar deliberately does NOT flush — spawning stops when Firing ends so the
+            // trailing projectiles still arrive inside the same fire window.
 
             StopChargeGlow();
             if (postFireSound != null)
@@ -707,11 +651,8 @@ namespace SlimeJumping.Mechanisms
             mortarsSpawned = 0;
         }
 
-        // Tracks which range zone (Close/Mid/Far) the target currently sits in and,
-        // when the zone transitions into Close or Mid, optionally zeroes the
-        // Cooldown timer so the next shot can fire immediately. Only the
-        // distance-based mode setup uses these toggles; static-mode emitters
-        // ignore the zone change.
+        // On entering Close/Mid, optionally zeroes the Cooldown timer. Distance-based
+        // emitters only.
         private void UpdateRangeZoneAndMaybeSkipCooldown()
         {
             if (!distanceBasedMode || target == null)
@@ -736,8 +677,7 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // Distance-based mode pick. Falls back to the inspector-static `mode` when
-        // the target is missing — keeps FireOnce() trigger shots deterministic.
+        // Falls back to the static `mode` with no target, keeping FireOnce() deterministic.
         private FireMode SelectModeByDistance()
         {
             if (target == null) return mode;
@@ -794,8 +734,7 @@ namespace SlimeJumping.Mechanisms
                 {
                     int total = pendingTendrils.Count;
                     if (total <= 0) return;
-                    // Branching staggers across the Firing window only — FireStart already
-                    // dispatched its share. Skip while still in FireStart.
+                    // Branching staggers over the Firing window only; FireStart sent its share.
                     if (state != State.Firing) return;
                     float prog = firingDuration > 0f
                         ? Mathf.Clamp01(1f - (stateTimer / firingDuration))
@@ -817,8 +756,7 @@ namespace SlimeJumping.Mechanisms
                     int desired;
                     if (burstFlashInterval > 0f)
                     {
-                        // Interval mode: 1 flash every burstFlashInterval seconds since FireStart.
-                        // Spans both FireStart and Firing.
+                        // Interval mode: 1 flash per burstFlashInterval since FireStart, across both phases.
                         float elapsed = Time.time - burstStartTime;
                         desired = 1 + Mathf.FloorToInt(elapsed / burstFlashInterval);
                     }

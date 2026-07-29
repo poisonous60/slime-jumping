@@ -99,10 +99,7 @@ namespace SlimeJumping.Mechanisms
                 SliceEffect.Spawn(sliceEffectPrefab, contact, signedTangent);
             if (impulseEmitter != null) impulseEmitter.Emit(impulseForce);
 
-            // Slice is part of the stun reaction: every hit slices AND stuns. Eyes/control
-            // come from the Stunned state below — read velocity for the cut angle BEFORE
-            // ApplyHazardEffect overwrites it with knockback. Skip only if another override
-            // owns the slime.
+            // Read velocity for the cut angle BEFORE ApplyHazardEffect overwrites it with knockback.
             if (splitSequence != null && !slime.HasOverride)
                 splitSequence.Begin(slime, slime.Velocity);
 
@@ -118,9 +115,9 @@ namespace SlimeJumping.Mechanisms
         {
             var ownCol = GetComponent<Collider2D>();
             var bodyCols = CollectBodyColliders(ownCol);
-            // Include the blade trigger itself — without it, SurfaceProbe treats blade's
-            // overlap as a surface and slime attaches. IgnoredColliderList auto-skips
-            // Physics2D.IgnoreCollision for triggers so OnTriggerEnter/Stay still fire.
+            // Without the blade trigger in the list, SurfaceProbe treats its overlap as a surface
+            // and the slime attaches. IgnoredColliderList skips IgnoreCollision for triggers, so
+            // OnTriggerEnter/Stay still fire.
             if (ownCol != null) bodyCols.Add(ownCol);
             if (bodyCols.Count == 0) yield break;
 
@@ -129,15 +126,12 @@ namespace SlimeJumping.Mechanisms
 
             passthroughActive = true;
 
-            // IgnoredColliderList manages Physics2D.IgnoreCollision lifecycle — registering
-            // here suppresses both surface-detection (probe) and physics contact.
             for (int b = 0; b < bodyCols.Count; b++)
                 slime.RegisterIgnoredCollider(bodyCols[b], duration);
 
             yield return new WaitForSeconds(duration);
 
-            // Don't release while slime is still overlapping — refresh timers each frame
-            // until the slime has fully cleared the body.
+            // Releasing while the slime still overlaps would re-hit it — refresh until it clears.
             while (AnyOverlap(slimeCol, bodyCols))
             {
                 for (int b = 0; b < bodyCols.Count; b++)

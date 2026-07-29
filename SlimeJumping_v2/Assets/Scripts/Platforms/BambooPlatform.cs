@@ -5,17 +5,11 @@ using SlimeJumping.Settings;
 
 namespace SlimeJumping.Platforms
 {
-    // Vertical bamboo: single Rigidbody2D at base; N child segments form a collider-only
-    // polyline that approximates a smooth circular-arc cantilever curve. A separate single
-    // visual mesh (procedural cylinder) is bent by the SlimeJumping/BambooBend shader using
-    // the SAME closed-form curve, so visual and collider stay sub-pixel coincident.
-    //
-    // One ODE state (currentAngle, angularVel) drives tip deflection. Shape function is
-    // hardcoded linear h(t)=t — local tangent angle scales linearly along height — because
-    // the shader is hardcoded to that form to guarantee visual/collider match.
-    //
-    // All segment colliders share the root rigidbody → slime sees one body, no carrier
-    // handoff between segments.
+    // Vertical bamboo: one Rigidbody2D at the base, N collider-only child segments forming a
+    // polyline, plus a single procedural cylinder bent by SlimeJumping/BambooBend from the SAME
+    // closed-form curve. Shape function is hardcoded linear h(t)=t on both sides — the shader is
+    // hardcoded to that form, and any mismatch separates collider from visual.
+    // All segment colliders share the root rigidbody → one body to the slime, no carrier handoff.
     public class BambooPlatform : PlatformMotor, ISurfaceAnchorProvider
     {
         public enum SegmentColliderShape { Capsule, Box }
@@ -56,9 +50,8 @@ namespace SlimeJumping.Platforms
         [SerializeField, Range(0f, 1f)] float shadowDarken = 0.60f;
 
         [Header("Visual — Node Geometry (마디)")]
-        // Visible node rings always track segmentCount: shader scars sit at t = k/segmentCount,
-        // the same parameter the Segment_XX colliders split on, so rings land on the collider
-        // joints. Spacing follows bambooLength automatically (ring at world y = k/segmentCount * L).
+        // Shader scars sit at t = k/segmentCount, the same split the Segment_XX colliders use,
+        // so visible rings land on the collider joints.
         [Tooltip("Bulge radius multiplier — real bamboo nodes swell outward ~5-10% wider than the internodes. This is the defining 3D feature.")]
         [SerializeField, Range(0f, 0.5f)] float bulgeAmount = 0.10f;
         [Tooltip("Bulge half-width along the UV-V cycle. Controls how broad the swelling is around each node center.")]
@@ -92,13 +85,6 @@ namespace SlimeJumping.Platforms
         [Tooltip("Height segments along the cylinder (more = smoother curve in shader bend).")]
         [SerializeField, Range(4, 64)] int visualHeightSegments = 24;
 
-        // Gameplay knobs — naturalFreqHz, dampingRatio, maxDeflectionDeg, clampRestitution,
-        // riderPumpGain, chargePumpScale, riderTorqueScale, passiveDecayRate, riderDecayRate,
-        // maxTipSpeed, velocityTransferScale, carrierMinContribution, carrierDistanceScale,
-        // slamMinHorizontalSpeed, slamReattachLockout, grabEnterDot, tiltTorque,
-        // chargingTiltScale, grabModeCarrierScale — all moved into the BambooSettings asset
-        // referenced at the top of this component. Per-stalk inspector fields below stay
-        // local (geometry, visual, surface override, mode toggle).
 
         Vector2 pivotWorldPos;
         float baseRotation;
@@ -117,9 +103,8 @@ namespace SlimeJumping.Platforms
         MeshRenderer visualRenderer;
         MaterialPropertyBlock propertyBlock;
 
-        // World-space tip position cache, refreshed each FU in OnAfterMotion after the
-        // segment polyline has been recomputed. Read by SlimeController.BambooGrab to
-        // lock rb.position pre-probe.
+        // Refreshed each FU in OnAfterMotion; SlimeController.BambooGrab reads it to lock
+        // rb.position pre-probe.
         Vector2 cachedTipWorldPos;
 
         static readonly int BendAngleId = Shader.PropertyToID("_BendAngleDeg");
@@ -150,33 +135,21 @@ namespace SlimeJumping.Platforms
         public bool UsesTipGrab => settings.enableTipGrab;
         public bool UsesSideReboundV2 => settings.enableSideReboundV2;
         public float GrabEnterDot => settings.grabEnterDot;
-        /// <summary>Multiplier on the charge-power launch component for a tip-grab launch
-        /// (the up-the-stalk jump). Read by SlimeController.Launch.</summary>
+        /// <summary>Charge-power multiplier for a tip-grab launch (the up-the-stalk jump).</summary>
         public float GrabLaunchPowerScale => settings.grabLaunchPowerScale;
-        /// <summary>Multiplier on the charge auto-drift speed while tip-grabbed (charge fills
-        /// faster than on flat ground). Read by SlimeController.FixedUpdateCharging.</summary>
+        /// <summary>Charge auto-drift speed multiplier while tip-grabbed.</summary>
         public float GrabChargeFillScale => settings.grabChargeFillScale;
-        /// <summary>Override for chargeFullAimTime (edge grace before auto-launch) while
-        /// tip-grabbed. -1 = use the slime default. Read by SlimeController.FixedUpdateCharging.</summary>
+        /// <summary>chargeFullAimTime override while tip-grabbed. -1 = use the slime default.</summary>
         public float GrabChargeFullAimTime => settings.grabChargeFullAimTime;
         public float V2CarrierScale => settings.v2CarrierScale;
         public float SegmentRadius => segmentRadius;
         public float TipSwingSpeed => Mathf.Abs(angularVel * Mathf.Deg2Rad) * bambooLength;
-        /// <summary>World-space tip position cached at the end of each FixedUpdate from
-        /// the same centerline math used for collider segment placement and the visual
-        /// shader bend. SlimeController.BambooGrab reads this each FU to anchor the
-        /// grabbed slime.</summary>
+        /// <summary>Tip world pos cached each FixedUpdate from the same centerline math as the collider segments and the shader bend.</summary>
         public Vector2 GetTipWorldPos() => cachedTipWorldPos;
-        /// <summary>World-space direction of the bamboo's local up axis at the tip
-        /// (i.e. the bend tangent at t=1). Used by SlimeController.BambooGrab to offset
-        /// the grabbed slime above the tip cap so its CircleCollider doesn't penetrate
-        /// the topmost capsule (which would cause the physics resolver to fight the
-        /// per-FU position lock and produce visible jitter).</summary>
-        /// <summary>Rest axis of the stalk in world space (root local +Y). The root
-        /// rigidbody holds the authored tilt (baseRotation) and never rotates at runtime —
-        /// bend lives in the child segments — so this is the stalk's "vertical" whatever
-        /// Z rotation the designer gave it. Every up/side test uses this instead of world
-        /// gravityUp, otherwise a tilted bamboo looks leaned but behaves upright.</summary>
+        /// <summary>Bend tangent at t=1. BambooGrab offsets the slime above the tip cap with it —
+        /// without the offset the resolver fights the per-FU position lock and jitters.</summary>
+        /// <summary>Stalk rest axis in world space (root local +Y); the root holds the authored tilt
+        /// and never rotates. Every up/side test uses this, else a tilted bamboo behaves upright.</summary>
         public Vector2 StalkUp
         {
             get
@@ -186,9 +159,7 @@ namespace SlimeJumping.Platforms
             }
         }
 
-        /// <summary>Signed component of a world velocity perpendicular to the stalk axis.
-        /// For an upright bamboo (StalkUp = +Y) this reduces exactly to velocity.x, which
-        /// is what the slam guard and V2 bend pump used before tilt support.</summary>
+        /// <summary>Signed velocity component perpendicular to the stalk axis (= velocity.x when upright).</summary>
         float PerpendicularSpeed(Vector2 worldVelocity)
         {
             Vector2 up = StalkUp;
@@ -216,17 +187,11 @@ namespace SlimeJumping.Platforms
             hasPrevRiderVel = false;
 
             CacheChildren();
-            // Seed the tip cache so a grab fired on the very first FU (before
-            // OnAfterMotion has populated it) reads a sensible value.
+            // Seed the tip cache: a grab on the very first FU runs before OnAfterMotion fills it.
             cachedTipWorldPos = transform.TransformPoint(new Vector3(0f, bambooLength, 0f));
         }
 
-        /// <summary>
-        /// Guarantees `settings` is non-null. If no asset is wired, builds a runtime
-        /// BambooSettings instance whose fields hold the class-default values — keeps
-        /// pre-refactor scenes working without manual migration. Public so OnValidate
-        /// and the editor "Refresh" / "Rebuild" context-menu paths can also rely on it.
-        /// </summary>
+        /// <summary>Guarantees `settings` is non-null; with no asset wired, builds a runtime instance holding the class defaults.</summary>
         void EnsureSettings()
         {
             if (settings == null)
@@ -249,14 +214,9 @@ namespace SlimeJumping.Platforms
 
         static string SegmentName(int i) => $"Segment_{i:D2}";
 
-        // VelocityTransferScale is queried by PlatformCarrier at launch. Carrier computes
-        // ω × arm using rb.position (base pivot) and slime.transform.position. For (mostly)
-        // vertical bamboo, |arm| ≈ slime height along bamboo, so carrier supplies
-        // tipSpeed * t where t = armLen / bambooLength.
-        //
-        // We want: finalCarrier = tipSpeed * (carrierMin + carrierDistanceScale * t) * velocityTransferScale.
-        // So: VelocityTransferScale = ((carrierMin + carrierDistanceScale * t) / t) * velocityTransferScale.
-        // The 1/t blowup at t→0 cancels because ω×arm→0 too; clamp t to avoid div-by-zero.
+        // Carrier already supplies tipSpeed * t (t = armLen / bambooLength), so it is divided back
+        // out here: scale = ((carrierMin + carrierDistanceScale * t) / t) * velocityTransferScale.
+        // The 1/t blowup at t→0 cancels because ω×arm→0 too; t is clamped to avoid div-by-zero.
         public override float VelocityTransferScale
         {
             get
@@ -268,22 +228,15 @@ namespace SlimeJumping.Platforms
                 float t = Mathf.Clamp01(arm.magnitude / Mathf.Max(bambooLength, 1e-4f));
                 float requested = settings.carrierMinContribution + settings.carrierDistanceScale * t;
                 float carrierGives = Mathf.Max(t, 1e-3f);
-                // Tip-grab gives the slime an extra carrier multiplier so the swing-back
-                // launch can be tuned independently from side-attach launches. Slime's
-                // CurrentBambooGrab is cleared in ChangeState's exit-to-Airborne hook,
-                // which runs AFTER carrier.GetLaunchVelocity in Launch() — so the boost
-                // applies on the launching frame.
+                // CurrentBambooGrab is cleared in ChangeState's exit-to-Airborne hook, which runs
+                // AFTER carrier.GetLaunchVelocity in Launch() — so the boost still applies on the
+                // launching frame.
                 float grabBoost = cachedSlime.CurrentBambooGrab == this ? settings.grabModeCarrierScale : 1f;
                 float v2Boost = cachedSlime.CurrentBambooV2Rebound == this ? settings.v2CarrierScale : 1f;
 
-                // Boost-falloff gate — same model as SpringyBranchPlatform / TautLine.
-                // slime.Velocity here already holds aim power + hyperdash inheritance but
-                // NOT the bamboo's carrier contribution (that's what we're scaling), so a
-                // launch that is already fast gets progressively less stalk momentum piled
-                // on top. Together with maxTipSpeed this is the whole predictability
-                // budget: the most a stalk can ever give is
-                // maxTipSpeed * velocityTransferScale * (grab|v2 scale), and it fades to
-                // zero above boostFalloffEndSpeed.
+                // Boost-falloff gate — slime.Velocity here excludes the bamboo's carrier
+                // contribution (that is what we are scaling), so an already-fast launch gets
+                // progressively less stalk momentum piled on top.
                 float preBonusSpeed = cachedSlime.Velocity.magnitude;
                 float speedMul = settings.boostFalloffEndSpeed > settings.boostFalloffStartSpeed
                     ? 1f - Mathf.Clamp01(Mathf.InverseLerp(settings.boostFalloffStartSpeed, settings.boostFalloffEndSpeed, preBonusSpeed))
@@ -293,8 +246,7 @@ namespace SlimeJumping.Platforms
             }
         }
 
-        // Report the ODE angular velocity to PlatformCarrier so it can compute ω × arm
-        // for slime at any height. Position remains fixed (base pivot).
+        // Position stays at the base pivot; only ω is reported so carrier can compute ω × arm.
         public override Vector2 Velocity { get => Vector2.zero; protected set { } }
         public override float AngularVelocity { get => angularVel; protected set { } }
 
@@ -309,13 +261,8 @@ namespace SlimeJumping.Platforms
             return new Vector2(-arm.y, arm.x) * radPerSec * dt;
         }
 
-        /// <summary>True when this bamboo is the slime's active tip-grab target.
-        /// Lazy-resolves the SlimeController reference (same lookup VelocityTransferScale
-        /// uses) so the grab-aware swaps in ComputeSpringCoeffs / ComputeMotion / ApplyTiltTorque
-        /// actually fire — without this lazy init, cachedSlime stayed null in normal play
-        /// (it was only populated inside VelocityTransferScale, which runs at launch), so
-        /// every grab-mode knob (grabSpringFreqHz, grabDampingRatio, grabMaxDeflectionDeg,
-        /// grabHoldBendDeg) silently fell back to the side-attach defaults.</summary>
+        /// <summary>True when this bamboo is the slime's tip-grab target. Must lazy-resolve cachedSlime:
+        /// otherwise it is only populated at launch and every grab-mode knob silently falls back.</summary>
         bool IsGrabbedByCachedSlime()
         {
             if (cachedSlime == null) cachedSlime = FindFirstObjectByType<SlimeController>();
@@ -406,18 +353,10 @@ namespace SlimeJumping.Platforms
             angularVel = Mathf.Clamp(angularVel, -maxAngularVelDeg, maxAngularVelDeg);
         }
 
-        /// <summary>
-        /// First-contact impact bend for V2: drives the tip angular velocity straight off the
-        /// slime's tangential impact speed at the contact height, so a faster side hit auto-bends
-        /// the stalk farther. Uses the SAME projection/units as ApplyV2LaunchReleaseKick — the
-        /// launch recoil the player already likes — so impact and recoil stay consistent and each
-        /// tunes from a single scale. Replaces the impulse/curve pump for the impact frame; see
-        /// the firstAttach branch in ApplyRiderInfluence.
-        /// </summary>
-        /// <summary>True when the first-contact impact bend should fire. Additive mode needs
-        /// v2BendImpactSpeedScale > 0; SpeedCurve mode needs a non-empty v2BendAngleByImpactSpeed
-        /// graph. When false, the side hit falls back to the impulse pump path in
-        /// ApplyRiderInfluence.</summary>
+        /// <summary>V2 first-contact impact bend: tip angular velocity straight off tangential impact
+        /// speed, using the SAME projection/units as ApplyV2LaunchReleaseKick so both tune together.</summary>
+        /// <summary>True when the impact bend should fire: Additive needs v2BendImpactSpeedScale > 0,
+        /// SpeedCurve a non-empty curve; otherwise the impulse pump path runs instead.</summary>
         bool UsesV2ImpactBend
         {
             get
@@ -439,13 +378,9 @@ namespace SlimeJumping.Platforms
 
             if (settings.v2ResponseMode == BambooV2ResponseMode.SpeedCurve)
             {
-                // Graph-driven impact bend: the curve maps perpendicular impact speed (m/s) to
-                // a target TIP TRAVEL (metres). Length-normalise that travel to a bend angle
-                // (θ = 2*travel / bambooLength — the arc-cantilever inversion, see
-                // PeakBendDegForTipTravel) so one graph reads the same on every stalk — a
-                // long bamboo reaches the travel at a smaller angle, a short one at a larger
-                // angle. Then convert the target peak angle into the tip angular velocity the
-                // V2 spring needs to reach it. Contact-height shaping still scales the travel.
+                // Curve maps perpendicular impact speed to a target TIP TRAVEL (metres);
+                // θ = 2*travel/bambooLength normalises it so one graph reads the same on a short
+                // and a long stalk.
                 float perpSpeed = BambooV2Response.SignedPerpendicularSpeed(arm, impactVelocity);
                 float tipTravel = BambooV2Response.EvaluateTipTravelByImpactSpeed(
                     settings.v2BendTipTravelByImpactSpeed, Mathf.Abs(perpSpeed)) * heightScale;
@@ -504,12 +439,8 @@ namespace SlimeJumping.Platforms
         {
             float IBranch = rb.mass * bambooLength * bambooLength / 3f;
             float ITotal = IBranch + (riderAttached ? currentRiderMass * currentRiderArmSqr : 0f);
-            // Spring stiffness AND damping ratio both swap to grab-specific values while
-            // this bamboo is the slime's tip-grab target. This lets the side-attach
-            // physics stay stiff/well-damped (slime hopping off shouldn't leave the
-            // bamboo ringing, and side hits shouldn't fling the cap), while the grab
-            // mode can be soft/underdamped — giving the player a wide sideways bend
-            // range and resonance-pumping headroom.
+            // Side-attach stays stiff/well-damped (no ringing after a hop-off, no fling on side
+            // hits); grab mode swaps to soft/underdamped for bend range and resonance pumping.
             bool grabActive = IsGrabbedByCachedSlime();
             bool v2Active = UsesSideReboundV2 && riderAttached;
             float freqHz = settings.naturalFreqHz;
@@ -542,19 +473,16 @@ namespace SlimeJumping.Platforms
 
             Vector2 dv = hasPrevRiderVel ? (riderVelocity - previousRiderVel) : riderVelocity;
 
-            // Re-entry guard mirrors SpringyBranchPlatform's slam-suppress, but for a
-            // bamboo a "slam" is a fast hit across the stalk (not along it), so gate on
-            // the speed perpendicular to StalkUp — |vx| for an upright stalk.
+            // Re-entry slam guard: for a bamboo a "slam" is a fast hit across the stalk, not along
+            // it, so gate on the speed perpendicular to StalkUp — |vx| for an upright stalk.
             bool suppress = firstAttach
                             && (detachTimer < settings.slamReattachLockout)
                             && (Mathf.Abs(PerpendicularSpeed(riderVelocity)) < settings.slamMinHorizontalSpeed);
 
             if (!suppress)
             {
-                // V2 impact frame: drive the bend straight off the slime's impact speed with one
-                // scale (same model as the launch recoil) instead of the impulse/curve pump, so a
-                // faster side hit auto-shakes the stalk harder without curve tuning. Later frames
-                // (sustained pump / charge) still go through the impulse path below.
+                // Impact frame drives the bend off impact speed; later frames (sustained pump /
+                // charge) still go through the impulse path below.
                 if (UsesSideReboundV2 && firstAttach && UsesV2ImpactBend)
                 {
                     ApplyV2ImpactKick(riderWorldPos, riderVelocity);
@@ -589,30 +517,8 @@ namespace SlimeJumping.Platforms
             detachTimer = 0f;
         }
 
-        /// <summary>
-        /// Player A/D input while in tip-grab. Two-channel pump:
-        ///
-        /// 1. Lean channel — held input applies a constant lean torque whose magnitude
-        ///    is tuned so the steady-state bend equals settings.grabHoldBendDeg. This
-        ///    gives a visible static deflection when the player simply holds a direction.
-        ///    Disabled during Charging (chargingTiltScale = 0 by default).
-        ///
-        /// 2. Anti-damping boost channel (C2) — when the held input direction matches
-        ///    the tip's current motion direction (matched-pump condition), an extra torque
-        ///    proportional to |angularVel| is added in the direction of motion. This is
-        ///    the "kid on a swing pushes when going forward" pattern: the player doesn't
-        ///    have to time A↔D flips at the exact swing extremes; merely pushing in the
-        ///    direction of motion injects energy, and the amplitude grows over multiple
-        ///    swings until the soft cap at grabMaxDeflectionDeg. The gain is in 1/s units
-        ///    so above the spring's damping coefficient (2ζω) the effective net damping
-        ///    flips negative while matched. Disabled during Charging by default.
-        ///
-        /// Sign convention: positive currentAngle = CCW (tip toward −X), so dθ/dt > 0
-        /// means the tip is moving toward −X. Pressing A (inputX = −1) pushes the tip
-        /// toward −X, which requires a positive torque; pressing D is symmetric. Hence
-        /// the leading minus in both channels. Matched-pump condition is therefore
-        /// (−inputX) · angularVel &gt; 0 (same sign in the physics-frame).
-        /// </summary>
+        /// <summary>Tip-grab A/D pump: lean channel + anti-damping boost. Sign: +currentAngle = CCW
+        /// (tip toward −X), so A (inputX = −1) needs a positive torque — hence the minus in both channels.</summary>
         public void ApplyTiltTorque(float inputX, bool isCharging)
         {
             if (Mathf.Abs(inputX) < 1e-4f) return;
@@ -632,9 +538,7 @@ namespace SlimeJumping.Platforms
             if (pumpScale > 0f && settings.grabPumpBoostGain > 0f)
             {
                 float angVelRad = angularVel * Mathf.Deg2Rad;
-                // Threshold avoids fighting numerical noise around ω≈0 where sign(ω)
-                // flips rapidly; below the threshold lean alone drives motion until
-                // the bamboo accumulates enough velocity for the boost to lock onto.
+                // Threshold avoids sign(ω) chatter around ω≈0; below it lean alone drives motion.
                 const float pumpVelThresholdRad = 0.05f;
                 bool matched = (-inputX) * angVelRad > 0f;
                 if (matched && Mathf.Abs(angVelRad) > pumpVelThresholdRad)
@@ -656,10 +560,8 @@ namespace SlimeJumping.Platforms
             float springTorque = -stiffness * angleRadFromRest;
             float dampingTorque = -damping * angVelRad;
 
-            // Deflection cap swaps grab vs side: side-attach uses the hard ω=0 clamp
-            // below (predictable saturation for slime hopping off a bent stalk); grab
-            // uses a quartic soft-cap restoring torque added INSIDE the ODE so the bend
-            // asymptotes to grabMaxDeflectionDeg without an artificial velocity wipe.
+            // Side-attach uses the hard clamp below (predictable saturation); grab uses a quartic
+            // soft-cap torque INSIDE the ODE so the bend asymptotes without a velocity wipe.
             bool grabActive = IsGrabbedByCachedSlime();
             bool v2Active = UsesSideReboundV2 && riderAttached;
             float maxAngle = settings.maxDeflectionDeg;
@@ -717,13 +619,8 @@ namespace SlimeJumping.Platforms
         }
 
         // Closed-form circular arc — must match BambooBend.shader exactly.
-        // Sign convention: positive currentAngle = counter-clockwise rotation around +Z
-        // (standard Unity Euler Z, matching the rider-impulse cross product `r × p`). For
-        // linear shape h(t)=t the local tangent angle at fraction t is currentAngle*t and
-        // the centerline is the arc of a circle of radius L/bendRad:
-        //   x(t) = (L/bendRad) * (cos(bendRad*t) - 1)   // negative X for positive bendRad (CCW bend)
-        //   y(t) = (L/bendRad) * sin(bendRad*t)
-        // Degenerate bendRad→0 falls back to straight line along +Y.
+        // +currentAngle = CCW around +Z (matches the rider-impulse r × p sign); with h(t)=t the
+        // centerline is an arc of radius L/bendRad, and bendRad→0 degenerates to a straight +Y.
         Vector2 ComputeCenterlinePoint(float t)
         {
             float bendRad = currentAngle * Mathf.Deg2Rad;
@@ -775,14 +672,12 @@ namespace SlimeJumping.Platforms
             return Mathf.Clamp01(bestT);
         }
 
-        // Place each collider segment as a chord between consecutive centerline samples.
-        // The polyline approximates the same smooth curve the shader bends to, so the
-        // collider surface and visual surface stay coincident.
+        // Segments are chords of the same centerline the shader bends to — that is what keeps
+        // collider and visual surfaces coincident.
         void ApplySegmentTransforms()
         {
-            // Refresh the tip cache every FU regardless of segment availability —
-            // SlimeController.BambooGrab depends on this being current even when the
-            // bamboo is backgroundOnly (no collider segments built).
+            // Refresh before the early-outs: BambooGrab needs a current tip even when
+            // backgroundOnly left no collider segments built.
             Vector2 localTip = ComputeCenterlinePoint(1f);
             cachedTipWorldPos = transform.TransformPoint(localTip);
 
@@ -795,11 +690,9 @@ namespace SlimeJumping.Platforms
                 Vector2 pEnd = ComputeCenterlinePoint((float)(i + 1) / segmentCount);
                 Vector2 chord = pEnd - pStart;
 
-                // Signed angle from +Y (rest direction) to chord, measured CCW around +Z.
-                // Derivation: rotating +Y by α CCW yields (-sin α, cos α). Set this equal to
-                // chord/|chord| → sin α = -chord.x/|chord|, cos α = chord.y/|chord| →
-                // α = atan2(-chord.x, chord.y). Unity Euler Z rotation is CCW for positive α,
-                // matching the rider-impulse sign convention used by ComputeCenterlinePoint.
+                // Signed angle from +Y to chord, CCW around +Z: rotating +Y by α gives
+                // (-sin α, cos α), so α = atan2(-chord.x, chord.y) — same sign convention as
+                // ComputeCenterlinePoint.
                 float chordAngleDeg = Mathf.Atan2(-chord.x, chord.y) * Mathf.Rad2Deg;
                 Vector2 center = (pStart + pEnd) * 0.5f;
 
@@ -823,8 +716,7 @@ namespace SlimeJumping.Platforms
             visualRenderer.SetPropertyBlock(propertyBlock);
         }
 
-        // Shader _NodeFrequency = rings per stalk length. Driven straight off segmentCount
-        // so visible scar rings coincide with the Segment_XX collider joints.
+        // Rings per stalk length; driven off segmentCount so scars sit on the Segment_XX joints.
         float VisibleNodeFrequency() => Mathf.Max(1, segmentCount);
 
         int EffectiveVisualHeightSegments()
@@ -836,15 +728,13 @@ namespace SlimeJumping.Platforms
         }
 
 #if UNITY_EDITOR
-        // Inspector field changes don't go through RebuildSegments — push the visual /
-        // material params directly so colors, scar, bulge, lighting update live in the
-        // editor without a manual rebuild. Mesh-geometry changes (bambooLength,
-        // segmentCount, segmentRadius, visual*Segments, colliderShape) still need
-        // Rebuild Segments because the mesh and colliders are baked at creation time.
+        // Inspector changes push material params live; mesh-geometry fields (bambooLength,
+        // segmentCount, segmentRadius, visual*Segments, colliderShape) are baked at creation
+        // time and still need Rebuild Segments.
         void OnValidate()
         {
-            // delayCall defers past mid-serialization so we don't touch the renderer
-            // before the new field value is committed.
+            // delayCall defers past mid-serialization; touching the renderer before the field
+            // value is committed reads the old value.
             UnityEditor.EditorApplication.delayCall += DeferredRefresh;
         }
 
@@ -869,10 +759,8 @@ namespace SlimeJumping.Platforms
                 Debug.LogWarning($"[BambooPlatform] Visual MeshRenderer missing on {name}.", this);
                 return;
             }
-            // Use the live instance — sharedMaterial on a runtime-created material is
-            // the same object, but if the user dropped an asset reference in
-            // `bendMaterial`, sharedMaterial would mutate the asset. Guard with .material
-            // in play mode for safety, sharedMaterial in edit mode for asset-safe writes.
+            // .material in play mode, sharedMaterial in edit mode — writing sharedMaterial at
+            // runtime would mutate the asset the user dropped into `bendMaterial`.
             var mat = Application.isPlaying ? mr.material : mr.sharedMaterial;
             if (mat == null)
             {
@@ -906,9 +794,6 @@ namespace SlimeJumping.Platforms
         }
 #endif
 
-        // Editor convenience: rebuild segment colliders + the visual mesh to match current
-        // bambooLength / segmentCount / colliderShape / visual fields.
-        // Right-click the component header → Rebuild Segments.
         [ContextMenu("Rebuild Segments")]
         public void RebuildSegments()
         {
@@ -930,9 +815,8 @@ namespace SlimeJumping.Platforms
 
         void DestroyExistingChildren()
         {
-            // Match Unity's "(N)" duplicate suffix too — when user Ctrl+D's a bamboo,
-            // child "Visual" gets renamed "Visual (1)" and exact-string match leaks it,
-            // producing a duplicate Visual on the next Rebuild.
+            // Ctrl+D renames the child to "Visual (1)", so exact-name matching leaks it and the
+            // next Rebuild leaves a duplicate Visual.
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
                 var child = transform.GetChild(i);
@@ -1010,8 +894,7 @@ namespace SlimeJumping.Platforms
             if (shader == null) return null;
 
             var mat = new Material(shader) { name = "BambooBend (Auto)" };
-            // Push _BambooLength on material so the edit-mode rest pose normalizes
-            // height correctly (no MaterialPropertyBlock runs outside play mode).
+            // No MaterialPropertyBlock runs outside play mode, so set these on the material.
             mat.SetFloat(BambooLengthId, bambooLength);
             mat.SetFloat(BendAngleId, 0f);
             mat.SetColor(BambooColorBaseId, stalkColorBase);
@@ -1035,9 +918,8 @@ namespace SlimeJumping.Platforms
             return mat;
         }
 
-        // Procedural straight cylinder, base at y=0, tip at y=length. positionOS is in
-        // world-equivalent units so the BambooBend shader can apply its bend in-place
-        // without having to know any Transform scale.
+        // Straight cylinder, base at y=0, tip at y=length. positionOS is in world-equivalent
+        // units so BambooBend can bend in-place without knowing any Transform scale.
         static Mesh BuildCylinderMesh(int radialSegments, int heightSegments, float radius, float length)
         {
             radialSegments = Mathf.Max(3, radialSegments);

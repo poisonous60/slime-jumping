@@ -9,12 +9,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Platforms.Piano.EditorTools
 {
-    /// One-shot scene builder for the test piano. Instantiates the upright-piano FBX, scales it
-    /// so each white key roughly fits the slime, generates a static BoxCollider2D + dedicated
-    /// AudioSource per WHITE key (black keys are intentionally collider-less), maps each white key
-    /// to its CC0 note sample by the MIDI number baked into the sample filename (pitch-shifting the
-    /// top keys that have no sample), then wires up a PianoKeyboard. Re-runnable: deletes any prior
-    /// build first. Tune feel afterward on the PianoKeyboard > Settings curves.
+    /// One-shot piano builder. Re-runnable; white keys only (black keys are intentionally collider-less).
     public static class PianoKeyboardBuilder
     {
         const string FbxPath = "Assets/_PianoImportTest/Piano.fbx";
@@ -36,7 +31,6 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
             var slime = Object.FindAnyObjectByType<SlimeController>();
             if (slime == null) { Debug.LogError("[PianoBuilder] No SlimeController in scene."); return; }
 
-            // remove a previous build
             foreach (var prev in Object.FindObjectsByType<PianoKeyboard>(FindObjectsSortMode.None))
                 Object.DestroyImmediate(prev.gameObject);
 
@@ -44,7 +38,6 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
             var clipsByMidi = LoadClipsByMidi();
             var sfxGroup = LoadSfxObjectGroup();
 
-            // instantiate + unpack to a fully editable copy
             var root = (GameObject)PrefabUtility.InstantiatePrefab(fbx);
             PrefabUtility.UnpackPrefabInstance(root, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
             root.name = "Piano";
@@ -53,7 +46,7 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
             rt.position = Vector3.zero;
             rt.localScale = Vector3.one;
 
-            // collect white keys (sorted left->right == ascending pitch)
+            // sorted left->right == ascending pitch
             var whites = new List<Transform>();
             foreach (Transform c in rt)
                 if (c.name.StartsWith("PianoKey") && c.localPosition.y > WhiteKeyLocalY)
@@ -61,13 +54,11 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
             whites.Sort((a, b) => a.localPosition.x.CompareTo(b.localPosition.x));
             if (whites.Count == 0) { Debug.LogError("[PianoBuilder] No white keys found."); Object.DestroyImmediate(root); return; }
 
-            // scale so the median white-key pitch ~= target world width
             var localXs = whites.Select(w => w.localPosition.x).ToList();
             float medianPitch = MedianGap(localXs);
             float scale = medianPitch > 1e-5f ? TargetWhiteWidthWorld / medianPitch : 4f;
             rt.localScale = Vector3.one * scale;
 
-            // place: center on slime X, keyboard top DropBelowSlime under the slime, z = slime z
             Vector3 slimePos = slime.transform.position;
             ComputeWhiteWorldExtent(whites, out float curCenterX, out float curTopY, out float curKeyZ);
             float targetTopY = slimePos.y - DropBelowSlime;
@@ -94,8 +85,7 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
                       $"Slime at {slimePos}. Move the 'Piano' root so the slime can land on it, then Play.");
         }
 
-        // Rebuilds the white-key motors on an already-built piano WITHOUT touching the user's
-        // placement/scale. Use after editing the key scripts. Resets the world-unit sink depths.
+        // Rebuilds key motors without touching placement/scale. Resets world-unit sink depths.
         [MenuItem("Tools/SlimeJumping/Rebuild Piano Keys (keep placement)")]
         public static void RebuildKeys()
         {
@@ -115,15 +105,14 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
             Debug.Log($"[PianoBuilder] Rebuilt {keys.Count} key motors (clips missing={missing}, shifted={shifted}). Placement preserved.");
         }
 
-        // Builds (or rebuilds) a sinking PlatformMotor + collider + voice for every WHITE key, with
-        // the key mesh parented under the motor so collider and visual sink together and carry the
-        // slime. Tears down any prior key rig first (old static sensors or a prior motor rig).
+        // Motor + collider + voice per WHITE key; the key mesh is parented under the motor so
+        // visual and collider sink together and carry the rider.
         static List<PianoKey> BuildKeys(Transform root, SlimeController slime, int layer,
                                         Dictionary<int, AudioClip> clipsByMidi,
                                         UnityEngine.Audio.AudioMixerGroup sfxGroup,
                                         out int missing, out int shifted)
         {
-            // teardown: move key meshes back under root, then destroy old rig GameObjects
+            // re-parent key meshes to root BEFORE destroying the old rig, else they die with it
             var rig = new List<Transform>();
             foreach (var t in root.GetComponentsInChildren<Transform>(true))
                 if (t != null && (t.name.StartsWith("KeyMotor_") || t.name.StartsWith("KeySensor_"))) rig.Add(t);
@@ -136,7 +125,6 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
             }
             foreach (var t in rig) if (t != null) Object.DestroyImmediate(t.gameObject);
 
-            // gather white keys (meshes are direct children of root), sorted left->right
             var whites = new List<Transform>();
             foreach (Transform c in root)
                 if (c.name.StartsWith("PianoKey") && c.localPosition.y > WhiteKeyLocalY) whites.Add(c);
@@ -159,7 +147,6 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
                 float width = pitchW * 1.02f;
                 float height = pitchW * 0.9f;
 
-                // key motor: kinematic Rigidbody2D + BoxCollider2D that sinks DOWN to carry the rider
                 var motorGO = new GameObject($"KeyMotor_{key.name}");
                 motorGO.layer = layer;
                 var mt = motorGO.transform;
@@ -186,15 +173,14 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
 
                 var pk = motorGO.AddComponent<PianoKey>();               // RequireComponent adds Rigidbody2D
                 motorGO.GetComponent<Rigidbody2D>().bodyType = RigidbodyType2D.Kinematic;
-                key.SetParent(mt, true);                                 // mesh rides with the motor
+                key.SetParent(mt, true);
                 pk.Init(midi, src, pitch, box);
                 keyComps.Add(pk);
             }
             return keyComps;
         }
 
-        // Adds the 3 steppable pedals to an already-built piano WITHOUT touching the keys or the
-        // user's placement/scale. Idempotent: tears down any prior pedal rig first.
+        // Adds the 3 steppable pedals without touching the keys or placement/scale. Idempotent.
         [MenuItem("Tools/SlimeJumping/Add or Rebuild Piano Pedals")]
         public static void AddPedals()
         {
@@ -216,8 +202,7 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
 
         static int BuildPedals(Transform root, SlimeController slime, int layer, PianoConfig config)
         {
-            // tear down any previous pedal rig (old sensor rig or a prior motor rig): move the pedal
-            // meshes back under root first, then destroy the rig GameObjects.
+            // re-parent pedal meshes to root BEFORE destroying the old rig, else they die with it
             foreach (var name in PedalNames)
             {
                 var mesh = FindDeep(root, name);
@@ -242,7 +227,6 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
                 PadInfo(pedal, out float padTopY, out float padCx, out float padZmin, out float padZmax, out float padW);
                 float padZmid = (padZmin + padZmax) * 0.5f;
 
-                // motor GO: kinematic Rigidbody2D + PolygonCollider2D that sinks DOWN to carry the rider
                 var motorGO = new GameObject($"PedalMotor_{name}");
                 motorGO.layer = layer;
                 var mt = motorGO.transform;
@@ -252,7 +236,7 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
                 Vector3 ls = mt.lossyScale;
                 float w = padW * 0.95f / Mathf.Max(1e-4f, Mathf.Abs(ls.x));
                 float h = 0.18f / Mathf.Max(1e-4f, Mathf.Abs(ls.y));
-                var poly = motorGO.AddComponent<PolygonCollider2D>();   // reshape this to the pedal outline
+                var poly = motorGO.AddComponent<PolygonCollider2D>();
                 poly.pathCount = 1;
                 poly.SetPath(0, new[]
                 {
@@ -262,14 +246,13 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
                 var pp = motorGO.AddComponent<PianoPedal>();            // RequireComponent adds Rigidbody2D
                 motorGO.GetComponent<Rigidbody2D>().bodyType = RigidbodyType2D.Kinematic;
 
-                // press-sound voice
                 var src = motorGO.AddComponent<AudioSource>();
                 src.playOnAwake = false;
                 src.loop = false;
                 src.spatialBlend = 0f;
                 if (sfxGroup != null) src.outputAudioMixerGroup = sfxGroup;
 
-                // cosmetic tilt pivot at the pad back edge; pedal mesh parented under it (visual only)
+                // tilt pivot at the pad back edge, visual only (collider stays on the motor)
                 var pivotGO = new GameObject($"PedalVisualPivot_{name}");
                 var pv = pivotGO.transform;
                 pv.SetParent(mt, true);
@@ -283,9 +266,8 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
             return built;
         }
 
-        // Finds the pedal's foot pad (the wide bottom of the mesh) by scanning world-space vertex
-        // Y bands bottom-up until the horizontal width drops off (the thin upper rod). Returns the
-        // pad's top Y, X center, Z extent and X width.
+        // Locates the pedal foot pad by scanning world-Y vertex bands bottom-up until the width
+        // drops off (that's the thin upper rod).
         static void PadInfo(Transform pedal, out float topY, out float centerX,
                             out float zMin, out float zMax, out float width)
         {
@@ -436,7 +418,7 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
                 }
             }
             catch (System.Exception e) { Debug.LogWarning($"[PianoBuilder] groundLayer reflect failed: {e.Message}"); }
-            return slime.gameObject.layer; // fallback: slime's own layer
+            return slime.gameObject.layer;
         }
 
         static UnityEngine.Audio.AudioMixerGroup LoadSfxObjectGroup()
@@ -445,7 +427,6 @@ namespace SlimeJumping.Platforms.Piano.EditorTools
             return ss != null ? ss.sfxObjectGroup : null;
         }
 
-        // Single tuning asset for the whole piano (keys + detection + pedals). Created on first build.
         static PianoConfig LoadOrCreateConfig()
         {
             var cfg = AssetDatabase.LoadAssetAtPath<PianoConfig>(PianoConfigPath);

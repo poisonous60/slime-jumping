@@ -6,9 +6,8 @@ using SlimeJumping.UI;
 
 namespace SlimeJumping.UI.Animation
 {
-    /// Hover squash+stretch+rotate + press punch. Owns the Button's visual
-    /// feedback entirely — the Selectable ColorBlock is neutralised in Awake
-    /// so the script doesn't fight Unity's color tint mid-tween.
+    /// Hover squash+stretch+rotate + press punch. Neutralises the Selectable ColorBlock in
+    /// Awake so Unity's color tint doesn't fight the tweens.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(RectTransform))]
     public class UIButtonJuice : MonoBehaviour,
@@ -36,8 +35,7 @@ namespace SlimeJumping.UI.Animation
 
         private static void NeutraliseColorBlock(Button b)
         {
-            // Force all Selectable tints to white so our scale tween isn't
-            // racing against Unity's color lerp. The juice owns visual feedback.
+            // White tints so Unity's color lerp can't race the scale tween.
             var c = b.colors;
             c.normalColor = Color.white;
             c.highlightedColor = Color.white;
@@ -72,8 +70,7 @@ namespace SlimeJumping.UI.Animation
         {
             if (profile == null) return;
             scaleTween.Stop();
-            // If pointer was dragged off the button before release, settle to
-            // neutral state instead of replaying hover-on.
+            // Pointer dragged off before release settles to neutral, not hover-on.
             PlayHover(isPointerOver);
         }
 
@@ -94,9 +91,7 @@ namespace SlimeJumping.UI.Animation
 
                 if (profile.hoverUseSlimeBoing)
                 {
-                    // Slime landing: quick squash + wide stretch, then elastic
-                    // settle back to (1,1). Power-scaled so large buttons don't
-                    // overshoot wildly.
+                    // Slime landing: squash, then elastic settle back to (1,1).
                     float sx = Mathf.Lerp(1f, profile.hoverSquashX, power);
                     float sy = Mathf.Lerp(1f, profile.hoverSquashY, power);
                     hoverSequence = Sequence.Create()
@@ -123,7 +118,7 @@ namespace SlimeJumping.UI.Animation
                 }
                 else
                 {
-                    // Make sure any leftover rotation is wiped when disabled.
+                    // wipe leftover rotation when rotation is disabled
                     rt.localRotation = Quaternion.identity;
                 }
             }
@@ -147,8 +142,7 @@ namespace SlimeJumping.UI.Animation
             }
         }
 
-        /// Larger buttons reduce amplitude so a 600px-wide button's corners
-        /// don't fling on a 7° rotation.
+        /// Amplitude falls off with width, else a 600px button's corners fling on a 7° rotation.
         private float PowerScale()
         {
             if (profile == null) return 1f;

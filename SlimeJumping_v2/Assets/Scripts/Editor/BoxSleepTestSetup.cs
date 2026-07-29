@@ -53,15 +53,14 @@ namespace SlimeJumping.Editor
             Vector3 anchorLocal, Vector2 triggerSize, Color color,
             BoxSleepProfile profile)
         {
-            // Root carries the trigger collider + interactable. Visual mesh is a child
-            // so its rotation/scale don't fight with the trigger transform.
+            // Root carries trigger + interactable; visual is a child so its rotation/scale
+            // don't drive the trigger transform.
             var go = new GameObject(name);
             go.transform.parent = parent;
             go.transform.position = hostPos;
             go.transform.rotation = Quaternion.Euler(0f, 0f, hostEulerZ);
             go.layer = InteractableLayer;
 
-            // 3D mesh visual — Z-tilted cube
             var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
             visual.name = "Visual";
             Object.DestroyImmediate(visual.GetComponent<BoxCollider>());

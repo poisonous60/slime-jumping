@@ -1,10 +1,7 @@
 namespace SlimeJumping.Rendering
 {
-    /// <summary>
-    /// Element-based VFX categories. Used by VFXColorPalette and ParticlePaletteBinder.
-    /// RULE: Append-only. Never delete or rename existing values — Binder components
-    /// serialize enum as int, so reordering would silently corrupt all scene references.
-    /// </summary>
+    /// <summary>VFX categories for VFXColorPalette / ParticlePaletteBinder.
+    /// Append-only: binders serialize this as int, so reorder/delete silently corrupts scene refs.</summary>
     public enum VFXType
     {
         Wind,

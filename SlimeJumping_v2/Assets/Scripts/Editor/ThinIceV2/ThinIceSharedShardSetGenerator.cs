@@ -5,15 +5,7 @@ using SlimeJumping.Platforms.ThinIceV2;
 
 namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
 {
-    /// One-time generator for the shared ThinIce shard set. Produces ~24 small
-    /// Voronoi-cell-shaped meshes (irregular convex polygons with a thin extrusion
-    /// for chunky 3D feel). Every ThinIcePlatformV2 in the project shares this set —
-    /// at shatter time the runtime samples N random spawn points across the
-    /// platform's collider bounds and instances a random shard at each point.
-    ///
-    /// The mesh's local origin is the centroid of its base polygon so spinning at
-    /// runtime feels natural and outward-impulse direction is computed from the
-    /// spawn point relative to the platform center, not the shard's own geometry.
+    /// One-time generator for the shared ThinIce shard set. Mesh origin = base-polygon centroid.
     public static class ThinIceSharedShardSetGenerator
     {
         const string AssetPath = "Assets/GeneratedShards/SharedThinIceShardSet.asset";
@@ -73,19 +65,14 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
             return set;
         }
 
-        // -----------------------------------------------------------------------
 
-        // Produce a small "chunk" mesh: irregular convex polygon (sampled around a
-        // circle with jittered radius and angle) extruded along Z to give thickness.
-        // The result is a closed prism — front + back face + side strip — so it
-        // looks 3D when it tumbles after launch.
+        // Irregular convex polygon extruded along Z into a closed prism.
         static Mesh BuildIrregularChunkMesh(System.Random rng, float baseRadius, float radiusJitter, float thickness)
         {
             int sides = 5 + rng.Next(0, 4); // 5..8 sides
             var ringXY = new Vector2[sides];
 
-            // Generate a "lumpy" polygon: regular angle steps perturbed slightly so
-            // the polygon is convex (no winding pathologies) but not perfectly round.
+            // Jitter is only a fraction of a step: keeps the polygon convex, no winding pathologies.
             float angleStep = Mathf.PI * 2f / sides;
             for (int i = 0; i < sides; i++)
             {
@@ -104,11 +91,6 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
 
             float halfT = thickness * 0.5f;
 
-            // Vertex layout:
-            //   0..sides-1   : front ring (z = -halfT)
-            //   sides..2s-1  : back  ring (z = +halfT)
-            //   2s           : front center
-            //   2s+1         : back  center
             int frontStart  = 0;
             int backStart   = sides;
             int frontCenter = sides * 2;
@@ -145,15 +127,12 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
                 int f1 = frontStart + (i + 1) % sides;
                 int b0 = backStart  + i;
                 int b1 = backStart  + (i + 1) % sides;
-                // (f0, f1, b1) + (f0, b1, b0) — outward-facing winding.
                 tris.Add(f0); tris.Add(f1); tris.Add(b1);
                 tris.Add(f0); tris.Add(b1); tris.Add(b0);
             }
 
-            // UVs map the front ring into a circular [0..1] disc (used by the
-            // ThinIceV2 shader's _Alpha / object-space sampling). For the back
-            // and sides we just clone the front UV — debris is small so seams
-            // at the rim don't read.
+            // Front ring maps into a circular [0..1] disc for the ThinIceV2 shader.
+            // Back/side clone the front UV — debris is small, rim seams don't read.
             var uvs = new Vector2[verts.Length];
             for (int i = 0; i < sides; i++)
             {

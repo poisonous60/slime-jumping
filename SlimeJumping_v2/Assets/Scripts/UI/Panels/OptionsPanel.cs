@@ -9,11 +9,8 @@ using SlimeJumping.UI.Framework;
 
 namespace SlimeJumping.UI.Panels
 {
-    /// Replaces OptionsPanelController. All PlayerPrefs wiring is still routed
-    /// through GameOptions — this is purely a presentation layer swap.
-    /// Controls are direct [SerializeField] refs (the setup script populates
-    /// them), which keeps the inspector wiring obvious and the Options layout
-    /// free to rearrange rows without schema changes.
+    /// Options UI. Every setting reads/writes through GameOptions; controls are
+    /// direct [SerializeField] refs populated by the setup script.
     public class OptionsPanel : UIPanel
     {
         [Header("Frame Limit")]
@@ -184,8 +181,7 @@ namespace SlimeJumping.UI.Panels
 
         protected override void OnDestroy()
         {
-            // Drop all editor-wired listeners so the delegates don't retain `this`.
-            // These are attached in OnAfterAwake and never otherwise cleared.
+            // OnAfterAwake listeners are never cleared elsewhere; leaving them retains `this`.
             if (frameLimitPrevButton != null) frameLimitPrevButton.onClick.RemoveAllListeners();
             if (frameLimitNextButton != null) frameLimitNextButton.onClick.RemoveAllListeners();
             if (vsyncPrevButton != null) vsyncPrevButton.onClick.RemoveAllListeners();

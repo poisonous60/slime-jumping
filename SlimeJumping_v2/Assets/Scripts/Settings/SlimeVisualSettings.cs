@@ -18,9 +18,8 @@ namespace SlimeJumping.Settings
         public float gravitySagDistance = 0.06f;
 
         [Header("Pinch Squash (squeezed between two platforms — gap-driven, no intensity)")]
-        // The body flattens to the actual gap: scale along the pinch axis = thickness ratio
-        // (= 1 − PinchCompression01), perpendicular bulges to preserve area. NO intensity — the
-        // squash IS the measured compression.
+        // Scale along the pinch axis = thickness ratio (1 − PinchCompression01), perpendicular bulges
+        // to preserve area. No intensity knob — the squash IS the measured compression.
         [Tooltip("Floor on the thickness ratio so the body never collapses to a degenerate sliver. 0.15 = at most flattened to 15% of diameter.")]
         [Range(0.02f, 1f)] public float pinchMinThickness = 0.15f;
         [Tooltip("SmoothDamp time (s) for the squash, for soft press/release. Responsiveness only, not magnitude.")]

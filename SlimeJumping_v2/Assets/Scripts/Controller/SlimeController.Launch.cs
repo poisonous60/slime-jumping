@@ -6,12 +6,8 @@ namespace SlimeJumping.Controller
 {
     public partial class SlimeController
     {
-        // --- Launch ---
-
-        // Registers every ground-layer collider currently overlapping the slime as a
-        // launch-clearance ignore, so the slime can punch out of a surface it was glued
-        // to without immediately re-colliding. Shared by Launch / ForceAirborneWithVelocity
-        // / hazard knockback.
+        // Ignores overlapping ground colliders so a launch can punch out of the surface it was
+        // glued to without instantly re-colliding.
         private void RegisterLaunchClearance()
         {
             ignoredColliderList.RegisterOverlapping(
@@ -20,10 +16,7 @@ namespace SlimeJumping.Controller
                 settings.groundLayer);
         }
 
-        /// <summary>
-        /// Shared tail for all exit-to-airborne transitions (Launch, ForceAirborneWithVelocity).
-        /// Caller must set velocity and handle carrier/state-specific cleanup before calling.
-        /// </summary>
+        /// <summary>Shared tail for all exit-to-airborne transitions; caller sets velocity and does state-specific cleanup first.</summary>
         private void FinalizeAirborneExit()
         {
             if (currentRope != null)
@@ -33,8 +26,7 @@ namespace SlimeJumping.Controller
             surfaceMod = settings.BuildDefaultModifiers();
             launchSpeed = velocity.magnitude;
             launchPosition = rb.position;
-            // Friction-detach state must clear so the next attach starts a fresh
-            // sustained-frame counter and the visual ratio doesn't bleed across flights.
+            // Clear friction-detach state, else the frame counter and visual ratio bleed into the next flight.
             sameSignFrames = 0;
             cornerStressRatio = 0f;
             smoothedCornerStressRatio = 0f;
@@ -42,11 +34,7 @@ namespace SlimeJumping.Controller
             postLaunchTimer = settings.postLaunchIgnoreTime;
         }
 
-        /// <summary>
-        /// Forces the slime into Airborne with the given velocity.
-        /// Used by IPlatformEffect implementations (JumpPad, Catapult, etc.).
-        /// Single code path shared with Launch/Hop via FinalizeAirborneExit.
-        /// </summary>
+        /// <summary>Forces the slime into Airborne with the given velocity (JumpPad, Catapult, other IPlatformEffect).</summary>
         public void ForceAirborneWithVelocity(Vector2 vel)
         {
             velocity = vel;
@@ -65,10 +53,8 @@ namespace SlimeJumping.Controller
             RegisterLaunchClearance();
 
             conversionCount = 0;
-            // conversionCount already zeroed above, so skip the deferred floor reset —
-            // otherwise the pending from the prior no-Space landing would leak into the
-            // next flight (timer only decrements in FixedUpdateAttached) and eventually
-            // fire ClearPendingEnergyConversion(true) mid-chain for the wrong landing.
+            // Skip the deferred floor reset: a pending one from the prior no-Space landing
+            // leaks into the next flight and fires mid-chain for the wrong landing.
             ClearPendingEnergyConversion(executeDeferredReset: false);
             FinalizeAirborneExit();
         }
@@ -95,12 +81,8 @@ namespace SlimeJumping.Controller
             power *= SplitLaunchMultiplier;
             launchOriginAimPower = power;
             Vector2 dir = aimOffset.sqrMagnitude > 0.0001f ? -aimOffset.normalized : lastSurfaceNormal;
-            // Bamboo tip-grab: the player aims the launch with WASD exactly like a ground
-            // charge — aimOffset already integrates AimInput during Charging — so dir stays
-            // the aim vector computed above. Only the power knob is grab-specific. The
-            // bamboo's swing velocity is still added as momentum via the carrier inheritance
-            // below, so a fast swing skews the aimed jump sideways; with no aim input the
-            // drift (seeded from -surfaceNormal ≈ tip-up) still launches off the top.
+            // Bamboo tip-grab aims like a ground charge (aimOffset already integrated), so only
+            // the power knob is grab-specific; the swing speed arrives via carrier inheritance below.
             if (currentBambooGrab != null)
             {
                 power *= currentBambooGrab.GrabLaunchPowerScale;
@@ -117,10 +99,7 @@ namespace SlimeJumping.Controller
                 carrier.Detach();
             }
 
-            // Rope rebound: rope owns its own bonus formula via IRopePlatform.GetLaunchBonus.
-            //   v1 (Rope)   → sag × reboundSpeedPerMeter (timing-blind, ignores chargeRatio)
-            //   v2 (RopeV2) → timingBonusCurve(proj) × chargeMultiplierCurve(chargeRatio)
-            // Both implementations clamp to [0, MaxReboundSpeed] internally.
+            // Rope owns its bonus formula (IRopePlatform.GetLaunchBonus); every impl clamps internally.
             if (currentRope != null)
             {
                 Vector2 launchDir = velocity.sqrMagnitude > 0.0001f ? velocity.normalized : dir;
@@ -129,30 +108,25 @@ namespace SlimeJumping.Controller
                     velocity += launchDir * bonusMag;
             }
 
-            // Inside drag zone: reduce launch velocity. Exit multiplier restores on leaving.
             if (CurrentDragZone != null)
                 velocity *= CurrentDragZone.launchMultiplier;
 
-            // Final pass on the launch vector — TautLine clamps the upward component up
-            // to a minimum so a near-horizontal launch isn't immediately recaught by the
-            // rope's spring rebound. Other rope variants pass through.
+            // TautLine raises the upward component to a minimum here, else a near-horizontal
+            // launch is immediately recaught by the rope's spring rebound.
             if (currentRope != null)
                 velocity = currentRope.PostprocessLaunchVelocity(velocity);
 
             TryApplyBambooV2LaunchReleaseKick(velocity);
 
-            // Fire OnLaunch BEFORE FinalizeAirborneExit so listeners can read
-            // ActiveSurfaceMaterial (still resolved while attached) — audio reads it
-            // to play the surface-correct launch clip without re-deriving snow vs host.
+            // Fire before FinalizeAirborneExit while ActiveSurfaceMaterial is still resolved —
+            // audio needs it to pick the surface-correct launch clip.
             OnLaunch?.Invoke(rb.position, velocity, false);
             FinalizeAirborneExit();
             postLaunchAirControlLockTimer = settings.postLaunchAirControlLockTime;
         }
 
-        // Blends the aim-launch vector with the inherited tangent vector per the surface's
-        // LaunchInertiaBlendMode. Direction always follows (L+I); only magnitude differs.
-        // Sum reproduces legacy `velocity += inherited` exactly (so untagged surfaces are
-        // bit-identical to pre-feature behavior).
+        // Blends aim + inherited tangent per the surface's LaunchInertiaBlendMode.
+        // Direction always follows (L+I); only magnitude differs.
         private static Vector2 BlendLaunchInertia(Vector2 launchVec, Vector2 inheritedVec, SurfaceModifiers mod)
         {
             if (inheritedVec.sqrMagnitude < 1e-8f)

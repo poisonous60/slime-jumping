@@ -15,22 +15,18 @@ namespace SlimeJumping.Editor
             float baseX = 4f;
             float baseY = 0f;
 
-            // Ground floor
             CreatePlatform("Floor", root.transform,
                 new Vector3(baseX, baseY - 4f, 0f),
                 new Vector3(20f, 1f, 1f));
 
-            // Left wall
             CreatePlatform("LeftWall", root.transform,
                 new Vector3(baseX - 10f, baseY + 1f, 0f),
                 new Vector3(1f, 10f, 1f));
 
-            // Right wall
             CreatePlatform("RightWall", root.transform,
                 new Vector3(baseX + 10f, baseY + 1f, 0f),
                 new Vector3(1f, 10f, 1f));
 
-            // Disk 1: default tuning — sensitive rotation
             CreateRollingDisk("Disk_Default", root.transform,
                 new Vector3(baseX - 5f, baseY, 0f),
                 radius: 1.5f,
@@ -38,7 +34,6 @@ namespace SlimeJumping.Editor
                 angularDamping: 0.3f,
                 maxAngularSpeed: 720f);
 
-            // Disk 2: heavily damped — slow rotation, easy to stand on
             CreateRollingDisk("Disk_Damped", root.transform,
                 new Vector3(baseX, baseY, 0f),
                 radius: 1.5f,
@@ -46,7 +41,6 @@ namespace SlimeJumping.Editor
                 angularDamping: 1.5f,
                 maxAngularSpeed: 360f);
 
-            // Disk 3: low damping, high sensitivity — quickly rolls off
             CreateRollingDisk("Disk_Sensitive", root.transform,
                 new Vector3(baseX + 5f, baseY, 0f),
                 radius: 1.5f,
@@ -54,7 +48,6 @@ namespace SlimeJumping.Editor
                 angularDamping: 0.1f,
                 maxAngularSpeed: 1080f);
 
-            // Large disk for tangential velocity jump testing
             CreateRollingDisk("Disk_Large", root.transform,
                 new Vector3(baseX, baseY + 6f, 0f),
                 radius: 2.5f,
@@ -100,7 +93,6 @@ namespace SlimeJumping.Editor
             go.GetComponent<MeshRenderer>().sharedMaterial =
                 MakeMaterial(new Color(0.8f, 0.4f, 0.2f));
 
-            // Orientation marker — small child cube at +X edge so rotation is visible
             var marker = GameObject.CreatePrimitive(PrimitiveType.Cube);
             marker.name = "Marker";
             marker.transform.parent = go.transform;

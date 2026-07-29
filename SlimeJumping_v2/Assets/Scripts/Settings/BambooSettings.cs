@@ -4,22 +4,7 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Settings
 {
-    /// <summary>
-    /// Single source of truth for bamboo gameplay tuning. BambooPlatform references one of
-    /// these assets; every per-stalk tweak that affects feel (spring frequency, damping,
-    /// pumping gain, tilt torque, grab-mode carrier boost, re-entry guards) lives here so
-    /// designers tune one file and every bamboo that points at it updates together.
-    ///
-    /// Per-stalk fields that stay on BambooPlatform itself: geometry (length, segment count,
-    /// segment radius, collider shape), the backgroundOnly mode toggle, the surface-material
-    /// override, and everything under "Visual" (material, texture, colors, node geometry,
-    /// toon lighting, mesh tessellation) — those are intentionally per-stalk so different
-    /// bamboos can look visually distinct without forking a settings asset.
-    ///
-    /// BambooPlatform falls back to a runtime-created BambooSettings instance with the
-    /// class-default values below if no asset is wired, so existing scenes that haven't
-    /// been migrated still get the same numbers they had before this refactor.
-    /// </summary>
+    /// <summary>Shared bamboo feel tuning (spring, pumping, carrier, grab); geometry and Visual stay per-stalk on BambooPlatform.</summary>
     [CreateAssetMenu(fileName = "BambooSettings", menuName = "SlimeJumping/Bamboo Settings", order = 210)]
     public sealed class BambooSettings : ScriptableObject
     {
@@ -93,14 +78,8 @@ namespace SlimeJumping.Settings
         [Tooltip("Contact-height exponent for V2 bend pump. Higher values make low contacts affect the stalk much less.")]
         [Min(0.1f)] public float v2BendHeightPower = 1.75f;
         [Header("Side-Rebound V2 - Launch")]
-        // The raw charge-power launch bonus (v2ChargedLaunchBonus /
-        // v2ChargedLaunchBonusByChargePower) was removed 2026-07-24. It added speed keyed
-        // to charge power alone, so the player got the same boost whether the stalk was
-        // bent hard or barely at all — nothing on screen predicted it, and it stacked on
-        // top of the carrier inheritance. V2 launch boost is now purely the physical
-        // swing the player can see (ω × arm), exactly like SpringyBranchPlatform, bounded
-        // by maxTipSpeed × velocityTransferScale × v2CarrierScale and faded out by the
-        // boostFalloff gate above.
+        // No charge-power launch bonus: it paid the same whether the stalk bent hard or not.
+        // V2 boost is only the visible swing (ω × arm), bounded by maxTipSpeed × transfer scales.
         [Tooltip("Extra multiplier on inherited bamboo velocity for V2 rebound launches.")]
         [Min(0f)] public float v2CarrierScale = 1f;
         [Tooltip("Launch-time recoil kick for Bamboo V2. Converts the slime's tangential launch speed at the contact height into bamboo angular velocity. 1 = bamboo surface tries to move at the same tangential speed as the slime launch.")]

@@ -52,7 +52,6 @@ namespace SlimeJumping.Interaction
         {
             if (!isPlaying || discTransform == null) return;
 
-            // Auto-stop when non-looping clip finishes
             if (audioSource != null && !audioSource.isPlaying && !audioSource.loop)
             {
                 isPlaying = false;

@@ -4,9 +4,8 @@ namespace SlimeJumping.Mechanisms
 {
     public partial class WaterCurrentZone
     {
-        // 5 verts per cross-section (L, L', C, R', R) form a half-arc bulging toward the camera.
-        // The arc gives the ribbon visible Z depth so it never reads as a flat sticker, even
-        // when the camera is slightly off-axis (which the legacy flat-plane path failed at).
+        // 5 verts per cross-section (L, L', C, R', R) form a half-arc bulging toward the camera;
+        // the Z depth is what keeps it from reading as a flat sticker off-axis.
         const int CrossSectionVerts = 5;
         // 4 quads per ribbon segment × 2 tris per quad = 8 tris per segment.
         const int TrisPerSegment = 8;
@@ -14,14 +13,10 @@ namespace SlimeJumping.Mechanisms
         // cos(π/4) — Z multiplier for the L'/R' (mid-arc) cross-section verts.
         const float CosQuarter = 0.70710678f;
 
-        // Per-cross-section parameters indexed by k = 0..4 (L, L', C, R', R).
-        //   UOffset  : signed offset along normalLR in units of (ribbonWidth/2)
-        //   ZMul     : multiplier on (-tubeDepth) for the arc Z profile
-        //   DispSign : channel selector (-1 = L channel, 0 = no sim, +1 = R channel)
-        //   DispMag  : displacement magnitude weight (1 at silhouette, 0.5 mid, 0 at apex)
-        //   VertU    : UV.x in [0,1]
-        //   VertA    : vertex color alpha (drives shader's edge fade — only L/R fade noticeably;
-        //              L'/R' kept low so most of the cross-section stays solid)
+        // k = 0..4 (L, L', C, R', R): UOffset = offset along normalLR in units of (ribbonWidth/2);
+        // ZMul scales (-tubeDepth) for the arc; DispSign selects the L/R sim channel (0 = none);
+        // DispMag weights it (1 at silhouette, 0 at apex); VertU = UV.x; VertA = vertex alpha
+        // driving the shader edge fade.
         static readonly float[] UOffset  = { -1f,        -0.5f,       0f, +0.5f,       +1f };
         static readonly float[] ZMul     = {  0f,         CosQuarter, 1f,  CosQuarter,  0f };
         static readonly int[]   DispSign = { -1,         -1,          0,  +1,          +1 };
@@ -82,11 +77,7 @@ namespace SlimeJumping.Mechanisms
             if (meshFilter != null) meshFilter.sharedMesh = ribbonMesh;
         }
 
-        /// <summary>
-        /// Per-frame vertex position update — called from FixedUpdate after the spring sim
-        /// writes new dispL/dispR. UVs, colors, and triangles don't change (set once in
-        /// BuildRibbonMesh), so we only push positions.
-        /// </summary>
+        /// <summary>Positions only — UVs, colors and triangles are written once in BuildRibbonMesh.</summary>
         void UpdateMeshVerts()
         {
             if (ribbonMesh == null || points == null || points.Length < 2) return;
@@ -167,10 +158,8 @@ namespace SlimeJumping.Mechanisms
                     int vc = rowN + k;       // downstream, this side
                     int vd = rowN + k + 1;   // downstream, right neighbor
 
-                    // Winding chosen so the front face normal points -Z (toward camera) for
-                    // a top→bottom centerline. Shader is Cull Off so back face is also drawn,
-                    // which is intentional — at off-axis camera angles the back face is what
-                    // sells the 3D arc geometry.
+                    // Winding puts the front-face normal at -Z (toward camera) for a top→bottom
+                    // centerline; Cull Off is deliberate — the back face sells the arc off-axis.
                     meshTris[t++] = va; meshTris[t++] = vb; meshTris[t++] = vc;
                     meshTris[t++] = vb; meshTris[t++] = vd; meshTris[t++] = vc;
                 }

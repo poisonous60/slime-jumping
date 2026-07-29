@@ -3,13 +3,9 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Debugging
 {
-    // Real-time IMGUI readout of the friction-based detach check (SlimeController.Attached.cs).
-    // Pulls SlimeController.FrictionDebug each frame; controller writes the snapshot once
-    // per FixedUpdateAttached. Pure read — never writes back to the controller.
-    //
-    // Each row reports one variable from the detach predicate. Row colors flag the
-    // important state: green = condition met (would gate detach on), red = condition
-    // blocking detach right now. Top banner pulses when detach actually fired.
+    // IMGUI readout of the friction detach predicate. Pulls SlimeController.FrictionDebug
+    // (written once per FixedUpdateAttached); pure read, never writes back to the controller.
+    // Row green = condition met, red = blocking detach.
     public class FrictionDetachDebugUI : MonoBehaviour
     {
         [SerializeField] private SlimeController slimeController;
@@ -64,10 +60,8 @@ namespace SlimeJumping.Debugging
             if (rowFireTex != null) Destroy(rowFireTex);
         }
 
-        // Logged from the OnFrictionDetach event so we capture the exact frame the
-        // controller fired the detach. Reading the FrictionDebug snapshot here
-        // returns the same frame's state (controller writes the snapshot just before
-        // invoking the event).
+        // Driven by the event, not polled: the controller writes the snapshot just before
+        // invoking, so FrictionDebug read here is the exact detach frame.
         private void HandleFrictionDetach(Vector2 detachVel, Vector2 sNormal, float overshoot)
         {
             if (!logDetachEvents) return;
@@ -105,7 +99,6 @@ namespace SlimeJumping.Debugging
 
             var d = slimeController.FrictionDebug;
 
-            // Background panel.
             float lineH = fontSize + 6f;
             float pad = 8f;
             int rowCount = 15;
@@ -120,7 +113,6 @@ namespace SlimeJumping.Debugging
             float labelW = 130f;
             float valueW = panelWidth - 140f - pad * 2;
 
-            // Header.
             string banner = d.detachFiredThisFrame
                 ? "★ FRICTION DETACH FIRED ★"
                 : (detachFlashTimer > 0f ? "(detach " + detachFlashTimer.ToString("F2") + "s ago)" : "Friction Detach");
@@ -132,7 +124,6 @@ namespace SlimeJumping.Debugging
             DrawRow(ref y, xLabel, xValue, labelW, valueW, "toggle on", d.toggleOn ? "TRUE" : "FALSE", d.toggleOn);
             DrawRow(ref y, xLabel, xValue, labelW, valueW, "in attached", d.inAttached ? "TRUE" : "FALSE", d.inAttached);
 
-            // Transient guard breakdown.
             string transReason = "—";
             bool transientBlocking = d.transientFrame;
             if (d.transientFrame)
@@ -154,9 +145,8 @@ namespace SlimeJumping.Debugging
             DrawRow(ref y, xLabel, xValue, labelW, valueW, "convex (info)", d.convex ? "TRUE" : "false", null);
             DrawRow(ref y, xLabel, xValue, labelW, valueW, "sameSignFrames", d.sameSignFrames.ToString(), null);
 
-            // Centrifugal pre-condition only — geometric horizon test runs after this
-            // and is not snapshot-able without re-querying physics. The detach-fired
-            // banner above is the ground truth for "actually detached this frame".
+            // Pre-condition only; the geometric horizon test runs after this and isn't
+            // snapshot-able. The banner above is ground truth for "actually detached".
             bool centrifugalAdmissible = d.toggleOn && !d.transientFrame && d.rawRatio > 1f;
             DrawRow(ref y, xLabel, xValue, labelW, valueW, "centrif. admissible", centrifugalAdmissible ? "YES" : "no", centrifugalAdmissible);
 

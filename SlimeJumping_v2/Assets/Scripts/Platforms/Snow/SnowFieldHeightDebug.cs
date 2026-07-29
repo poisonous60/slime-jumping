@@ -4,26 +4,11 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Snow
 {
-    /// Diagnose why SnowField produces zero / near-zero height on a host mesh whose
-    /// surface looks like it should accumulate snow. Mirrors SnowField.RebuildNow's
-    /// extract → component-filter → subdivide → MaskOutOverlap → BFS taper → slope-
-    /// curve pipeline 1:1 (no mesh emit), recording per-stage kill reasons:
-    ///
-    ///   stage 0 = mesh tri rejected by face-slope filter (n.y &lt; cos(maxSnowSlopeDeg))
-    ///   stage 1 = patch dropped by minPatchTris
-    ///   stage 2 = tri dropped by overlap mask (excludeOverlapWithOtherPlatforms)
-    ///   stage 3 = vertex height zeroed by slopeToHeightScale curve
-    ///   stage 4 = vertex height zeroed by BFS edge taper (boundary verts at hop=0)
-    ///   ok      = vertex ends with non-trivial heightRest after both modulators
-    ///
-    /// Emits a Console summary + histograms and color-codes tris / verts in scene
-    /// view. The hottest signal is usually:
-    ///   - "stage0 dropped >> kept" → mesh-local up doesn't match world up (rotation
-    ///     not applied), or maxSnowSlopeDeg too tight.
-    ///   - "stage3 zeroed >> kept"  → averaged vertex normals exceed slopeToHeightScale
-    ///     cutoff. Ramp the curve right or model flatter.
-    ///   - "stage2 dropped >> kept" → overlap mask is eating the patch (use
-    ///     SnowMaskDebug for which collider).
+    /// Diagnoses zero-height SnowField output. Mirrors RebuildNow's pipeline 1:1 (no mesh
+    /// emit) and reports which stage killed the height:
+    ///   0 = face-slope filter, 1 = minPatchTris, 2 = overlap mask,
+    ///   3 = slopeToHeightScale curve, 4 = BFS edge taper, -1 = kept.
+    /// Must stay in sync with SnowField.RebuildNow or the attribution lies.
     [ExecuteAlways]
     [RequireComponent(typeof(SnowField))]
     [AddComponentMenu("SlimeJumping/Platforms/Snow/Snow Field Height Debug")]
@@ -50,9 +35,6 @@ namespace SlimeJumping.Platforms.Snow
         [Range(0f, 1f)] public float keptAlpha = 0.18f;
         [Range(0f, 1f)] public float droppedAlpha = 0.55f;
 
-        // Per-mesh-tri record. Holds either a stage-0 face-filter rejection or, if
-        // the tri made it to the patch, its post-pipeline status (kept / dropped at
-        // a later stage).
         struct TriRec
         {
             public Vector3 v0, v1, v2;     // world-space triangle corners
@@ -60,8 +42,6 @@ namespace SlimeJumping.Platforms.Snow
             public int stage;              // 0 = face filter, 1 = minPatchTris, 2 = mask, -1 = ok
         }
 
-        // Per-kept-patch-vertex record. Lets the gizmo show why a vertex's height
-        // collapsed even when its tri survived all the tri-stage filters.
         struct VertRec
         {
             public Vector3 worldPos;
@@ -146,10 +126,8 @@ namespace SlimeJumping.Platforms.Snow
             int patchIdx = 0;
             var patchSizes = new List<int>(patches.Count);
 
-            // Stage-2 (mask) + stage-3/4 (per-vert) need the post-subdivide patch
-            // because that's what RebuildNow operates on. Re-walk patches and run
-            // the same MaskOutOverlap signature inline so we can attribute each
-            // dropped tri.
+            // Stages 2-4 must run on the post-subdivide patch (what RebuildNow sees), and
+            // MaskOutOverlap is inlined here so each dropped tri can be attributed.
             var filter = ContactFilter2D.noFilter;
             filter.SetLayerMask(field.overlapLayerMask);
             filter.useTriggers = false;
@@ -179,11 +157,8 @@ namespace SlimeJumping.Platforms.Snow
                 {
                     stage1DroppedPatches++;
                     stage1DroppedTris += triCount0;
-                    // Tag the corresponding mesh tris in triRecs as stage 1. We
-                    // can't perfectly map back to mesh tris (positions are welded),
-                    // but visually the user only needs to see "small components are
-                    // dropped" — color these patch-tris orange via vertRecs gizmo
-                    // later if desired. Skipping for now keeps the recolor cheap.
+                    // Stage-1 drops get no gizmo color: patch verts are welded, so they
+                    // can't be mapped back to the original mesh tris.
                     continue;
                 }
                 stage1KeptPatches++;
@@ -234,8 +209,8 @@ namespace SlimeJumping.Platforms.Snow
                 int V = patch.verts.Length;
                 var taperHeight = new float[V];
 
-                // Mark verts touched by surviving tris so we don't credit verts
-                // that hang off mask-dropped tris with phantom heights.
+                // Only verts touched by surviving tris count — else mask-dropped verts
+                // report phantom heights.
                 var alive = new bool[V];
                 for (int t = 0; t < keepTri.Length; t++)
                 {
@@ -251,8 +226,7 @@ namespace SlimeJumping.Platforms.Snow
                     for (int i = 0; i < V; i++) hop[i] = -1;
                     var adj = new HashSet<int>[V];
                     for (int i = 0; i < V; i++) adj[i] = new HashSet<int>();
-                    // Adjacency from kept tris only — same shape as the post-mask
-                    // taper that RebuildNow runs on the rebuilt patch.
+                    // Adjacency from kept tris only — matches the post-mask taper RebuildNow runs.
                     for (int t = 0; t < keepTri.Length; t++)
                     {
                         if (!keepTri[t]) continue;
@@ -315,9 +289,8 @@ namespace SlimeJumping.Platforms.Snow
                     int stage = -1;
                     if (final < 1e-5f)
                     {
-                        // Decide which modulator killed it. Taper is checked first
-                        // because if both are zero, the boundary case (hop = 0) is
-                        // visually more useful to highlight than the slope curve.
+                        // Taper wins the tie: when both zero, the hop=0 boundary is the
+                        // more useful thing to highlight.
                         if (taperHeight[i] < 1e-5f) { stage4VertsZeroed++; stage = 4; }
                         else                         { stage3VertsZeroed++; stage = 3; }
                     }
@@ -326,8 +299,6 @@ namespace SlimeJumping.Platforms.Snow
                         vertsOk++;
                     }
 
-                    // Final-height histogram bin: 0 (exact zero), then 0..0.2,
-                    // 0.2..0.4, 0.4..0.6, 0.6..0.8, >=0.8 of restThick.
                     if (final < 1e-5f) finalHeightHist[0]++;
                     else
                     {
@@ -424,8 +395,6 @@ namespace SlimeJumping.Platforms.Snow
 
             if (slopeCurve != null && slopeCurve.length > 0)
             {
-                // Probe slope curve at the histogram bin centers so the user can read off
-                // exactly what scale each angle range gets.
                 var sb = new System.Text.StringBuilder("  Slope curve at bin centers:  ");
                 for (int i = 0; i < 10; i++)
                 {
@@ -444,7 +413,6 @@ namespace SlimeJumping.Platforms.Snow
             string heightHist = HeightHistString(finalHeightHist, restThick);
             Debug.Log($"  Final heightRest distribution (×restThick):  {heightHist}", field);
 
-            // Punchline: which stage did the most damage?
             int worstStage = -1;
             int worstCount = 0;
             void Consider(int s, int c) { if (c > worstCount) { worstCount = c; worstStage = s; } }
@@ -469,8 +437,7 @@ namespace SlimeJumping.Platforms.Snow
         {
             if (lastTris == null || lastVerts == null) return;
 
-            // Show a few stage-0 (face-filter) rejections with their angles so the
-            // user can immediately tell whether mesh-local up makes sense.
+            // Stage-0 angles are the fastest way to tell if mesh-local up is wrong.
             int shown = 0;
             for (int i = 0; i < lastTris.Count && shown < examplesPerCategory; i++)
             {

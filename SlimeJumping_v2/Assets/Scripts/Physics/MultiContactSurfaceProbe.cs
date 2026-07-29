@@ -4,27 +4,10 @@ using SlimeJumping.Settings;
 
 namespace SlimeJumping.Physics
 {
-    /// <summary>
-    /// Multi-contact detector via direct polygon-edge enumeration.
-    ///
-    /// PolygonCollider2D / CompositeCollider2D: for each closed path, compute winding
-    /// once (signed area), iterate edge segments. Each edge's outward perpendicular is
-    /// the unambiguous "real" surface normal for that edge. A contact is emitted only
-    /// when the slime sits on the outward side of that edge — closest-point-on-segment
-    /// clamps at vertices, and a clamp-to-vertex contact whose slime-side is *inward*
-    /// is just an artifact of the closest point being at a corner of an unrelated edge.
-    /// Filtering those out is what stops a slime resting on the top of a block from
-    /// reporting 37°/45° contacts that come from the bottom or slanted side edges.
-    ///
-    /// EdgeCollider2D: open polylines have no winding, so we keep the slime-radial
-    /// normal `(slime − closest).normalized` and accept the artifact at endpoints.
-    ///
-    /// Analytical colliders (Circle / Box / Capsule): single ClosestPoint(pos) query.
-    ///
-    /// Replaces the legacy 8-probe ring sampling, which (a) capped distinct contacts
-    /// at ~3-4 per collider regardless of facet count and (b) produced spurious
-    /// ring-direction normals from probes that fell inside the polygon.
-    /// </summary>
+    /// <summary>Multi-contact detector by polygon-edge enumeration: per-path winding gives each edge its
+    /// outward perpendicular, and contacts on the inward side are dropped as corner artifacts — else a slime
+    /// resting on a flat top reports phantom 37°/45° contacts from the bottom/side edges. EdgeCollider2D has
+    /// no winding so it keeps the slime-radial normal; analytical colliders use ClosestPoint.</summary>
     public class MultiContactSurfaceProbe : SurfaceProbe
     {
         // Per-collider scratch for unique-face pushes during a single Phase A iter.
@@ -35,16 +18,8 @@ namespace SlimeJumping.Physics
         private readonly List<Vector2> pathBuffer = new List<Vector2>(64);
         private readonly List<Vector2> worldBuffer = new List<Vector2>(64);
 
-        // Side buffer for buried-rejected contacts. PopulateContacts promotes one per
-        // collider when contactCount==0 (every contact got rejected), so a slime fully
-        // wedged inside a single buried collider still has a primary contact and stays
-        // Attached. Without this fallback CheckSurface would return false on Airborne
-        // entry frames (prevCollider==null), reproducing the
-        // "후속 회귀 — 폴리곤에 박혀서 Airborne으로 멈춤" failure mode in
-        // docs/faceted-terrain-jitter-attempts.md.
-        // Stored normals are always the edge's outward perpendicular (never bisector)
-        // so promoted contacts carry a real surface direction into lastGoodNormal /
-        // EffectiveNormal. The clamped flag is implicitly false for promoted entries.
+        // Buried-rejected side buffer. PopulateContacts promotes one per collider when every contact was
+        // rejected — else CheckSurface returns false on Airborne entry and the slime stops wedged in the polygon.
         private readonly Collider2D[] rejectedColliders = new Collider2D[16];
         private readonly Vector2[] rejectedNormals = new Vector2[16];
         private readonly float[] rejectedDistances = new float[16];
@@ -78,9 +53,7 @@ namespace SlimeJumping.Physics
                 if (contactCount >= contactColliders.Length) break;
             }
 
-            // Every emitted contact got rejected as buried but at least one collider was
-            // nearby — promote one rejected contact per collider so SelectPrimary has a
-            // primary candidate. See comment on rejectedColliders[] field.
+            // Every contact rejected as buried — promote one per collider so SelectPrimary has a candidate.
             if (contactCount == 0 && rejectedCount > 0)
                 PromotePerCollider();
 
@@ -184,11 +157,8 @@ namespace SlimeJumping.Physics
         {
             if (col is PolygonCollider2D poly)
             {
-                // No OverlapPoint early-return: edge enumeration with the
-                // Dot(toSlime, outward) <= 0 filter already rejects interior contacts
-                // correctly. Skipping when slime center is inside the polygon would
-                // emit zero contacts, and CheckSurface with prevCollider == null
-                // (Airborne) would then return false → slime wedged but unattached.
+                // No OverlapPoint early-return: the Dot(toSlime, outward) filter already rejects interior
+                // contacts. Skipping when the center is inside emits zero contacts → wedged but unattached.
                 Transform t = poly.transform;
                 Vector2 offset = poly.offset;
                 int pathCount = poly.pathCount;
@@ -290,39 +260,26 @@ namespace SlimeJumping.Physics
 
             float dist = Mathf.Sqrt(distSq);
 
-            // Buried check: bias the test point INTO ownerCol along -outward; if that
-            // interior point is also inside another nearby collider, this edge is in the
-            // union's interior. Stash with outward (not bisector) so promotion carries a
-            // real edge perpendicular into lastGoodNormal / EffectiveNormal.
+            // Stash with outward (not bisector) so a promoted contact carries a real edge perpendicular.
             if (IsContactBuried(col, closest, outward, dist, otherBuffer, otherCount))
             {
                 StashRejected(col, outward, dist);
                 return;
             }
 
-            // Vertex-clamped contacts get the bisector (toSlime/dist) so two adjacent
-            // edges meeting at a convex corner merge into one contact (lets the slime
-            // roll over a small lip without ProjectVel over-clipping). The clamped flag
-            // tells EffectiveNormal to skip them — otherwise the corner-bisector would
-            // contaminate the slope reading and produce phantom slide on flat tops.
-            // Interior contacts use outward (the real edge perpendicular).
+            // Clamped vertices use the bisector so two edges at a convex corner merge into one contact (rolls
+            // over a lip); the clamped flag keeps them out of EffectiveNormal, else phantom slide on flat tops.
             Vector2 normal = clamped ? toSlime / dist : outward;
-            // Classify a clamped vertex as a small-ledge lip (low + open above) so
-            // ProjectVelocityAgainstContacts skips its clip and the controller exempts
+            // Low, open-above lip: ProjectVelocityAgainstContacts skips its clip and the controller exempts
             // this collider from the teleport CCD. closest == the clamped vertex.
             bool lowLedge = clamped && settings.surfaceProbeSmoothSmallLedges
                 && IsSmallLedgeVertex(col, closest, EffRadius);
             MergeOrAddContact(col, normal, dist, clamped, lowLedge, dedupeDot, firstNewIdx);
         }
 
-        // A vertex-clamped contact/push is a "small ledge" the slime should climb iff the
-        // vertex sits within smallLedgeStepHeight above the slime's foot (an upward step,
-        // not a tall wall or a downward edge) AND a point a short distance above the vertex
-        // lies outside ownerCol — i.e. the obstruction has a low top. The "open above"
-        // test (a single OverlapPoint, no raycast — so unaffected by QueriesStartInColliders)
-        // is what rules out tessellated/solid walls whose lowest segment's top vertex falls
-        // within stepHeight but more collider continues above it. Caller has already
-        // established the contact clamped to vertex.
+        // Climbable "small ledge" = vertex within stepHeight above the foot AND open space just above it.
+        // The open-above test is OverlapPoint, not a raycast, so QueriesStartInColliders can't flip it; it is
+        // what rules out tessellated walls whose lowest segment's top vertex is within stepHeight.
         private bool IsSmallLedgeVertex(Collider2D ownerCol, Vector2 vertex, float radius)
         {
             Vector2 foot = rb.position - lastGravityUp * radius;
@@ -343,11 +300,8 @@ namespace SlimeJumping.Physics
             if (distSq < 0.0001f) return;
             if (distSq > maxDistSq) return;
             float dist = Mathf.Sqrt(distSq);
-            // EdgeCollider2D has no inherent inside/outside. If a rotating edge swept
-            // past the slime in this fixed step, slime center is now on the side
-            // opposite lastGoodNormal — the radial normal would point further to the
-            // wrong side, causing the next depenetration to push it through. Flip to
-            // lastGoodNormal so the contact reads "still attached on the correct side".
+            // EdgeCollider2D has no inside/outside: if a rotating edge swept past the slime this step, the
+            // radial normal points to the wrong side and the next depenetration pushes it through.
             Vector2 normal;
             if (lastGoodNormal.sqrMagnitude > 0.5f && Vector2.Dot(toSlime, lastGoodNormal) < 0f)
                 normal = lastGoodNormal;
@@ -376,12 +330,8 @@ namespace SlimeJumping.Physics
                         contactClamped[c] = clamped;
                         contactLowLedge[c] = lowLedge;
                     }
-                    // A non-clamped contact "wins" the slot regardless of distance —
-                    // an interior edge reading is always more authoritative than a
-                    // vertex-bisector at the same direction. Without this, a clamped
-                    // contact emitted first by edge-iteration order locks in and the
-                    // later interior contact gets dedupe-merged but keeps the clamped
-                    // flag, bouncing it out of EffectiveNormal.
+                    // A non-clamped contact wins the slot regardless of distance: otherwise a clamped contact
+                    // emitted first keeps its flag through the dedupe-merge and drops out of EffectiveNormal.
                     else if (!clamped && contactClamped[c])
                     {
                         contactClamped[c] = false;
@@ -408,9 +358,7 @@ namespace SlimeJumping.Physics
 
             if (col is PolygonCollider2D poly)
             {
-                // No OverlapPoint guard — would block depenetration when slime center
-                // has entered the polygon, leaving it stuck inside. Edge-enumeration
-                // pushes already handle interior positions correctly.
+                // No OverlapPoint guard — it would block depenetration once the center is inside the polygon.
                 Transform t = poly.transform;
                 Vector2 offset = poly.offset;
                 int pathCount = poly.pathCount;
@@ -517,31 +465,20 @@ namespace SlimeJumping.Physics
 
             float dist = Mathf.Sqrt(distSq);
 
-            // Buried check: drop pushes from edges that are buried inside another collider.
-            // No fallback on push path — buried colliders shouldn't push the slime; the
-            // outermost surface's pushes do the work.
+            // No promotion fallback here — a buried collider must not push; the outermost surface does.
             if (IsContactBuried(col, closest, outward, dist, otherBuffer, otherCount)) return;
 
-            // Directional reach: only push out to the cut shape's extent toward this surface, so
-            // the removed region never depenetrates the slime (no catch / no phantom push).
+            // Directional reach: push only to the cut shape's extent, so a removed region never pushes back.
             float depth = Reach(toSlime / dist) - dist;
             if (depth <= 0f) return;
 
-            // Same bisector-vs-outward split as the contact path: clamped vertices push
-            // along the bisector (radial) so a slime caught on a small convex corner is
-            // depenetrated AWAY from the corner rather than along the edge perpendicular,
-            // letting it roll over the lip; interior contacts use outward (= bisector).
+            // Clamped vertices push along the bisector so a slime caught on a convex corner is depenetrated
+            // AWAY from the corner (rolls over the lip) instead of along the edge perpendicular.
             Vector2 normal = clamped ? toSlime / dist : outward;
 
-            // Small-ledge lift: a clamped-vertex push whose vertex is a low lip (within
-            // stepHeight of the slime's foot, open space above — same classification as the
-            // contact path's contactLowLedge). The plain bisector push points up-AND-BACK
-            // while the slime approaches (vertex behind the slime center horizontally), and
-            // that "back" component cancels the forward slide → slime stalls at the lip.
-            // Strip the along-surface (tangent) component so the push becomes purely "up the
-            // base surface" (lastGoodNormal = the surface the slime is on): the slime then
-            // rises past the lip while the preserved forward slide (clip skipped in
-            // ProjectVelocityAgainstContacts) carries it over.
+            // Small-ledge lift: the plain bisector push points up-AND-BACK, and that back component cancels
+            // the forward slide → slime stalls at the lip. Strip the tangent component so the push is purely
+            // up lastGoodNormal and the preserved forward slide carries it over.
             if (clamped && settings.surfaceProbeSmoothSmallLedges
                 && IsSmallLedgeVertex(col, closest, radius)) // closest == the vertex
             {
@@ -584,11 +521,8 @@ namespace SlimeJumping.Physics
             float distSq = toSlime.sqrMagnitude;
             if (distSq >= radiusSq) return;
 
-            // Wrong-side detection (rotating SpringyBranch swept past slime):
-            // push along lastGoodNormal so we cross back to the intended side. Depth
-            // is computed along that normal — when slime is on the wrong side
-            // Dot(toSlime, lastGoodNormal) is negative, so depth = radius − that dot
-            // exceeds radius, restoring the slime to clearance + radius.
+            // Wrong side (rotating branch swept past the slime): push along lastGoodNormal. The dot is
+            // negative there, so depth exceeds radius and the slime is restored to clearance + radius.
             Vector2 n;
             float depth;
             float distForBuried;
@@ -608,7 +542,6 @@ namespace SlimeJumping.Physics
                 distForBuried = dist;
             }
 
-            // Buried check: drop pushes from polyline edges buried inside another collider.
             if (IsContactBuried(col, closest, n, distForBuried, otherBuffer, otherCount)) return;
 
             for (int p = 0; p < pushCount; p++)
@@ -665,13 +598,9 @@ namespace SlimeJumping.Physics
             return a + ab * t;
         }
 
-        // Buried-collider check. Bias the closest point slightly INTO ownerCol's interior
-        // (along -normal) and ask whether that interior point also lies inside any other
-        // nearby collider. If yes, this edge is in the union's interior, not on the outer
-        // silhouette — reject. The bias disambiguates "shared boundary" (Unity OverlapPoint
-        // is boundary-inclusive) from "actually buried inside another collider's body".
-        // bias = min(setting, dist*0.4) keeps the test point inside ownerCol when the slime
-        // is very close to the surface (dist small).
+        // Reject edges lying in the collider union's interior: bias the closest point INTO ownerCol (-normal)
+        // and test other colliders. The bias separates a shared boundary (Unity OverlapPoint is
+        // boundary-inclusive) from truly buried; capping it at dist*0.4 keeps the test point inside ownerCol.
         private bool IsContactBuried(Collider2D ownerCol, Vector2 closest, Vector2 normal,
             float dist, Collider2D[] otherBuffer, int otherCount)
         {
@@ -688,8 +617,7 @@ namespace SlimeJumping.Physics
                 if (other.isTrigger) continue;
                 if (ignoredColliders.Contains(other)) continue;
 
-                // Raw min/max compare instead of bounds.Contains(Vector3) — the latter
-                // boxes a temp Vector3, this is allocation-free and 1 branch cheaper.
+                // Raw min/max instead of bounds.Contains(Vector3) — that one boxes a temp Vector3.
                 var b = other.bounds;
                 if (testPoint.x < b.min.x || testPoint.x > b.max.x ||
                     testPoint.y < b.min.y || testPoint.y > b.max.y) continue;
@@ -699,9 +627,8 @@ namespace SlimeJumping.Physics
             return false;
         }
 
-        // Stash a rejected (buried) contact for possible promotion later. Always store
-        // the edge's outward perpendicular (not a vertex bisector) so promoted contacts
-        // carry a real surface direction.
+        // Always store the edge's outward perpendicular (never a vertex bisector) so a promoted contact
+        // carries a real surface direction.
         private void StashRejected(Collider2D col, Vector2 outwardNormal, float dist)
         {
             if (rejectedCount >= rejectedColliders.Length) return;
@@ -711,13 +638,8 @@ namespace SlimeJumping.Physics
             rejectedCount++;
         }
 
-        // Fallback: when contactCount==0 because every contact was rejected as buried,
-        // promote one rejected contact per collider (the closest distance per collider)
-        // into the contact arrays. Promoted contacts always have clamped=false so
-        // EffectiveNormal includes them rather than skipping (clamped contacts are
-        // skipped → would return stale lastGoodNormal). Runs inside PopulateContacts so
-        // the SurfaceProbe.CheckSurface ceiling-threshold resolution loop covers
-        // promoted indices naturally.
+        // Promote the closest rejected contact per collider. clamped=false is required: EffectiveNormal skips
+        // clamped contacts and would return a stale lastGoodNormal.
         private void PromotePerCollider()
         {
             for (int i = 0; i < rejectedCount; i++)

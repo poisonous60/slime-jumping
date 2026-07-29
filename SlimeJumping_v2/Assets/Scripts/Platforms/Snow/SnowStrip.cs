@@ -2,23 +2,11 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Snow
 {
-    /// <summary>
-    /// Per-patch data + GPU upload bridge for the snow visual.
-    ///
-    /// Phase 1 baked geometry from heightCurrent at build time. Phase 2 onward keeps
-    /// the mesh static (un-displaced verts; uv2.x → vertex index, uv2.y → heightRest;
-    /// tangent.xyz → vertex-normal displacement direction) and uploads the per-vertex
-    /// current-height array to a ComputeBuffer (StructuredBuffer&lt;float&gt; on the GPU
-    /// side) each FixedUpdate when carve / recovery actually changed values.
-    ///
-    /// ComputeBuffer (vs the previous V×1 RFloat Texture2D) lifts the ~16384 vertex
-    /// cap from GPU max texture width — patches at high subdivLevels can exceed that
-    /// after subdivision and the texture path threw "invalid parameters" on alloc.
-    /// Requires shader target 4.5 (already set on the ForwardLit pass).
-    ///
-    /// All shader-side per-instance state lives in a MaterialPropertyBlock — the shared
-    /// material asset is never modified.
-    /// </summary>
+    /// <summary>Per-patch data + GPU upload bridge for the snow visual. Mesh stays static
+    /// (uv2.x → vertex index, uv2.y → heightRest, tangent.xyz → displacement dir); heightCurrent
+    /// is uploaded to a ComputeBuffer each FixedUpdate when carve/recovery changed it.
+    /// ComputeBuffer, not a V×1 RFloat texture: subdivided patches exceed the ~16384 max texture
+    /// width and alloc threw. Needs shader target 4.5. Per-instance state lives in an MPB.</summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("SlimeJumping/Platforms/Snow/Snow Strip")]
     public sealed class SnowStrip : MonoBehaviour
@@ -27,22 +15,17 @@ namespace SlimeJumping.Platforms.Snow
 
         // Patch verts in mesh-local space (matches host MeshFilter's local space).
         [HideInInspector] public Vector3[] verts;
-        // Per-vertex normals averaged across kept top-facing tris. Drives shader
-        // displacement direction (also written into mesh.tangent.xyz).
+        // Per-vertex normals from kept top-facing tris; shader displacement dir (mesh.tangent.xyz).
         [HideInInspector] public Vector3[] vertNormals;
         // Patch triangulation (CCW), indices into verts.
         [HideInInspector] public int[] tris;
         // Directed boundary edges as pairs [a0, b0, a1, b1, ...].
         [HideInInspector] public int[] boundaryEdges;
-        // Per-vertex current snow thickness (m). Carve subtracts, TickRecovery lerps
-        // toward heightRest. Source of truth on the CPU; mirrored to heightBuf on flush.
+        // Per-vertex current snow thickness (m). CPU source of truth, mirrored to heightBuf on flush.
         [HideInInspector] public float[] heightCurrent;
-        // Per-vertex max thickness (m). Phase 2: equals build-time taper-shaped restThickness.
-        // Phase 4 will override per-vertex via ceiling raycast.
+        // Per-vertex max thickness (m), taper-shaped at build time.
         [HideInInspector] public float[] heightRest;
-        // The host transform (the MeshFilter GO). Reserved for Phase 4 ceiling-occlusion
-        // (Physics2D.Raycast from each vert in world space needs the host's local→world
-        // matrix) and Phase 5 slope-diffusion neighbour weights. Phase 2 doesn't read it.
+        // The host transform (the MeshFilter GO).
         [HideInInspector] public Transform host;
 
         // -- GPU upload state (runtime only) -------------------------------------
@@ -56,22 +39,15 @@ namespace SlimeJumping.Platforms.Snow
         [System.NonSerialized] public Vector2 aabbMin;
         [System.NonSerialized] public Vector2 aabbMax;
 
-        // Largest heightRest in the strip. Used as the SampleDepthRatio01 AABB
-        // margin: the visible snow shell is the patch verts displaced along
-        // their normals by heightRest, so on tilted / 3D hosts the shell can
-        // bulge past the un-displaced xy footprint by up to this distance. The
-        // sampler accepts points within `maxHeightRest` of the AABB and tapers
-        // the returned ratio with distance, so a slime visually on the bulged
-        // shell edge still reads as in-snow with the right magnitude.
+        // Largest heightRest in the strip, used as the sampler's AABB margin: the displaced
+        // snow shell bulges past the un-displaced xy footprint by up to this much on tilted hosts.
         [System.NonSerialized] public float maxHeightRest;
 
         static readonly int IdSnowHeightBuf = Shader.PropertyToID("_SnowHeightBuf");
 
         // -- Init / lifecycle -----------------------------------------------------
 
-        /// <summary>Called by SnowField after data arrays + mesh are set. Allocates the
-        /// heightBuf (V × float StructuredBuffer), computes the xy-AABB, pushes the
-        /// initial heightCurrent values to the GPU.</summary>
+        /// <summary>Called by SnowField once data arrays + mesh are set: allocs heightBuf, computes the xy-AABB, pushes initial heights.</summary>
         public void Init(MeshRenderer renderer)
         {
             cachedRenderer = renderer;
@@ -80,9 +56,7 @@ namespace SlimeJumping.Platforms.Snow
             int V = verts != null ? verts.Length : 0;
             if (V == 0) return;
 
-            // AABB on xy projection — carve impact is compared in mesh-local xy.
-            // Same loop tracks the strip's largest heightRest so SampleDepthRatio01
-            // can size its margin (see maxHeightRest comment).
+            // xy AABB (carve impacts are compared in mesh-local xy) + largest heightRest, one pass.
             aabbMin = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
             aabbMax = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
             maxHeightRest = 0f;
@@ -120,9 +94,8 @@ namespace SlimeJumping.Platforms.Snow
 
         void OnDisable()
         {
-            // Domain reload doesn't fire OnDestroy on script-recompiled instances —
-            // release here too so the buffer doesn't leak across reloads. Init/Flush
-            // re-allocate as needed.
+            // Domain reload doesn't fire OnDestroy on recompiled instances — release here
+            // too or the buffer leaks across reloads. Init/Flush re-allocate.
             if (heightBuf != null)
             {
                 heightBuf.Release();
@@ -132,17 +105,13 @@ namespace SlimeJumping.Platforms.Snow
 
         // -- Carve / recovery -----------------------------------------------------
 
-        /// <summary>Apply a dip at the given mesh-local position using the chosen
-        /// falloff profile. Returns true if any vertex was actually deepened (caller
-        /// can then add this strip to the active-tick set).</summary>
+        /// <summary>Dip at a mesh-local position; true if any vertex deepened (caller then adds the strip to the active-tick set).</summary>
         public bool CarveLocal(Vector3 localImpactPos, float depth, float radius, CarveProfileType profile = CarveProfileType.RaisedCosine)
         {
             if (heightCurrent == null || verts == null) return false;
             if (depth <= 0f || radius <= 0f) return false;
 
-            // AABB pre-filter — if impact is outside the strip's xy bounds (padded by
-            // radius) every vertex is past the falloff's effective range anyway. Skip
-            // the V loop entirely for unrelated strips on the same SnowField.
+            // AABB pre-filter — skips the V loop for the other strips on the same SnowField.
             if (localImpactPos.x < aabbMin.x - radius || localImpactPos.x > aabbMax.x + radius ||
                 localImpactPos.y < aabbMin.y - radius || localImpactPos.y > aabbMax.y + radius)
                 return false;
@@ -193,12 +162,8 @@ namespace SlimeJumping.Platforms.Snow
             return anyChange;
         }
 
-        /// <summary>Apply a raise (mound) at the given mesh-local position using the chosen
-        /// falloff profile. Mirror of <see cref="CarveLocal"/> but pushes heightCurrent
-        /// UPWARD instead of down, capped at heightRest * heightMaxMultiplier per vertex.
-        /// Returns true if any vertex was actually raised (caller adds to active-tick set
-        /// so settle recovery picks it up). Verts whose heightRest is 0 (taper edge / bare)
-        /// have a 0 ceiling and stay flat — mounds can't grow on bare ground.</summary>
+        /// <summary>Mirror of <see cref="CarveLocal"/> pushing heightCurrent up, capped per vertex at
+        /// heightRest * heightMaxMultiplier — so bare verts (heightRest 0) can never mound.</summary>
         public bool RaiseLocal(Vector3 localImpactPos, float raise, float radius, CarveProfileType profile, float heightMaxMultiplier)
         {
             if (heightCurrent == null || heightRest == null || verts == null) return false;
@@ -256,26 +221,16 @@ namespace SlimeJumping.Platforms.Snow
             return anyChange;
         }
 
-        /// <summary>Sample remaining snow coverage at a mesh-local xy position. Returns
-        /// 0 outside the patch xy AABB or when the strip has no data, otherwise the
-        /// nearest-vertex ratio clamp01(heightCurrent / heightRest). 0 = bare ground
-        /// (carved through or natural taper edge), 1 = full untouched thickness.
-        ///
-        /// Nearest-vertex (vs barycentric tri walk) is intentional: subdivLevels >= 1
-        /// makes vertex spacing well below the slime's contact resolution, and the
-        /// caller is per-FixedUpdate hot-path (slide gravity blend) — a tri walk would
-        /// dominate cost without a perceptible quality gain.</summary>
+        /// <summary>Remaining snow coverage at a mesh-local xy: nearest-vertex clamp01(heightCurrent /
+        /// heightRest), 0 outside the patch. Nearest-vertex not barycentric tri walk — at subdivLevels
+        /// >= 1 spacing is below slime contact resolution and the caller is a per-FixedUpdate hot path.</summary>
         public float SampleDepthRatio01(Vector3 localXY)
         {
             if (heightCurrent == null || heightRest == null || verts == null) return 0f;
             if (heightCurrent.Length == 0) return 0f;
 
-            // AABB pre-filter expanded by maxHeightRest — the visible shell is the
-            // patch verts displaced along their normals by heightRest, so on tilted
-            // / 3D hosts the shell can bulge past the un-displaced xy footprint by
-            // up to that distance. Without the margin a slime visually on the
-            // bulged shell edge would read off-patch (depth=0) and Plow drag never
-            // engages even though the player is clearly in the snow.
+            // Margin = maxHeightRest: without it a slime standing on the bulged shell edge
+            // reads off-patch (depth 0) and Plow drag never engages.
             float margin = maxHeightRest;
             float dxOut = 0f, dyOut = 0f;
             if (localXY.x < aabbMin.x) dxOut = aabbMin.x - localXY.x;
@@ -299,9 +254,8 @@ namespace SlimeJumping.Platforms.Snow
             if (rest <= 1e-5f) return 0f;
             float ratio = Mathf.Clamp01(heightCurrent[bestIdx] / rest);
 
-            // Smooth taper across the margin zone so points outside the strict
-            // AABB ramp toward 0 with distance instead of clamping to a constant
-            // boundary value. Inside the AABB outDist2 is 0 → no attenuation.
+            // Taper across the margin zone instead of a constant boundary value; inside the
+            // AABB outDist2 is 0 → no attenuation.
             if (outDist2 > 0f && margin > 1e-5f)
             {
                 float taper = 1f - Mathf.Sqrt(outDist2) / margin;
@@ -311,12 +265,8 @@ namespace SlimeJumping.Platforms.Snow
             return ratio;
         }
 
-        /// <summary>Walk heightCurrent toward heightRest from either side. Carved
-        /// (cur &lt; rest) verts walk UP at <paramref name="accumulationRate"/>; raised
-        /// (cur &gt; rest) verts walk DOWN at <paramref name="settleRate"/>. Returns true
-        /// while any vertex is still away from rest (strip should keep ticking next
-        /// frame); false once everything is fully recovered. Pass <paramref name="settleRate"/>
-        /// = 0 to leave raised mounds in place forever.</summary>
+        /// <summary>Walk heightCurrent toward heightRest: carved verts up at accumulationRate, raised verts
+        /// down at settleRate (0 = mounds stay forever). True while any vertex can still move.</summary>
         public bool TickRecovery(float dt, float accumulationRate, float settleRate)
         {
             if (heightCurrent == null || heightRest == null) return false;
@@ -324,11 +274,8 @@ namespace SlimeJumping.Platforms.Snow
             float downStep = settleRate       * dt;
             if (upStep <= 0f && downStep <= 0f) return false;
 
-            // anyDifferent 가 true 면 caller (SnowField.FixedUpdate) 가 strip 을 activeStrips 에
-            // 다음 프레임에도 계속 보관. 그래서 "현재 다르고, *나중에* 변할 가능성이 있는"
-            // vertex 만 카운트. 회복 mechanism (upStep / downStep) 이 0 인 방향의 vertex 는
-            // 영원히 못 변하므로 anyDifferent 에 안 더함 — 그렇지 않으면 settleRate=0 + 이미
-            // 카브된 strip 이 매 FixedUpdate 빈 작업으로 영원히 ticked.
+            // 회복률이 0 인 방향의 vertex 는 영원히 못 변하므로 anyDifferent 에 안 더함 —
+            // 안 그러면 settleRate=0 인 카브된 strip 이 매 FixedUpdate 빈 작업으로 영원히 ticked.
             bool anyDifferent = false;
             bool anyChange = false;
             for (int v = 0; v < heightCurrent.Length; v++)
@@ -358,13 +305,8 @@ namespace SlimeJumping.Platforms.Snow
             return anyDifferent;
         }
 
-        /// <summary>Binary "is this point in the snow footprint" probe paired with the
-        /// nearest-vertex index for callers that also want to read heightCurrent /
-        /// heightRest at the same vert (plow drag) — so they don't repeat the sweep.
-        /// Returns true iff the nearest patch vert in mesh-local xy has heightRest > 0,
-        /// which is the build pipeline's unified output for every gate (slope filter,
-        /// overlap mask, taper, slope-curve, future region masks). Same AABB-margin
-        /// pre-filter pattern as <see cref="SampleDepthRatio01"/>.</summary>
+        /// <summary>True iff the nearest mesh-local-xy vert has heightRest > 0 — the build pipeline's
+        /// unified in-footprint output. Hands back that index so callers skip a second sweep.</summary>
         public bool TryFindNearestSnowVert(Vector3 localXY, out int vertIdx)
         {
             vertIdx = -1;
@@ -392,8 +334,7 @@ namespace SlimeJumping.Platforms.Snow
             return heightRest[bestIdx] > 1e-5f;
         }
 
-        /// <summary>Push heightCurrent[] to the GPU via the per-renderer MPB. No-op if
-        /// nothing has changed since the last flush.</summary>
+        /// <summary>Push heightCurrent[] to the GPU via the per-renderer MPB. No-op if not dirty.</summary>
         public void FlushIfDirty()
         {
             if (!dirty) return;

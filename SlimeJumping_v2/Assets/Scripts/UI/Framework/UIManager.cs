@@ -4,10 +4,8 @@ using SlimeJumping.InputHandling;
 
 namespace SlimeJumping.UI.Framework
 {
-    /// Per-scene UI root. Owns the 4 layer Canvases, registers every UIPanel at
-    /// Start, and manages the LIFO modal stack. While any modal is open, the
-    /// referenced SlimeInputReader is disabled — its OnDisable shuts off the
-    /// Input System "Player" action map, freezing slime input.
+    /// Per-scene UI root: the 4 layer Canvases, panel registry, LIFO modal stack.
+    /// While a modal is open SlimeInputReader is disabled, which shuts off the "Player" action map.
     public class UIManager : MonoBehaviour
     {
         public static UIManager Instance { get; private set; }
@@ -53,9 +51,8 @@ namespace SlimeJumping.UI.Framework
         {
             if (panel == null) return;
             registered.Remove(panel);
-            // Drain and rebuild the modal stack skipping the destroyed panel — if we
-            // only popped when it was on top, a mid-stack destroy would leak the
-            // input gate and permanently freeze slime input.
+            // Rebuild the stack instead of popping only the top: a mid-stack destroy would
+            // leak the input gate and freeze slime input permanently.
             if (ContainsInStack(panel))
             {
                 RemoveFromStack(panel);
@@ -102,8 +99,7 @@ namespace SlimeJumping.UI.Framework
             }
         }
 
-        /// Find the first registered panel of type T. Useful for scripts that
-        /// want to pop the options panel without holding a direct reference.
+        /// First registered panel of type T, for callers without a direct reference.
         public T Get<T>() where T : UIPanel
         {
             for (int i = 0; i < registered.Count; i++)
@@ -121,7 +117,6 @@ namespace SlimeJumping.UI.Framework
                 return;
             }
 
-            // Empty stack: open the first panel flagged OpenOnEscape (typically the Options panel).
             for (int i = 0; i < registered.Count; i++)
             {
                 var p = registered[i];
@@ -137,7 +132,6 @@ namespace SlimeJumping.UI.Framework
         {
             var target = LayerCanvas(panel.Layer);
             if (target == null) return;
-            // Keep local scale / position when moving into the layer.
             panel.transform.SetParent(target.transform, worldPositionStays: false);
             var rt = panel.transform as RectTransform;
             if (rt != null)

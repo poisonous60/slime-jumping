@@ -5,9 +5,7 @@ using SlimeJumping.Interaction;
 
 namespace SlimeJumping.Editor
 {
-    /// Spawns a test gramophone (v2) in the current scene next to the slime's
-    /// spawn area. Assign a PhonographPlaylist asset on the instance after
-    /// running; rows will render in the panel once the playlist is set.
+    /// Spawns test gramophones (v2) in the current scene; assign a PhonographPlaylist on each instance after running.
     public static class PhonographV2TestSetup
     {
         const int InteractableLayer = 10;
@@ -50,7 +48,6 @@ namespace SlimeJumping.Editor
             go.transform.position = hostPos;
             go.layer = InteractableLayer;
 
-            // Body (static collider owner)
             var baseBox = GameObject.CreatePrimitive(PrimitiveType.Cube);
             baseBox.name = "Body";
             Object.DestroyImmediate(baseBox.GetComponent<BoxCollider>());
@@ -59,7 +56,6 @@ namespace SlimeJumping.Editor
             baseBox.transform.localScale = new Vector3(1.2f, 0.3f, 1.2f);
             baseBox.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.4f, 0.25f, 0.15f));
 
-            // Disc pivot (visual rotation only — no collider attached)
             var discPivot = new GameObject("DiscPivot");
             discPivot.transform.parent = go.transform;
             discPivot.transform.localPosition = new Vector3(0f, 0.2f, 0f);
@@ -81,7 +77,6 @@ namespace SlimeJumping.Editor
             stripe.transform.localScale = new Vector3(0.3f, 0.5f, 0.05f);
             stripe.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(1f, 0.9f, 0.2f));
 
-            // Needle arm (simple rod pivoting at top-right of body)
             var needlePivot = new GameObject("NeedleArm");
             needlePivot.transform.parent = go.transform;
             needlePivot.transform.localPosition = new Vector3(0.55f, 0.22f, 0f);
@@ -95,7 +90,6 @@ namespace SlimeJumping.Editor
             rod.transform.localScale = new Vector3(0.7f, 0.06f, 0.06f);
             rod.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.75f, 0.75f, 0.8f));
 
-            // Trigger collider for interaction detection
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size = new Vector2(1.6f, 1.4f);

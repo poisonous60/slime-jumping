@@ -3,12 +3,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Interaction
 {
-    // Drives the sleep sequence:
-    //   Inactive → Settling → Sleeping → Waking → Released
-    //
-    // Settling : scale OutBack to sleepScale, asym/dip lerp, eyes force-close
-    // Sleeping : same breathing as SitPose Idle, eyes closed, Z emitter active
-    // Waking   : eyes force-open, anticipation stretch + EaseOutElastic settle
+    // Sleep sequence: Inactive → Settling → Sleeping → Waking → Released.
+    // Settling/Waking interpolate from the phase-entry snapshot; Sleeping breathes.
     public class BoxSleepAnimator : MonoBehaviour
     {
         [SerializeField] private SlimeVisual slimeVisual;
@@ -40,8 +36,7 @@ namespace SlimeJumping.Interaction
         private Quaternion _lastRotation = Quaternion.identity;
         private Vector3 _lastFaceOffset = Vector3.zero;
 
-        // SmoothDamp state for face follow. _smoothedFaceOffset is what we actually
-        // push to SlimeVisual; the per-frame target adds body-pivot Y * ratio.
+        // _smoothedFaceOffset is what actually reaches SlimeVisual.
         private Vector3 _smoothedFaceOffset;
         private Vector3 _faceVelocity;
 
@@ -65,16 +60,10 @@ namespace SlimeJumping.Interaction
             _smoothedFaceOffset = Vector3.zero;
             _faceVelocity = Vector3.zero;
             EnterState(State.Settling);
-            // Push t=0 immediately to prevent a one-frame (1,1,1) flicker between
-            // IsExternallyAnimated reset and the next Update().
+            // Push t=0 now, else a one-frame (1,1,1) flicker between IsExternallyAnimated reset and the next Update().
             Evaluate(0f);
         }
 
-        // RequestWake behavior by state:
-        //   Inactive/Released → ignore
-        //   Settling → queue _pendingWake (consumed when reaching Sleeping)
-        //   Sleeping → transition to Waking
-        //   Waking → ignore (already on the way out)
         public void RequestWake()
         {
             switch (_state)
@@ -122,8 +111,7 @@ namespace SlimeJumping.Interaction
                     if (slimeVisual != null) slimeVisual.SetEyesForced(EyesForceState.Open);
                     break;
                 case State.Released:
-                    // Overrides stay applied through Waking; clear here so the slime
-                    // returns to rest exactly when control releases.
+                    // Overrides stay applied through Waking; clearing earlier snaps the slime to rest mid-animation.
                     if (slimeVisual != null)
                     {
                         slimeVisual.SetExternalRotation(null);
@@ -188,8 +176,7 @@ namespace SlimeJumping.Interaction
                         scale = Vector3.Lerp(_enterScale, _profile.wakeAnticipationScale, e);
                         asym = Mathf.Lerp(_enterAsymmetry, 0f, e);
                         dip = Mathf.Lerp(_enterDip, 0f, e);
-                        // Rotation + face offset also unwind during anticipation so they
-                        // land at rest by the time the elastic settle starts.
+                        // Rotation + face offset unwind here so they are at rest before the elastic settle starts.
                         rot = Quaternion.Slerp(_enterRotation, Quaternion.identity, e);
                         faceOffset = Vector3.Lerp(_enterFaceOffset, Vector3.zero, e);
                     }
@@ -234,15 +221,13 @@ namespace SlimeJumping.Interaction
             float bodyPivotY = halfHeight * (scale.y - 1f) * anchorBias;
             Vector3 localPos = new Vector3(0f, bodyPivotY, 0f);
 
-            // Face follows body's vertical pivot motion at faceFollowRatio.
-            // SmoothDamp gives the lag/softness — applied universally so transitions
-            // (settle/wake) also pick up a touch of softness, not just sleep idle.
+            // SmoothDamp applied in every phase, not just sleep idle, so transitions carry the same softness.
             Vector3 faceTarget = faceOffset + new Vector3(0f, bodyPivotY * _profile.faceFollowRatio, 0f);
             _smoothedFaceOffset = Vector3.SmoothDamp(
                 _smoothedFaceOffset, faceTarget, ref _faceVelocity, _profile.faceFollowSmoothTime);
 
-            // Rotation + face offset overrides BEFORE SetExternalDeform so the next
-            // LateUpdate composes them with the latest scale/asym/dip values.
+            // SetExternalDeform composes _externalRotationOverride as it runs, so set the rotation
+            // first or body3d applies last frame's.
             slimeVisual.SetExternalRotation(rot);
             slimeVisual.SetExternalFaceOffset(_smoothedFaceOffset);
 

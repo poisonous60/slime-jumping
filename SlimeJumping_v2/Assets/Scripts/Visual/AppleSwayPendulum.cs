@@ -2,15 +2,10 @@ using UnityEngine;
 
 namespace SlimeJumping.Visual
 {
-    // Pure-code pendulum for decorative swinging bodies (e.g. an apple hanging from a branch tip).
-    // The stem/pivot is THIS transform's origin — parent it to whatever should drive it (e.g. the
-    // branch decoration cube) and the stem will track that parent with zero compliance. The visual
-    // mesh should be placed as a child offset below the origin; this script only sets world rotation,
-    // so the mesh swings around the stem like a real pendulum.
-    //
-    // We deliberately avoid HingeJoint2D here. Chaining two Dynamic-body hinges (branch→cube→apple)
-    // makes Box2D's Baumgarte stabilization visibly spring vertically under fast base motion, which
-    // reads as the apple "bouncing" up and down instead of swaying.
+    // Pure-code pendulum for decorative hanging bodies. Pivot = this transform's origin; the visual
+    // mesh goes in a child offset below it, since this script only writes world rotation.
+    // HingeJoint2D rejected: chained Dynamic hinges make Box2D's Baumgarte stabilization spring
+    // vertically under fast base motion, reading as a bounce instead of a sway.
     [DisallowMultipleComponent]
     public class AppleSwayPendulum : MonoBehaviour
     {
@@ -55,8 +50,7 @@ namespace SlimeJumping.Visual
             float dt = Time.fixedDeltaTime;
             if (dt <= 0f) return;
 
-            // Read parent position from the Rigidbody2D if present — transform.position on an
-            // interpolated RB lags the physics step and would inject bogus acceleration spikes.
+            // RB position, not transform: an interpolated RB's transform lags the step and injects bogus accel spikes.
             Vector2 parentPos = parentRb != null ? parentRb.position
                                                  : (Vector2)transform.parent.position;
 
@@ -72,9 +66,7 @@ namespace SlimeJumping.Visual
             lastParentPos = parentPos;
             lastParentVel = parentVel;
 
-            // Point-mass pendulum of length L, angle θ CCW-positive from straight-down.
-            //   body offset r = (L sinθ, -L cosθ)
-            //   forces (parent frame) = gravity + pseudo-force from base accel
+            // Point-mass pendulum, θ CCW-positive from straight-down, base accel as pseudo-force:
             //   α = -(sinθ · (g + ay·vGain) + cosθ · ax·hGain) / L - c · ω
             float sin = Mathf.Sin(angle);
             float cos = Mathf.Cos(angle);
@@ -95,18 +87,15 @@ namespace SlimeJumping.Visual
 
         void ApplyRotation()
         {
-            // World rotation — deliberately not local, so the mesh keeps hanging "down in world"
-            // no matter how the parent (branch tip cube) rotates.
+            // World, not local: the mesh must keep hanging down in world however the parent rotates.
             transform.rotation = Quaternion.Euler(0f, 0f, angle * Mathf.Rad2Deg);
         }
 
         void OnDrawGizmos()
         {
-            // Stem point — a small yellow marker at this transform's origin.
             Gizmos.color = new Color(1f, 0.9f, 0.2f);
             Gizmos.DrawSphere(transform.position, 0.05f);
 
-            // Rope line from stem down to the configured centre-of-mass distance.
             Gizmos.color = new Color(1f, 0.9f, 0.2f, 0.6f);
             Vector3 down = Application.isPlaying
                 ? (Vector3)(new Vector2(Mathf.Sin(angle), -Mathf.Cos(angle)) * length)

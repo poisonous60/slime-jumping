@@ -4,10 +4,7 @@ using SlimeJumping.Interaction;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Test helper: triggers KnockdownController on slime entry.
-    /// Cooldown-based re-activation for repeated testing without scene reload.
-    /// </summary>
+    /// <summary>Test helper: fires KnockdownController on slime entry, cooldown-gated so it can repeat without a scene reload.</summary>
     public class KnockdownTrigger : MonoBehaviour
     {
         [SerializeField] private KnockdownController knockdownController;

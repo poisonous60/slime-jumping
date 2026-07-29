@@ -52,17 +52,15 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
             var pts = new List<Vector2>(n);
             for (int i = 0; i < n; i++)
             {
-                // -π/2 start so the first vertex is at the bottom — matches the existing
-                // Make Circle template's convention.
+                // -π/2 start: first vertex at the bottom, matching the Make Circle template.
                 float a = -Mathf.PI * 0.5f + (i / (float)n) * Mathf.PI * 2f;
                 pts.Add(center + new Vector2(Mathf.Cos(a) * radius, Mathf.Sin(a) * radius));
             }
             return pts;
         }
 
-        // Ramer-Douglas-Peucker simplification. Keeps endpoints, drops intermediate points whose
-        // perpendicular distance to the segment connecting the kept neighbours is below `epsilon`.
-        // Stable, O(n log n) average. Used to thin freehand strokes.
+        // Ramer-Douglas-Peucker: keeps endpoints, drops points within `epsilon` of the kept
+        // span. Used to thin freehand strokes.
         public static List<Vector2> RDPSimplify(IList<Vector2> raw, float epsilon)
         {
             int n = raw == null ? 0 : raw.Count;

@@ -4,10 +4,7 @@ using SlimeJumping.Mechanisms;
 
 namespace SlimeJumping.Editor
 {
-    // Scene-view authoring tool for GraniteBlastNavGraph. Patterned on
-    // TerrainShape2DEditor:
-    //   Nodes tool — drag to move, Shift+click empty to add, Ctrl+click node to delete.
-    //   Edges tool — drag from node to node to create an edge, Ctrl+click an edge to delete.
+    // Scene-view authoring tool for GraniteBlastNavGraph, patterned on TerrainShape2DEditor.
     // All mutation goes through SerializedObject so Undo and dirty state are automatic.
     [CustomEditor(typeof(GraniteBlastNavGraph))]
     public class GraniteBlastNavGraphEditor : UnityEditor.Editor
@@ -200,7 +197,6 @@ namespace SlimeJumping.Editor
         {
             var e = Event.current;
 
-            // Picker dots for every node; highlight the drag source.
             for (int i = 0; i < _nodesProp.arraySize; i++)
             {
                 Vector3 wp = t.TransformPoint(GetNodeLocal(i));
@@ -389,9 +385,7 @@ namespace SlimeJumping.Editor
             return idx >= 0;
         }
 
-        // Project the mouse onto the transform's local XY plane (local Z = 0) and
-        // return the local-space hit. Matches NavGraph nodes' "front face" — the
-        // user can edit Z afterwards in the inspector for depth-swerving paths.
+        // Projects the mouse onto the transform's local XY plane, forcing local Z to 0.
         bool TryProjectMouseToTransformPlane(Transform t, Vector2 mouseGUI, out Vector3 localHit)
         {
             Plane plane = new Plane(t.forward, t.position);

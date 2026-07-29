@@ -4,16 +4,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Platforms
 {
-    /// <summary>
-    /// Clay/mud pillar: two vertical chains (left + right) of control points share a
-    /// fixed Y ladder. Each level stores a leftX and rightX. Slime impacts push the
-    /// struck side's X inward along the horizontal axis. Where the two sides cross
-    /// (leftX ≥ rightX) the level has no material — the pillar splits at that Y and
-    /// the slime passes through. Each connected vertical run of valid levels becomes
-    /// a separate mesh island and a separate PolygonCollider2D path.
-    ///
-    /// Slime falls below the platform → all chains lerp back to rest.
-    /// </summary>
+    /// <summary>Clay pillar: left/right X chains on a shared Y ladder; impacts push the struck side inward, levels where leftX ≥ rightX are pinched (pass-through) and split the pillar into separate mesh + collider islands.</summary>
     [RequireComponent(typeof(MeshFilter))]
     [RequireComponent(typeof(MeshRenderer))]
     [RequireComponent(typeof(PolygonCollider2D))]
@@ -151,8 +142,7 @@ namespace SlimeJumping.Platforms
 #if UNITY_EDITOR
         void OnValidate()
         {
-            // Inspector changes at edit time → re-emit mesh/collider so params read live.
-            // Delayed to avoid touching assets during inspector GUI pass.
+            // delayCall, else the mesh/collider writes land inside the inspector GUI pass.
             if (Application.isPlaying) { dirty = true; return; }
             UnityEditor.EditorApplication.delayCall += () =>
             {
@@ -175,9 +165,8 @@ namespace SlimeJumping.Platforms
                 if (slime == null) return;
             }
 
-            // Treat Charging the same as Attached — the slime is still resting on us, and a
-            // land+immediately-charge input would otherwise skip the Attached frame entirely
-            // (Airborne → Attached → Charging in one physics step) and miss the landing impact.
+            // Charging counts as Attached: land+charge in one physics step skips the
+            // Attached frame entirely and the landing impact would be missed.
             bool attachedToMe = (slime.CurrentState == SlimeController.SlimeState.Attached ||
                                  slime.CurrentState == SlimeController.SlimeState.Charging)
                                 && slime.SurfaceCollider == poly;
@@ -196,9 +185,8 @@ namespace SlimeJumping.Platforms
 
             wasAttachedToMe = attachedToMe;
 
-            // Reset is driven exclusively by DeformablePlatformActivator.SetActiveByManager —
-            // no local fall-below polling, so a platform whose slime is below-but-still-in-range
-            // won't spuriously revert.
+            // Reset is driven only by DeformablePlatformActivator.SetActiveByManager; local
+            // fall-below polling would revert a platform whose slime is below but still in range.
             if (resetting) TickReset(Time.fixedDeltaTime);
         }
 
@@ -366,8 +354,8 @@ namespace SlimeJumping.Platforms
                 {
                     // Can only increase (push further into material).
                     float newX = levels[i].leftCurX + push;
-                    // Cap at the opposite REST wall so the dent can cross (pass-through)
-                    // but the chain can't run off to infinity.
+                    // Cap at the opposite REST wall: the dent may cross (pass-through) but
+                    // the chain can't run off to infinity.
                     newX = Mathf.Min(newX, levels[i].rightRestX);
                     if (newX > levels[i].leftCurX) { levels[i].leftCurX = newX; any = true; }
                 }
@@ -387,11 +375,7 @@ namespace SlimeJumping.Platforms
 
         // --- Sand VFX -------------------------------------------------------
 
-        /// <summary>
-        /// Overwrites the local <c>sandVFXPrefabs</c> array. Called by
-        /// <see cref="DeformablePlatformActivator.ApplyToAll"/> so all platforms share a
-        /// single VFX list configured in one place (mirrors the WaterZoneAudioManager pattern).
-        /// </summary>
+        /// <summary>Overwrites <c>sandVFXPrefabs</c>; called by <see cref="DeformablePlatformActivator.ApplyToAll"/> so every platform shares one list.</summary>
         public void ApplyImpactVFX(GameObject[] prefabs)
         {
             sandVFXPrefabs = prefabs;
@@ -403,8 +387,8 @@ namespace SlimeJumping.Platforms
             var prefab = sandVFXPrefabs[Random.Range(0, sandVFXPrefabs.Length)];
             if (prefab == null) return; // user left a slot empty — skip this hit silently
             var inst = Instantiate(prefab, worldPos, Quaternion.identity);
-            // Drive auto-cleanup for one-shot (non-looping) particle systems so instances
-            // don't pile up in the scene. Looping prefabs are left alone (user's call).
+            // Auto-destroy one-shot systems so instances don't pile up; looping prefabs
+            // are left alone.
             foreach (var ps in inst.GetComponentsInChildren<ParticleSystem>(includeInactive: false))
             {
                 var main = ps.main;
@@ -412,11 +396,7 @@ namespace SlimeJumping.Platforms
             }
         }
 
-        /// <summary>
-        /// Ambient loop: (re)instantiate or destroy the looping sand VFX child based on the
-        /// current toggle, and size its emission shape to the platform's rest top width.
-        /// Safe to call any number of times — idempotent.
-        /// </summary>
+        /// <summary>Idempotent: (re)creates or destroys the looping sand VFX child and sizes it to the rest top width.</summary>
         void UpdateAmbientSandVFX()
         {
             bool shouldExist = ambientSandEnabled && ambientSandPrefab != null && levels != null && levels.Length >= 2;
@@ -434,7 +414,6 @@ namespace SlimeJumping.Platforms
                 ambientSandInstance.hideFlags = HideFlags.DontSave; // don't serialize a runtime clone into the scene
             }
 
-            // Position at top-cap midpoint and widen the emission shape to rest width × scale factor.
             float topY      = levels[0].y;
             float topLeftX  = levels[0].leftRestX;
             float topRightX = levels[0].rightRestX;
@@ -467,12 +446,7 @@ namespace SlimeJumping.Platforms
 
         // --- Activation (driven by DeformablePlatformActivator) -------------
 
-        /// <summary>
-        /// Called by the scene's DeformablePlatformActivator via OnTriggerEnter/Exit.
-        /// Exit (slime left the keep-alive range) triggers a reset back to rest.
-        /// Enter is a no-op — an already-running reset finishes on its own, and any
-        /// new impact will abort the reset via ApplyImpactAt.
-        /// </summary>
+        /// <summary>Activator hook: exit (slime left range) starts the reset; enter is a no-op.</summary>
         public void SetActiveByManager(bool active)
         {
             if (active) return;
@@ -531,8 +505,7 @@ namespace SlimeJumping.Platforms
             if (meshFilter == null || poly == null) return;
             if (levels == null || levels.Length < 3) return;
 
-            // Walk level ladder, detect connected runs of valid (non-pinched) levels.
-            // A level is "pinched" when leftCurX >= rightCurX.
+            // Each connected run of non-pinched levels becomes one piece.
             scratchPiecePaths.Clear();
             scratchVerts.Clear();
             scratchNorms.Clear();
@@ -580,14 +553,9 @@ namespace SlimeJumping.Platforms
 
         bool IsPinched(int i) => levels[i].leftCurX >= levels[i].rightCurX;
 
-        // Emit a single piece spanning levels [start..end] (inclusive).
-        // Appends to scratchPiecePaths (collider), scratchVerts/norms/uvs/tris (mesh).
-        //
-        // Each piece is built as K+1 "rings" along Z. Ring 0 is the front face
-        // (fully deformed). Ring K is the back face (deformation multiplied by
-        // rearDeformFactor). Intermediate rings interpolate. The side strip
-        // stitches consecutive rings so a dent appears deeper from near-camera
-        // than from far-camera — the far side is visible *through* the near dent.
+        // Emit levels [start..end] into the collider path + mesh scratch buffers.
+        // Front ring is fully deformed, back ring × rearDeformFactor, so the far side
+        // stays visible *through* the near dent.
         void EmitPiece(int start, int end)
         {
             // 1. Build deformed outline (front-facing) and rest outline (back-facing anchor).
@@ -609,10 +577,8 @@ namespace SlimeJumping.Platforms
             for (int k = 0; k < n; k++) pathArr[k] = scratchOutline[k];
             scratchPiecePaths.Add(pathArr);
 
-            // 3. Build two Z-rings. Ring 0 is front (full deformation, z=-d/2),
-            //    ring 1 is back (factor=rearDeformFactor, z=+d/2). The side strip is
-            //    a single quad per edge between them — additional Z subdivisions added
-            //    no visible detail so the param was dropped.
+            // 3. Two Z-rings only — front (full deform) and back (× rearDeformFactor);
+            //    extra Z subdivisions added no visible detail.
             const int K = 1;
             float zF = -depth * 0.5f;
             float zB = +depth * 0.5f;
@@ -651,13 +617,8 @@ namespace SlimeJumping.Platforms
                 ringZ = new float[ringCount];
         }
 
-        // Emit the front face as a strip-grid: each level row has (frontInteriorCols + 2)
-        // vertices — col 0 on the left chain, col (cols-1) on the right chain, and cols
-        // in between as jittered interior points. Interior verts get Perlin Z displacement;
-        // boundary verts stay flush at z=zFront so the side strip meets them cleanly.
-        //
-        // Mirrors pogo_mud_generator_v1.py's "grid of scattered interior points + Delaunay"
-        // approach but uses the chain's Y ladder as the grid row structure (no CDT needed).
+        // Front face as a row-grid: interior verts get jitter + Perlin Z, boundary verts
+        // stay flush at zFront so the side strip meets them cleanly.
         Vector3[,] frontGrid3D;
         void EmitFrontFaceGrid(float zFront, int pieceStart, int pieceEnd)
         {
@@ -756,8 +717,7 @@ namespace SlimeJumping.Platforms
             scratchTris.Add(vBase); scratchTris.Add(vBase + 1); scratchTris.Add(vBase + 2);
         }
 
-        // Emit the back face: single ring outline, flat normal, no subdivision or noise.
-        // Triangle winding is reversed so it faces +Z (away from camera).
+        // Back face: single ring outline, flat normal, no subdivision or noise.
         void EmitBackFace(Vector2[] ring, float zBack, int n)
         {
             int vBase = scratchVerts.Count;
@@ -776,9 +736,8 @@ namespace SlimeJumping.Platforms
             }
         }
 
-        // Emit the side strip as a ladder of flat-normal quads, K rings × n edges.
-        // Each edge gets its own set of verts (flat per edge) and every edge-ring-pair
-        // forms one quad. Normals are computed per quad so the taper reads properly lit.
+        // Side strip: K rings × n edges of quads, verts duplicated per quad so each one
+        // gets its own flat normal and the taper reads properly lit.
         void EmitSideStrip(int K, int n)
         {
             float perimCursor = 0f;
@@ -805,7 +764,7 @@ namespace SlimeJumping.Platforms
                     Vector3 B = new Vector3(b0.x, b0.y, zA);
                     Vector3 C = new Vector3(a1.x, a1.y, zB);
                     Vector3 D = new Vector3(b1.x, b1.y, zB);
-                    // Tri winding: (A, B, C) and (B, D, C) — same as before, outward for CCW outline.
+                    // Winding (A,B,C) + (B,D,C) faces outward for a CCW outline.
                     Vector3 nrm = Vector3.Cross(B - A, C - A).normalized;
 
                     float v0 = k / (float)K;

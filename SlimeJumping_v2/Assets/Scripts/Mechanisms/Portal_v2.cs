@@ -4,13 +4,8 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Portal v2 — Portal teleport with a consume/respawn lifecycle.
-    /// On trigger, the slime teleports immediately and BOTH paired portals run
-    /// Consuming → Gone → Respawning → Idle. Pair links auto-mirror (assign on
-    /// one side; the partner wires itself in Awake). Color is per-portal and
-    /// applies live in the editor via SpriteRenderer.color or a MaterialPropertyBlock.
-    /// </summary>
+    /// <summary>Portal teleport with a consume/respawn lifecycle: on trigger the slime teleports and
+    /// BOTH paired portals run Consuming → Gone → Respawning → Idle.</summary>
     [RequireComponent(typeof(BoxCollider2D))]
     public class Portal_v2 : MonoBehaviour
     {
@@ -150,8 +145,7 @@ namespace SlimeJumping.Mechanisms
             var slime = other.GetComponentInParent<SlimeController>();
             if (slime == null) return;
 
-            // Disable both triggers BEFORE moving the slime, so the exit portal
-            // doesn't fire OnTriggerEnter when the slime materializes inside its bounds.
+            // Disable both triggers BEFORE the move, else the exit fires OnTriggerEnter on arrival.
             EnterConsuming();
             pair.EnterConsuming();
             Teleport(slime);

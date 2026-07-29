@@ -6,15 +6,10 @@ namespace SlimeJumping.Controller
 {
     public partial class SlimeController
     {
-        // --- State: Attached (any surface) ---
-
         private void FixedUpdateAttached(float dt)
         {
-            // Tip-grab is sticky — the slime stays Attached even when the bamboo bends past
-            // the ceiling-threshold dot. The grab's tip-lock keeps the slime physically on
-            // the bamboo; the ordinary "surface lost" detach is suppressed until Launch (or
-            // any other Attached/Charging exit, which ChangeState clears the grab from).
-            // blockAttach (water etc.) still wins and forces detach to keep zone semantics.
+            // Tip-grab is sticky: the ordinary "surface lost" detach is suppressed until the
+            // grab clears. blockAttach (water etc.) still wins and forces detach.
             bool grabKeepsAttached = currentBambooGrab != null;
             bool surfaceLost = !isTouchingSurface
                 || Vector2.Dot(surfaceNormal, gravityUp) < surfaceMod.GetCeilingThreshold(settings);
@@ -41,10 +36,8 @@ namespace SlimeJumping.Controller
                     ClearPendingEnergyConversion(executeDeferredReset: true);
             }
 
-            // Tip-grabbed: rb.position is owned by LockBambooGrabPosition, slide/crawl/
-            // friction-detach are irrelevant. Zero motion channels and bail out before
-            // the surface physics writes a tangent velocity that would tug the slime off
-            // the tip between LockBambooGrabPosition refreshes.
+            // Tip-grabbed: rb.position is owned by LockBambooGrabPosition. Bail before the
+            // surface physics writes a tangent velocity that tugs the slime off the tip.
             if (currentBambooGrab != null)
             {
                 crawlVelocity = 0f;
@@ -59,11 +52,8 @@ namespace SlimeJumping.Controller
 
             UpdateStickTransition();
 
-            // Stick: delay before slide starts, with optional deceleration.
-            // Decel target is crawlVelocity (landingVelocityRetention * effectiveTangent), not 0.
-            // Why: without retention crawlVelocity is 0 so this matches old behavior, but with
-            // SurfaceTag retention > 0, post-decel stick frames set velocity = surfaceTangent *
-            // crawlVelocity via the crawl path — a 0-target lerp endpoint would jump up to it.
+            // Decel target is crawlVelocity, not 0 — with SurfaceTag retention > 0 the crawl
+            // path resumes at surfaceTangent * crawlVelocity and a 0-target endpoint jumps.
             if (stickTimer > 0f)
             {
                 stickTimer -= dt;
@@ -77,54 +67,29 @@ namespace SlimeJumping.Controller
                 }
             }
 
-            // 1. Slide (legacy steady-state or inertial integration; skipped while sticking)
             float angle = GetSurfaceAngle();
             float slideSpeed = stickTimer <= 0f ? ComputeSlideSpeed(angle, dt, 1f) : 0f;
 
-            // 2. Crawl channel: residual landing-tangent momentum decays to 0. WASD surface
-            //    movement is gone — slide gravity + the charge slingshot are the only mover now.
             float crawlDecel = settings.crawlOverspeedDeceleration * surfaceMod.crawlOverspeedDecel.Evaluate(angle);
             crawlVelocity = Mathf.MoveTowards(crawlVelocity, 0f, crawlDecel * dt);
 
-            // 3. Final tangent velocity. Use arc-midpoint-compensated tangent so the
-            // chord drawn between this frame and next by Rigidbody2D.Interpolate lands
-            // on the predicted arc midpoint instead of the leading-edge tangent. Without
-            // compensation, fast tangent rotation (5–8°/frame at U-bottom of Ice curves)
-            // produces visible chord-arc sagitta even when rb.position is anchored each frame.
+            // Arc-midpoint-compensated tangent: otherwise the chord Rigidbody2D.Interpolate
+            // draws follows the leading-edge tangent and fast rotation shows visible sagitta.
             float finalTangent = slideSpeed + crawlVelocity;
             velocity = ComputeArcCompensatedTangent(surfaceTangent) * finalTangent;
 
-            // Cancel velocity into all active contacts (multi-constraint). At concave
-            // corners this zeroes velocity into every tangent surface, avoiding the
-            // Phase-A-pushes-back rubber-banding of the single-normal clip.
-            // commandedMag is captured first: ComputeArcCompensatedTangent is a pure
-            // rotation, so it equals |finalTangent| — the tangent speed the slide channel
-            // asked for this frame. The wedge drain below compares it against how much
-            // magnitude survived the projection.
+            // Cancel velocity into every active contact; a single-normal clip rubber-bands at
+            // concave corners. commandedMag (rotation-only, == |finalTangent|) feeds the wedge test.
             float commandedMag = velocity.magnitude;
             surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
 
-            // Friction-based detach. Velocity is now surface-tangent clipped, so if we
-            // detach this frame the launch direction == current surface heading.
+            // Runs after the tangent clip so a detach this frame launches along the surface heading.
             if (CheckFrictionDetach(dt))
                 return;
 
-            // Drain inertial slideVelocity when the slime is *wedged* in a concave corner.
-            // ProjectVelocityAgainstContacts cancels motion into every active contact;
-            // where a wall meets a floor that removes most of the commanded tangent, so
-            // the slime barely moves while ComputeSlideSpeed keeps pumping gravAlongTangent
-            // into slideVelocity each frame. The banked energy then releases as a phantom
-            // launch when the wedge breaks (corner tangent rotates free, a contact drops)
-            // — observed accumulating to slideVel ≈ -46 in repro.
-            //
-            // Detect the wedge by how much magnitude the projection removed, NOT by
-            // velocity.sqrMagnitude: because slideVelocity grows unbounded the surviving
-            // velocity stays large (6–46 in repro), so the old absolute-zero guard never
-            // fired. Free curve sliding and slope→flat redirection preserve |velocity|
-            // (the projection only rotates it to follow the surface; arc-compensation adds
-            // ≤3% loss at the 30°/frame cap), so a >15% drop is unambiguously a wedge.
-            // Resync slideVelocity to the tangent speed that actually survived so it can't
-            // bank energy that produced no motion. crawlVelocity is left untouched.
+            // Wedged in a concave corner: the projection eats most of the commanded tangent while
+            // ComputeSlideSpeed keeps banking slideVelocity → phantom launch when the wedge breaks.
+            // Detect via magnitude drop, not |velocity| — banked slideVelocity keeps that large.
             const float wedgeClipRetention = 0.85f;
             if (surfaceMod.useInertialSlide
                 && commandedMag > 0.001f
@@ -138,26 +103,7 @@ namespace SlimeJumping.Controller
             if (IsPlatformEffectAlive) activePlatformEffect.OnSlimeStay(this, dt);
         }
 
-        /// <summary>
-        /// Centrifugal-admissibility + geometric-horizon detach test, run after velocity
-        /// has been clipped to the surface tangent. Returns true (and has already called
-        /// ForceAirborneWithVelocity) if the slime detached this frame — caller must bail
-        /// out of FixedUpdateAttached. Also maintains the friction-stress visual ratio
-        /// (smoothedCornerStressRatio) and the debug snapshot every frame.
-        ///
-        /// The check has two stages:
-        ///   1. Centrifugal admissibility: required = v²/R must exceed available
-        ///      adhesion. Slow slime stays glued no matter what the geometry does.
-        ///   2. Geometric horizon: looks ahead along the current velocity for a
-        ///      configurable distance. If the surface drops away (no contact along
-        ///      the predicted free-flight path), detach. If a surface is still
-        ///      ahead (slime would just keep wrapping), don't detach.
-        ///
-        /// Stage 2 replaces the earlier dTheta+convex test, which fired at any
-        /// angle change regardless of whether the slime was actually leaving the
-        /// surface. The horizon check encodes the user intent directly: "would
-        /// the slime fly into empty space if it kept going straight?"
-        /// </summary>
+        /// <summary>Centrifugal-admissibility + geometric-horizon detach test; true means it already called ForceAirborneWithVelocity and the caller must bail.</summary>
         private bool CheckFrictionDetach(float dt)
         {
             if (!settings.useFrictionBasedDetachment)
@@ -188,8 +134,7 @@ namespace SlimeJumping.Controller
 
             if (!transientFrame)
             {
-                // ω is still useful as a "stress" signal for the visual ratio,
-                // but it no longer gates detach. Only horizon does.
+                // ω feeds the visual stress ratio and the centrifugal test; the horizon probe is the second gate.
                 float dThetaDeg = Vector2.SignedAngle(arcPrevTangent, surfaceTangent);
                 float dTheta = dThetaDeg * Mathf.Deg2Rad;
                 float absDTheta = Mathf.Abs(dTheta);
@@ -202,9 +147,6 @@ namespace SlimeJumping.Controller
                 float gravityHelp = Mathf.Abs(Vector2.Dot(GravityVector, surfaceNormal));
                 float available = gravityHelp + settings.cornerAdhesionAccel;
 
-                // Formula-driven required value. Each mode shapes the detach
-                // region differently in the v × R plane (see SlimeSettings
-                // inspector heatmap). VelocityTimesOmega = original v²/R.
                 float required;
                 bool centrifugalAdmissible;
                 switch (settings.frictionDetachFormula)
@@ -248,27 +190,15 @@ namespace SlimeJumping.Controller
                 bool horizonClear = false;
                 if (centrifugalAdmissible && tangentSpeedAbs > 0.001f)
                 {
-                    // Project the slime forward by lookahead distance along its
-                    // current velocity, then probe DOWN (= -surfaceNormal) from
-                    // that hypothetical position. If no ground is found beneath
-                    // the projected slime, the surface drops away ahead — detach.
-                    // If ground is still under foot, the slime would just keep
-                    // sliding — keep wrapping.
-                    //
-                    // The earlier "ray along velocity" version misfired on flat
-                    // ground because the ray was launched at slime-center height
-                    // and traveled horizontally; the floor is below that height,
-                    // so every flat-ground frame read as "horizon clear".
+                    // Probe DOWN from the projected position: a "ray along velocity" version
+                    // travels at slime-center height, so flat ground always read as clear.
                     Vector2 velDir = velocity / Mathf.Max(0.0001f, velocity.magnitude);
                     float lookahead = settings.cornerDetachHorizonLookaheadCurve.Evaluate(tangentSpeedAbs);
                     Vector2 projectedCenter = rb.position + velDir * lookahead;
-                    // Probe distance = slimeRadius + a generous skin so a small
-                    // bump in surface depth (chord-arc gap, polygon facets) still
-                    // counts as "ground present".
+                    // Skin absorbs chord-arc gaps / polygon facets so they still read as ground.
                     float probeDist = SlimeRadius + settings.cornerDetachHorizonProbeSkin;
                     RaycastHit2D hit = Physics2D.Raycast(projectedCenter, -surfaceNormal, probeDist, settings.groundLayer);
-                    // ignoredColliders (post-launch hop, etc.) shouldn't count
-                    // as ground for this check — treat them as empty space.
+                    // ignoredColliders (post-launch hop) are empty space for this check.
                     if (hit.collider != null && ignoredColliderList != null
                         && ignoredColliderList.Contains(hit.collider))
                     {
@@ -293,10 +223,8 @@ namespace SlimeJumping.Controller
                     return true;
                 }
 
-                // Visual gate: ratio surfaces only when convex sign has held ≥ 1 frame.
-                // A single-frame ω spike still increments to 1, but the LP filter (rate=25,
-                // dt=0.02 → k≈0.4) bleeds a 0→raw step by ~40%; combined with the visual
-                // SmoothDamp downstream, transient spikes don't reach perceptible stretch.
+                // Visual gate only: single-frame ω spikes are bled off by the LP filter plus the
+                // downstream SmoothDamp, so they never reach perceptible stretch.
                 gateOn = sameSignFrames >= 1;
             }
             else

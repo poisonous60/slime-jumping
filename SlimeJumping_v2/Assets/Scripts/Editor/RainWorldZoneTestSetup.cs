@@ -5,18 +5,10 @@ using SlimeJumping.Camera;
 
 namespace SlimeJumping.EditorTools
 {
-    /// <summary>
-    /// Adds a Rain World style camera zone into the active SampleScene.
-    /// Layout: outer zone trigger covering two sub-rooms side-by-side, with floor /
-    /// walls / ceiling so the slime can navigate between them. Each sub-room owns
-    /// a CinemachineCamera + Confiner2D pointing at its bounds, so when the slime
-    /// crosses from the left room into the right room the camera hard-cuts to the
-    /// new framing. Walking back out of the zone fades to the global SlimeVCam.
-    /// </summary>
+    /// <summary>Builds a Rain World style camera zone (two sub-rooms, hard cut between them) into the active SampleScene.</summary>
     public static class RainWorldZoneTestSetup
     {
-        // Anchor far from the existing SampleScene props so the test doesn't overlap
-        // with the slime spawn or other test setups.
+        // Anchor far from existing SampleScene props so the test doesn't overlap the slime spawn.
         private const float OriginX = 60f;
         private const float OriginY = 5f;
 
@@ -30,8 +22,7 @@ namespace SlimeJumping.EditorTools
                 return;
             }
 
-            // Preserve a designer-nudged position when re-running the menu, and
-            // tear down the old instance so we don't accumulate duplicate VCams.
+            // Keep the designer-nudged position on re-run, and destroy the old root so VCams don't accumulate.
             Vector3 spawnPos = new Vector3(OriginX, OriginY, 0f);
             var prior = GameObject.Find("RainWorldZoneTest");
             if (prior != null)
@@ -44,7 +35,6 @@ namespace SlimeJumping.EditorTools
             Undo.RegisterCreatedObjectUndo(root, "Create Rain World Zone Test");
             root.transform.position = spawnPos;
 
-            // Two sub-rooms side-by-side, 14 wide x 12 tall each, sharing a vertical edge at x=0 (local).
             float roomW = 14f;
             float roomH = 12f;
             Vector2 leftCenter = new Vector2(-roomW / 2f, 0f);
@@ -54,8 +44,8 @@ namespace SlimeJumping.EditorTools
             var leftRoomGo = BuildSubRoom("SubRoom_Left", root.transform, leftCenter, roomSize, brain);
             var rightRoomGo = BuildSubRoom("SubRoom_Right", root.transform, rightCenter, roomSize, brain);
 
-            // Outer zone trigger: covers both rooms with a small margin so OnTriggerEnter
-            // fires before OnTriggerExit on the world boundary.
+            // Zone trigger must span both rooms' union, else its OnTriggerExit fires while the
+            // slime is still inside a room and the camera pops back to the global VCam.
             var zoneGo = new GameObject("RainWorldZone");
             zoneGo.transform.SetParent(root.transform, worldPositionStays: false);
             zoneGo.transform.localPosition = Vector3.zero;
@@ -72,11 +62,6 @@ namespace SlimeJumping.EditorTools
             subRoomsProp.GetArrayElementAtIndex(1).objectReferenceValue = rightRoomGo.GetComponent<RainWorldSubRoom>();
             soZone.ApplyModifiedProperties();
 
-            // Geometry: floor under both rooms, walls on the outer edges + a roof
-            // so the slime can climb around but can't fall out of the zone.
-            // Centers are world-space because BuildPlatform parents under root and
-            // we want the user to be able to reposition the whole RainWorldZoneTest
-            // by moving the root.
             float floorY = -roomH / 2f - 0.5f;
             BuildPlatform("Floor", root.transform, new Vector3(0f, floorY, 0f), new Vector3(roomW * 2f + 2f, 1f, 1f));
 
@@ -86,12 +71,10 @@ namespace SlimeJumping.EditorTools
             BuildPlatform("WallRight", root.transform, new Vector3(wallX, 0f, 0f), new Vector3(1f, wallH, 1f));
             BuildPlatform("Roof", root.transform, new Vector3(0f, roomH / 2f + 0.5f, 0f), new Vector3(roomW * 2f + 2f, 1f, 1f));
 
-            // A short divider wall between the two rooms so the slime has to climb
-            // it to cross the seam — that gives a clean moment to see the hard cut.
+            // Divider forces a climb at the seam, so the hard cut happens at a readable moment.
             BuildPlatform("Divider", root.transform, new Vector3(0f, -roomH / 2f + 1.5f, 0f), new Vector3(0.6f, 3f, 1f));
 
-            // Color the floor differently per side so the visual room change is obvious
-            // even with identical camera framing.
+            // Per-side floor tint: the framing is identical, so only color shows the room change.
             BuildPlatform("FloorTintLeft", root.transform,
                 new Vector3(-roomW / 2f, floorY + 1.0f, 0f),
                 new Vector3(roomW - 0.5f, 0.05f, 1f),
@@ -101,8 +84,6 @@ namespace SlimeJumping.EditorTools
                 new Vector3(roomW - 0.5f, 0.05f, 1f),
                 new Color(0.85f, 0.55f, 0.45f));
 
-            // Ramp from outside the zone so the slime can walk in. Placed just left
-            // of the left wall, sloping down from the world ground.
             BuildPlatform("EntryRamp", root.transform,
                 new Vector3(-wallX - 4f, floorY, 0f),
                 new Vector3(7f, 1f, 1f));
@@ -118,9 +99,7 @@ namespace SlimeJumping.EditorTools
 
         private static GameObject BuildSubRoom(string name, Transform parent, Vector2 localCenter, Vector2 size, CinemachineBrain brain)
         {
-            // The sub-room GO holds the BoxCollider2D bounds. The CinemachineCamera
-            // is a child with its own transform so designers can offset the camera
-            // pivot independently of the room bounds (e.g. composer target offset).
+            // VCam lives on a child, not the room GO, so its pivot can be offset without moving the bounds.
             var go = new GameObject(name);
             go.transform.SetParent(parent, worldPositionStays: false);
             go.transform.localPosition = (Vector3)localCenter;
@@ -131,9 +110,7 @@ namespace SlimeJumping.EditorTools
 
             var subRoom = go.AddComponent<RainWorldSubRoom>();
 
-            // CinemachineCamera child. Use the same composer / impulse-listener setup
-            // as the existing SlimeVCam so behavior matches the global camera (just
-            // confined and at higher priority while active).
+            // Mirrors SlimeVCam's composer / impulse-listener setup, just confined.
             var vcamGo = new GameObject(name + "_VCam");
             vcamGo.transform.SetParent(go.transform, worldPositionStays: false);
             vcamGo.transform.localPosition = new Vector3(0f, 0f, -12f);
@@ -151,12 +128,8 @@ namespace SlimeJumping.EditorTools
             var composer = vcamGo.AddComponent<CinemachinePositionComposer>();
             composer.CameraDistance = 12f;
             composer.TargetOffset = new Vector3(0f, 0.5f, 0f);
-            // Sub-room VCams need damping that the global SlimeVCam doesn't:
-            // the Confiner2D clamps the camera to the room box, so when the slime
-            // moves toward an edge the camera hits the wall and "sticks" while the
-            // slime keeps going. With Damping=0 the derivative snaps to zero on
-            // contact (jerky). 0.4~0.6 eases the camera into the confiner edge
-            // and also soaks up slime per-frame normal jitter inside the room.
+            // Damping > 0 required here (unlike the global SlimeVCam): the Confiner2D stops the
+            // camera at the room edge and Damping=0 snaps the derivative to zero — visibly jerky.
             composer.Damping = new Vector3(0.5f, 0.4f, 0f);
 
             var confiner = vcamGo.AddComponent<CinemachineConfiner2D>();
@@ -164,9 +137,7 @@ namespace SlimeJumping.EditorTools
 
             vcamGo.AddComponent<CinemachineImpulseListener>();
 
-            // Tracking target: reuse the global SlimeCameraTargetProxy if present,
-            // else fall back to the slime root. Either way the sub-room VCam follows
-            // the same low-pass + snap pipeline as SlimeVCam.
+            // Prefer the proxy: it carries SlimeVCam's low-pass + snap pipeline.
             var proxy = Object.FindAnyObjectByType<SlimeCameraTargetProxy>();
             if (proxy != null)
             {
@@ -179,7 +150,6 @@ namespace SlimeJumping.EditorTools
                 else Debug.LogWarning("[RainWorldZoneTestSetup] No slime found — assign Tracking Target on " + name + "_VCam manually.");
             }
 
-            // Wire the sub-room's vcam reference.
             var soSub = new SerializedObject(subRoom);
             soSub.FindProperty("vcam").objectReferenceValue = vcam;
             soSub.ApplyModifiedProperties();

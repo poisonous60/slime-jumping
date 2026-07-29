@@ -71,7 +71,7 @@ namespace SlimeJumping.Editor
             windVis.color = new Color(0.4f, 0.7f, 1f, 0.08f);
             windVis.sortingOrder = -1;
 
-            // --- Stripe Particles (in-zone visual, child of wind zone) ---
+            // --- Stripe Particles (in-zone visual) ---
             var particleGo = new GameObject("WindParticles");
             particleGo.transform.parent = windZone.transform;
             particleGo.transform.localPosition = Vector3.zero;
@@ -104,7 +104,7 @@ namespace SlimeJumping.Editor
             psRenderer.velocityScale = 0.1f;
             psRenderer.sharedMaterial = LoadOrCreateWindParticleMaterial();
 
-            // --- Snow ForceField (child of wind zone, drives snow particles globally) ---
+            // --- Snow ForceField (drives snow particles globally) ---
             var ff = CreateForceFieldChild("SnowForceField", windZone.transform, Vector3.zero,
                 new Vector3(8f, 8f, 100f), windFFLayer, 20f, 1.5f);
 
@@ -116,7 +116,6 @@ namespace SlimeJumping.Editor
                 new Vector3(+(8f * 0.5f + 4f * 0.5f), 0f, 0f),
                 new Vector3(4f, 8f, 100f), windFFLayer, 20f * 0.3f, 1.5f);
 
-            // Wire references on WindZone2D_v2
             soWind = new SerializedObject(wind);
             soWind.FindProperty("windParticles").objectReferenceValue = ps;
             soWind.FindProperty("snowForceField").objectReferenceValue = ff;

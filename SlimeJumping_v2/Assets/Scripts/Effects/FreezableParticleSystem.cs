@@ -2,9 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Effects
 {
-    /// Pauses its ParticleSystem while <see cref="WorldTimeFreezeService"/> is frozen
-    /// and resumes it on freeze end. Drop on snow/dust/ambient particle GOs that
-    /// should respect the cooperative freeze without changing global Time.timeScale.
+    /// Pauses/resumes its ParticleSystem with <see cref="WorldTimeFreezeService"/>, so the freeze
+    /// stays cooperative instead of touching global Time.timeScale.
     [RequireComponent(typeof(ParticleSystem))]
     [AddComponentMenu("SlimeJumping/Effects/Freezable Particle System")]
     public class FreezableParticleSystem : MonoBehaviour

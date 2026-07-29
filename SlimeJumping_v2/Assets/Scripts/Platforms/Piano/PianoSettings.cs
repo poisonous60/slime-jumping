@@ -2,13 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Piano
 {
-    /// Tunable feel/dynamics for a PianoKeyboard. Shown inline on the keyboard component
-    /// so designers can shape the velocity->loudness and velocity->depth response with the
-    /// inspector curve editor, dial the return-spring "stiffness" (뻑뻑함), the sustained held
-    /// depth while the slime rests on a key, and the note's damper fade-out on release.
-    ///
-    /// Depths are in WORLD units. The key is a PlatformMotor that sinks by this much and carries
-    /// the slime down with it (keep depths small relative to a key's world width).
+    /// Tunable feel/dynamics for a PianoKeyboard (velocity→loudness/depth, return spring, damper fade).
+    /// Depths are in WORLD units — the key sinks by this much and carries the slime down with it.
     [System.Serializable]
     public class PianoSettings
     {

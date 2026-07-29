@@ -3,12 +3,7 @@ using UnityEditor;
 
 namespace SlimeJumping.Editor
 {
-    /// <summary>
-    /// One-click wiring for the FACE slice clip: creates Mat_SlimeFaceSlice (using the
-    /// SlimeJumping/SlimeFaceSlice shader) and assigns it to the slime's face SpriteRenderers
-    /// (eyes + mouth) in Slime.prefab, replacing the stock URP Default Sprite material so the
-    /// face can be clipped by the wound planes. Idempotent. Run in edit mode.
-    /// </summary>
+    /// <summary>Assigns Mat_SlimeFaceSlice to Slime.prefab face sprites so wound planes can clip them. Idempotent, edit mode only.</summary>
     public static class SlimeFaceSliceSetup
     {
         private const string ShaderName = "SlimeJumping/SlimeFaceSlice";
@@ -32,7 +27,7 @@ namespace SlimeJumping.Editor
                 int n = 0;
                 foreach (var sr in root.GetComponentsInChildren<SpriteRenderer>(true))
                 {
-                    if (!HasAncestorNamed(sr.transform, "Face")) continue;   // face sprites only
+                    if (!HasAncestorNamed(sr.transform, "Face")) continue;
                     sr.sharedMaterial = mat;
                     n++;
                 }

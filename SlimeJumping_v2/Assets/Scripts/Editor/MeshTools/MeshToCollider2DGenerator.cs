@@ -9,25 +9,13 @@ using UnityEngine;
 
 namespace SlimeJumping.EditorTools
 {
-    /// <summary>
-    /// Editor-only tool: generates a PolygonCollider2D matching the WORLD Z=0 cross-section
-    /// of a 3D mesh, regardless of how the mesh GameObject is rotated.
-    ///
-    /// To keep the 2D collider free of 3D-rotation distortion, the collider is attached to
-    /// an identity-rotated wrapper parent (`{mesh.name}_Collider2D`) inserted above the mesh.
-    /// The mesh moves/rotates with the wrapper via the hierarchy, but the collider's own
-    /// transform has no X/Y rotation, so Box2D sees an un-distorted shape.
-    /// </summary>
+    /// <summary>Editor-only: PolygonCollider2D from a mesh's world Z=0 cross-section, placed on an identity-rotated wrapper parent so Box2D sees no 3D-rotation distortion.</summary>
     public static class MeshToCollider2DGenerator
     {
         [MenuItem("SlimeJumping/Generate PolygonCollider2D from Mesh (Z=0 cross-section)", false, 200)]
         public static void GenerateMenu() { Generate(); }
 
-        /// <summary>
-        /// Cuts the selected mesh at the world Z=0 plane and writes the cross-section
-        /// to a PolygonCollider2D on an identity-rotated wrapper parent.
-        /// Returns the collider, or null if the operation did not complete.
-        /// </summary>
+        /// <summary>Cuts the selected mesh at world Z=0 into a PolygonCollider2D on an identity-rotated wrapper; null if it did not complete.</summary>
         public static PolygonCollider2D Generate()
         {
             var meshGO = Selection.activeGameObject;
@@ -54,8 +42,7 @@ namespace SlimeJumping.EditorTools
                 return null;
             }
 
-            // Bake vertices into world space before cutting so the slice is taken in the
-            // world XY plane regardless of the mesh object's local rotation/scale.
+            // Bake to world space before cutting, else the slice plane follows the mesh's local rotation/scale.
             var dmesh = ToDMesh3(mesh, meshTr.localToWorldMatrix);
 
             var cut = new MeshPlaneCut(dmesh,
@@ -77,7 +64,6 @@ namespace SlimeJumping.EditorTools
                 return null;
             }
 
-            // Loop vertices are in world space (we baked before cutting) → take (x,y) as world XY.
             var worldLoops = new List<List<Vector2>>(cut.CutLoops.Count);
             foreach (var edgeLoop in cut.CutLoops)
             {
@@ -98,9 +84,7 @@ namespace SlimeJumping.EditorTools
                 return null;
             }
 
-            // Classify each loop by nesting depth (point-in-polygon): even depth = outer (CCW),
-            // odd depth = hole (CW). This correctly handles disjoint outer contours AND true holes.
-            // Sorting by |area| first is a stable presentation choice only.
+            // Nesting depth, not area rank: even depth = outer, odd = hole, so disjoint outer contours survive.
             worldLoops.Sort((x, y) => Mathf.Abs(SignedArea(y)).CompareTo(Mathf.Abs(SignedArea(x))));
 
             bool[] isHole = new bool[worldLoops.Count];
@@ -138,12 +122,8 @@ namespace SlimeJumping.EditorTools
             else
                 Undo.RecordObject(col, "Generate PolygonCollider2D from Mesh");
 
-            // Convert world XY → wrapper-local via InverseTransformPoint so inherited
-            // lossyScale / rotation from the wrapper's parent chain is cancelled correctly.
-            // (Setting localScale=1 on the wrapper is not enough when its parent has scale.)
-            // After conversion, collinear vertices left over from mesh subdivision are
-            // dropped by RDP at 1mm chord error — geometrically a no-op, but cuts Box2D
-            // broadphase/AABB cost by ~80% on dense terrain. See TerrainColliderOptimizer.
+            // InverseTransformPoint, not localScale=1: cancels lossyScale/rotation inherited from the parent chain.
+            // RDP at 1mm chord error is geometrically a no-op but cuts Box2D broadphase cost ~80% on dense terrain.
             const float simplifyEpsilon = 0.001f;
             col.pathCount = worldLoops.Count;
             int totalRawVerts = 0, totalSimpVerts = 0;
@@ -196,8 +176,7 @@ namespace SlimeJumping.EditorTools
             return wb.min.z <= 0f && wb.max.z >= 0f;
         }
 
-        // Inserts an identity-rotated parent above meshGO, or reuses one that already exists
-        // from a previous run so the tool is idempotent.
+        // Inserts an identity-rotated parent above meshGO, or reuses an existing one (idempotent).
         private static Transform FindOrCreateWrapper(GameObject meshGO)
         {
             var meshTr = meshGO.transform;
@@ -232,8 +211,7 @@ namespace SlimeJumping.EditorTools
             return wrapperTr;
         }
 
-        // Adds the SelectionBase marker so Scene-view clicks on the child mesh select the
-        // wrapper instead of the mesh. Idempotent: safe on existing wrappers from prior runs.
+        // SelectionBase marker so Scene-view clicks on the child mesh select the wrapper.
         private static void EnsureSelectionBaseMarker(GameObject wrapperGO)
         {
             if (wrapperGO.GetComponent<MeshCollider2DWrapper>() == null)
@@ -255,9 +233,8 @@ namespace SlimeJumping.EditorTools
             return new Bounds(center, worldExtents * 2f);
         }
 
-        // Welds spatially-coincident vertices (in world space) so the mesh is topologically
-        // watertight. Unity primitives and FBX exports split vertices per-face for normals/UVs,
-        // which leaves geometry3Sharp seeing disconnected quads and reporting open spans.
+        // Welds coincident world-space verts: Unity primitives and FBX exports split verts per face,
+        // so geometry3Sharp otherwise sees disconnected quads and reports open spans.
         private static DMesh3 ToDMesh3(UnityEngine.Mesh src, Matrix4x4 toWorld)
         {
             const float quant = 1e5f;

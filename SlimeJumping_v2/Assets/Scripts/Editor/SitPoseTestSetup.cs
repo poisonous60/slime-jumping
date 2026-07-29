@@ -61,13 +61,11 @@ namespace SlimeJumping.Editor
             Vector3 anchorLocal, Vector2 triggerSize, Color color,
             SitPoseProfile profile)
         {
-            // Root — visual bench + trigger collider + SitPoseInteractable
             var go = new GameObject(name);
             go.transform.parent = parent;
             go.transform.position = hostPos;
             go.layer = InteractableLayer;
 
-            // Visual
             var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
             visual.name = "Visual";
             Object.DestroyImmediate(visual.GetComponent<BoxCollider>());
@@ -81,13 +79,11 @@ namespace SlimeJumping.Editor
             col.isTrigger = true;
             col.size = triggerSize;
 
-            // Anchor child — where slime sits. Visualized via SitPoseInteractable.OnDrawGizmos
-            // (Scene view only, hidden in Game view / builds).
+            // Anchor child — where the slime sits; SitPoseInteractable draws its gizmo.
             var anchor = new GameObject("SitAnchor");
             anchor.transform.parent = go.transform;
             anchor.transform.localPosition = anchorLocal;
 
-            // Component
             var sit = go.AddComponent<SitPoseInteractable>();
             var so = new SerializedObject(sit);
             so.FindProperty("sitAnchor").objectReferenceValue = anchor.transform;
@@ -105,7 +101,7 @@ namespace SlimeJumping.Editor
             var profile = AssetDatabase.LoadAssetAtPath<SitPoseProfile>(DefaultProfilePath);
             if (profile != null) return profile;
 
-            // Ensure folder chain exists. AssetDatabase requires forward slashes.
+            // AssetDatabase folder APIs require forward slashes.
             string dir = DefaultProfilePath.Substring(0, DefaultProfilePath.LastIndexOf('/'));
             if (!AssetDatabase.IsValidFolder(dir))
             {

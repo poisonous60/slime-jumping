@@ -4,7 +4,6 @@ using SlimeJumping.Platforms;
 namespace SlimeJumping.Visual
 {
     // Bends a bone chain in sync with SpringyBranchPlatform's deflection.
-    // Asset-agnostic: drop any sprite/mesh/SpriteSkin rig under the bones.
     // Writes only bone.localRotation — never feeds back into physics.
     [DefaultExecutionOrder(100)]
     public class SpringyBranchVisual : MonoBehaviour

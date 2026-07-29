@@ -3,9 +3,7 @@ using UnityEngine;
 
 namespace SlimeJumping.UI.Animation
 {
-    /// Reusable one-shot effects. Each method returns the underlying Sequence
-    /// so callers can chain OnComplete / await if they want, but most call
-    /// sites can fire-and-forget.
+    /// Reusable one-shot effects; the returned Sequence/Tween is chainable but safe to discard.
     public static class UITweenLibrary
     {
         /// Pop a rect up to bumpScale + random-signed rotation, then settle.
@@ -35,9 +33,7 @@ namespace SlimeJumping.UI.Animation
                 .Chain(Tween.Scale(rt, Vector3.one, duration * 0.6f, Ease.OutBack));
         }
 
-        /// Slide a rect from `from` offset back to its stored anchored position.
-        /// The caller is responsible for setting the original position before
-        /// calling this.
+        /// Slide a rect from `offset` back to originalAnchored, which the caller must capture beforehand.
         public static Tween SlideInFromOffset(RectTransform rt, Vector2 originalAnchored, Vector2 offset,
             float duration, Ease ease, float delay)
         {

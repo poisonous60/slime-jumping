@@ -22,44 +22,36 @@ namespace SlimeJumping.Editor
             float baseX = 4f;
             float baseY = 0f;
 
-            // --- Floor ---
             CreatePlatform("Floor", root.transform,
                 new Vector3(baseX, baseY - 0.5f, 0f),
                 new Vector3(12f, 1f, 1f));
 
-            // --- Left wall ---
             CreatePlatform("LeftWall", root.transform,
                 new Vector3(baseX - 6.5f, baseY + 5f, 0f),
                 new Vector3(1f, 11f, 1f));
 
-            // --- Right wall ---
             CreatePlatform("RightWall", root.transform,
                 new Vector3(baseX + 6.5f, baseY + 5f, 0f),
                 new Vector3(1f, 11f, 1f));
 
-            // --- Sand Volume (main test) ---
             CreateSandVolume("SandVolume_Main", root.transform,
                 new Vector3(baseX, baseY + 4f, 0f),
                 new Vector2(6f, 3f),
                 dragVolumeLayer);
 
-            // --- Small Sand Volume ---
             CreateSandVolume("SandVolume_Small", root.transform,
                 new Vector3(baseX - 3f, baseY + 9f, 0f),
                 new Vector2(2f, 2f),
                 dragVolumeLayer);
 
-            // --- High platform (jump down into sand) ---
             CreatePlatform("HighPlatform", root.transform,
                 new Vector3(baseX + 4f, baseY + 7f, 0f),
                 new Vector3(3f, 0.5f, 1f));
 
-            // --- Catch floor ---
             CreatePlatform("CatchFloor", root.transform,
                 new Vector3(baseX, baseY - 4f, 0f),
                 new Vector3(12f, 1f, 1f));
 
-            // --- Standalone DragZone (drag only, no charging) ---
             CreateSandVolume("DragZone_NoChrg", root.transform,
                 new Vector3(baseX + 4f, baseY + 2f, 0f),
                 new Vector2(3f, 4f),

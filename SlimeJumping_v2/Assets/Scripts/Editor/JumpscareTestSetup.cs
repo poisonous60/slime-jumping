@@ -25,7 +25,6 @@ namespace SlimeJumping.Editor
                 new Vector3(baseX, baseY - 0.5f, 0f),
                 new Vector3(16f, 1f, 1f));
 
-            // Jumpscare prefab + trigger
             var prefabPath = "Assets/Prebs/building/Jumpscare.prefab";
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             GameObject scareHost;
@@ -51,7 +50,7 @@ namespace SlimeJumping.Editor
                 scareHost.transform.position = new Vector3(baseX + 3f, baseY + 0.5f, 0f);
             }
 
-            // Trigger collider on a child. Default layer (0) so it collides with slime's Default-layer physics collider.
+            // Default layer (0) so it collides with the slime's Default-layer physics collider.
             var triggerGo = new GameObject("Trigger");
             triggerGo.transform.SetParent(scareHost.transform, false);
             triggerGo.transform.localPosition = Vector3.zero;
@@ -61,7 +60,6 @@ namespace SlimeJumping.Editor
             triggerCol.size = new Vector2(3f, 3f);
             var trigger = triggerGo.AddComponent<JumpscareTrigger>();
 
-            // Shared FullscreenEffectCanvas → JumpscareEffect child
             var canvasRoot = FullscreenCanvasSetupUtility.GetOrCreateRoot();
             var effectGo = FullscreenCanvasSetupUtility.GetOrCreateEffectChild(canvasRoot, "JumpscareEffect");
             var img = FullscreenCanvasSetupUtility.AddFullscreenImage(effectGo, new Color(1f, 1f, 1f, 0f));
@@ -85,7 +83,6 @@ namespace SlimeJumping.Editor
             jumpscareSo.FindProperty("impulseEmitter").objectReferenceValue = emitter;
             jumpscareSo.ApplyModifiedProperties();
 
-            // Wire trigger → canvas
             var triggerSo = new SerializedObject(trigger);
             triggerSo.FindProperty("canvas").objectReferenceValue = jumpscareCanvas;
             triggerSo.FindProperty("oneShot").boolValue = false; // repeat for testing

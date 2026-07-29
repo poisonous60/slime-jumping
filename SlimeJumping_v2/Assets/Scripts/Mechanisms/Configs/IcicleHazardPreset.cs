@@ -2,23 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Tuning preset for <see cref="IcicleHazard"/> — detection box, shake,
-    /// fall, and respawn. When assigned to an icicle, the preset's values
-    /// OVERWRITE the inline inspector values as one set on OnValidate
-    /// (edit-time, when the reference changes) and again on Awake (runtime).
-    /// Mirrors the GraniteBlastEmitterPreset pattern.
-    ///
-    /// Excluded by design:
-    ///   - Visual asset refs (mesh / material) — vary per icicle instance.
-    ///   - Scene refs (visualRoot, mesh/renderer, solidCollider, breakParticles)
-    ///     — must live on the component.
-    ///
-    /// Audio is included. IcicleHazard runs at execution order -100 so its
-    /// preset apply happens BEFORE IcicleAudioManager (-50) — when a manager
-    /// is present in the scene, the manager's broadcast wins; otherwise the
-    /// preset's audio fields are the final values.
-    /// </summary>
+    /// <summary>Tuning preset for <see cref="IcicleHazard"/>; assigning one OVERWRITES the inline inspector values on OnValidate + Awake.</summary>
+    /// Audio included: IcicleHazard (-100) applies before IcicleAudioManager (-50), so a scene manager's broadcast wins.
     [CreateAssetMenu(fileName = "IcicleHazardPreset",
         menuName = "SlimeJumping/Icicle/Hazard Preset", order = 0)]
     public class IcicleHazardPreset : ScriptableObject

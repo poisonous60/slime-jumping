@@ -4,17 +4,12 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    // Target detection, aim resolution, raycast/circlecast helpers, and the slime
-    // position trail used by Branching mode for chase-spread tendril targeting.
+    // Target detection, aim resolution, cast helpers, and the slime position trail.
     public partial class GraniteBlastEmitter
     {
-        // Slime XY trail — purely world-space positions, oldest at index 0. Sampled
-        // every Update at trailSampleInterval, trimmed to trailDuration. PlanBranching
-        // takes a one-shot snapshot at FireStart.
+        // World-space slime trail, oldest at index 0. PlanBranching snapshots it at FireStart.
         private readonly List<Vector2> slimeWorldTrail = new List<Vector2>(64);
         private float lastTrailSampleTime = -999f;
-
-        // --- fire direction / origin ---
 
         public Vector3 AimOrigin() => muzzle != null ? muzzle.position : transform.position;
 
@@ -31,8 +26,6 @@ namespace SlimeJumping.Mechanisms
             Vector2 dr = new Vector2(r.x, r.y);
             return dr.sqrMagnitude < 0.0001f ? Vector2.right : dr.normalized;
         }
-
-        // --- detection ---
 
         private bool IsTargetVisible()
         {
@@ -56,8 +49,7 @@ namespace SlimeJumping.Mechanisms
 
         public RaycastHit2D RaycastExcludingSelf(Vector2 origin, Vector2 dir, float maxDist, LayerMask mask)
         {
-            // Sort by distance so we always return the *closest* valid solid hit —
-            // Physics2D.RaycastAll's array order is not guaranteed.
+            // Physics2D.RaycastAll order is not guaranteed — pick the closest by distance.
             var hits = Physics2D.RaycastAll(origin, dir, maxDist, mask);
             RaycastHit2D best = default;
             float bestDist = float.PositiveInfinity;
@@ -65,8 +57,7 @@ namespace SlimeJumping.Mechanisms
             {
                 var h = hits[i];
                 if (h.collider == null) continue;
-                // Skip triggers (InteractionSensor / Water / etc. on the bullet hit mask
-                // would otherwise block the beam at the muzzle).
+                // Triggers on the hit mask (InteractionSensor / Water) would stop the beam at the muzzle.
                 if (h.collider.isTrigger) continue;
                 if (h.collider.transform.IsChildOf(transform)) continue;
                 if (h.distance < bestDist)
@@ -78,16 +69,8 @@ namespace SlimeJumping.Mechanisms
             return best;
         }
 
-        // Same exclusion logic as the line raycast above, but sweeps a circle of
-        // `radius`, giving the swept tube some forgiveness — used for tendril
-        // endpoint resolution so a slightly stale direction (slime moved a hair off
-        // the line) still terminates on slime/terrain instead of overshooting to
-        // maxRange in mid-air.
-        // Triggers are skipped EXCEPT those belonging to a SlimeController: the bolt
-        // must stop at the slime's body even when that body collider is configured
-        // as a trigger (otherwise the line passes through and ends in mid-air past
-        // the slime). Foreign triggers (water zones, interaction sensors, etc.)
-        // remain pass-through.
+        // Swept radius forgives a stale aim direction so tendrils still end on slime/terrain
+        // instead of maxRange. Slime triggers hit — its body collider may be a trigger.
         public RaycastHit2D CircleCastExcludingSelf(Vector2 origin, float radius, Vector2 dir, float maxDist, LayerMask mask)
         {
             var hits = Physics2D.CircleCastAll(origin, radius, dir, maxDist, mask);
@@ -109,11 +92,7 @@ namespace SlimeJumping.Mechanisms
             return best;
         }
 
-        // CircleCast variant that skips slime colliders entirely — used by Beam
-        // pass-through to find the ground BEHIND the slime so the beam reaches it
-        // visually and carves SnowField even when a slime sits in the path. Same
-        // self/trigger exclusion rules as CircleCastExcludingSelf, but slime hits
-        // (anything with a SlimeController in its parent chain) are filtered out.
+        // Skips slime so Beam pass-through finds the ground BEHIND it and still carves SnowField.
         public RaycastHit2D CircleCastIgnoringSlime(Vector2 origin, float radius, Vector2 dir, float maxDist, LayerMask mask)
         {
             var hits = Physics2D.CircleCastAll(origin, radius, dir, maxDist, mask);
@@ -135,10 +114,8 @@ namespace SlimeJumping.Mechanisms
             return best;
         }
 
-        // Trail-lagged slime position lookup. Returns the slime's recorded XY from
-        // ~lagSeconds ago (interpolated to the nearest sample bucket). Used by Beam
-        // mode tracking so the beam aims at where the slime was, not where it is.
-        // Falls back to live target position when the trail is empty or lag<=0.
+        // Slime position from ~lagSeconds ago, so Beam tracking aims at where the slime was.
+        // Falls back to the live position when the trail is empty or lag<=0.
         public Vector2 GetLaggedTargetPosition(float lagSeconds)
         {
             if (target == null) return AimOrigin();
@@ -160,8 +137,7 @@ namespace SlimeJumping.Mechanisms
 
             slimeWorldTrail.Add(new Vector2(target.position.x, target.position.y));
 
-            // Cap to (trailDuration + trailLagOffset) so even the oldest tendril
-            // (lagFrac=1) at the largest lagOffset still has a sample available.
+            // Include trailLagOffset in the cap, else the oldest tendril has no sample left.
             float maxBackSec = Mathf.Max(0f, trailDuration) + Mathf.Max(0f, trailLagOffset);
             int maxSamples = Mathf.CeilToInt(maxBackSec / interval) + 2;
             while (slimeWorldTrail.Count > maxSamples) slimeWorldTrail.RemoveAt(0);

@@ -5,33 +5,11 @@ using SlimeJumping.Controller;
 namespace SlimeJumping.Visual
 {
     /// <summary>
-    /// Burn-mark visual for the slime body. Each granite-blast hit deposits a
-    /// soft black disc on the slime's surface at the impact location. Discs
-    /// stay welded to the body through translation, surface-align rotation,
-    /// asymmetric squash, charge dip, and velocity stretch, because they're
-    /// anchored in the body mesh's REST-POSE OBJECT SPACE rather than world
-    /// space — the body shader captures positionOS as a varying BEFORE
-    /// SlimeDeform_float runs, so the rasterizer interpolates rest-pose OS
-    /// across the triangle no matter how the vertex stage displaces vertices.
-    ///
-    /// Each burn fades independently after a per-hit delay. Hits within
-    /// <c>mergeDistance</c> of an existing burn refresh that burn instead of
-    /// consuming a new slot. Slot count is capped at <c>MaxBurns</c>; oldest
-    /// is evicted when full.
-    ///
-    /// This component pushes a <c>Vector4[]</c> array (xyz = OS hit position,
-    /// w = radius * fade) directly onto the body MeshRenderer's
-    /// MaterialPropertyBlock via <c>GetPropertyBlock</c> /
-    /// <c>SetPropertyBlock</c>. <c>SlimeVisual</c> writes its deform values
-    /// to the same MPB earlier in LateUpdate; <c>[DefaultExecutionOrder(100)]</c>
-    /// ensures this component runs after, and <c>GetPropertyBlock</c>
-    /// preserves the deform writes.
-    ///
-    /// Also drives <see cref="SlimeVisual.SetExternalCompression"/> for the
-    /// "stuck against a wall while being beamed" squeeze visual — unrelated
-    /// to burns, just sharing the same OnHazardPushed hook.
-    ///
-    /// Lives on the slime root.
+    /// Burn marks on the slime body, pushed to the body MPB as a Vector4[] (xyz = OS hit, w =
+    /// radius * fade). Discs are anchored in REST-POSE OBJECT SPACE, not world: the shader
+    /// captures positionOS before SlimeDeform_float runs, so they stay welded through squash,
+    /// rotation and stretch. Hits within mergeDistance refresh an existing burn; MaxBurns slots,
+    /// oldest evicted. Also drives SlimeVisual.SetExternalCompression off the same hazard hook.
     /// </summary>
     [DefaultExecutionOrder(100)]
     public class SlimeBurnVisual : MonoBehaviour
@@ -84,8 +62,8 @@ namespace SlimeJumping.Visual
         }
 
         private readonly List<Burn> burns = new List<Burn>(MaxBurns);
-        // Allocated once at MaxBurns size — Unity locks the array length on the
-        // first SetVectorArray call, so resizing later silently fails.
+        // Fixed MaxBurns length: Unity locks the array size on the first SetVectorArray call,
+        // and a later resize silently fails.
         private readonly Vector4[] burnPacked = new Vector4[MaxBurns];
 
         private MeshRenderer bodyMR;
@@ -123,11 +101,8 @@ namespace SlimeJumping.Visual
             bodyMpb = new MaterialPropertyBlock();
         }
 
-        // Walks body3d's subtree to find the MeshFilter+MeshRenderer pair. The
-        // path in scene is Slime/SlimeVisual3d/MeshBaseline/MeshDepthFlatten/SlimeMesh
-        // — body3d is SlimeVisual3d, MeshFilter+MeshRenderer live on SlimeMesh.
-        // meshTransform is SlimeMesh's transform; its InverseTransformPoint maps
-        // world coords into the same OS the vertex shader's IN.positionOS lives in.
+        // meshTransform must be the MeshFilter's own transform (SlimeMesh, several levels under
+        // body3d) — only its InverseTransformPoint lands in the same OS as IN.positionOS.
         private void ResolveBodyMeshRenderer()
         {
             if (body3d == null) return;
@@ -148,8 +123,7 @@ namespace SlimeJumping.Visual
             if (slimeVisual != null) slimeVisual.SetExternalCompression(Vector2.zero);
             currentCompression = Vector2.zero;
             compressionVel = Vector2.zero;
-            // Push an empty burn array so the body shader doesn't keep rendering
-            // marks while this component is disabled.
+            // Else the shader keeps rendering marks while this component is disabled.
             ClearAndPushBurns();
         }
 
@@ -161,16 +135,12 @@ namespace SlimeJumping.Visual
             if (meshTransform == null) ResolveBodyMeshRenderer();
             if (meshTransform == null) return;
 
-            // World hit → rest-pose OS via the SlimeMesh transform. body3d
-            // rotates per frame for surface-normal alignment, and InverseTransformPoint
-            // accounts for the current orientation, so the captured OS coord is
-            // pinned to whichever surface patch was facing the projectile.
+            // InverseTransformPoint accounts for body3d's per-frame surface-align rotation, so
+            // the stored OS coord pins to the patch that was actually facing the projectile.
             Vector3 hitWS = new Vector3(hitPoint.x, hitPoint.y, meshTransform.position.z);
             Vector3 hitOS = meshTransform.InverseTransformPoint(hitWS);
 
-            // Merge if a near-duplicate exists — refresh time, bump radius up to
-            // a cap so repeated same-spot hits darken/widen instead of stealing
-            // additional slots.
+            // Same-spot hits widen a capped radius instead of eating extra slots.
             float merge2 = mergeDistance * mergeDistance;
             for (int i = 0; i < burns.Count; i++)
             {
@@ -184,7 +154,6 @@ namespace SlimeJumping.Visual
                 }
             }
 
-            // No merge — append. Evict oldest if full.
             if (burns.Count >= MaxBurns)
             {
                 burns.RemoveAt(0);
@@ -207,10 +176,8 @@ namespace SlimeJumping.Visual
             if (ringCount < RingCapacity) ringCount++;
         }
 
-        // Runs after SlimeVisual.LateUpdate (default execution order 0). SlimeVisual
-        // writes deform values into the body MeshRenderer's MPB; this LateUpdate
-        // GetPropertyBlock-then-SetPropertyBlock layers burn data on top while
-        // preserving SlimeVisual's writes.
+        // [DefaultExecutionOrder(100)] puts this after SlimeVisual's LateUpdate; the
+        // GetPropertyBlock-then-Set round trip is what preserves its deform writes to the same MPB.
         void LateUpdate()
         {
             float dt = Time.deltaTime;
@@ -257,8 +224,7 @@ namespace SlimeJumping.Visual
                 burnPacked[writeIdx] = new Vector4(b.osPos.x, b.osPos.y, b.osPos.z, effectiveRadius);
                 writeIdx++;
             }
-            // Zero-fill the unused tail so stale data from previous frames doesn't
-            // get sampled if a slot is later occupied with a smaller _BurnCount.
+            // Zero the unused tail so no stale slot can ever be sampled.
             for (int i = writeIdx; i < MaxBurns; i++)
             {
                 burnPacked[i] = Vector4.zero;
@@ -268,9 +234,7 @@ namespace SlimeJumping.Visual
             bodyMpb.SetVectorArray(BurnsID, burnPacked);
             bodyMpb.SetInt(BurnCountID, writeIdx);
             bodyMpb.SetFloat(BurnStrengthID, burnStrength);
-            // Always push flash strength — even when disabled — so a stale GPU
-            // value from a prior session can't bleed through. Disabled = 0 →
-            // shader flash lerp is a no-op → burn rendering is byte-identical.
+            // Pushed even when disabled, else a stale GPU value from a prior session bleeds through.
             float flashStrength = 0f;
             if (enableHitFlash)
             {

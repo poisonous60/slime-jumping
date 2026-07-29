@@ -26,13 +26,11 @@ namespace SlimeJumping.Editor
                 new Vector3(baseX, baseY - 0.5f, 0f),
                 new Vector3(20f, 1f, 1f));
 
-            // Left — vertical launch
             CreateFirework("Firework_Up", root.transform,
                 hostPos: new Vector3(baseX - 2f, baseY + 0.3f, 0f),
                 launchVelocity: new Vector2(0f, 18f),
                 launchAwayFromCenter: false);
 
-            // Right — away-from-center launch (radial fling)
             CreateFirework("Firework_Radial", root.transform,
                 hostPos: new Vector3(baseX + 4f, baseY + 0.3f, 0f),
                 launchVelocity: new Vector2(0f, 14f),
@@ -56,7 +54,6 @@ namespace SlimeJumping.Editor
             go.transform.position = hostPos;
             go.layer = InteractableLayer;
 
-            // Visual body (rocket shape — cylinder + cone-ish)
             var body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             body.name = "Body";
             Object.DestroyImmediate(body.GetComponent<CapsuleCollider>());
@@ -65,7 +62,6 @@ namespace SlimeJumping.Editor
             body.transform.localScale = new Vector3(0.3f, 0.5f, 0.3f);
             body.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.9f, 0.3f, 0.2f));
 
-            // Fuse tip marker
             var tip = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             tip.name = "Tip";
             Object.DestroyImmediate(tip.GetComponent<SphereCollider>());
@@ -74,12 +70,10 @@ namespace SlimeJumping.Editor
             tip.transform.localScale = Vector3.one * 0.2f;
             tip.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(1f, 0.85f, 0.1f));
 
-            // Trigger
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size = new Vector2(1f, 1.2f);
 
-            // Particle VFX (simple burst)
             var vfxGo = new GameObject("BurstVFX");
             vfxGo.transform.parent = go.transform;
             vfxGo.transform.localPosition = new Vector3(0f, 0.6f, 0f);
@@ -99,16 +93,13 @@ namespace SlimeJumping.Editor
             shape.shapeType = ParticleSystemShapeType.Sphere;
             shape.radius = 0.05f;
 
-            // Audio
             var audio = go.AddComponent<AudioSource>();
             audio.spatialBlend = 1f;
             audio.playOnAwake = false;
 
-            // Impulse emitter
             var impulseSrc = go.AddComponent<CinemachineImpulseSource>();
             var emitter = go.AddComponent<ImpulseEmitter>();
 
-            // Component
             var fw = go.AddComponent<FireworkInteractable>();
             var so = new SerializedObject(fw);
             so.FindProperty("launchVelocity").vector2Value = launchVelocity;

@@ -5,22 +5,9 @@ using UnityEngine.Rendering.Universal;
 
 namespace SlimeJumping.Rendering
 {
-    /// <summary>
-    /// Two-pass renderer feature that runs at <see cref="RenderPassEvent.AfterRenderingTransparents"/>:
-    ///
-    ///   1. CopyPass — blits the camera color (which now contains every opaque + transparent the
-    ///      camera has drawn this frame, including the slime's face/body sprites) into a global
-    ///      texture <c>_SpaceWarpSourceTex</c>.
-    ///   2. DrawPass — renders meshes tagged <c>LightMode = "SpaceWarpDraw"</c> straight to the
-    ///      camera color target. Those shaders sample <c>_SpaceWarpSourceTex</c>, so the warp
-    ///      distorts whatever was drawn beneath it — gameplay sprites included.
-    ///
-    /// The warp shader's pass is tagged "SpaceWarpDraw" instead of "UniversalForward", so URP's
-    /// default DrawObjectsPass (which would render it during the regular transparent queue,
-    /// before our capture) never picks it up. Without this feature installed the warp would be
-    /// invisible — that's intentional. Editing the renderer feature list (Project Settings →
-    /// Graphics → URP renderer) is the install/uninstall point.
-    /// </summary>
+    /// <summary>Copies camera color into _SpaceWarpSourceTex, then draws LightMode="SpaceWarpDraw" meshes over it.</summary>
+    /// Warp shaders use that tag instead of UniversalForward, so with this feature absent from the
+    /// URP renderer list URP never draws them at all and the warp is invisible.
     public class SpaceWarpSourceFeature : ScriptableRendererFeature
     {
         [SerializeField]
@@ -57,9 +44,6 @@ namespace SlimeJumping.Rendering
             m_CopyPass?.Dispose();
         }
 
-        // ====================================================================
-        // CopyPass — captures camera color into the _SpaceWarpSourceTex global.
-        // ====================================================================
         private class CopyPass : ScriptableRenderPass, System.IDisposable
         {
             const string PassName = "SpaceWarpSourceCopy";
@@ -122,10 +106,6 @@ namespace SlimeJumping.Rendering
             }
         }
 
-        // ====================================================================
-        // DrawPass — renders meshes whose shader tags LightMode = "SpaceWarpDraw"
-        // straight onto the camera color target, after the copy is bound.
-        // ====================================================================
         private class DrawPass : ScriptableRenderPass
         {
             const string PassName = "SpaceWarpDraw";
@@ -178,11 +158,8 @@ namespace SlimeJumping.Rendering
                     context.ExecuteCommandBuffer(cmd);
                     cmd.Clear();
 
-                    // CopyPass left the active render target on _SpaceWarpSourceTex
-                    // (Blitter.BlitCameraTexture sets target to dest). Without rebinding
-                    // here, DrawRendererList writes the warp mesh into that scratch RT
-                    // instead of the camera color, and the warp is invisible on screen.
-                    // RenderGraph path doesn't need this — SetRenderAttachment handles it.
+                    // BlitCameraTexture left the active target on the scratch RT; without rebinding,
+                    // the warp mesh draws there instead of camera color and is invisible.
                     var renderer = renderingData.cameraData.renderer;
                     cmd.SetRenderTarget(renderer.cameraColorTargetHandle, renderer.cameraDepthTargetHandle);
 

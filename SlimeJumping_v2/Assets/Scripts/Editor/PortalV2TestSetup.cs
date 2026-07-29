@@ -4,12 +4,7 @@ using SlimeJumping.Mechanisms;
 
 namespace SlimeJumping.Editor
 {
-    /// <summary>
-    /// Builds a Portal_v2 verification scene: same vertical fling shaft as PortalTestSetup,
-    /// but with Portal_v2 (consume/respawn lifecycle, auto-paired, per-portal color).
-    /// Two cycles' worth of cooldown means the slime drops to the floor once before the
-    /// portals come back — perfect for eyeballing the disappear/reappear animation.
-    /// </summary>
+    /// <summary>Builds a Portal_v2 verification scene: a vertical fling shaft plus a fast-cycle floor pair.</summary>
     public static class PortalV2TestSetup
     {
         [MenuItem("SlimeJumping/Mechanism/Setup Portal_v2 Fling Test")]
@@ -63,7 +58,7 @@ namespace SlimeJumping.Editor
             soBlue.FindProperty("pair").objectReferenceValue = orangePortal;
             soBlue.ApplyModifiedProperties();
 
-            // --- Color regression: a third pair with custom colors + faster cycle for eyeballing ---
+            // --- Third pair: custom colors + faster cycle ---
             float pairBX = shaftX + 18f;
             var portalGreenGo = BuildPortalGo(
                 "Portal_v2_Green",
@@ -84,7 +79,6 @@ namespace SlimeJumping.Editor
 
             var soGreen = new SerializedObject(greenPortal);
             soGreen.FindProperty("pair").objectReferenceValue = magentaPortal;
-            // Shorter cycle so you can verify multiple disappear/reappear loops quickly.
             soGreen.FindProperty("consumeDuration").floatValue = 0.2f;
             soGreen.FindProperty("respawnDelay").floatValue = 1.0f;
             soGreen.FindProperty("respawnDuration").floatValue = 0.25f;

@@ -5,11 +5,8 @@ namespace SlimeJumping.Controller
 {
     public partial class SlimeController
     {
-        // --- Bamboo V2 Side-Rebound ---
-        //
-        // V2 keeps BambooPlatform's visual/collider bending, but removes the top
-        // tip-grab loop. Side hits arm a charged-jump bonus: no-Space landings stay
-        // attached, while Space-held/pressed charging releases add bamboo bonus power.
+        // Bamboo V2 side-rebound: a side hit arms a charged-jump bonus. No-Space
+        // landings stay attached; only a charging release adds bamboo bonus power.
         private BambooPlatform currentBambooV2Rebound;
         private Vector2 bambooV2ReboundNormal;
         private float bambooV2ImpactSpeed;
@@ -31,9 +28,8 @@ namespace SlimeJumping.Controller
             return true;
         }
 
-        // No charge-power launch bonus: a V2 launch's whole boost is the carrier
-        // inheritance of the swing the player can see (BambooPlatform.VelocityTransferScale
-        // → ω × arm × v2CarrierScale, speed-gated), matching SpringyBranchPlatform.
+        // No charge-power bonus by design: the whole boost is carrier inheritance of
+        // the visible swing (BambooPlatform.VelocityTransferScale, speed-gated).
         private void TryApplyBambooV2LaunchReleaseKick(Vector2 launchVelocity)
         {
             if (currentBambooV2Rebound == null) return;

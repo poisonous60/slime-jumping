@@ -111,7 +111,6 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
-            // Visual: color lerp + mild shake (ramps up to 40% of max)
             float t = 1f - timer / triggerDelay;
             ApplyVisual(Color.Lerp(originalColor, Color.red, t * 0.6f), 1f, maxShakeOffset * 0.4f * t);
         }
@@ -125,7 +124,6 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
-            // Visual: stronger shake (capped at max) + alpha fade
             float t = 1f - timer / crumbleDuration;
             ApplyVisual(Color.Lerp(Color.red, new Color(1f, 0f, 0f, 0f), t), 1f - t, maxShakeOffset);
         }
@@ -142,7 +140,6 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
-            // Check for overlap before respawning
             foreach (var col in myColliders) col.enabled = true;
             bool blocked = false;
             ContactFilter2D filter = new ContactFilter2D

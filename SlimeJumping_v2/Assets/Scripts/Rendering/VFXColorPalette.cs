@@ -2,10 +2,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Rendering
 {
-    /// <summary>
-    /// Single source of truth for VFX colors. Each VFXType maps to a primary/secondary
-    /// color pair. ParticlePaletteBinder reads from this asset at edit-time and runtime.
-    /// </summary>
+    /// <summary>Single source of truth for VFX colors; ParticlePaletteBinder reads this asset at edit-time and runtime.</summary>
     [CreateAssetMenu(fileName = "VFXColorPalette", menuName = "SlimeJumping/VFX Color Palette")]
     public class VFXColorPalette : ScriptableObject
     {

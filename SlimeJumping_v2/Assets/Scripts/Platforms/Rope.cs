@@ -128,9 +128,7 @@ namespace SlimeJumping.Platforms
 
         bool maxTensionActive;
 
-        // Preview cache — with-rider deflected shape, drawn as magenta gizmo.
-        // Populated by RefreshEditPreview() in edit mode (auto on anchor move)
-        // or by the Preview Max Sag context menu.
+        // Edit-mode preview cache — with-rider deflected shape, drawn as magenta gizmo.
         Vector2[] previewMaxSagPos;
         float previewMaxSagValue;
 
@@ -160,8 +158,7 @@ namespace SlimeJumping.Platforms
             pinned = new bool[nodeCount];
             riderAccum = new Vector2[nodeCount];
 
-            // Collider index map: step by colliderSubsample, always finish on nodeCount-1
-            // so the tail pin is never dropped.
+            // Must always finish on nodeCount-1, else the tail pin is dropped from the collider.
             int step = Mathf.Max(1, colliderSubsample);
             int last = nodeCount - 1;
             int count = last / step + 1;                  // 0, step, 2*step, ..., up to last
@@ -213,15 +210,13 @@ namespace SlimeJumping.Platforms
 
         void FixedUpdate()
         {
-            // [ExecuteAlways] allows Update to drive an edit-mode preview, but the
-            // real rope sim must only run in play mode; otherwise entering play with
-            // a sag-preview shape would double-integrate from pre-stretched state.
+            // [ExecuteAlways] drives the edit-mode preview only; running the real sim
+            // outside play would double-integrate from the pre-stretched preview shape.
             if (!Application.isPlaying) return;
             if (nodeCount == 0) return;
             if (anchorA == null || anchorB == null) return;
 
-            // Substepping stabilizes high-stiffness / fast-motion regimes where
-            // single-step Verlet would blow up into zigzag vibration.
+            // Single-step Verlet blows up into zigzag vibration at high stiffness / fast motion.
             int substeps = Mathf.Clamp(simulationSubsteps, 1, 8);
             float subDt = Time.fixedDeltaTime / substeps;
             for (int s = 0; s < substeps; s++)
@@ -234,10 +229,7 @@ namespace SlimeJumping.Platforms
         }
 
 #if UNITY_EDITOR
-        // Edit-mode only: poll anchor positions; when markers are moved in the scene
-        // (or fields are edited via OnValidate) rerun RefreshEditPreview so the
-        // LineRenderer + EdgeCollider show the current rest-sag shape and the magenta
-        // gizmo shows the deflected-under-rider shape.
+        // Edit-mode only: anchor drags fire no callback, so poll and re-run the preview.
         void Update()
         {
             if (Application.isPlaying) return;
@@ -254,8 +246,7 @@ namespace SlimeJumping.Platforms
         }
 #endif
 
-        // One Verlet + elastic + constraint pass. Consumes riderAccum but does not
-        // clear it (caller's job), so PreviewMaxSag can drive it step-by-step.
+        // One Verlet + elastic + constraint pass. Does NOT clear riderAccum — caller's job.
         void StepSimulationOnce(float dt)
         {
             float dt2 = dt * dt;
@@ -299,10 +290,6 @@ namespace SlimeJumping.Platforms
             }
 
             // (4) Distance constraint (Jakobsen). Pin re-assert inside loop.
-            // stretchSoftness scales the per-iteration projection: at 0 the rope
-            // is pulled back to rest length 100% each iter (rigid Jakobsen); at
-            // higher values the equilibrium stretches further under rider load
-            // without changing iteration count.
             int iters = Mathf.Max(1, constraintIterations);
             float projectionScale = Mathf.Clamp01(1f - stretchSoftness);
             for (int it = 0; it < iters; it++)
@@ -333,10 +320,8 @@ namespace SlimeJumping.Platforms
                 pos[nodeCount - 1] = anchorB.position;
             }
 
-            // (5) Laplacian smoothing — blend each free node toward the average of
-            // its neighbors. Specifically kills adjacent-node-alternation ("zigzag")
-            // modes that Verlet excites during fast lateral motion without damping
-            // large-scale sag/swing. Cheap O(N).
+            // (5) Laplacian smoothing — kills adjacent-node zigzag modes without
+            // damping large-scale sag/swing.
             if (zigzagSmoothing > 0f)
             {
                 float s = Mathf.Clamp(zigzagSmoothing, 0f, 0.5f);
@@ -376,7 +361,6 @@ namespace SlimeJumping.Platforms
                     int expected = lineWorldPoints.Length;
                     for (int i = 0; i < nodeCount - 1; i++)
                     {
-                        // Boundary: endpoint clamp (indices bounded to [0, nodeCount-1]).
                         Vector2 p0 = pos[Mathf.Max(0, i - 1)];
                         Vector2 p1 = pos[i];
                         Vector2 p2 = pos[i + 1];
@@ -395,8 +379,7 @@ namespace SlimeJumping.Platforms
             }
         }
 
-        // Catmull-Rom spline segment between p1 and p2, with p0/p3 as tangent influences.
-        // Endpoint-clamp boundary (p0 = p1 or p3 = p2) keeps ends overshoot-free.
+        // Catmull-Rom segment p1→p2; endpoint-clamping p0/p3 keeps the ends overshoot-free.
         static Vector2 CatmullRom(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
         {
             float t2 = t * t;
@@ -440,9 +423,8 @@ namespace SlimeJumping.Platforms
             float radius = segmentRestLen * riderInfluenceSpacing;
             if (radius < 1e-4f) return;
 
-            // Verlet impulse: shifting pos[] (not prevPos[]) by v×dt gives the
-            // node an effective velocity of v on the next step. Jakobsen + elastic
-            // pull it back, producing a damped dip rather than a tunneling shoot-through.
+            // Verlet impulse: shift pos[] (not prevPos[]) by v×dt so the node gains
+            // velocity v next step; constraints then damp it instead of shooting through.
             float dt = Time.fixedDeltaTime;
             Vector2 impulse = impactVelocity * (dt * impactGain);
             for (int i = 0; i < nodeCount; i++)
@@ -541,11 +523,7 @@ namespace SlimeJumping.Platforms
         public int NodeCount => nodeCount;
         public Vector2 GetNodePosition(int i) => pos[i];
 
-        /// <summary>
-        /// Max perpendicular distance from any node to the straight anchorA→anchorB line.
-        /// 0 = rope is taut straight. Used by Launch() to convert stored elastic
-        /// displacement into a launch-speed bonus.
-        /// </summary>
+        /// <summary>Max perpendicular distance from any node to the anchorA→anchorB line. 0 = taut.</summary>
         public float GetMaxSagDistance()
         {
             if (nodeCount < 3) return 0f;
@@ -567,8 +545,7 @@ namespace SlimeJumping.Platforms
             return best;
         }
 
-        // IRopePlatform — sag-based bonus. chargeRatio is part of the interface
-        // contract for RopeV2's two-curve formula; v1 ignores it.
+        // chargeRatio exists for RopeV2's two-curve formula; v1 ignores it.
         public float GetLaunchBonus(Vector2 _launchDir, Vector2 _worldContact, float _chargeRatio)
         {
             float sag = GetMaxSagDistance();
@@ -588,8 +565,7 @@ namespace SlimeJumping.Platforms
 
         void OnValidate()
         {
-            // Hard clamp: subsample > (segmentCount-1)/2 degenerates the collider toward a
-            // 2-point straight line.
+            // subsample > (segmentCount-1)/2 degenerates the collider toward a 2-point line.
             int segCount = Mathf.Max(3, segmentCount);
             colliderSubsample = Mathf.Clamp(colliderSubsample, 1, Mathf.Max(1, (segCount - 1) / 2));
 
@@ -598,9 +574,7 @@ namespace SlimeJumping.Platforms
 #endif
         }
 
-        // Always-visible overlay so authors moving anchor markers see the rider-loaded
-        // shape without having to select the rope Body. The rest shape is already
-        // visible via the LineRenderer; this gizmo is only the deflected-under-rider shape.
+        // Magenta = deflected-under-rider shape only; LineRenderer already shows the rest shape.
         void OnDrawGizmos()
         {
             if (previewMaxSagPos == null || nodeCount < 2) return;
@@ -636,24 +610,15 @@ namespace SlimeJumping.Platforms
         }
 
 #if UNITY_EDITOR
-        // Edit-mode authoring preview. Runs two headless simulation phases:
-        //   (1) settle with no rider → rest-sag shape, written to LineRenderer + EdgeCollider.
-        //   (2) continue with a synthetic rider at midpoint → deepest deflected shape,
-        //       cached as magenta gizmo overlay.
-        // pos/prevPos end on the rest shape so the visible rope represents the
-        // no-load state; entering play mode rebuilds from straight via Awake anyway.
+        // Edit-mode preview: phase 1 settles with no rider (→ LineRenderer + EdgeCollider),
+        // phase 2 adds a synthetic rider (→ magenta gizmo). Ends on the rest shape.
         void RefreshEditPreview()
         {
             Rebuild();
             if (nodeCount < 3) return;
 
-            // Mirror runtime FixedUpdate exactly: same dt, same substep pattern.
-            // Each outer iteration = one FixedUpdate worth of input; rider force is
-            // written to riderAccum ONCE, then consumed by N substeps (just like
-            // SlimeController writes once per tick and Rope.FixedUpdate substeps).
-            // Without this, preview single-step integration produces force × dt²
-            // per frame while runtime N-substeps produce force × dt²/N — the
-            // magenta gizmo would show a deeper sag than the actual in-play rope.
+            // Must mirror runtime substepping: rider force written to riderAccum once per
+            // outer tick, consumed by N substeps. Single-stepping here over-sags the gizmo.
             float dt = Time.fixedDeltaTime;
             int substeps = Mathf.Clamp(simulationSubsteps, 1, 8);
             float subDt = dt / substeps;
@@ -704,8 +669,7 @@ namespace SlimeJumping.Platforms
             previewMaxSagPos = bestPos;
             previewMaxSagValue = bestSag;
 
-            // Restore the no-rider rest shape so LineRenderer + EdgeCollider show the
-            // unloaded pose. The magenta gizmo overlays the loaded pose.
+            // Restore the rest shape so LineRenderer + EdgeCollider show the unloaded pose.
             Array.Copy(restPos, pos, nodeCount);
             Array.Copy(restPos, prevPos, nodeCount);
             SyncVisual();

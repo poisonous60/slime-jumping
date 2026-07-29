@@ -3,14 +3,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// One curved lightning tendril for <see cref="GraniteBlastEmitter"/>'s Branching mode.
-    /// Path is a cubic Bezier (P0=burst, P1=lateral kick, P2=above target, P3=ground point near slime),
-    /// sampled into N vertices, with perpendicular jaggedness noise per interior vertex
-    /// to read as lightning. Single LineRenderer (Sprites/Default + whiteTexture) — same setup
-    /// as TurretHazard's tracer, which is verifiably visible. On full-draw, runs Linecasts along
-    /// each segment and applies the hazard once if the slime is intercepted.
-    /// </summary>
+    /// <summary>One curved lightning tendril (bezier or nav polyline) for GraniteBlastEmitter's Branching mode.</summary>
     public class GraniteBlastTendril : MonoBehaviour
     {
         private GraniteBlastEmitter owner;
@@ -23,10 +16,8 @@ namespace SlimeJumping.Mechanisms
         private bool hitResolved;
         private bool canHit;
 
-        // Projectile-style halt tracking. Each frame the tip's previous→current chord
-        // is CircleCast against the world; on hit the bolt freezes at that point.
-        // Slime that was on the line at fire time but moved away by the time the tip
-        // arrives no longer halts the bolt — it just keeps going.
+        // Tip's prev→curr chord is CircleCast each frame; the bolt freezes at the hit point.
+        // Slime that left the line since fire time no longer halts it.
         private bool tipHalted;
         private int haltedLastFullIdx;
         private Vector3 haltedTipWorld;
@@ -51,10 +42,7 @@ namespace SlimeJumping.Mechanisms
             ApplyDrawProgress(0f);
         }
 
-        // Polyline-init variant for NavGraph A* paths. Walks the world-space waypoint
-        // list, samples each segment at segmentLength resolution, and applies the same
-        // perp jaggedness noise as the bezier path. The rest of the runtime pipeline
-        // (collision sweep, halt, draw) is path-agnostic — it just consumes points[].
+        // Polyline-init variant for NavGraph A* paths; everything downstream only reads points[].
         public void InitPath(GraniteBlastEmitter emitter,
                              System.Collections.Generic.List<Vector3> worldPath,
                              float segmentLength, float jaggedness, float coreWidth,
@@ -93,9 +81,7 @@ namespace SlimeJumping.Mechanisms
             float avgSeg = totalLen / Mathf.Max(1, vertCount - 1);
             float maxOff = jaggedness * avgSeg * 1.5f;
 
-            // Endpoints inherit each bezier sample's own Z (so muzzle Z != 0 setups
-            // and Z-bowed control points produce a curve that actually leaves the
-            // muzzle plane in the middle and returns at the end).
+            // Endpoints keep each bezier sample's own Z, so muzzle Z != 0 and Z-bowed control points survive.
             points[0] = baseSamples[0]; points[0].z += zOffset;
             points[vertCount - 1] = baseSamples[vertCount - 1]; points[vertCount - 1].z += zOffset;
 
@@ -106,8 +92,7 @@ namespace SlimeJumping.Mechanisms
                 Vector3 tangent = b - a;
                 if (tangent.sqrMagnitude < 0.0001f) tangent = Vector3.right;
                 Vector3 axis = tangent.normalized;
-                // Perp jitter is XY-only — Z swerve already comes from the bezier
-                // control polygon, so layering perp Z noise on top would just smear it.
+                // XY-only perp jitter — adding Z noise would just smear the bezier's own Z swerve.
                 Vector3 perp = new Vector3(-axis.y, axis.x, 0f);
 
                 float t = (float)i / (vertCount - 1);
@@ -133,9 +118,6 @@ namespace SlimeJumping.Mechanisms
         {
             float zOffset = owner != null ? owner.LineZOffset : -0.5f;
 
-            // Walk waypoints, sub-sampling each leg by segmentLength so the resulting
-            // vertex count matches the bezier path's density. baseSamples preserves
-            // the polyline's own Z (so navgraph nodes with non-zero Z keep their depth).
             var samples = new System.Collections.Generic.List<Vector3>(64);
             if (waypoints == null || waypoints.Count < 2)
             {
@@ -164,9 +146,6 @@ namespace SlimeJumping.Mechanisms
             int vertCount = samples.Count;
             points = new Vector3[vertCount];
 
-            // Compute perp jitter scale from average sample length, plus the
-            // cumulative arc length of the polyline (used to drive smooth
-            // low-frequency Perlin wander along the path).
             float totalLen = 0f;
             float[] arc = new float[vertCount];
             arc[0] = 0f;
@@ -179,9 +158,7 @@ namespace SlimeJumping.Mechanisms
             float avgSeg = totalLen / Mathf.Max(1, vertCount - 1);
             float maxOff = jaggedness * avgSeg * 1.5f;
 
-            // Smooth path-noise params from owner. Per-tendril seed makes each
-            // bolt drift independently so a fan of tendrils all rendering the
-            // same nav-path don't sit on top of each other.
+            // Per-tendril seed, else a fan of bolts on the same nav-path sits on top of itself.
             float noiseAmp = owner != null ? owner.TendrilPathNoiseAmplitude : 0f;
             float noiseFreq = owner != null ? owner.TendrilPathNoiseFrequency : 0f;
             float noiseSeed = Random.Range(0f, 1000f);
@@ -198,18 +175,14 @@ namespace SlimeJumping.Mechanisms
                 Vector3 axis = tangent.normalized;
                 Vector3 perp = new Vector3(-axis.y, axis.x, 0f);
 
-                // Taper: zero at endpoints, peak at the middle. For polylines with sharp
-                // corners, we still want the noise to dampen at the very ends.
                 float t = (float)i / (vertCount - 1);
                 float taper = Mathf.Sin(t * Mathf.PI);
 
                 // Per-vertex high-freq jaggedness (lightning crackle).
                 float off = Random.Range(-maxOff, maxOff) * taper;
 
-                // Smooth low-freq wander along arc length — Perlin sampled at
-                // arc[i] * freq remaps -1..1, scaled by noiseAmp and tapered the
-                // same way. Independent from jaggedness — the bolt drifts off
-                // the waypoints between corners instead of just spiking around.
+                // Low-freq wander along arc length, independent of jaggedness — the bolt
+                // drifts off the waypoints between corners instead of only spiking.
                 if (noiseAmp > 0f)
                 {
                     float u = arc[i] * noiseFreq + noiseSeed;
@@ -249,7 +222,7 @@ namespace SlimeJumping.Mechanisms
             lr.startColor = c;
             lr.endColor = c;
 
-            // Initialize all positions to the start point so we never render a stray line at world origin.
+            // Seed every position at the start point, else LineRenderer draws a stray line from world origin.
             if (points != null)
             {
                 for (int i = 0; i < points.Length; i++) lr.SetPosition(i, points[0]);
@@ -271,10 +244,8 @@ namespace SlimeJumping.Mechanisms
             if (tipHalted) ApplyHaltedDraw();
             else ApplyDrawProgress(drawT);
 
-            // Hold + fade timing is anchored at the moment the bolt actually stopped
-            // advancing — either on collision (haltedAge) or on full-range completion
-            // (drawTime). This way an early-halted bolt doesn't "wait" for the
-            // would-have-been full draw before starting its hold/fade.
+            // Hold/fade anchor at the moment the bolt stopped advancing, else an early-halted
+            // bolt waits out the would-have-been full draw first.
             float effectiveDrawEnd = haltedAge >= 0f ? haltedAge : drawTime;
             float holdEnd = effectiveDrawEnd + holdTime;
             float fadeEnd = holdEnd + fadeTime;
@@ -320,7 +291,6 @@ namespace SlimeJumping.Mechanisms
             var hit = owner.CircleCastExcludingSelf(a, radius, dir, dist, mask);
             if (hit.collider == null) return;
 
-            // Halt the bolt right at the hit point.
             tipHalted = true;
             haltedAge = age;
             haltedTipWorld = new Vector3(hit.point.x, hit.point.y, prevTip.z);
@@ -330,8 +300,6 @@ namespace SlimeJumping.Mechanisms
             float exact = Mathf.Clamp01(currT) * segs;
             haltedLastFullIdx = Mathf.Clamp(Mathf.FloorToInt(exact), 0, n - 1);
 
-            // Slime push if the hit is a slime — one impulse per tendril, no stun.
-            // Direction is muzzle→slime so the slime is shoved away from the cannon.
             var slime = hit.collider.GetComponentInParent<SlimeController>();
             bool isSlime = slime != null;
             if (isSlime && canHit && !hitResolved)
@@ -351,8 +319,7 @@ namespace SlimeJumping.Mechanisms
             owner.SpawnGroundExplosion(hit.point, hit.normal);
             if (isSlime)
             {
-                // Tendril doesn't pass through the slime — carve snow around the slime
-                // body so the visible bite still appears even though the bolt halts here.
+                // Bolt halts at the body instead of passing through, so carve around it or no bite appears.
                 owner.CarveSnowNearSlime(slime, hit.point);
             }
             else

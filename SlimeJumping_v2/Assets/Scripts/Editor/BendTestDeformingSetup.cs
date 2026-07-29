@@ -5,9 +5,8 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Editor
 {
-    // Builds a prefab variant of BendTestPlatform where the 2D collider deforms
-    // in sync with the mesh (via MegaDeform2DCollider), instead of staying rigid.
-    // Uses an EdgeCollider2D hugging the top-front edge — the walkable surface.
+    // Prefab variant of BendTestPlatform whose 2D collider deforms with the mesh (MegaDeform2DCollider),
+    // via an EdgeCollider2D over the top-front (walkable) edge.
     public static class BendTestDeformingSetup
     {
         const string PrefabAssetPath = "Assets/Prebs/Platform/BendTestDeformingPlatform.prefab";
@@ -59,9 +58,7 @@ namespace SlimeJumping.Editor
                 drvSo.FindProperty("bend").objectReferenceValue = bend;
                 drvSo.ApplyModifiedPropertiesWithoutUndo();
 
-                // Edge collider — points populated each frame by MegaDeform2DCollider.
-                // Initial points: the rest-pose top edge so the collider is visible
-                // before the first LateUpdate runs (important for edit-mode gizmos).
+                // Points are repopulated each frame by MegaDeform2DCollider.
                 var edge = root.AddComponent<EdgeCollider2D>();
 
                 var deform = root.AddComponent<MegaDeform2DCollider>();
@@ -69,8 +66,7 @@ namespace SlimeJumping.Editor
                 deform.Target = edge;
                 deform.ClosedLoop = false;
 
-                // Bake top-edge contour indices at the front face (z = max z).
-                // Epsilons are generous relative to the 0.3 m box height / 0.4 m depth.
+                // Top-edge contour at the front face; epsilons are generous vs the 0.3 m height / 0.4 m depth.
                 int[] indices = MegaDeform2DColliderBaker.BakeTopEdge(
                     mesh,
                     zTarget: mesh.bounds.max.z,
@@ -88,8 +84,7 @@ namespace SlimeJumping.Editor
                 {
                     deform.ContourIndices = indices;
 
-                    // Seed EdgeCollider2D with the rest-pose positions so the collider
-                    // reads correctly in edit mode before MegaDeform2DCollider runs once.
+                    // Seed rest-pose points, else the collider reads empty in edit mode until the first LateUpdate.
                     var verts = mesh.vertices;
                     var pts = new Vector2[indices.Length];
                     for (int i = 0; i < indices.Length; i++)

@@ -2,11 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Audio
 {
-    /// Scene-local BGM trigger. Drop into a stage scene, assign a clip, done —
-    /// SoundService handles persistence across scene loads and crossfades
-    /// automatically when the next scene's StageBgmPlayer calls PlayBgm with a
-    /// different clip. Scenes without a StageBgmPlayer keep whatever BGM was
-    /// already playing.
+    /// Scene-local BGM trigger. SoundService handles cross-scene persistence and crossfade;
+    /// a scene without a StageBgmPlayer keeps whatever BGM is already playing.
     [AddComponentMenu("SlimeJumping/Audio/Stage BGM Player")]
     public class StageBgmPlayer : MonoBehaviour
     {

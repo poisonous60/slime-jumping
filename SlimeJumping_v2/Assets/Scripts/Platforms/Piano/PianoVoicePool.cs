@@ -4,24 +4,14 @@ using UnityEngine.Audio;
 
 namespace SlimeJumping.Platforms.Piano
 {
-    /// A small pool of AudioSources that plays a voiced chord as several simultaneous pitched piano
-    /// notes — the audio half of harmonize mode (the physical keys only sink visually). Mirrors
-    /// SoundService's pooled-source + soft-steal pattern. Clips come from the keyboard's own keys (a
-    /// midi->clip map built at construction); notes with no exact key sample (accidentals)
-    /// pitch-shift from the nearest key (≤ ~1 semitone on a fully-chromatic set).
-    ///
-    /// Two things here are performance expression, not mixing:
-    /// • A note RINGS at full gain for its measured length and is only killed at the end, by a short
-    ///   exponential damper. The clips are real piano recordings that already decay on their own; the
-    ///   old linear fade across the whole tail fought that decay and was the single loudest reason a
-    ///   landing read as "a sample being played" rather than a key being struck.
-    /// • Cutoff follows velocity. A real piano hammer is a hardening spring, so a hard strike is not
-    ///   just louder but brighter; with one sample per key we can only take brightness away, so a
-    ///   soft strike is filtered down toward its fundamental instead of merely turned down.
+    /// Pool of AudioSources playing a voiced chord as simultaneous pitched piano notes (audio half of
+    /// harmonize mode). Clips come from the keyboard's own keys; a note with no exact sample pitch-shifts
+    /// from the nearest key. Two deliberate choices: a note rings at full gain and is killed only by a
+    /// short exponential damper (a linear fade across the tail fights the recording's own decay and reads
+    /// as "a sample being played"); and cutoff follows velocity, so a soft strike is darker, not just quieter.
     public class PianoVoicePool
     {
-        /// How a struck note behaves after its attack. Set from HarmonizeSettings — every number is
-        /// a config knob, nothing here is a constant.
+        /// Post-attack behaviour of a struck note. Every field is a config knob from HarmonizeSettings.
         public struct Envelope
         {
             public float damperSeconds;
@@ -44,15 +34,13 @@ namespace SlimeJumping.Platforms.Piano
 
         private struct Sample { public AudioClip clip; public float basePitch; public int baseMidi; }
 
-        // A note waiting out its in-gesture offset (a rolled strike, or an ornament figure). Counted
-        // down in Tick, so it still belongs to the landing that spawned it — no clock involved.
+        // A note waiting out its in-gesture offset (rolled strike, ornament figure); counted down in
+        // Tick, so it still belongs to the landing that spawned it — no clock involved.
         private struct Pending { public int midi; public float volume, hold, fall, delay, velocity; }
         private readonly List<Pending> pending = new List<Pending>();
 
-        /// While true, a note also rings for as long as the key is held: its stop time becomes the later
-        /// of its measured length and ReleaseSustained(), so neither the transcription (which can read a
-        /// few tens of ms, or plain wrong) nor the press alone decides it. Read at the note's true onset,
-        /// so a delayed note firing after the key came up is not held.
+        /// While true a note's stop time is the LATER of its measured length and ReleaseSustained().
+        /// Read at the note's true onset, so a delayed note firing after key-up is not held.
         public bool sustainNewNotes;
 
         /// Post-attack behaviour for every note played from now on.
@@ -63,9 +51,7 @@ namespace SlimeJumping.Platforms.Piano
         };
 
         /// Fired the instant a note actually sounds — (midi, volume, releaseSeconds). Delayed ornament
-        /// notes fire from Tick when their delay runs out, so a subscriber sees the true onset time of
-        /// every note in a rolled chord / Alberti figure / chiptune burst. The keyboard uses this to
-        /// press the matching physical key, which is why no ornament has to wire up visuals itself.
+        /// notes fire from Tick, so subscribers (the keyboard's key visuals) see every note's true onset.
         public event System.Action<int, float, float> NotePlayed;
 
         private readonly GameObject host;
@@ -131,10 +117,8 @@ namespace SlimeJumping.Platforms.Piano
             return clip != null;
         }
 
-        // Free voice first; then one already under the damper (nearest to silent); only then a voice
-        // still ringing, and of those the QUIETEST. Ring-phase voices sit at full gain now, so
-        // "nearest to done" — which used to also mean "already faded out" — would hard-cut a loud
-        // note and click.
+        // Free voice, then one already under the damper, then the QUIETEST still ringing. Ring-phase
+        // voices sit at full gain, so stealing "nearest to done" would hard-cut a loud note and click.
         private Voice Acquire()
         {
             Voice damping = null, ringing = null;
@@ -154,12 +138,9 @@ namespace SlimeJumping.Platforms.Piano
             return steal;
         }
 
-        /// A soft strike is darker, not merely quieter. One sample per key means brightness can only
-        /// be removed, so cutoff falls toward the note's own fundamental as velocity drops — floored
-        /// at a few harmonics up so a quiet high note does not vanish.
-        /// The sweep runs over [velocityLow, velocityHigh], not 0..1: transcribed velocities sit in a
-        /// narrow band (~0.4-0.8 across the rotation), and mapping that band onto the middle of a
-        /// 0..1 ramp leaves a light touch barely darker than a heavy one.
+        /// One sample per key means brightness can only be removed: cutoff falls toward the note's own
+        /// fundamental as velocity drops, floored a few harmonics up. Sweeps [velocityLow, velocityHigh],
+        /// not 0..1 — transcribed velocities sit in a narrow band that a 0..1 ramp flattens.
         private float CutoffFor(int midi, float velocity)
         {
             if (!envelope.brightness) return MaxCutoffHz;
@@ -170,25 +151,22 @@ namespace SlimeJumping.Platforms.Piano
             return Mathf.Clamp(Mathf.Max(byVelocity, floor), 10f, MaxCutoffHz);
         }
 
-        /// Play one note at `volume`, held for `holdSeconds` before the damper falls.
-        /// `delaySeconds` > 0 queues it instead — how a strike unfolds over its measured spread.
+        /// Play one note at `volume`, held for `holdSeconds` before the damper falls; `delaySeconds` > 0 queues it.
         public void Play(int midi, float volume, float holdSeconds, float delaySeconds)
             => PlayExpressive(midi, volume, holdSeconds, 0f, delaySeconds, -1f);
 
         public void Play(int midi, float volume, float holdSeconds)
             => PlayExpressive(midi, volume, holdSeconds, 0f, 0f, -1f);
 
-        /// As Play, with the note's own measured tail and velocity.
-        /// `fallSeconds` <= 0 uses the configured damper time (no pedal was down in the source).
-        /// `velocity01` < 0 means "take it from the volume" — the ornament paths, which carry no
-        /// dynamics of their own.
+        /// As Play, with the note's own measured tail and velocity. `fallSeconds` <= 0 uses the configured
+        /// damper time; `velocity01` < 0 takes it from the volume (the ornament paths carry no dynamics).
         public void PlayExpressive(int midi, float volume, float holdSeconds, float fallSeconds,
                                    float delaySeconds, float velocity01)
         {
             if (delaySeconds > 0f)
             {
-                // Kept sorted by remaining delay so a long frame that expires several notes at once
-                // still fires them in order (a rolled strike must keep its direction).
+                // Sorted by remaining delay: a long frame expiring several notes at once must still
+                // fire them in order (a rolled strike has to keep its direction).
                 var p = new Pending { midi = midi, volume = volume, hold = holdSeconds, fall = fallSeconds,
                                       delay = delaySeconds, velocity = velocity01 };
                 int i = pending.Count;
@@ -224,9 +202,8 @@ namespace SlimeJumping.Platforms.Piano
             v.startDsp = AudioSettings.dspTime;
         }
 
-        /// Key up: the held notes go back to their own measured length. A note whose length already ran
-        /// out under the press damps now; one that is still longer than the press rings out the rest.
-        /// The stop time is the LATER of the two, never one of them chosen over the other.
+        /// Key up: held notes revert to their own measured length — stop time is the LATER of that
+        /// length and the press, never one chosen over the other.
         public void ReleaseSustained()
         {
             sustainNewNotes = false;
@@ -234,9 +211,8 @@ namespace SlimeJumping.Platforms.Piano
                 voices[i].sustained = false;
         }
 
-        /// Hold at full gain (the recording decays by itself), then fall: an exponential drop to
-        /// silence over the note's tail — the song's own pedal tail when it had one, the configured
-        /// damper time when it did not. Also fires any note whose in-gesture offset ran out.
+        /// Hold at full gain (the recording decays by itself), then an exponential drop over the note's
+        /// tail. Also fires any note whose in-gesture offset ran out.
         public void Tick(float dt)
         {
             int due = 0;
@@ -257,9 +233,8 @@ namespace SlimeJumping.Platforms.Piano
                 if (!v.sounding) continue;
                 if (v.sustained)
                 {
-                    // The measured length still runs down — the key being held only blocks the damper,
-                    // it does not restart the note. So a long measured note that outlives the press
-                    // keeps the remainder of its own length after key-up.
+                    // The measured length keeps running down — holding the key only blocks the damper,
+                    // so a note that outlives the press keeps its remainder after key-up.
                     if (v.ringTimer > 0f) v.ringTimer -= dt;
                     continue;
                 }

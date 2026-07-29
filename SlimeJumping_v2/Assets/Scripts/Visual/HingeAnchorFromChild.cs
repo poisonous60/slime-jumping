@@ -2,10 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Visual
 {
-    // Attach next to a HingeJoint2D. Drag a child Transform placed at the desired pivot point
-    // (e.g. the apple's stem). The hinge's Anchor is re-synced to that Transform's position
-    // in this GameObject's local space whenever the inspector changes, so the body swings
-    // around the marked point instead of its origin.
+    // Re-syncs HingeJoint2D.anchor to a child Transform's position in local space, so the body
+    // swings around that marked pivot instead of its origin.
     [RequireComponent(typeof(HingeJoint2D))]
     [ExecuteAlways]
     public class HingeAnchorFromChild : MonoBehaviour

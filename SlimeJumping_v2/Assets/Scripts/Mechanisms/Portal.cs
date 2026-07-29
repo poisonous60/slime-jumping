@@ -35,11 +35,9 @@ namespace SlimeJumping.Mechanisms
         {
             Vector2 v = slime.Velocity;
 
-            // Decompose in entry portal's local frame
             float vIn = Vector2.Dot(v, -OutNormal);
             float vTangent = Vector2.Dot(v, Tangent);
 
-            // Reconstruct in exit portal's frame
             Vector2 newV = exit.OutNormal * vIn + exit.Tangent * vTangent;
 
             // Clamp to prevent tunneling on repeated loops

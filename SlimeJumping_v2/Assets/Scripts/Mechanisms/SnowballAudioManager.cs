@@ -5,11 +5,7 @@ using UnityEditor;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Broadcasts a shared audio clip set to every Snowball in the active scene so
-    /// individual snowballs / spawner-managed prefabs don't need per-instance assignment.
-    /// Mirrors JumpBallAudioManager / IcicleAudioManager.
-    /// </summary>
+    /// <summary>Pushes one shared clip set to every Snowball in the scene, so instances need no per-object assignment.</summary>
     [DefaultExecutionOrder(-50)]
     public class SnowballAudioManager : MonoBehaviour
     {

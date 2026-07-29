@@ -5,12 +5,8 @@ using SlimeJumping.Mechanisms;
 
 namespace SlimeJumping.Editor
 {
-    /// <summary>
-    /// Spawns test objects for SlimeJumping/SpaceWarp_Distortion:
-    ///   • "Setup Space Warp Zone"     — persistent warp anomaly area (always on).
-    ///   • "Setup Space Warp Jump Pad" — JumpPad with a one-shot shockwave child.
-    /// Both create reusable .mat assets next to the shader on first run.
-    /// </summary>
+    /// <summary>Spawns test objects for SlimeJumping/SpaceWarp_Distortion (persistent zone, or a
+    /// JumpPad with a one-shot shockwave); reusable .mat assets are created on first run.</summary>
     public static class SpaceWarpTestSetup
     {
         const string ShaderName       = "SlimeJumping/SpaceWarp_Distortion";
@@ -19,10 +15,8 @@ namespace SlimeJumping.Editor
         const string MatZoneBgPath    = MatFolder + "/Mat_SpaceWarpZone_Background.mat";
         const string MatJumpPadPath   = MatFolder + "/Mat_SpaceWarpJumpPad.mat";
 
-        // Foreground = covers gameplay (only the warped image shows). Background = drawn behind
-        // gameplay, useful as an ambient backdrop. Material settings drive the difference:
-        //   queue 3500 + ZTest Always (8) → foreground
-        //   queue 3000 + ZTest LEqual (4) → background
+        // Foreground/background is a material setting, not a component flag:
+        //   queue 3500 + ZTest Always(8) = over gameplay, queue 3000 + ZTest LEqual(4) = behind it.
         const int   QueueForeground = 3500;
         const int   QueueBackground = 3000;
         const float ZTestAlways     = 8f;
@@ -68,7 +62,6 @@ namespace SlimeJumping.Editor
             Undo.RegisterCreatedObjectUndo(root, "Create Space Warp Jump Pad");
             root.transform.position = GetSpawnPosition();
 
-            // Pad body — visible cube + 2D collider so the slime can land on it.
             var pad = GameObject.CreatePrimitive(PrimitiveType.Cube);
             pad.name = "Pad";
             pad.transform.SetParent(root.transform, worldPositionStays: false);
@@ -81,7 +74,7 @@ namespace SlimeJumping.Editor
 
             var jumpPad = pad.AddComponent<JumpPad>();
 
-            // Warp visual — quad above the pad. Slightly toward camera so it sits in front of scenery.
+            // Quad is pulled toward the camera so it draws in front of scenery.
             var warpGo = GameObject.CreatePrimitive(PrimitiveType.Quad);
             warpGo.name = "SpaceWarp";
             Object.DestroyImmediate(warpGo.GetComponent<MeshCollider>());
@@ -92,8 +85,7 @@ namespace SlimeJumping.Editor
 
             var warp = warpGo.AddComponent<SpaceWarpEffect>();
 
-            // Wire warp.targetRenderer + jumpPad.warpEffect via SerializedObject so the inspector
-            // shows the references — surviving prefab variants and undo cleanly.
+            // SerializedObject, not direct assignment: keeps the refs visible to prefab variants and undo.
             var soWarp = new SerializedObject(warp);
             soWarp.FindProperty("targetRenderer").objectReferenceValue = warpGo.GetComponent<MeshRenderer>();
             soWarp.ApplyModifiedProperties();

@@ -3,15 +3,8 @@ using Unity.Cinemachine;
 
 namespace SlimeJumping.Camera
 {
-    /// Keeps on-screen object sizes (slime, platforms, UI-less world art) roughly
-    /// constant across resolutions by scaling perspective FOV with Screen.height.
-    ///
-    /// Formula: tan(newFov/2) = tan(referenceFov/2) * (Screen.height / referenceHeight).
-    /// At the reference resolution the FOV stays at its designed value. Above it the FOV
-    /// widens so more world is visible, below it the FOV narrows so the visible world
-    /// shrinks — in both cases pixels-per-world-unit at the slime plane stays constant.
-    ///
-    /// The reference camera distance is implicit in the unchanged vcam/transform positions.
+    /// <summary>Holds pixels-per-world-unit constant across resolutions:
+    /// tan(newFov/2) = tan(referenceFov/2) * (Screen.height / referenceHeight).</summary>
     [DefaultExecutionOrder(-50)]
     public class ResolutionScaleController : MonoBehaviour
     {

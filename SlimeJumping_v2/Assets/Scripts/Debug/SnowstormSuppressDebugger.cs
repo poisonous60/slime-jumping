@@ -5,17 +5,10 @@ using SlimeJumping.Mechanisms;
 
 namespace SlimeJumping.Debugging
 {
-    // Read-only probe for the "stage2 snow visible inside the snowstorm" bug.
-    // Pulls Snowstorm2D private state via reflection (writes nothing back).
-    //
-    // Fingerprints promoted to LogWarning:
-    //   <<< INSIDE-MISMATCH  zone polygon contains the slime but slimeInside=false
-    //                        (early OnTriggerExit / multi-collider flicker)
-    //   <<< FLICKER          slimeInside flipped while the polygon-inside state didn't
-    //   <<< ALPHA-LEAK       presence==1 (fully inside) but a suppressed renderer's
-    //                        MPB alpha is not 0, or its emission rate is not 0
-    //   <<< STRAY-SNOW       a snow-material PS that is NOT the storm PS and NOT a
-    //                        suppressed PS has alive particles while inside the zone
+    // Read-only probe for "stage2 snow visible inside the snowstorm": reads Snowstorm2D private state
+    // by reflection, writes nothing back. Warning tags: INSIDE-MISMATCH / FLICKER (slimeInside vs the
+    // zone polygon), ALPHA-LEAK (suppressed renderer still opaque or emitting at presence=1),
+    // STRAY-SNOW (a snow-material PS that is neither the storm nor a suppressed one).
     [DefaultExecutionOrder(3002)]
     public sealed class SnowstormSuppressDebugger : MonoBehaviour
     {

@@ -2,17 +2,14 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
-// 구름 메시를 N개 청크로 "분할"하는 에디터 헬퍼. 새 지오메트리를 만들지 않고
-// 원본 삼각형을 공간 클러스터(k-means)로 나눠 각 청크 = 원본 삼각형의 부분집합.
-// 모든 삼각형이 원위치에 정확히 1번씩 → 조립하면 원본과 픽셀 단위로 동일(seam 원천 없음).
-// 각 청크는 자기 centroid 로 recenter + GameObject offset → 흩어짐이 자기 중심 기준.
-// 결과 = matched pieces prefab (CloudPlatform/CloudDisperser 의 piecesPrefab 슬롯에 사용).
+// 구름 메시를 N개 청크로 분할(k-means). 새 지오메트리 없이 원본 삼각형을 나눠 각 삼각형이
+// 정확히 1번씩 쓰이므로 조립하면 원본과 동일(seam 원천 없음).
+// 청크는 자기 centroid 로 recenter + GameObject offset → 흩어짐이 자기 중심 기준.
 public static class CloudFractureTool
 {
     public const int DefaultPieces = 6;
 
-    // cloudPrefab 의 첫 MeshRenderer 메시를 N조각으로 분할해 pieces prefab 생성.
-    // 반환 = 저장된 pieces prefab (실패 시 null).
+    // cloudPrefab 의 첫 메시를 N조각으로 분할해 pieces prefab 생성(실패 시 null).
     public static GameObject Generate(GameObject cloudPrefab, int pieces, string outDir)
     {
         if (cloudPrefab == null) { Debug.LogError("[CloudFracture] cloudPrefab null"); return null; }
@@ -31,7 +28,6 @@ public static class CloudFractureTool
         int triCount = tris.Length / 3;
         if (triCount < pieces) pieces = Mathf.Max(1, triCount);
 
-        // 삼각형 centroid.
         var triCentroid = new Vector3[triCount];
         for (int t = 0; t < triCount; t++)
         {
@@ -108,7 +104,6 @@ public static class CloudFractureTool
             }
             if (pv.Count == 0) continue;
 
-            // centroid 로 recenter.
             Vector3 c = Vector3.zero;
             for (int i = 0; i < pv.Count; i++) c += pv[i];
             c /= pv.Count;

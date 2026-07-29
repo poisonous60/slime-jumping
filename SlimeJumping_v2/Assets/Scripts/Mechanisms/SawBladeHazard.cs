@@ -5,9 +5,8 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
 {
-    // Trigger Collider2D must be on the SAME GameObject as this component — OnTriggerEnter2D only
-    // fires on MonoBehaviours attached to the collider's GameObject. The visual-only `bladeTransform`
-    // (rotating mesh) is a separate child.
+    // Trigger Collider2D must sit on THIS GameObject — OnTriggerEnter2D only fires on the
+    // collider's own GameObject. The rotating visual (bladeTransform) is a separate child.
     [RequireComponent(typeof(Collider2D))]
     public class SawBladeHazard : MonoBehaviour, IHazardSource
     {
@@ -112,9 +111,8 @@ namespace SlimeJumping.Mechanisms
                 SliceEffect.Spawn(sliceEffectPrefab, contact, signedTangent);
             if (impulseEmitter != null) impulseEmitter.Emit(impulseForce);
 
-            // Slice is part of the stun reaction: every hit slices AND stuns. Eyes/control
-            // come from the Stunned state below — read velocity for the cut angle BEFORE
-            // ApplyHazardEffect overwrites it. Skip only if another override owns the slime.
+            // Must run before ApplyHazardEffect — the cut angle reads slime.Velocity, which
+            // the hazard effect overwrites.
             if (splitSequence != null && !slime.HasOverride)
                 splitSequence.Begin(slime, slime.Velocity);
 

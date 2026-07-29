@@ -5,13 +5,7 @@ using SlimeJumping.Visual;
 
 namespace SlimeJumping.Editor
 {
-    /// <summary>
-    /// One-click test rig for ColdZone + SlimeFrostController. Builds a
-    /// trigger box at a fixed scene position the user can walk into to
-    /// observe the freeze tint, frost coverage, and dual-color trail
-    /// composition. Re-runnable: deletes the prior "ColdZoneTest" root
-    /// before rebuilding so iteration doesn't accumulate junk.
-    /// </summary>
+    /// <summary>Re-runnable test rig for ColdZone + SlimeFrostController; deletes the prior root before rebuilding.</summary>
     public static class ColdZoneTestSetup
     {
         [MenuItem("SlimeJumping/Mechanism/Setup Cold Zone Test")]
@@ -37,8 +31,7 @@ namespace SlimeJumping.Editor
             box.isTrigger = true;
             zone.AddComponent<ColdZone>();
 
-            // Visual hint — translucent quad so the user can see where the
-            // trigger sits in the scene view. EditorOnly tag keeps it out of builds.
+            // Scene-view hint quad; the EditorOnly tag is what keeps it out of builds.
             var hint = GameObject.CreatePrimitive(PrimitiveType.Quad);
             hint.name = "ZoneHint";
             hint.tag = "EditorOnly";
@@ -48,7 +41,6 @@ namespace SlimeJumping.Editor
             var mat = new Material(Shader.Find("Unlit/Color")) { color = new Color(0.5f, 0.85f, 1f, 0.18f) };
             hint.GetComponent<MeshRenderer>().sharedMaterial = mat;
 
-            // Ensure a SlimeFrostController is attached to the scene's slime root.
             var slime = Object.FindObjectOfType<SlimeJumping.Controller.SlimeController>();
             if (slime != null)
             {

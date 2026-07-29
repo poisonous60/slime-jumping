@@ -3,28 +3,9 @@ using SlimeJumping.Rendering;
 
 namespace SlimeJumping.Visual
 {
-    /// <summary>
-    /// Drives the slime body's surface frost crystals while the slime is in
-    /// any number of <see cref="SlimeJumping.Mechanisms.ColdZone"/> triggers
-    /// (refcounted). freezeT advances 0→1 inside, 1→0 outside, with
-    /// asymmetric durations so a brief exit doesn't reset progress.
-    /// frostCurve maps freezeT → _FrostStrength so authoring can shape the
-    /// onset (e.g. crystals don't show until freezeT crosses 0.3).
-    ///
-    /// Body color does NOT change. An earlier design swapped in a "frozen"
-    /// palette but Quibli's lit colors couldn't be cleanly mirrored via MPB
-    /// overrides — the result lost cell-shading detail. The frozen look is
-    /// just the same slime with frost crystals on top.
-    ///
-    /// Also publishes freezeT to <see cref="WorldTrailManager.SetFreezeT"/>
-    /// for the dual-color trail routing (warm/cold trail RTs split-write).
-    ///
-    /// [ExecuteAlways] so the material's Frost Strength preview slider
-    /// reflects in the scene view at edit time too. Execution order 110 keeps
-    /// this strictly after <see cref="SlimeBurnVisual"/> (100) — both write
-    /// disjoint properties to the same MPB and the GetPropertyBlock round-
-    /// trip preserves whichever ran first.
-    /// </summary>
+    /// <summary>ColdZone refcount drives freezeT (0→1 inside, 1→0 outside) → frostCurve → _FrostStrength on the body.</summary>
+    // Body color stays unchanged: a "frozen" palette via MPB override lost Quibli's cell-shading.
+    // Order 110 keeps this after SlimeBurnVisual (100) — both round-trip the same MPB, disjoint props.
     [DefaultExecutionOrder(110)]
     [ExecuteAlways]
     public class SlimeFrostController : MonoBehaviour
@@ -45,7 +26,6 @@ namespace SlimeJumping.Visual
         [SerializeField] private AnimationCurve frostCurve = new AnimationCurve(
             new Keyframe(0f, 0f), new Keyframe(0.3f, 0f), new Keyframe(1f, 1f));
 
-        // --- runtime ---
         private int coldZoneRefCount;
         private float freezeT;
         private MeshRenderer bodyMR;
@@ -59,12 +39,7 @@ namespace SlimeJumping.Visual
         public void PushColdZone() => coldZoneRefCount++;
         public void PopColdZone() => coldZoneRefCount = Mathf.Max(0, coldZoneRefCount - 1);
 
-        /// <summary>
-        /// One-shot bump to freezeT, independent of ColdZone refcount. Used by
-        /// hazards (e.g. Snowball side impact) to spike progress without
-        /// leaving the slime "inside a zone" — the natural ramp/thaw resumes
-        /// from the new value on the next Update.
-        /// </summary>
+        /// <summary>One-shot freezeT bump independent of the ColdZone refcount; the normal ramp/thaw resumes from the new value.</summary>
         public void AddFreezeT(float amount) => freezeT = Mathf.Clamp01(freezeT + amount);
 
         private void Awake()
@@ -83,9 +58,8 @@ namespace SlimeJumping.Visual
         private void OnEnable()
         {
 #if UNITY_EDITOR
-            // SceneView only repaints on activity; pump our own tick so the
-            // material's Frost Strength slider tracks live without the user
-            // having to wiggle the camera to force a SceneView redraw.
+            // SceneView only repaints on activity — pump a tick or the Frost Strength slider
+            // won't track until the user wiggles the camera.
             UnityEditor.EditorApplication.update -= EditorPreviewTick;
             UnityEditor.EditorApplication.update += EditorPreviewTick;
 #endif
@@ -112,8 +86,7 @@ namespace SlimeJumping.Visual
 
         private void Update()
         {
-            // Edit mode: freezeT stays at 0; the material slider drives the
-            // shader's _FrostStrength directly. Play mode: refcount drives.
+            // Edit mode: the material slider drives _FrostStrength. Play mode: refcount drives.
             if (!Application.isPlaying) return;
 
             float dt = Time.deltaTime;
@@ -122,8 +95,7 @@ namespace SlimeJumping.Visual
                 : -(1f / Mathf.Max(0.01f, thawDuration));
             freezeT = Mathf.Clamp01(freezeT + rate * dt);
 
-            // Publish to manager so World/Local trail stamps split between
-            // warm and cold RTs (single-slime stage assumption).
+            // Publish for the warm/cold trail RT split (single-slime stage assumption).
             var mgr = WorldTrailManager.Instance;
             if (mgr != null) mgr.SetFreezeT(freezeT);
         }
@@ -137,9 +109,7 @@ namespace SlimeJumping.Visual
             }
             if (mpb == null) mpb = new MaterialPropertyBlock();
 
-            // Edit mode: leave _FrostStrength alone so the material slider in
-            // the inspector preview is the source of truth. Play mode: push
-            // frostCurve(freezeT) so the slider is overridden by gameplay.
+            // Edit mode: don't touch _FrostStrength so the inspector slider preview stays authoritative.
             if (!Application.isPlaying) return;
 
             bodyMR.GetPropertyBlock(mpb);
@@ -152,8 +122,7 @@ namespace SlimeJumping.Visual
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.update -= EditorPreviewTick;
 #endif
-            // Clear MPB override so a disabled controller doesn't leave the
-            // body locked in a frosted state.
+            // Clear the override, else a disabled controller leaves the body stuck frosted.
             if (bodyMR == null) return;
             if (mpb == null) mpb = new MaterialPropertyBlock();
             bodyMR.GetPropertyBlock(mpb);
@@ -168,9 +137,7 @@ namespace SlimeJumping.Visual
             if (this == null || gameObject == null) return;
             if (!enabled || !gameObject.activeInHierarchy) return;
 
-            // Mostly a no-op in edit mode (LateUpdate early-returns when not
-            // playing) — still useful to repaint the scene view so the
-            // material slider drag is visible immediately.
+            // Repaint so a material slider drag shows immediately.
             if (UnityEditor.SceneView.lastActiveSceneView != null)
                 UnityEditor.SceneView.lastActiveSceneView.Repaint();
         }

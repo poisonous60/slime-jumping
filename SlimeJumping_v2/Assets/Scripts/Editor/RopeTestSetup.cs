@@ -72,8 +72,7 @@ namespace SlimeJumping.Editor
             previewSteps = 120,
         };
 
-        // v2 preset — rubbery hammock-like rope that visibly sags under slime weight
-        // during Charging; release converts the sag into a launch-direction speed bonus.
+        // Rubbery hammock: sags during Charging, release converts sag into launch bonus.
         static RopeTuning RubberRebound(float reboundSpeedPerMeter) => new RopeTuning
         {
             segmentCount = 15,
@@ -177,9 +176,7 @@ namespace SlimeJumping.Editor
             public int previewSteps;
         }
 
-        // Hammock-like simulation base for v2 timing ropes — same physics shape
-        // as v1's RubberRebound preset so v1↔v2 visual comparison stays apples-to-apples.
-        // Caller supplies the two AnimationCurves to vary the rebound mechanic per rope.
+        // Same sim shape as v1 RubberRebound so v1↔v2 diff isolates to the curves.
         static RopeV2Tuning RubberRebound_V2(AnimationCurve timing, AnimationCurve charge) => new RopeV2Tuning
         {
             segmentCount = 15,
@@ -190,8 +187,7 @@ namespace SlimeJumping.Editor
             nodeGravity = 0.3f,
             elasticFactor = 0.3f,
             riderInfluenceSpacing = 4f,
-            // Weight-only sag stays shallow (steady-state slime weight); the deep
-            // dip is produced by impactGain on the airborne→attach impulse.
+            // Low: weight sag stays shallow, the deep dip comes from impactGain on attach.
             riderForceMul = 10f,
             impactGain = 1f,
             maxTensionEnter = 1.25f,
@@ -223,7 +219,6 @@ namespace SlimeJumping.Editor
             const float anchorY = 3f;
             const float halfSpan = 3.5f;
 
-            // Profile 1: timing curve flat 0 → no bonus regardless of timing.
             var timingOff = AnimationCurve.Constant(0f, 20f, 0f);
             var chargeFlat = AnimationCurve.Constant(0f, 1f, 1f);
             BuildRopeV2(root.transform, "Rope_V2_TimingOff",
@@ -231,14 +226,12 @@ namespace SlimeJumping.Editor
                 new Vector3(-16f + halfSpan, anchorY, 0f),
                 RubberRebound_V2(timingOff, chargeFlat));
 
-            // Profile 2: linear timing × flat charge → pure timing rope (default profile).
             var timingLinear = AnimationCurve.Linear(0f, 0f, 20f, 20f);
             BuildRopeV2(root.transform, "Rope_V2_LinearTiming",
                 new Vector3(-halfSpan, anchorY, 0f),
                 new Vector3(halfSpan, anchorY, 0f),
                 RubberRebound_V2(timingLinear, AnimationCurve.Constant(0f, 1f, 1f)));
 
-            // Profile 3: linear timing × charge ramp (0,0)→(1,1.5) → must charge AND time.
             var chargeRamp = AnimationCurve.Linear(0f, 0f, 1f, 1.5f);
             BuildRopeV2(root.transform, "Rope_V2_ChargeGated",
                 new Vector3(16f - halfSpan, anchorY, 0f),
@@ -335,7 +328,6 @@ namespace SlimeJumping.Editor
             var root = new GameObject("RopeTest_V2_Rebound");
             Undo.RegisterCreatedObjectUndo(root, "Create Rope Test V2 Rebound");
 
-            // Shared floor + spawn pads under each rope.
             CreatePlatform("Floor", root.transform,
                 new Vector3(0f, -6f, 0f), new Vector3(60f, 1f, 1f));
             CreatePlatform("SpawnPad_NoRebound", root.transform,
@@ -345,9 +337,7 @@ namespace SlimeJumping.Editor
             CreatePlatform("SpawnPad_Strong", root.transform,
                 new Vector3(16f, -2f, 0f), new Vector3(3f, 1f, 1f));
 
-            // Three ropes, identical shape/tuning except reboundSpeedPerMeter.
-            // Same anchor heights → same initial sag under slime weight → A/B/C
-            // comparison isolates the rebound multiplier only.
+            // Identical tuning and anchor height except reboundSpeedPerMeter, so A/B/C isolates it.
             const float anchorY = 3f;
             const float halfSpan = 3.5f;
 
@@ -366,8 +356,6 @@ namespace SlimeJumping.Editor
                 new Vector3(16f + halfSpan, anchorY, 0f),
                 RubberRebound(14f), withWindDebug: false);
 
-            // Height markers above the ropes for visual launch-height gauge.
-            // Thin wide cubes, no collider. y relative to rope anchor (3m).
             CreateHeightMarkers(root.transform, anchorY);
 
             Finish(root,
@@ -415,9 +403,7 @@ namespace SlimeJumping.Editor
             public int previewSteps;
         }
 
-        // V3 canonical trampoline preset. Same Verlet shape as v1/v2 RubberRebound
-        // (segmentCount=15, restLengthMul=1.08, elasticFactor=0.3) so behavior
-        // diff from v2 isolates to the spring-based rider channel.
+        // Same Verlet shape as v1/v2 RubberRebound so the v2 diff isolates to the rider spring.
         static RopeV3Tuning Trampoline_V3(AnimationCurve timing, AnimationCurve charge) => new RopeV3Tuning
         {
             segmentCount = 15,
@@ -588,8 +574,7 @@ namespace SlimeJumping.Editor
             return root;
         }
 
-        // Thin unlit horizontal bars (no collider) at set heights above the rope row,
-        // so launch-peak heights can be eyeballed in play mode.
+        // Collider-less bars above the rope row so launch peaks can be eyeballed in play mode.
         static void CreateHeightMarkers(Transform parent, float baseY)
         {
             var group = new GameObject("HeightMarkers");

@@ -4,11 +4,8 @@ using SlimeJumping.Settings;
 
 namespace SlimeJumping.Physics
 {
-    /// <summary>
-    /// Original per-collider-ClosestPoint detector. One contact per nearby collider —
-    /// ignores multi-path polygons (SnakeSpine branches / DeformablePlatform islands).
-    /// Baseline for A/B comparison with MultiContactSurfaceProbe.
-    /// </summary>
+    /// <summary>One ClosestPoint contact per nearby collider, so multi-path polygons (SnakeSpine
+    /// branches, DeformablePlatform islands) only ever yield one contact.</summary>
     public class SingleContactSurfaceProbe : SurfaceProbe
     {
         public SingleContactSurfaceProbe(Rigidbody2D rb, SlimeSettings settings, List<Collider2D> ignoredColliders)

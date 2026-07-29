@@ -3,16 +3,14 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    // Burst mode — a fan of short-lived beams across a spread cone. Each "burst flash"
-    // is just a slim, brief GraniteBlastBeam.
+    // Burst mode — a fan of short-lived beams across a spread cone; each flash is a slim, brief GraniteBlastBeam.
     public partial class GraniteBlastEmitter
     {
         // Burst scheduling: precomputed bullet directions, consumed across FireStart + Firing.
         private readonly List<Vector2> pendingBullets = new List<Vector2>(16);
         private int bulletsSpawned;
         private int bulletsAtFireStart;
-        // Time the active burst window started (FireStart entry). Used by interval mode
-        // to spawn one flash every burstFlashInterval seconds.
+        // FireStart entry time; interval mode paces flashes from it.
         private float burstStartTime;
 
         private void PlanBurst()

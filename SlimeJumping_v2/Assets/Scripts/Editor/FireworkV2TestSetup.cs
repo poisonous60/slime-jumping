@@ -27,7 +27,6 @@ namespace SlimeJumping.Editor
                 new Vector3(baseX, baseY - 0.5f, 0f),
                 new Vector3(30f, 1f, 1f));
 
-            // Left — vertical flight, straight-up slime launch
             CreateFireworkV2("FireworkV2_Up", root.transform,
                 hostPos: new Vector3(baseX - 4f, baseY + 0.3f, 0f),
                 flightDirection: Vector2.up,
@@ -35,7 +34,6 @@ namespace SlimeJumping.Editor
                 launchVelocity: new Vector2(0f, 18f),
                 launchAwayFromExplosion: false);
 
-            // Middle — diagonal flight
             CreateFireworkV2("FireworkV2_Angled", root.transform,
                 hostPos: new Vector3(baseX, baseY + 0.3f, 0f),
                 flightDirection: new Vector2(0.35f, 1f),
@@ -43,7 +41,6 @@ namespace SlimeJumping.Editor
                 launchVelocity: new Vector2(6f, 16f),
                 launchAwayFromExplosion: false);
 
-            // Right — radial fling away from explosion apex
             CreateFireworkV2("FireworkV2_Radial", root.transform,
                 hostPos: new Vector3(baseX + 4.5f, baseY + 0.3f, 0f),
                 flightDirection: Vector2.up,
@@ -51,7 +48,7 @@ namespace SlimeJumping.Editor
                 launchVelocity: new Vector2(0f, 14f),
                 launchAwayFromExplosion: true);
 
-            // Far right — VFX-sync mode: rocket mesh rides the SF_1 particle, SF_1 handles explosion
+            // VFX-sync mode: rocket mesh rides the SF_1 particle and SF_1 owns the explosion.
             var sf1 = AssetDatabase.LoadAssetAtPath<GameObject>(SF1PrefabPath);
             if (sf1 != null)
             {
@@ -63,8 +60,6 @@ namespace SlimeJumping.Editor
                     launchAwayFromExplosion: false);
                 var fw = vfxSync.GetComponent<FireworkInteractable_V2>();
 
-                // Remove the local jet-flame trail + explosion — SF_1 handles explosion;
-                // we'll attach a white smoke trail for the flight.
                 var toRemove = vfxSync.transform.Find("ExplosionVFX");
                 if (toRemove != null) Object.DestroyImmediate(toRemove.gameObject);
                 var rocket = vfxSync.transform.Find("RocketVisual");
@@ -102,18 +97,16 @@ namespace SlimeJumping.Editor
             Vector3 hostPos, Vector2 flightDirection, float flightDistance,
             Vector2 launchVelocity, bool launchAwayFromExplosion)
         {
-            // Root — holds collider, audio, VFX (persistent) and the v2 component
             var go = new GameObject(name);
             go.transform.parent = parent;
             go.transform.position = hostPos;
             go.layer = InteractableLayer;
 
-            // Rocket visual container (child — this is what moves/hides/respawns)
+            // Child container — this is what moves/hides/respawns.
             var rocket = new GameObject("RocketVisual");
             rocket.transform.parent = go.transform;
             rocket.transform.localPosition = Vector3.zero;
 
-            // Rocket body (cylinder)
             var body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             body.name = "Body";
             Object.DestroyImmediate(body.GetComponent<CapsuleCollider>());
@@ -122,7 +115,6 @@ namespace SlimeJumping.Editor
             body.transform.localScale = new Vector3(0.3f, 0.5f, 0.3f);
             body.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.9f, 0.3f, 0.2f));
 
-            // Nose cone (sphere stand-in)
             var tip = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             tip.name = "Tip";
             Object.DestroyImmediate(tip.GetComponent<SphereCollider>());
@@ -131,7 +123,6 @@ namespace SlimeJumping.Editor
             tip.transform.localScale = Vector3.one * 0.25f;
             tip.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(1f, 0.85f, 0.1f));
 
-            // Fin marker (small cube, purely visual)
             var fin = GameObject.CreatePrimitive(PrimitiveType.Cube);
             fin.name = "Fin";
             Object.DestroyImmediate(fin.GetComponent<BoxCollider>());
@@ -140,7 +131,6 @@ namespace SlimeJumping.Editor
             fin.transform.localScale = new Vector3(0.45f, 0.12f, 0.12f);
             fin.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.15f, 0.15f, 0.18f));
 
-            // Trail VFX — childed to rocket visual so it follows during flight
             var trailGo = new GameObject("TrailVFX");
             trailGo.transform.parent = rocket.transform;
             trailGo.transform.localPosition = new Vector3(0f, -0.5f, 0f);
@@ -163,7 +153,7 @@ namespace SlimeJumping.Editor
                 shape.rotation = new Vector3(90f, 0f, 0f); // point downward
             }
 
-            // Explosion VFX — kept at root (NOT childed to rocket) so it survives rocket hide
+            // Stays at root, NOT under the rocket, so it survives the rocket being hidden.
             var explGo = new GameObject("ExplosionVFX");
             explGo.transform.parent = go.transform;
             explGo.transform.localPosition = Vector3.zero;
@@ -185,16 +175,13 @@ namespace SlimeJumping.Editor
                 shape.radius = 0.05f;
             }
 
-            // Trigger collider on root (visual/collider separation)
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size = new Vector2(1f, 1.3f);
 
-            // Camera shake
             go.AddComponent<CinemachineImpulseSource>();
             var emitter = go.AddComponent<ImpulseEmitter>();
 
-            // Component wiring
             var fw = go.AddComponent<FireworkInteractable_V2>();
             var so = new SerializedObject(fw);
             so.FindProperty("rocketVisual").objectReferenceValue = rocket.transform;
@@ -252,7 +239,6 @@ namespace SlimeJumping.Editor
             main.startLifetime = new ParticleSystem.MinMaxCurve(0.25f, 0.45f);
             main.startSpeed = new ParticleSystem.MinMaxCurve(0.1f, 0.5f);
             main.startSize = new ParticleSystem.MinMaxCurve(0.06f, 0.14f);
-            // Warm bright colors — additive blend will make these pop as sparkles
             main.startColor = new ParticleSystem.MinMaxGradient(
                 new Color(1f, 1f, 0.9f, 1f),
                 new Color(1f, 0.8f, 0.3f, 1f));
@@ -266,7 +252,6 @@ namespace SlimeJumping.Editor
             shape.shapeType = ParticleSystemShapeType.Sphere;
             shape.radius = 0.08f;
 
-            // Twinkle: size pops 0 → 1 → 0 so each sparkle fades in and out
             var size = ps.sizeOverLifetime;
             size.enabled = true;
             var twinkle = new AnimationCurve(
@@ -276,7 +261,6 @@ namespace SlimeJumping.Editor
             );
             size.size = new ParticleSystem.MinMaxCurve(1f, twinkle);
 
-            // Alpha fades in/out so the additive glow pulses
             var col = ps.colorOverLifetime;
             col.enabled = true;
             var gradient = new Gradient();
@@ -293,7 +277,7 @@ namespace SlimeJumping.Editor
             );
             col.color = new ParticleSystem.MinMaxGradient(gradient);
 
-            // Additive material saved as a project asset so prefab serialization survives
+            // Material must be a project asset, else prefab serialization drops it.
             var renderer = ps.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
             {
@@ -335,7 +319,7 @@ namespace SlimeJumping.Editor
         {
             if (AssetDatabase.IsValidFolder(folderPath)) return;
             var parts = folderPath.Split('/');
-            string cur = parts[0]; // "Assets"
+            string cur = parts[0];
             for (int i = 1; i < parts.Length; i++)
             {
                 string next = cur + "/" + parts[i];

@@ -5,12 +5,8 @@ using UnityEditor;
 
 namespace SlimeJumping.Rendering
 {
-    /// Mirrors a WaterZone_v2's animated fan mesh onto the BackgroundBlur layer,
-    /// so the vertex-level wave simulation shows up both as the crisp foreground
-    /// water surface AND inside the blurred background. The ghost child shares
-    /// the source MeshFilter's sharedMesh, so wave motion auto-syncs every
-    /// frame with zero copy cost — WaterZone_v2 mutates the one Mesh instance
-    /// and both MeshRenderers read from it.
+    /// Mirrors a WaterZone_v2's animated fan mesh onto the BackgroundBlur layer.
+    /// The ghost child shares the source sharedMesh, so wave motion syncs with zero copy.
     [ExecuteAlways]
     [DisallowMultipleComponent]
     [RequireComponent(typeof(MeshFilter))]
@@ -53,9 +49,7 @@ namespace SlimeJumping.Rendering
 
         void LateUpdate()
         {
-            // Runs in edit mode too (ExecuteAlways). The wave sim writes mesh
-            // vertices continuously, so we re-apply material/tint each frame
-            // to stay in step if the source material or tint is swapped.
+            // Re-applied every frame so a swapped source material or tint is picked up.
             SyncGhost();
         }
 

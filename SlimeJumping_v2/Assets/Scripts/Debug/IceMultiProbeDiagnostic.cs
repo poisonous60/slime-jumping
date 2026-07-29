@@ -5,39 +5,8 @@ using SlimeJumping.Physics;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Diagnoses why MultiContactSurfaceProbe judders harder on Ice tagged curves.
-    ///
-    /// Per FixedUpdate captures (after the controller's CheckSurface ran):
-    ///   - Active contact set (which sample indices are active, their normals, dists)
-    ///   - EffectiveNormal angle and its delta vs prev frame
-    ///   - Phase A iter count + remaining penetration (controller-side already exposed)
-    ///   - Re-runs Phase-A-equivalent push computation OURSELVES against the same
-    ///     probe state to estimate the net push magnitude that was applied this frame
-    ///     (the live probe doesn't expose the netPush — we recompute it from contacts)
-    ///   - Active-set delta (samples gained / lost since prev frame)
-    ///   - SurfaceMaterial name (Ice / Mud / Default) so we can correlate to the tag
-    ///   - dPos, velocity, surfaceTangent angle
-    ///
-    /// Auto-dump trigger (cooldown'd):
-    ///   - dPos sign reversal while Attached
-    ///   - EffectiveNormal angular jump > normalJumpThresholdDeg
-    ///   - Active-set churn > activeChurnThreshold (samples added+removed in one frame)
-    ///
-    /// Manual dump: F3 (configurable).
-    ///
-    /// How to read the dump:
-    ///   netPushMag column high (e.g. > radius * 0.05) on consecutive frames
-    ///     → Phase A over-push (hypothesis 1).
-    ///   normalDeg column showing >5° swings in 1-2 frames at low surface curvature
-    ///     → EffectiveNormal jitter from active-set churn (hypothesis 2).
-    ///   activeChurn column nonzero on most frames → samples are flickering across
-    ///     the (radius + contactSkin) boundary → root of hypothesis 2.
-    ///
-    /// Compare a dump on Ice vs Mud (same shape, same speed). If only Ice judders
-    /// despite identical contact patterns, the issue is downstream (velocity rewrite
-    /// in Attached not absorbing the noise on low-decel materials).
-    /// </summary>
+    /// <summary>Per-FixedUpdate ring capture of MultiContactSurfaceProbe state (contacts, EffectiveNormal
+    /// delta, active-set churn, recomputed Phase A push) to diagnose judder on Ice-tagged curves.</summary>
     [DefaultExecutionOrder(2000)]
     public class IceMultiProbeDiagnostic : MonoBehaviour
     {
@@ -160,9 +129,8 @@ namespace SlimeJumping.Debugging
             int captureCount = Mathf.Min(contactCount, MAX_CONTACTS);
             float radius = slime.SlimeRadius;
 
-            // Build current active-by-collider map (a collider with any active sample
-            // counts as "active" for churn detection, since multi-probe may emit
-            // multiple samples for one collider).
+            // Multi-probe may emit several samples per collider, so a collider with any active
+            // sample counts as "active" for churn detection.
             currActiveByCollider.Clear();
             for (int i = 0; i < contactCount; i++)
             {
@@ -187,12 +155,8 @@ namespace SlimeJumping.Debugging
                 if (kv.Value && !isActive) churn++;
             }
 
-            // Net push estimation: replicate MultiProbe Phase A logic against the
-            // already-populated contact buffer. This is an approximation — the real
-            // probe uses depenetrationBuffer and N samples; we only have access to
-            // the post-dedupe contacts. But active contacts on a curve typically
-            // map 1:1 to the post-dedupe samples that survived, so summing
-            // (n * depth) over them gives a representative netPush.
+            // Approximation, not the probe's own number: the real Phase A runs over
+            // depenetrationBuffer's N samples; only the post-dedupe contacts are readable here.
             Vector2 netPush = Vector2.zero;
             for (int i = 0; i < contactCount; i++)
             {
@@ -293,8 +257,7 @@ namespace SlimeJumping.Debugging
             prevDPos = dPos;
             prevSurfN = surfN;
             prevHasFrame = true;
-            // Swap dictionaries: currActiveByCollider becomes the new prev,
-            // and the old prev (cleared at top of next FixedUpdate) becomes curr.
+            // Swap instead of copy; the old prev is cleared at the top of the next FixedUpdate.
             var tmp = prevActiveByCollider;
             prevActiveByCollider = currActiveByCollider;
             currActiveByCollider = tmp;

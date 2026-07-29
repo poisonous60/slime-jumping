@@ -12,10 +12,8 @@ namespace SlimeJumping.Platforms
         public Vector2 DeltaPosition { get; private set; }
         public float DeltaRotation { get; private set; }
 
-        // virtual so subclasses whose motion isn't captured by rigid TRS deltas
-        // (e.g. a mesh-deforming branch) can report effective surface velocity
-        // for PlatformCarrier. Base set-path in FixedUpdate still runs; the
-        // override just shadows the getter.
+        // virtual so subclasses whose motion isn't rigid TRS (mesh-deforming branch) can report
+        // effective surface velocity. The base set-path in FixedUpdate still runs underneath.
         public virtual Vector2 Velocity { get; protected set; }
         public virtual float AngularVelocity { get; protected set; }
 
@@ -32,10 +30,8 @@ namespace SlimeJumping.Platforms
             prevRotation = rb.rotation;
         }
 
-        // Re-seed the delta baseline on every activation. A motor that slept (SetActive false)
-        // skips FixedUpdate while its subclass state may still advance or be reset, so the first
-        // post-wake DeltaPosition would be the whole gap — a one-frame Velocity spike that
-        // PlatformCarrier would hand to a rider.
+        // Re-seed the delta baseline on every activation: a motor that slept skips FixedUpdate, so
+        // the first post-wake DeltaPosition would be the whole gap — a Velocity spike handed to riders.
         protected virtual void OnEnable()
         {
             if (rb == null) return;
@@ -63,8 +59,7 @@ namespace SlimeJumping.Platforms
 
         protected abstract (Vector2 position, float rotation) ComputeMotion(float dt);
 
-        // Hook for subclasses that drive child transforms (e.g. multi-segment chains)
-        // after the base rigidbody has been moved. Default no-op.
+        // Hook for subclasses driving child transforms after the base rigidbody has moved.
         protected virtual void OnAfterMotion(float dt) { }
 
         public virtual float VelocityTransferScale => 1f;
@@ -85,10 +80,8 @@ namespace SlimeJumping.Platforms
             return delta;
         }
 
-        // SurfaceMaterial pushed onto the slime's override stack while attached to this
-        // platform. PlatformCarrier handles the Push/Pop on Attach/Detach — mirrors the
-        // WaterCurrentZone trigger pattern but driven by carrier attach state. Null = no
-        // override (slime keeps the host SurfaceTag's material).
+        // SurfaceMaterial pushed onto the slime's override stack while attached; PlatformCarrier
+        // does the Push/Pop on Attach/Detach. Null = slime keeps the host SurfaceTag's material.
         public virtual SurfaceMaterial OverrideSurfaceMaterial => null;
 
         public virtual void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity, bool isCharging) { }

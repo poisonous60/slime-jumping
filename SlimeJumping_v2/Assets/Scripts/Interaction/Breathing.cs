@@ -2,9 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Interaction
 {
-    // Shared spring-damper breathing driver used by SitPoseAnimator and BoxSleepAnimator.
-    // Accumulates its own phase/elapsed (instead of Time.time) so sin() / interval
-    // comparisons don't lose precision over long play sessions.
+    // Shared breathing driver used by SitPoseAnimator and BoxSleepAnimator. Owns its own
+    // phase/elapsed instead of Time.time, which loses float precision over long sessions.
     [System.Serializable]
     public class Breathing
     {

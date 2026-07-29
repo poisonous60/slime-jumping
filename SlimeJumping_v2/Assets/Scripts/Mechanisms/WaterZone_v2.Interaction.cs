@@ -38,7 +38,6 @@ namespace SlimeJumping.Mechanisms
             float bestDist = Mathf.Sqrt(bestDSq);
             int j = (best + 1) % n;
 
-            // Blend rest normals along edge, then rotate to world.
             Vector2 nLocal = Vector2.Lerp(points[best].restNormal, points[j].restNormal, bestT).normalized;
             Vector2 nWorld = transform.TransformDirection(nLocal);
 
@@ -47,11 +46,9 @@ namespace SlimeJumping.Mechanisms
 
             if (isEntry)
             {
-                // Fast entry can tunnel across the surface in a single physics step: the slime
-                // center may already be inside and beyond contactRadius when OnTriggerEnter fires.
-                // Skip the contactRadius gate and the "approach side" test (both assume the slime
-                // is still on its pre-entry side). Use |velocity · normal| directly — any inward
-                // motion produces a splash proportional to impact speed.
+                // A fast entry tunnels past the surface in one step, so by OnTriggerEnter the slime
+                // is already inside and beyond contactRadius. The contactRadius and approach-side
+                // tests both assume the pre-entry side, so skip them and use inward speed directly.
                 float inwardSpeed = -Vector2.Dot(sVel, nWorld);
                 if (inwardSpeed <= 0f) return;
                 impactSpeed = -inwardSpeed; // negative = dip, matches downstream sign convention
@@ -67,10 +64,8 @@ namespace SlimeJumping.Mechanisms
 
                 impactSpeed = Vector2.Dot(sVel, nWorld);
 
-                // Only push when slime is approaching the surface from its current side.
-                //   Outside (sideSign +1) + moving inward (impactSpeed < 0) => approach
-                //   Inside  (sideSign -1) + moving outward (impactSpeed > 0) => approach
-                // sideSign * impactSpeed < 0 means approach. Moving away => let the spring restore.
+                // sideSign * impactSpeed < 0 means approaching from the current side; when moving
+                // away, push nothing and let the spring restore.
                 if (sideSign * impactSpeed >= 0f) return;
 
                 attenuation = 1f - (bestDist / contactRadius);
@@ -81,7 +76,6 @@ namespace SlimeJumping.Mechanisms
             points[best].velocity += baseImpulse * (1f - bestT);
             points[j].velocity    += baseImpulse * bestT;
 
-            // Optional spread to ±spreadNeighbors.
             if (spreadNeighbors > 0 && spreadFalloff > 0f)
             {
                 float w = spreadFalloff;

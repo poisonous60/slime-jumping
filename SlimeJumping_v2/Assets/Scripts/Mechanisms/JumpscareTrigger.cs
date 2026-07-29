@@ -16,8 +16,6 @@ namespace SlimeJumping.Mechanisms
 
         void Awake()
         {
-            // Scene migration fallback: pick up the new JumpscareCanvasController
-            // under UIRoot if the old scene ref was cleared.
             if (canvas == null)
                 canvas = FindFirstObjectByType<JumpscareCanvasController>(FindObjectsInactive.Include);
         }

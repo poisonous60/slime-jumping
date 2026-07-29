@@ -55,12 +55,10 @@ namespace SlimeJumping.Mechanisms
                     out Vector2 localCenter, out float alongWind, out float acrossWind))
                 return;
 
-            // Rotate particle transform so local +X = wind direction
             float angle = Mathf.Atan2(windDir.y, windDir.x) * Mathf.Rad2Deg;
             windParticles.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
             windParticles.transform.localPosition = (Vector3)localCenter;
 
-            // Lifetime = travel distance / speed
             float lifetime = alongWind / particleSpeed;
 
             var main = windParticles.main;
@@ -74,7 +72,6 @@ namespace SlimeJumping.Mechanisms
             shape.position = new Vector3(-(alongWind * 0.5f - 0.25f), 0f, 0f);
             shape.scale = new Vector3(0.5f, acrossWind, 0.1f);
 
-            // Velocity: world-space wind direction
             var vel = windParticles.velocityOverLifetime;
             vel.enabled = true;
             vel.space = ParticleSystemSimulationSpace.World;
@@ -82,7 +79,6 @@ namespace SlimeJumping.Mechanisms
             vel.y = windDir.y * particleSpeed;
             vel.z = 0f;
 
-            // Emission proportional to cross-section
             var emis = windParticles.emission;
             emis.rateOverTime = acrossWind * 12f;
         }
@@ -166,7 +162,6 @@ namespace SlimeJumping.Mechanisms
             }
             if (multiplier <= 0f) return;
 
-            // Terminal speed falloff: reduce as slime approaches terminal speed along wind
             float falloff = 1f;
             if (terminalSpeed > 0f)
             {
@@ -190,7 +185,6 @@ namespace SlimeJumping.Mechanisms
             Gizmos.color = new Color(0.3f, 0.7f, 1f, 0.6f);
             Gizmos.DrawLine(center, center + dir * len);
 
-            // Arrowhead
             Vector3 perp = Vector3.Cross(dir, Vector3.forward).normalized;
             Vector3 tip = center + dir * len;
             Gizmos.DrawLine(tip, tip - dir * 0.25f + perp * 0.12f);
@@ -235,7 +229,6 @@ namespace SlimeJumping.Mechanisms
 
             if (windAcceleration.sqrMagnitude < 0.0001f) return;
 
-            // Flow lines
             Gizmos.color = new Color(0.5f, 0.8f, 1f, 0.4f);
             Vector3 dir = ((Vector3)(Vector2)windAcceleration).normalized;
             float len = Mathf.Clamp(windAcceleration.magnitude * 0.1f, 0.5f, 3f);

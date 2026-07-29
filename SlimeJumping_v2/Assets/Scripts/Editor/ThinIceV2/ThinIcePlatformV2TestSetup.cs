@@ -4,10 +4,7 @@ using SlimeJumping.Platforms.ThinIceV2;
 
 namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
 {
-    /// One-click test scene generator. Builds simple Box-collider tiles textured
-    /// with the ThinIceV2 shader. Shared assets (shard set, shard runtime prefab,
-    /// debris VFX prefab, frost cloud VFX prefab) all live in ThinIceV2Config,
-    /// auto-loaded at runtime — this setup just adds the component.
+    /// One-click ThinIceV2 test scene generator; shared assets all come from ThinIceV2Config.
     public static class ThinIcePlatformV2TestSetup
     {
         const int    GroundLayer = 7;
@@ -17,8 +14,7 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
         [MenuItem("SlimeJumping/Platform/Setup ThinIcePlatformV2 Test")]
         public static void Setup()
         {
-            // Make sure the canonical config + VFX prefabs exist before any tile
-            // is added. Generator is idempotent — won't stomp tuned prefabs.
+            // Config + VFX prefabs must exist before any tile is added.
             if (AssetDatabase.LoadAssetAtPath<ThinIceV2Config>(ConfigPath) == null)
             {
                 ThinIceV2ConfigGenerator.GenerateMenu();
@@ -78,14 +74,10 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
                       "- 'ThinIce_Orphan' is outside the zone and shatters permanently.");
         }
 
-        // ------------------------------------------------------------------------
-
         static GameObject CreateThinIcePlatform(string name, Transform parent,
                                                 Vector3 pos, Vector3 scale, float crackingDuration)
         {
-            // Visual via a unit Cube primitive — it has front+back+side faces so the
-            // Voronoi shader has UV coverage from any camera angle. Side faces also
-            // hide the platform-thin "card" feel that a flat Quad would have.
+            // Cube, not Quad: side faces give the Voronoi shader UV coverage from any camera angle.
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = name;
             go.transform.parent = parent;
@@ -93,9 +85,7 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
             go.transform.localScale = scale;
             go.layer = GroundLayer;
 
-            // Cube primitive ships with a 3D BoxCollider — replace with BoxCollider2D
-            // (and let TerrainShape2D-baked or hand-authored 2D platforms use the same
-            // ThinIcePlatformV2 component without changes).
+            // Cube primitive ships with a 3D BoxCollider; swap it for a 2D one.
             Object.DestroyImmediate(go.GetComponent<BoxCollider>());
             var col = go.AddComponent<BoxCollider2D>();
             col.size = Vector2.one;
@@ -116,18 +106,14 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
             so.FindProperty("visualRenderer").objectReferenceValue   = mr;
             so.FindProperty("platformCollider").objectReferenceValue = col;
 
-            // Per-instance crackingDuration variation: flip the Behavior override on
-            // and write the local value. Shard launch / Angle filter / Audio /
-            // Particles all flow from ThinIceV2Config defaults — no overrides needed
-            // for the test scene.
+            // Per-instance crackingDuration only applies with overrideBehavior on; the rest
+            // stays on ThinIceV2Config defaults.
             so.FindProperty("overrideBehavior").boolValue  = true;
             so.FindProperty("crackingDuration").floatValue = crackingDuration;
             so.FindProperty("regenDuration").floatValue    = 0.6f;
 
             so.ApplyModifiedProperties();
         }
-
-        // ------------------------------------------------------------------------
 
         static Material LoadIceMaterial()
         {

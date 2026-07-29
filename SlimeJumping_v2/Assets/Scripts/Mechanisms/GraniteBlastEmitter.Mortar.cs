@@ -3,21 +3,11 @@ using SlimeJumping.Audio;
 
 namespace SlimeJumping.Mechanisms
 {
-    // Mortar mode — single circular projectiles ejected radially around the muzzle, each
-    // travels to its own orbit anchor (curve-shaped speed), dwells for a hover beat, then
-    // accelerates toward the slime (curve-shaped speed, optional homing). Multiple
-    // projectiles are released one-at-a-time at spawnInterval seconds across the
-    // FireStart + Firing window.
-    //
-    // Timing per projectile is independent: the i-th projectile's "dwell → strike"
-    // transition fires (travelToOrbitDuration + dwellAtOrbitDuration) seconds AFTER its
-    // own spawn — so adjacent projectiles overlap their strike phases. Designer tunes the
-    // total-fire feel via spawnInterval / travelToOrbitDuration / dwellAtOrbitDuration
-    // (all three are independent).
+    // Mortar mode — projectiles ejected radially, each travels to its own orbit anchor, dwells,
+    // then strikes the slime. Timing is per-projectile: the i-th transitions travelToOrbit+dwell
+    // seconds after its OWN spawn, so adjacent projectiles overlap their strike phases.
     public partial class GraniteBlastEmitter
     {
-        // Counter of mortars released since FireStart. Reset in EnterIdle/EnterCooldown
-        // through SpawnFiringWaveIfDue's caller (we hook via EnterIdle).
         private int mortarsSpawned;
         private float mortarBurstStartTime;
 
@@ -27,11 +17,8 @@ namespace SlimeJumping.Mechanisms
             mortarBurstStartTime = Time.time;
         }
 
-        // Time-driven release: at every Update during FireStart + Firing, spawn one
-        // projectile if (spawnInterval * mortarsSpawned) seconds have elapsed since the
-        // burst started. Caps at maxProjectiles (when > 0). Spawning HALTS at PostFire
-        // entry by design — trailing projectiles arrive within the configured fire
-        // window so the burst feels like a single salvo.
+        // One projectile per spawnInterval across FireStart + Firing. Spawning halts at PostFire
+        // entry by design, so the whole salvo lands inside the configured fire window.
         private void SpawnNextMortarIfDue()
         {
             var cfg = mortarConfig;
@@ -57,7 +44,7 @@ namespace SlimeJumping.Mechanisms
             // Live muzzle position so a moving emitter still spawns correctly.
             Vector3 muzzleOrigin = AimOrigin();
 
-            // Per-projectile fire SFX so each launch has its own crack (matches Branching).
+            // Per-projectile fire SFX so each launch has its own crack.
             if (fireStartSound != null)
             {
                 float pitch = fireStartPitchJitter > 0f
@@ -67,9 +54,7 @@ namespace SlimeJumping.Mechanisms
                     fireStartVolume, pitch);
             }
 
-            // Random ejection direction in XY — biased upward by upwardBias (0..1).
-            // bias=0 → uniform 360°, bias=1 → straight up. Intermediate values rotate
-            // a random unit vector toward (0,1) by Slerp.
+            // upwardBias 0 = uniform 360° ejection, 1 = straight up.
             float ang = Random.Range(0f, Mathf.PI * 2f);
             Vector2 randomDir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
             Vector2 dir = Vector2.Lerp(randomDir, Vector2.up, Mathf.Clamp01(cfg.upwardBias));

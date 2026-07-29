@@ -15,30 +15,25 @@ namespace SlimeJumping.Editor
             float baseX = 4f;
             float baseY = 0f;
 
-            // --- Floor ---
             CreatePlatform("Floor", root.transform,
                 new Vector3(baseX, baseY - 0.5f, 0f),
                 new Vector3(20f, 1f, 1f));
 
-            // --- Jump Pad 1: Vertical (straight up) ---
             var pad1 = CreateJumpPad("JumpPad_Up", root.transform,
                 new Vector3(baseX - 3f, baseY + 0.05f, 0f),
                 new Vector3(2f, 0.1f, 1f),
                 Vector2.up, 18f);
 
-            // --- Jump Pad 2: Angled (45 degrees right) ---
             var pad2 = CreateJumpPad("JumpPad_45Right", root.transform,
                 new Vector3(baseX, baseY + 0.05f, 0f),
                 new Vector3(2f, 0.1f, 1f),
                 new Vector2(1f, 1f), 20f);
 
-            // --- Jump Pad 3: Strong vertical (high launch) ---
             var pad3 = CreateJumpPad("JumpPad_HighUp", root.transform,
                 new Vector3(baseX + 3f, baseY + 0.05f, 0f),
                 new Vector3(2f, 0.1f, 1f),
                 Vector2.up, 30f);
 
-            // --- Landing platforms at different heights ---
             CreatePlatform("Landing_Low", root.transform,
                 new Vector3(baseX + 6f, baseY + 3f, 0f),
                 new Vector3(3f, 0.5f, 1f));
@@ -51,18 +46,15 @@ namespace SlimeJumping.Editor
                 new Vector3(baseX + 3f, baseY + 10f, 0f),
                 new Vector3(3f, 0.5f, 1f));
 
-            // --- Wall jump pad (on left wall, launches rightward) ---
             var wallPad = CreateJumpPad("JumpPad_WallRight", root.transform,
                 new Vector3(baseX - 9.95f, baseY + 2f, 0f),
                 new Vector3(0.1f, 2f, 1f),
                 Vector2.right, 15f);
 
-            // --- Left wall ---
             CreatePlatform("LeftWall", root.transform,
                 new Vector3(baseX - 10.5f, baseY + 6f, 0f),
                 new Vector3(1f, 13f, 1f));
 
-            // --- Right wall ---
             CreatePlatform("RightWall", root.transform,
                 new Vector3(baseX + 10.5f, baseY + 6f, 0f),
                 new Vector3(1f, 13f, 1f));

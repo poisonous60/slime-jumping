@@ -2,15 +2,9 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Piano
 {
-    /// The cosmetic "this key is sounding" dip, for ALL 88 keys — white ones (whose mesh rides a
-    /// KeyMotor) and black ones (inert meshes with no collider at all). It only writes its own
-    /// localPosition, so colliders and rigidbodies are untouched: visual and collider stay divided.
-    ///
-    /// Driven entirely by PianoVoicePool.NotePlayed via PianoKeyboard, so every note — the landing
-    /// melody, a rolled chord's third note, a chiptune burst, a suspension's resolution 180 ms later —
-    /// presses its own key at the moment it actually sounds. Ornaments never touch visuals themselves.
-    ///
-    /// Attached at runtime by the keyboard (SetupHarmonize); the scene and the builder stay untouched.
+    /// Cosmetic "this key is sounding" dip for all 88 keys. Writes only its own localPosition, so
+    /// colliders and rigidbodies stay untouched. Driven by PianoVoicePool.NotePlayed via
+    /// PianoKeyboard (one press per sounded note); attached at runtime by SetupHarmonize.
     public class PianoKeyVisual : MonoBehaviour
     {
         private Vector3 restLocalPos;
@@ -21,17 +15,15 @@ namespace SlimeJumping.Platforms.Piano
         private float rise;       // length of the final rise
         private bool active;
 
-        // Re-articulation: a key struck again while it is still down must visibly come back up before
-        // it goes down again — on a real piano the key has to clear the escapement to re-sound. Without
-        // this an Alberti figure's repeated top note or a chiptune burst just holds the key down flat.
+        // Re-articulation: a key struck while still down must visibly come back up first, else an
+        // Alberti figure's repeated top note just holds the key down flat.
         private float lift;       // 0..1 of the dip that is momentarily released
         private float liftTimer, liftFall;
         private int lastPressFrame = -1;
 
         private PianoKey owner;   // white keys only: the motor that physically sinks this same mesh
 
-        /// The motor whose physical sink already moves this mesh. While the slime stands on it the
-        /// cosmetic dip is suppressed, otherwise the key would sink twice as far.
+        /// The motor that already sinks this mesh; the dip composes against it, else double travel.
         public void SetOwner(PianoKey key) => owner = key;
 
         void Awake() => CaptureRest();
@@ -43,20 +35,15 @@ namespace SlimeJumping.Platforms.Piano
             restCaptured = true;
         }
 
-        /// Press this key for `hold` seconds at `depth`, then let it rise over `rise`.
-        /// Overlapping presses ACCUMULATE rather than overwrite: a short quiet ornament note must never
-        /// cut short the long loud note already ringing on the same key.
-        ///
-        /// Striking a key that is still down snaps it up by `reartLift` (a fraction of its dip) and
-        /// lets it fall back over `reartSeconds`, so a repeated note reads as a second strike instead
-        /// of one long hold.
+        /// Press for `hold` seconds at `depth`, then rise over `rise`. Overlapping presses ACCUMULATE
+        /// (a quiet ornament must not cut short a note still ringing on the same key); striking a key
+        /// that is still down lifts it by `reartLift` over `reartSeconds` so the repeat reads.
         public void Press(float depth, float hold, float rise, float reartLift, float reartSeconds)
         {
             CaptureRest();
 
-            // Two notes landing on the same key in the SAME frame (e.g. the melody and a chiptune tone)
-            // are one onset, not a re-strike — lifting here would shallow out a dip that hasn't even
-            // rendered yet.
+            // Two notes on the same key in the SAME frame are one onset, not a re-strike — lifting
+            // here would shallow out a dip that hasn't rendered yet.
             bool sameFrame = lastPressFrame == Time.frameCount;
             lastPressFrame = Time.frameCount;
 
@@ -87,8 +74,8 @@ namespace SlimeJumping.Platforms.Piano
             liftTimer = 0f;
         }
 
-        // LateUpdate so the offset composes on top of the motor's interpolated FixedUpdate move, and
-        // animates at frame rate instead of the 50 Hz physics step.
+        // LateUpdate so the offset composes on the motor's interpolated FixedUpdate move and animates
+        // at frame rate, not the 50 Hz physics step.
         void LateUpdate()
         {
             if (!active) return;
@@ -106,43 +93,33 @@ namespace SlimeJumping.Platforms.Piano
                 return;
             }
 
-            // How far down this key should read overall, this frame. `depth` is a WORLD distance, so
-            // it has to come back into this mesh's parent space before it can be written — see ToLocal.
+            // `depth` is a WORLD distance, so it must come back into parent space — see ToLocal.
             float targetDip = ToLocal(depth) * DipFactor(timer, rise) * (1f - LiftFactor(liftTimer, liftFall, lift));
 
-            // The motor may already be holding this key down under the slime's weight. Compose against
-            // that instead of ignoring it: subtracting the physical sink both prevents double travel AND
-            // lets a re-strike lift the mesh back up above the sunk position, which is the only way a
-            // repeated note is visible on a key the slime is standing on.
+            // Subtracting the motor's physical sink prevents double travel AND lets a re-strike lift
+            // the mesh above the sunk position — the only way a repeat shows under the slime's weight.
             transform.localPosition = restLocalPos + new Vector3(0f, MeshLocalY(targetDip, PhysicalSinkLocal()), 0f);
         }
 
-        /// World distance -> this mesh's parent space. Every distance that reaches this component is
-        /// a world one (the motor's sink, and the configured cosmetic depth), but the only thing this
-        /// component may write is a localPosition, and the two families of key mesh do NOT share a
-        /// parent scale: a white key's mesh hangs off its KeyMotor (scale 1) while a black key's mesh
-        /// hangs off the piano root (scale 2). Writing the raw value moved black keys exactly twice as
-        /// far as white ones for the same note.
+        /// World distance -> this mesh's parent space. White key meshes hang off a KeyMotor (scale 1),
+        /// black ones off the piano root (scale 2), so a raw value moves black keys twice as far.
         private float ToLocal(float world)
         {
             float scale = transform.parent != null ? Mathf.Abs(transform.parent.lossyScale.y) : 1f;
             return world / Mathf.Max(1e-4f, scale);
         }
 
-        // The motor's sink is in world units; this mesh moves in its parent's local space.
         private float PhysicalSinkLocal()
         {
             if (owner == null) return 0f;
             return ToLocal(owner.PhysicalSink);
         }
 
-        /// Local Y for the mesh so the key reads `targetDip` below rest in total, given the motor has
-        /// already sunk it by `physicalSink`. Positive result = the mesh rides UP relative to the motor
-        /// (a re-strike popping a held-down key back open).
+        /// Local Y so the key reads `targetDip` below rest given the motor's `physicalSink`;
+        /// positive = the mesh rides UP relative to the motor (a re-strike popping it back open).
         public static float MeshLocalY(float targetDip, float physicalSink) => physicalSink - targetDip;
 
-        /// How much of the dip is momentarily released by a re-strike: full `lift` at the instant of
-        /// the second strike, decaying linearly to 0 over `fall`. The key pops up, then sinks again.
+        /// Fraction of the dip released by a re-strike: full `lift` at the strike, linear to 0 over `fall`.
         public static float LiftFactor(float liftTimer, float fall, float lift)
         {
             if (liftTimer <= 0f || fall <= 0.0001f) return 0f;
@@ -167,8 +144,7 @@ namespace SlimeJumping.Platforms.Piano
             return int.TryParse(name.Substring(i), out int n) ? n : -1;
         }
 
-        /// The MIDI note a key mesh represents. Mirrors PianoKeyboardBuilder: PianoKey.001 = 21 (A0)
-        /// through PianoKey.088 = 108 (C8), covering black keys too. -1 when the name doesn't parse.
+        /// MIDI note for a key mesh name, mirroring PianoKeyboardBuilder: 001 = 21 (A0) .. 088 = 108 (C8).
         public static int MidiFromName(string name)
         {
             int idx = ParseKeyIndex(name);

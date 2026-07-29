@@ -5,14 +5,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Effects
 {
-    /// Static impact-frame service. Call Freeze(duration) from anywhere to briefly drop
-    /// Time.timeScale and restore it. Overlapping calls extend to the latest end time and
-    /// keep the stronger freeze; they never stack or cut short. Register a Func&lt;bool&gt;
-    /// via AddGuard to veto invocations (charging, menu open, cutscene, etc.).
-    ///
-    /// The service bootstraps a hidden DontDestroyOnLoad runner on first Freeze() call,
-    /// so callers never need to wire anything. Time.timeScale is always restored on app
-    /// quit and editor play-mode exit, so a runaway freeze cannot leave the game paused.
+    /// Global hitstop. Overlapping Freeze calls extend to the latest end and keep the stronger
+    /// scale — never stack, never cut short. timeScale is restored on quit / play-mode exit.
     public static class HitStopService
     {
         private class Runner : MonoBehaviour
@@ -62,20 +56,14 @@ namespace SlimeJumping.Effects
         private static Runner runner;
         private static readonly List<Func<bool>> guards = new List<Func<bool>>();
 
-        /// Fired every time a Freeze call passes the guard check. Argument is the freeze
-        /// duration in realtime seconds. Use this for effects tied to the *time pause*
-        /// itself — audio pitch dip, rumble, etc. Handlers must not throw.
+        /// Fired when a Freeze passes the guards; arg is realtime seconds.
         public static event Action<float> OnFreezeStarted;
 
-        /// Fired every time a PlayImpactFrame call passes the guard check. Argument is
-        /// the visual duration in realtime seconds. Decoupled from OnFreezeStarted so
-        /// callers can request one without the other (e.g. Shift dash uses hitstop-only,
-        /// a hazard hit might trigger the B&amp;W impact frame without freezing time).
+        /// Fired when a PlayImpactFrame passes the guards; independent of OnFreezeStarted.
         public static event Action<float> OnImpactFrameStarted;
 
-        /// Register a veto predicate. While any registered predicate returns true, Freeze
-        /// calls are silently ignored. Always unregister in OnDisable to avoid captured
-        /// references leaking across scene reloads.
+        /// Veto predicate; while any returns true Freeze is ignored. Unregister in OnDisable,
+        /// else the captured reference leaks across scene reloads.
         public static void AddGuard(Func<bool> guard)
         {
             if (guard != null && !guards.Contains(guard)) guards.Add(guard);
@@ -86,9 +74,7 @@ namespace SlimeJumping.Effects
             if (guard != null) guards.Remove(guard);
         }
 
-        /// Freeze Time.timeScale for `duration` realtime seconds, restoring afterward.
-        /// Typical values: duration 0.04-0.15s for hit feedback, frozenScale 0-0.05.
-        /// No-op if any registered guard returns true.
+        /// Freeze timeScale for `duration` realtime seconds (typical 0.04-0.15s, frozenScale 0-0.05).
         public static void Freeze(float duration, float frozenScale = 0f)
         {
             if (duration <= 0f) return;
@@ -98,8 +84,7 @@ namespace SlimeJumping.Effects
             runner.Request(duration, Mathf.Max(0f, frozenScale));
         }
 
-        /// Convenience overload: emit a camera impulse alongside the freeze. Either both
-        /// fire or both are skipped by the guard check, keeping shake and freeze in sync.
+        /// Freeze plus camera impulse; the guard skips both together so shake and freeze stay in sync.
         public static void Freeze(float duration, ImpulseEmitter shakeEmitter, float shakeForce = 1f, float frozenScale = 0f)
         {
             if (IsBlocked()) return;
@@ -110,9 +95,7 @@ namespace SlimeJumping.Effects
             runner.Request(duration, Mathf.Max(0f, frozenScale));
         }
 
-        /// Request the B&amp;W impact-frame visual without touching Time.timeScale.
-        /// Subject to the same guard list (charging, menu, etc.) as Freeze. Use this
-        /// from hit-feedback callers that want the anime ink cut but not a time pause.
+        /// B&amp;W impact-frame visual only, no timeScale change; same guards as Freeze.
         public static void PlayImpactFrame(float duration)
         {
             if (duration <= 0f) return;
@@ -120,9 +103,7 @@ namespace SlimeJumping.Effects
             RaiseImpactFrameStarted(duration);
         }
 
-        /// Convenience: fire hitstop AND impact-frame visual with the same duration.
-        /// Use from "big hit" call sites (boss KO, hazard crit) that want the full
-        /// combined sequence. Guard blocks both atomically.
+        /// Hitstop + impact frame at the same duration; the guard blocks both atomically.
         public static void ImpactHit(float duration, float frozenScale = 0f)
         {
             if (duration <= 0f) return;
@@ -170,8 +151,7 @@ namespace SlimeJumping.Effects
         [UnityEditor.InitializeOnEnterPlayMode]
         private static void OnEnterPlayMode()
         {
-            // Reset static state when "Reload Domain" is disabled in Project Settings so
-            // guards and the runner reference don't leak from a prior play session.
+            // With "Reload Domain" off, statics survive play sessions and leak guards + runner.
             runner = null;
             guards.Clear();
             OnFreezeStarted = null;

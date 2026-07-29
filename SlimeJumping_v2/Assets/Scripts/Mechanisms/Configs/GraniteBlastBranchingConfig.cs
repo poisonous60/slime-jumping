@@ -2,13 +2,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Per-mode tuning for GraniteBlastEmitter Branching mode. Created as a
-    /// ScriptableObject so multiple emitters can share a config asset, and
-    /// designers can swap configs without dirtying the scene.
-    /// Scene-level references (e.g. <see cref="GraniteBlastNavGraph"/>) stay on
-    /// the emitter — only project-asset-safe values live here.
-    /// </summary>
+    /// <summary>Shared tuning for GraniteBlastEmitter Branching mode; scene refs (e.g. <see cref="GraniteBlastNavGraph"/>) stay on the emitter.</summary>
     [CreateAssetMenu(fileName = "GraniteBlastBranchingConfig",
         menuName = "SlimeJumping/Granite Blast/Branching Config", order = 0)]
     public class GraniteBlastBranchingConfig : ScriptableObject

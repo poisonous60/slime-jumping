@@ -7,17 +7,7 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Counter-attack volume for <see cref="GraniteBlastEmitter"/>. Touch with the
-    /// slime → emitter immediately stops shooting (FSM cancel + active Beam destroyed),
-    /// the configured <see cref="SpaceWarpEffect"/> stretches between the emitter and
-    /// the slime then shatters, the rest of the world freezes via
-    /// <see cref="WorldTimeFreezeService"/> for the warp's duration, and the emitter
-    /// visual shrinks to nothing before the GameObject is disabled.
-    ///
-    /// Already-airborne tendrils / burst flashes are left to fly out their natural
-    /// lifetime — only the sustained Beam is killed on contact.
-    /// </summary>
+    /// <summary>Counter-attack volume for <see cref="GraniteBlastEmitter"/>: slime touch cancels the emitter, stretches the warp, freezes the world, then shrinks the visual away.</summary>
     [RequireComponent(typeof(Collider2D))]
     [AddComponentMenu("SlimeJumping/Mechanisms/Granite Blast Emitter Attackable")]
     public class GraniteBlastEmitterAttackable : MonoBehaviour, IExternalController
@@ -61,8 +51,6 @@ namespace SlimeJumping.Mechanisms
         private bool consumed;
         private Collider2D ownCollider;
 
-        // Sustained-drive runtime — set when the slime makes contact, consumed by
-        // ExternalFixedUpdate to write a constant velocity, cleared on release.
         private SlimeController drivenSlime;
         private Vector2 driveVelocity;
         private float driveEndRealtime;
@@ -89,9 +77,8 @@ namespace SlimeJumping.Mechanisms
 
             ApplyPassThroughBoost(slime);
 
-            // Use the held variant so the warp doesn't auto-pop at maxStretchLength /
-            // maxStretchDuration mid-flight — we want the shatter to align with the
-            // end of our pass-through drive instead. ReleaseDrive calls warpEffect.Pop().
+            // Held variant: plain TriggerStretch auto-pops at maxStretchLength/Duration
+            // mid-flight; ReleaseDrive fires Pop() at drive end instead.
             if (warpEffect != null)
             {
                 if (passThroughDuration > 0f) warpEffect.TriggerStretchHeld(slime.transform);
@@ -108,15 +95,8 @@ namespace SlimeJumping.Mechanisms
             StartCoroutine(ShrinkAndDeactivate());
         }
 
-        // Drive the slime along the impact direction at a constant speed for
-        // passThroughDuration realtime seconds. The BulbShatter warp's stretch
-        // length follows anchor→slime distance, so sustained outbound velocity is
-        // what makes the membrane visibly elongate before it pops. Implemented as
-        // an IExternalController override — gravity, input, and state machine are
-        // suspended for the duration.
-        //
-        // Direction prefers the slime's current velocity; falls back to the
-        // emitter→slime axis when the slime is barely moving.
+        // Drives the slime outward under an IExternalController override — the warp's
+        // stretch follows anchor→slime distance, so only sustained motion elongates it.
         private void ApplyPassThroughBoost(SlimeController slime)
         {
             if (minPassThroughSpeed <= 0f && passThroughSpeedScale <= 0f) return;
@@ -180,9 +160,7 @@ namespace SlimeJumping.Mechanisms
             var s = drivenSlime;
             drivenSlime = null;
             s.ReleaseOverride(this);
-            // Fire the warp shatter at drive end so the BulbShatter pop is
-            // synchronized with the slime regaining normal physics, regardless
-            // of how far the membrane managed to stretch.
+            // Pop at drive end so the shatter lands as the slime regains normal physics.
             if (warpEffect != null) warpEffect.Pop();
             if (shatterSfx != null)
                 SoundService.PlayAt(shatterSfx, transform.position, SoundCategory.SFX_Object, shatterVolume);
@@ -190,9 +168,7 @@ namespace SlimeJumping.Mechanisms
 
         private void OnDisable()
         {
-            // Safety: if the attackable GO gets disabled mid-drive (e.g. shrink
-            // coroutine deactivated the wrong thing), make sure we hand control
-            // back to the slime instead of stranding it in our override.
+            // Disabled mid-drive would strand the slime inside our override.
             ReleaseDrive();
         }
 
@@ -202,9 +178,8 @@ namespace SlimeJumping.Mechanisms
                 ? targetToDeactivate
                 : (emitter != null ? emitter.gameObject : gameObject);
 
-            // The emitter root is usually the parent of the warp quad — deactivating
-            // it kills the warp's Update mid-pop. Hold the deactivation until both
-            // the shrink finishes AND the warp has had time to play out its Pop().
+            // The emitter root usually parents the warp quad — deactivating before
+            // Pop() finishes kills the warp's Update mid-pop.
             float warpHoldTime = passThroughDuration + (warpEffect != null ? warpEffect.PopDuration : 0f);
             float totalTime = Mathf.Max(shrinkDuration, warpHoldTime);
 

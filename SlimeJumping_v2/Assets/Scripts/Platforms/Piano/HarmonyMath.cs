@@ -3,10 +3,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Piano
 {
-    /// Pure, stateless music math for the harmonize system: build a chord's absolute MIDI notes,
-    /// snap a landed key to a scale/chord melody note above the voicing, resolve the landing zone,
-    /// pick the next progression step, and thicken by velocity. Kept free of UnityEngine.Object so
-    /// it can be exercised by EditMode tests without entering Play mode.
+    /// Pure, stateless music math for the harmonize system. No UnityEngine.Object, so EditMode tests can run it.
     public static class HarmonyMath
     {
         // Pitch-class sets relative to the tonic.
@@ -26,13 +23,10 @@ namespace SlimeJumping.Platforms.Piano
                 outMidis.Add(tonic + step.offsetsFromTonic[i]);
         }
 
-        // Scratch for the ChordTones mode. Reused so the per-landing path (and every note of a
-        // glissando run) allocates nothing in FixedUpdate — the result is consumed immediately by the
-        // caller and never stored.
+        // Shared scratch: callers must consume the result immediately, never store it.
         static readonly int[] chordToneScratch = new int[12];
 
-        /// The allowed melody pitch-classes (relative to tonic) for the snap mode; `count` says how
-        /// many entries of the returned array are valid.
+        /// Allowed melody pitch-classes (relative to tonic) for the snap mode; only `count` entries are valid.
         static int[] AllowedDegrees(HarmonizeSettings h, int[] chordOffsets, MelodySnapMode mode, out int count)
         {
             if (mode == MelodySnapMode.ChordTones && chordOffsets != null && chordOffsets.Length > 0)
@@ -71,14 +65,12 @@ namespace SlimeJumping.Platforms.Piano
             return best;
         }
 
-        /// Snap a landed key to a melody note: nearest allowed degree to the key's pitch (keeps the
-        /// key's register so left keys read low / right keys high), then floated above the voicing top.
+        /// Snap a landed key to a melody note: nearest allowed degree, keeping the key's register, floated above the voicing.
         public static int SnapMelody(int keyMidi, HarmonizeSettings h, int[] chordOffsets)
             => SnapMelody(keyMidi, h, chordOffsets, h.snapMode);
 
-        /// Same, with the snap mode forced — a chord outside the key (bVI, bVII) must restrict the
-        /// melody to its own chord tones, or the diatonic pentatonic collides with it by a half step
-        /// (A natural over an Ab triad is a minor 9th above the root: the textbook avoid note).
+        /// Snap-mode-forced overload: out-of-key chords (bVI, bVII) must use their own chord tones,
+        /// else the diatonic pentatonic collides a half step off (A over Ab = minor 9th avoid note).
         public static int SnapMelody(int keyMidi, HarmonizeSettings h, int[] chordOffsets, MelodySnapMode mode)
         {
             int[] allowed = AllowedDegrees(h, chordOffsets, mode, out int count);
@@ -113,10 +105,8 @@ namespace SlimeJumping.Platforms.Piano
             return LandingZone.Center;
         }
 
-        /// Next progression index, in priority order: an authored landing-zone branch, then a weighted
-        /// pick among the step's authored candidates (`roll` = 0..1), then linear (i+1). Randomness only
-        /// ever chooses between successors the designer already approved — the research's verdict was
-        /// that a free Markov chain buys surface variety at the cost of the "always sounds good" floor.
+        /// Next progression index: authored zone branch, then weighted authored candidates (`roll` 0..1), then i+1.
+        /// A free Markov chain was rejected — random picks stay inside designer-approved successors.
         public static int NextIndex(ChordStep step, LandingZone zone, int currentIndex, int count, float roll)
         {
             int chosen = -1;
@@ -136,9 +126,8 @@ namespace SlimeJumping.Platforms.Piano
         public static int NextIndex(ChordStep step, LandingZone zone, int currentIndex, int count)
             => NextIndex(step, zone, currentIndex, count, -1f);
 
-        /// Weighted random over `step.nextOptions`; -1 when the step authored none (or `roll` is < 0,
-        /// which disables the probabilistic path entirely). Options out of range or with weight ≤ 0 are
-        /// skipped, so a half-authored table degrades to the linear fallback instead of misfiring.
+        /// Weighted random over `step.nextOptions`; -1 when none authored or `roll` &lt; 0 (disables the
+        /// probabilistic path). Out-of-range / weight ≤ 0 options are skipped, so a half-authored table falls back to linear.
         public static int WeightedNext(ChordStep step, float roll, int count)
         {
             if (roll < 0f || step == null || step.nextOptions == null || step.nextOptions.Length == 0) return -1;
@@ -176,12 +165,9 @@ namespace SlimeJumping.Platforms.Piano
             if (!midis.Contains(doubled)) midis.Add(doubled);
         }
 
-        /// Re-octave a chord's upper voices so they sit as close as possible to the previous chord —
-        /// the "smallest hand movement" rule. The bottom `keepLow` notes stay exactly as authored so the
-        /// wide bass spacing (Low Interval Limit) survives, and no voice is allowed above the chord's own
-        /// original top, which is what the melody floats over.
-        /// `ceiling` is the highest MIDI a chord tone may occupy — the caller keeps it below the melody
-        /// so the player's note stays on top.
+        /// Re-octave upper voices toward the previous chord ("smallest hand movement"). The bottom
+        /// `keepLow` notes stay as authored to preserve bass spacing (Low Interval Limit).
+        /// <param name="ceiling">Highest MIDI a chord tone may take; caller keeps it under the melody.</param>
         public static void VoiceLead(List<int> chord, List<int> prev, int keepLow, int ceiling)
         {
             if (chord.Count == 0 || prev == null || prev.Count == 0) return;
@@ -207,9 +193,7 @@ namespace SlimeJumping.Platforms.Piano
             chord.Sort();
         }
 
-        /// Drop-2: take the second note from the top down an octave, turning a close voicing into an
-        /// open one. "Closed-position voicings are dense because the chord tones packed close together
-        /// sound cluttered" — the drop opens the spacing so the chord rings instead of clumping.
+        /// Drop-2: second note from the top down an octave, opening a cluttered close voicing.
         public static void DropTwo(List<int> chord)
         {
             if (chord.Count < 4) return;
@@ -221,8 +205,7 @@ namespace SlimeJumping.Platforms.Piano
             chord.Sort();
         }
 
-        /// Nearest allowed melody pitch strictly above `midi` (the scale/chord step up). Used by the
-        /// appoggiatura (lean from above) and the glissando run.
+        /// Nearest allowed melody pitch strictly above `midi`.
         public static int NeighborAbove(int midi, HarmonizeSettings h, int[] chordOffsets, MelodySnapMode mode)
             => Neighbor(midi, h, chordOffsets, mode, 1);
 

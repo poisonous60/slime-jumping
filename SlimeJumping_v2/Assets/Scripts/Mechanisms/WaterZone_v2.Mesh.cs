@@ -19,11 +19,7 @@ namespace SlimeJumping.Mechanisms
                  "zones whose points are driven by another system and shouldn't be edited.")]
         [SerializeField] bool showAuthoringGizmos = true;
 
-        /// <summary>
-        /// When false, the custom editor suppresses its scene-view handles and this
-        /// component suppresses OnDrawGizmosSelected drawing. Runtime rendering
-        /// is unaffected.
-        /// </summary>
+        /// <summary>False = scene-view handles and gizmos suppressed; runtime rendering unaffected.</summary>
         public bool ShowAuthoringGizmos => showAuthoringGizmos;
 
         Mesh         mesh;
@@ -61,19 +57,16 @@ namespace SlimeJumping.Mechanisms
             meshTris   = new int[perim * 3];
             meshColors = new Color[perim + 1];
 
-            // Winding: for Unity's default 2D camera (at -Z looking +Z),
-            // the visible front face must have its normal pointing -Z.
-            // center -> next -> current gives -Z normal for CCW-ordered outline points.
+            // Front face must point -Z for the default 2D camera; center -> next -> current
+            // gives that for CCW-ordered outline points.
             for (int i = 0; i < perim; i++)
             {
                 meshTris[i * 3]     = 0;
                 meshTris[i * 3 + 1] = ((i + 1) % perim) + 1;
                 meshTris[i * 3 + 2] = i + 1;
             }
-            // meshColors[0] = center (deep, A=0 = no rim).
-            // meshColors[1..perim] = edge (shallow, A=1 = full rim).
-            // The Water_v2 shader uses color.rgb as depth tint and color.a as rim factor;
-            // fan-mesh interpolation produces a center→edge gradient for free.
+            // Water_v2 shader reads color.rgb as depth tint and color.a as rim factor;
+            // fan interpolation turns center A=0 / edge A=1 into the gradient for free.
             meshColors[0] = new Color(centerColor.r, centerColor.g, centerColor.b, 0f);
             for (int i = 1; i < perim + 1; i++)
                 meshColors[i] = new Color(edgeColor.r, edgeColor.g, edgeColor.b, 1f);
@@ -130,8 +123,7 @@ namespace SlimeJumping.Mechanisms
             outlineLine.loop          = true;
             if (outlineLine.positionCount != perim) outlineLine.positionCount = perim;
 
-            // LineRenderer.SetPositions needs a Vector3[]. Reuse meshVerts[1..] by writing
-            // directly into outlineLine via per-index SetPosition — avoids another buffer.
+            // Per-index SetPosition instead of SetPositions, which would need another Vector3[].
             int n = points.Length;
             int subdiv = Mathf.Max(1, curveSubdivisions);
             int w = 0;
@@ -150,10 +142,7 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        /// <summary>
-        /// Writes n*subdiv interpolated positions around the closed loop into <paramref name="buf"/>
-        /// starting at <paramref name="writeOffset"/>. Uses Catmull-Rom with wrap-around neighbors.
-        /// </summary>
+        /// <summary>Writes n*subdiv Catmull-Rom samples around the closed loop, wrapping at the ends.</summary>
         void FillPerimeterSamples(Vector3[] buf, int writeOffset, float z)
         {
             int n = points.Length;

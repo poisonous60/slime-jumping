@@ -4,9 +4,8 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.EditorTools
 {
-    // Spawns a TautLine test layout in the active scene: floor + a SpawnPad
-    // (used to reproduce the "rope → bounce off another surface → rope" case
-    // that broke RopeV3) + one TautLine. Independent of RopeTestSetup.
+    // Spawns a TautLine test layout: floor + SpawnPad (repro for the "rope → bounce off
+    // another surface → rope" case) + one TautLine. Independent of RopeTestSetup.
     public static class TautLineSetup
     {
         const string RopeMaterialPath = "Assets/Prebs/Platform/Materials/RopeMaterial.mat";
@@ -73,18 +72,15 @@ namespace SlimeJumping.EditorTools
             body.transform.SetParent(rootGo.transform, false);
             body.layer = GroundLayer;
 
-            // SurfaceProbe Multi-mode is required: TautLine writes rb.position
-            // absolutely each FU, and Multi mode's teleport branch zeroes
-            // rb.linearVelocity so the manual write isn't fought by Unity's
-            // contact integrator.
+            // Multi mode required: TautLine writes rb.position absolutely each FU, and Multi's
+            // teleport branch zeroes rb.linearVelocity so the contact integrator can't fight it.
             var probeOverride = body.AddComponent<SlimeJumping.Physics.SurfaceProbeModeOverride>();
             probeOverride.mode = SlimeJumping.Physics.SurfaceProbeMode.Multi;
 
             // Polygon (trigger) ribbon — TautLine populates points each FU.
             var poly = body.AddComponent<PolygonCollider2D>();
             poly.isTrigger = true;
-            // Seed with a 1-segment dummy so the inspector and serialization
-            // doesn't complain before TautLine.Rebuild runs.
+            // Dummy segment so serialization doesn't complain before TautLine.Rebuild runs.
             poly.points = new Vector2[] {
                 Vector2.zero, new Vector2(0.1f, 0f),
                 new Vector2(0.1f, -0.05f), new Vector2(0f, -0.05f)

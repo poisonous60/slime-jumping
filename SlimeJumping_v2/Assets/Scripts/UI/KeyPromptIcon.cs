@@ -6,12 +6,7 @@ using UnityEditor;
 
 namespace SlimeJumping.UI
 {
-    /// <summary>
-    /// World-space keycap prompt (e.g. W / A / S / D / SPACE) with a glass-tinted
-    /// rounded-rect background using Unity's built-in UISprite 9-slice.
-    /// One GameObject per key — place them freely in the scene and tune per-instance.
-    /// On Play the icon fades in, holds, then fades out (set holdDuration = 0 for persistent).
-    /// </summary>
+    /// <summary>World-space keycap prompt; fades in, holds, fades out (holdDuration = 0 = persistent).</summary>
     [ExecuteAlways]
     [DisallowMultipleComponent]
     public class KeyPromptIcon : MonoBehaviour
@@ -63,9 +58,8 @@ namespace SlimeJumping.UI
 
         private void OnValidate()
         {
-            // SpriteRenderer.size setter dispatches SendMessage internally, which Unity
-            // forbids during OnValidate. Defer the restyle by one editor tick so the
-            // serialization callback completes first.
+            // SpriteRenderer.size dispatches SendMessage, which Unity forbids during OnValidate;
+            // defer the restyle one editor tick.
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.delayCall += DeferredOnValidate;
 #endif

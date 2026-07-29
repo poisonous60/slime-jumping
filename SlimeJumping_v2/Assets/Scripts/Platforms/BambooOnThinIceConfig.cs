@@ -2,10 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms
 {
-    /// Shared tuning for BambooOnThinIce. Canonical asset lives at
-    /// <c>Assets/Resources/BambooOnThinIceConfig.asset</c> (auto-loaded; the test
-    /// setup menu creates it if missing). Per-link variants go through the
-    /// component's Config Override field.
+    /// Shared BambooOnThinIce tuning; canonical asset <c>Assets/Resources/BambooOnThinIceConfig.asset</c> (auto-loaded).
+    /// Per-link variants go through the component's Config Override field.
     [CreateAssetMenu(fileName = "BambooOnThinIceConfig",
         menuName = "SlimeJumping/Bamboo On ThinIce Config", order = 0)]
     public sealed class BambooOnThinIceConfig : ScriptableObject
@@ -79,8 +77,7 @@ namespace SlimeJumping.Platforms
 
         const string ResourcesPath = "BambooOnThinIceConfig";
 
-        /// Override if assigned, else the canonical Resources asset, else null —
-        /// BambooOnThinIce falls back to a runtime instance with class defaults.
+        /// Override if assigned, else the Resources asset, else null — callers fall back to class defaults.
         public static BambooOnThinIceConfig Resolve(BambooOnThinIceConfig @override)
         {
             if (@override != null) return @override;

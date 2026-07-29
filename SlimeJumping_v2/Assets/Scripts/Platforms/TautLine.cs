@@ -5,50 +5,11 @@ using SlimeJumping.Physics;
 
 namespace SlimeJumping.Platforms
 {
-    // Power-line / tightrope rope. Built from scratch for the slime project —
-    // no shared lineage with Rope/RopeV2/RopeV3 (verlet-based, all had attach
-    // and underside bugs).
-    //
-    // Core model:
-    //   Static parabolic baseline (gentle gravity sag, designer-tunable).
-    //   Single 1D spring-damper integrator on dipDepth (the rider-induced
-    //   sag depth). Curve shape = baseline + worldDown × dipDepth × Bell(u, riderT)
-    //   where Bell is a piecewise-smoothstep that peaks at the rider's parameter
-    //   along the rope and tapers to 0 at both anchors. The whole rope
-    //   responds to the rider, deepest exactly under them.
-    //
-    // Trampoline behaviour:
-    //   While charging the rope sits at its steady-state baseEquilibrium dip —
-    //   no extra deepening. At launch, GetLaunchBonus injects a one-shot
-    //   downward dipVelocity pulse (launchImpactKickCurve(chargeRatio) m/s)
-    //   so the rope reads as PUNCHED by the kickoff, not slowly compressed.
-    //   PostprocessLaunchVelocity then clamps the slime's upward component up
-    //   to minLaunchVerticalSpeed so a near-horizontal aim isn't immediately
-    //   recaught by the rope's rebound. Spring switches to overdamped mode
-    //   on detach so the rope returns to baseline smoothly without snap-back
-    //   that could catch the launching slime.
-    //
-    // Underside / pass-through:
-    //   Rope collider is a thin trigger PolygonCollider2D ribbon, never an
-    //   EdgeCollider2D (which always tunneled in past attempts).
-    //   When slime enters from below (vy > 0), TautLine registers the
-    //   polygon in slime.IgnoredColliderList (Passthrough mode) for the
-    //   transit duration, so SurfaceProbe skips it and slime continues
-    //   through. Same KnifeHazard-style pattern.
-    //
-    // Post-launch:
-    //   No extra IgnoredCollider work — SlimeController.Launch already calls
-    //   ignoredColliderList.RegisterOverlapping (ReattachGuard mode) which
-    //   filters our polygon from SurfaceProbe until the slime physically
-    //   clears it. The spring's overdamped post-detach mode (detachedDamping
-    //   ≥1) prevents any upward overshoot that could catch the slime.
-    //
-    // Slime tracking:
-    //   No carry-delta channel (RopeV3's ConsumeRiderCarryDelta accumulated
-    //   small per-FU deltas + maxCarryPerStep clamp → desync → detach bug).
-    //   TautLine instead writes rb.position absolutely each FU (executionOrder
-    //   200, after SlimeController) — slime is recomputed from baseline
-    //   projection to the current curve, no accumulation, no clamp.
+    // Tightrope. Static parabolic baseline + one 1D spring-damper on dipDepth;
+    // curve = baseline + worldDown × dipDepth × Bell(u, riderT).
+    // Collider is a thin trigger PolygonCollider2D — EdgeCollider2D always tunneled.
+    // From-below entry registers the polygon as Passthrough in slime.IgnoredColliderList.
+    // Rider pos written absolutely each FU (order 200); carry-delta accumulation desynced.
     [ExecuteAlways]
     [DefaultExecutionOrder(200)]
     [RequireComponent(typeof(PolygonCollider2D))]
@@ -130,7 +91,7 @@ namespace SlimeJumping.Platforms
                  "SlimeSettings. Leave empty to skip override.")]
         [SerializeField] SurfaceMaterial ropeSurfaceMaterial;
 
-        public EdgeCollider2D Edge => null;     // null → Attempt-4/5 hacks in SlimeController bypass naturally
+        public EdgeCollider2D Edge => null;     // null → SlimeController's edge-collider paths bypass naturally
         public float MaxReboundSpeed => maxCap;
         public event Action<RopeEventType, Vector2> OnRopeEvent;
 
@@ -157,7 +118,6 @@ namespace SlimeJumping.Platforms
         float lastBaselineSag;
         float lastRibbonThickness;
 
-        // Runtime spring state
         bool riderActive;
         float riderT;
         float dipDepth;
@@ -165,38 +125,23 @@ namespace SlimeJumping.Platforms
         SlimeController.SlimeState lastState = SlimeController.SlimeState.Airborne;
         bool postDetach;        // Use detachedDampingRatio while true
 
-        // SyncShapes unchanged-skip cache. polygon.SetPath dirties Box2D
-        // broadphase against all neighboring static colliders — on a stage
-        // with thousands of polygon vertices that's 5–20ms per call. Shape
-        // is fully determined by (dipDepth, riderT) given a fixed baseline,
-        // so we skip when those haven't changed since the last write.
-        // INVARIANT: TautLine.transform must be static at runtime — polygonLocalPoints
-        // are computed via transform.InverseTransformPoint, so a moving parent
-        // would invalidate the cache without the key changing. Rebuild() and
-        // baseline reshape paths invalidate explicitly via syncedAtLeastOnce.
+        // polygon.SetPath dirties the Box2D broadphase against every neighboring static
+        // collider (5–20ms on a dense stage), so skip when (dipDepth, riderT) is unchanged.
+        // INVARIANT: transform must be static at runtime — local points are cached.
         Vector2 lastSyncedDipDepth_riderT;
         bool    syncedAtLeastOnce;
 
-        // Trampoline state. Impulse-driven model — target stays at baseEquilibrium
-        // throughout. ApplyRiderImpact injects a downward dipVelocity kick (proportional
-        // to impact speed via trampolineImpactKickCurve), and trampolineHoldTimer keeps
-        // the spring in the underdamped (trampolineDampingRatio) regime for a duration
-        // proportional to impact speed. Spring physics naturally produce asymmetric
-        // bouncing: deep first dip, smaller upward overshoot above baseline, decaying.
+        // Impulse model: the spring target stays at baseEquilibrium, so the ring goes ABOVE
+        // baseline on the upswing. This timer holds the underdamped regime after an impact.
         float trampolineHoldTimer;
 
-        // Pass-through (from-below) state
         bool inPassthroughBelow;
 
-        // Broad-phase bounding circle for the proactive from-below check (UpdateFromBelowPassthrough).
-        // Lets a far-away slime be rejected with one subtract + sqrMagnitude before the
-        // O(sampleCount) ProjectToBaselineParam. Recomputed in Rebuild (anchors static at runtime).
+        // Broad-phase reject for UpdateFromBelowPassthrough, before the O(sampleCount) projection.
         Vector2 ropeBoundsCenter;
         float ropeBoundsRadiusSq;
 
-        // True while ropeSurfaceMaterial is on the slime's override stack and we still
-        // owe a Pop. Tracked so that disabling the rope mid-attach doesn't leak the
-        // override (mirrors WaterCurrentZone.overridePushed semantics).
+        // Owed Pop for ropeSurfaceMaterial — disabling the rope mid-attach must not leak it.
         bool overridePushed;
 
         Rigidbody2D slimeRb;
@@ -214,8 +159,6 @@ namespace SlimeJumping.Platforms
 
         void OnDisable()
         {
-            // Safety pop — disabling the rope while a slime is attached must not leak
-            // ropeSurfaceMaterial onto the slime's override stack.
             if (overridePushed && slime != null && ropeSurfaceMaterial != null)
                 slime.PopSurfaceMaterialOverride(ropeSurfaceMaterial);
             overridePushed = false;
@@ -271,8 +214,7 @@ namespace SlimeJumping.Platforms
                     + worldDown * (baselineSag * 4f * u * (1f - u));
             }
 
-            // Broad-phase bounds for UpdateFromBelowPassthrough. Generous margin so a rising
-            // slime trips the from-below test well before it reaches the probe's clip range.
+            // Generous margin so a rising slime trips the from-below test before the probe's clip range.
             ropeBoundsCenter = (a + b) * 0.5f;
             float boundR = ab.magnitude * 0.5f + baselineSag + ribbonThickness + 1f;
             ropeBoundsRadiusSq = boundR * boundR;
@@ -283,8 +225,7 @@ namespace SlimeJumping.Platforms
             lastBaselineSag = baselineSag;
             lastRibbonThickness = ribbonThickness;
 
-            // baselinePoints just changed — invalidate the SyncShapes cache so the
-            // next call writes the new baseline even if (dipDepth, riderT) match.
+            // Invalidate the SyncShapes cache — baseline moved under an unchanged shape key.
             syncedAtLeastOnce = false;
 
             SyncShapes();
@@ -327,7 +268,6 @@ namespace SlimeJumping.Platforms
             bool nowAirborne = state == SlimeController.SlimeState.Airborne;
 
             // --- 2. Update riderActive from current attach state ---
-            // (Slime is "on this rope" iff it is attached AND its surface collider is our polygon.)
             bool onThisRope = (state == SlimeController.SlimeState.Attached
                             || state == SlimeController.SlimeState.Charging)
                             && polygon != null
@@ -337,16 +277,10 @@ namespace SlimeJumping.Platforms
             if (onThisRope)
             {
                 riderActive = true;
-                // riderT MUST NOT be re-derived from the snapped position each FU. Step 8 parks the
-                // slime at SampleCurveAt(riderT) + baselineNormal·radius, which carries the curve's
-                // vertical sag D = sag·4u(1-u) + dipDepth. Re-projecting that point back onto the rope
-                // shifts u by −D·ab.y/len² per FU on any TILTED rope (ab.y ≠ 0) — a velocity-free
-                // runaway toward the low anchor (the reported "slides right"; the slime's rope has
-                // ab.y ≈ −0.22). Both perpendicular-foot and chord projection leak this way.
-                //
-                // Instead: seed riderT once on the attach edge, then advance it ONLY by the slime's
-                // real tangential velocity. At rest slime.Velocity == 0 → riderT frozen → the slime
-                // stays exactly where it sits. A genuine slide/crawl (velocity ≠ 0) still moves it.
+                // Never re-derive riderT from the snapped position: the slime parks at curve +
+                // normal·radius, and re-projecting that offset shifts u toward the low anchor every
+                // FU on a tilted rope (velocity-free drift). Seed on attach, then advance by
+                // tangential velocity only — at rest riderT is frozen.
                 if (!wasRiderActive)
                 {
                     riderT = ProjectToChordParam(slime.Position);
@@ -368,18 +302,13 @@ namespace SlimeJumping.Platforms
                 riderActive = false;
             }
 
-            // --- 2a. Proactive from-below passthrough (1-FU race fix) ---
-            // Register the one-way passthrough geometrically each FU, not only from OnTrigger.
-            // See UpdateFromBelowPassthrough for why the callback alone catches a rising slime
-            // one FU too late (it would lose its upward velocity to the rope's ceiling-contact
-            // velocity clip before the passthrough takes effect).
+            // --- 2a. Proactive from-below passthrough (1-FU race) ---
+            // Geometric registration each FU; the OnTrigger callback alone fires one FU too late.
             UpdateFromBelowPassthrough();
 
             // --- 2b. Surface override push/pop edges ---
-            // Mirrors WaterCurrentZone: Push on attach edge, Pop on detach edge. Driven by
-            // riderActive transitions rather than trigger callbacks so it stays in sync with
-            // the rest of the rope's state machine even if SlimeController detaches the slime
-            // by other means (e.g. friction-detach mid-rope).
+            // Driven by riderActive edges, not trigger callbacks, so it stays in sync when
+            // SlimeController detaches the slime by other means (friction-detach mid-rope).
             if (ropeSurfaceMaterial != null)
             {
                 if (riderActive && !overridePushed)
@@ -395,16 +324,12 @@ namespace SlimeJumping.Platforms
             }
 
             // --- 3. Detach edge → switch spring to overdamped (no upward overshoot) ---
-            // No IgnoredCollider work here — SlimeController.Launch already registered
-            // our polygon as ReattachGuard via ignoredColliderList.RegisterOverlapping,
-            // which filters us from SurfaceProbe until slime physically clears the area
-            // (or postLaunchTimer expires). Adding extra Passthrough on top blocks the
-            // legitimate fall-back-and-land that the player expects.
+            // No IgnoredCollider work here — Launch already registered our polygon as
+            // ReattachGuard; adding Passthrough on top blocks the legitimate fall-back-and-land.
             if (wasOnRope && nowAirborne)
             {
                 postDetach = true;
-                // Trampoline state belongs to the rider that just left — clear so the
-                // damping window doesn't carry over to no-rider physics.
+                // Window belonged to the rider that just left; must not carry into no-rider physics.
                 trampolineHoldTimer = 0f;
             }
 
@@ -416,14 +341,8 @@ namespace SlimeJumping.Platforms
             }
 
             // --- 4. Compute spring target ---
-            // Charging no longer deepens the rope — that mass is delivered as a one-shot
-            // dipVelocity kick at launch (see GetLaunchBonus) so the player feels the
-            // rope punch DOWN as the slime kicks off, instead of slowly sagging while
-            // they hold charge.
-            // Trampoline does NOT shift the target — it injects an initial dipVelocity
-            // impulse and lowers the damping ratio so the spring rings around the same
-            // baseline target. Result: deep first dip, smaller upward overshoot ABOVE
-            // baseline, decaying — natural asymmetric bouncing instead of a held bowl.
+            // Neither charging nor trampoline shifts the target — both are one-shot dipVelocity
+            // impulses, so the spring rings around baseline and overshoots ABOVE it.
             float target = 0f;
             if (riderActive)
             {
@@ -431,11 +350,8 @@ namespace SlimeJumping.Platforms
             }
 
             // --- 5. Integrate spring (semi-implicit Euler) ---
-            // c = 2 ζ √k → ζ controls overshoot: <1 underdamped (visible bounce), ≥1 overdamped (no overshoot).
-            // Three damping regimes:
-            //   postDetach            → detachedDampingRatio (overdamped, no upward catch on launching slime)
-            //   trampolineHoldTimer>0 → trampolineDampingRatio (underdamped, visible oscillation in the bowl)
-            //   else                  → attachedDampingRatio (steady-state attached behavior)
+            // ζ regimes: postDetach overdamped so the rebound can't catch the launching slime,
+            // trampoline window underdamped for visible bounce, else attached steady state.
             float zeta;
             if (postDetach) zeta = detachedDampingRatio;
             else if (trampolineHoldTimer > 0f) zeta = trampolineDampingRatio;
@@ -473,8 +389,7 @@ namespace SlimeJumping.Platforms
 
         float ShapeFactor(float u) => 4f * u * (1f - u);   // 1 at u=0.5, 0 at endpoints
 
-        // Piecewise smoothstep bell, peaks at u=riderT, 0 at u=0 and u=1.
-        // Smoothstep gives C¹ continuity at the peak — no kink under slime.
+        // Piecewise smoothstep bell peaking at riderT; C¹ at the peak, so no kink under the slime.
         float Bell(float u, float t)
         {
             t = Mathf.Clamp01(t);
@@ -533,11 +448,8 @@ namespace SlimeJumping.Platforms
             return bestU;
         }
 
-        // Rider parameter along the STRAIGHT chord anchorA→anchorB. Unlike
-        // ProjectToBaselineParam (perpendicular foot on the sagged polyline), a vertical
-        // slime-radius offset above the curve barely changes this value (its component along
-        // a near-horizontal chord is ~0), so re-projecting the snapped slime each FU returns
-        // the same u — a stable fixed point instead of an uphill ratchet toward the anchors.
+        // Parameter along the STRAIGHT chord. Unlike the perpendicular foot on the sagged
+        // polyline, the slime's radius offset barely moves it — stable seed, no drift.
         float ProjectToChordParam(Vector2 worldPos)
         {
             if (anchorA == null || anchorB == null) return 0f;
@@ -555,9 +467,8 @@ namespace SlimeJumping.Platforms
             if (baselinePoints == null) return;
             int n = baselinePoints.Length;
 
-            // Runtime: skip when (dipDepth, riderT) match the last written shape.
-            // Editor preview falls through so designer changes (sag/thickness via
-            // Rebuild path) and gizmo refreshes always re-render.
+            // Runtime: skip when the shape key is unchanged. Editor preview falls through so
+            // designer sag/thickness edits and gizmo refreshes always re-render.
             if (Application.isPlaying)
             {
                 Vector2 current = new Vector2(dipDepth, riderT);
@@ -566,9 +477,7 @@ namespace SlimeJumping.Platforms
                 syncedAtLeastOnce = true;
             }
 
-            // Top edge of ribbon = displaced curve (where slime sits).
-            // Bottom edge = top edge + worldDown × ribbonThickness.
-            // Polygon is closed loop: top-left → top-right → bottom-right → bottom-left.
+            // Ribbon as one closed loop: top-left → top-right → bottom-right → bottom-left.
             for (int i = 0; i < n; i++)
             {
                 float u = i / (float)(n - 1);
@@ -593,11 +502,9 @@ namespace SlimeJumping.Platforms
 
         // --- One-way pass-through (from-below entry) -----------------------
 
-        // Shared from-below test (used by OnTriggerEnter2D AND the proactive per-FU check).
-        // Rising up through the rope from underneath: moving along baselineNormal (>0) AND
-        // either genuinely below the ribbon (a) or rising STEEPLY within ~60° of the rope
-        // normal (b, also covers a fast jump that tunneled the thin ribbon in one FU). A fast
-        // near-horizontal slide-in has a tiny up-FRACTION at rope level → fails both → lands.
+        // Rising along the normal AND either genuinely under the ribbon or rising steeply
+        // (covers a jump that tunneled the thin ribbon in one FU). Tested on the up-FRACTION,
+        // not raw Velocity.y: a fast near-horizontal slide-in must land, not fall through.
         bool IsRisingThroughFromBelow(float aboveDistance, float approachUp, float speed)
         {
             float belowGate = ribbonThickness + slime.SlimeRadius * 0.5f;
@@ -605,20 +512,10 @@ namespace SlimeJumping.Platforms
                 && (aboveDistance < -belowGate || approachUp > 0.5f * speed);
         }
 
-        // Proactive from-below passthrough — every FixedUpdate (TautLine is execution order 200).
-        //
-        // OnTriggerEnter2D registers the passthrough only once the slime's collider physically
-        // overlaps the ribbon, and Unity fires that callback during Physics2D.Simulate — AFTER
-        // SlimeController.FixedUpdate (order 0) has already run CheckSurface +
-        // ProjectVelocityAgainstContacts this FU. A slime rising from below sits under the
-        // ribbon, so the probe sees a DOWNWARD (ceiling) contact normal and the velocity clip
-        // ZEROES its upward speed — one FU BEFORE the OnTrigger passthrough takes effect. Result:
-        // the slime is caught just under the rope ("can't pass up through it").
-        //
-        // Registering geometrically here fixes the race: the from-below test trips while the
-        // slime is still well below the ribbon, so the passthrough (honored next FU) is active
-        // long before the slime reaches the probe's clip range. Falling/landing-from-above
-        // (approachUp <= 0) never registers; the slide-in guard is shared via the predicate.
+        // OnTriggerEnter2D fires later in the SAME FU (inside Physics2D.Simulate), after
+        // SlimeController (order 0) already zeroed the slime's upward speed against the rope's
+        // ceiling contact — so its passthrough only lands one FU late and the slime sticks just
+        // under the rope. Registering geometrically here trips while it is still well below.
         void UpdateFromBelowPassthrough()
         {
             if (slime == null || polygon == null || baselinePoints == null) return;
@@ -653,27 +550,12 @@ namespace SlimeJumping.Platforms
             if (hitSlime != slime) return;
             if (baselinePoints == null) return;
 
-            // Where is the slime relative to the rope, and how is it moving through it?
-            //   aboveDistance — signed perpendicular distance of the slime center above the
-            //                   rope's top edge (baselineNormal points away from gravity).
-            //   approachUp    — velocity component along that same normal (>0 = rising).
             float u = ProjectToBaselineParam(slime.Position);
             Vector2 topAtU = SampleCurveAt(u);
             Vector2 toSlime = (Vector2)slime.Position - topAtU;
             float aboveDistance = Vector2.Dot(toSlime, baselineNormal);
             float approachUp = Vector2.Dot(slime.Velocity, baselineNormal);
 
-            // One-way pass-through (intended): the slime is coming UP through the rope from
-            // underneath. Decided by geometry + velocity DIRECTION, not raw Velocity.y:
-            //   (a) the slime center is genuinely UNDER the ribbon and rising, or
-            //   (b) it is rising STEEPLY (velocity within ~60° of the rope normal), which
-            //       covers a fast from-below jump that already tunneled past the thin ribbon
-            //       in one FU (so its center reads above by the time this callback runs).
-            // The old `Velocity.y > 0` test misfired on a fast, near-horizontal slide-in from
-            // an adjacent platform: a tiny positive vy (faceted-terrain tangent tilt / jitter)
-            // read as "from below", registering a false Passthrough the SurfaceProbe then
-            // honored for the whole transit — the slime fell straight through instead of
-            // landing. A horizontal slide has a small up-FRACTION, so it now lands.
             if (IsRisingThroughFromBelow(aboveDistance, approachUp, slime.Velocity.magnitude))
             {
                 slime.RegisterIgnoredCollider(polygon, passthroughRefreshDuration);
@@ -681,13 +563,9 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
-            // Otherwise the slime is landing from above (or sliding in at rope level).
-            // Anti-tunneling rescue: fast slime can move > polygon thickness in one FU, ending
-            // up DEEPLY inside the polygon's interior. SurfaceProbe's ClosestPoint then returns
-            // the query point itself ([SingleContactSurfaceProbe.cs:30-31] deep-penetration
-            // skip), so the probe never sees the contact and slime tunnels through. Pull slime
-            // back to the curve's top edge + slimeRadius so SurfaceProbe sees a normal contact
-            // next FU and attaches cleanly.
+            // Anti-tunnel rescue for a landing slime that ended up deep inside the polygon:
+            // SingleContactSurfaceProbe's deep-penetration skip makes ClosestPoint return the
+            // query point, so the probe never sees the contact. Pull it back to top + radius.
             if (aboveDistance < slime.SlimeRadius && slimeRb != null)
             {
                 slimeRb.position = topAtU + baselineNormal * slime.SlimeRadius;
@@ -700,7 +578,6 @@ namespace SlimeJumping.Platforms
             if (slime == null || polygon == null) return;
             var hitSlime = other.GetComponentInParent<SlimeController>();
             if (hitSlime != slime) return;
-            // Refresh timer while still transiting.
             slime.RegisterIgnoredCollider(polygon, passthroughRefreshDuration);
         }
 
@@ -718,13 +595,11 @@ namespace SlimeJumping.Platforms
 
         public Vector2 SampleVelocityAt(Vector2 worldPoint)
         {
-            // Velocity at any point on rope = worldDown × dipVelocity × Bell(u, riderT).
             float u = ProjectToBaselineParam(worldPoint);
             return worldDown * (dipVelocity * Bell(u, riderT));
         }
 
-        // We derive riderActive from slime.SurfaceCollider in FixedUpdate, not from this callback.
-        // SlimeController calls ReportRiderContact every FU while attached; ignored here.
+        // riderActive comes from slime.SurfaceCollider in FixedUpdate, so this callback is ignored.
         public void ReportRiderContact(Collider2D _slimeCol, Vector2 _worldContact, float _mass, Vector2 _riderVel) { }
 
         public void NotifyFirstAttach(Vector2 worldContact)
@@ -735,8 +610,7 @@ namespace SlimeJumping.Platforms
 
         public void NotifyLaunchRebound(Vector2 worldContact)
         {
-            // Detach edge detection in FixedUpdate already starts the settle coroutine;
-            // this hook is kept for parity with v1/v2/v3 and external listeners.
+            // Detach edge in FixedUpdate already handles settling; kept for external listeners.
             OnRopeEvent?.Invoke(RopeEventType.LaunchRebound, worldContact);
         }
 
@@ -745,17 +619,11 @@ namespace SlimeJumping.Platforms
             float vDown = Mathf.Max(0f, Vector2.Dot(impactVelocity, worldDown));
             if (vDown <= 0f) return;
 
-            // Punch: small extra dipVelocity kick on top of trampoline impulse — keeps the
-            // existing per-(m/s) coefficient available for fine-tuning. Set to 0 to use
-            // pure trampoline curve.
+            // Extra per-(m/s) kick on top of the trampoline impulse; 0 = pure curve.
             if (impactCompressionFromVelocity > 0f)
                 dipVelocity += vDown * impactCompressionFromVelocity;
 
-            // Trampoline: inject downward dipVelocity proportional to impact speed and
-            // open the underdamped damping window. Spring target stays at baseEquilibrium
-            // (no shift), so the system rings around baseline rather than around a deep
-            // point — that's what lets it actually go ABOVE baseline on the upswing.
-            // largest-wins composes near-simultaneous impacts into the bigger of the two.
+            // Largest-wins on the hold window so near-simultaneous impacts compose into the bigger one.
             float kick = trampolineImpactKickCurve != null ? trampolineImpactKickCurve.Evaluate(vDown) : 0f;
             float hold = trampolineHoldCurve != null ? trampolineHoldCurve.Evaluate(vDown) : 0f;
             if (kick > 0f) dipVelocity += kick;
@@ -764,11 +632,8 @@ namespace SlimeJumping.Platforms
 
         public float GetLaunchBonus(Vector2 launchDir, Vector2 _worldContact, float chargeRatio)
         {
-            // Side effect: the rope absorbs the slime's kickoff as a downward dipVelocity
-            // pulse, shaped by launchImpactKickCurve(chargeRatio). The visual deepening
-            // that v6 used to draw during charging now happens here, in one frame, at
-            // the moment the slime actually pushes off — so the rope reads as elastic
-            // (punched, not slowly compressed).
+            // Side effect: the kickoff enters as a one-shot downward dipVelocity pulse, so the
+            // rope reads as punched at push-off instead of slowly sagging during the charge.
             if (launchImpactKickCurve != null)
             {
                 float kick = launchImpactKickCurve.Evaluate(Mathf.Clamp01(chargeRatio));
@@ -778,25 +643,13 @@ namespace SlimeJumping.Platforms
             if (launchDir.sqrMagnitude < 1e-6f) return 0f;
             Vector2 dir = launchDir.normalized;
             float upward = Mathf.Max(0f, Vector2.Dot(dir, worldUp));
-            // Timing gate: rope's upward speed at this instant gates the bonus. dipVelocity
-            // is in worldDown (+= downward), so -dipVelocity is upward speed. Peaks as the
-            // rope passes through baseline on its way back up after a trampoline release.
-            // jumpTimingCurve maps that speed to a multiplier — designer can shape what
-            // counts as "good timing" (default Linear((0,0)→(5,1))).
+            // dipVelocity is measured along worldDown, so -dipVelocity is the rope's upward speed.
             float ropeUpSpeed = Mathf.Max(0f, -dipVelocity);
             float timing = jumpTimingCurve != null ? jumpTimingCurve.Evaluate(ropeUpSpeed) : 1f;
-            // Effect-mode (β): bonus scales linearly with chargeRatio, capped, gated by timing.
-            // Designer tunes by jumpBoost (full-charge boost) + maxCap (hard cap) +
-            // jumpTimingCurve (timing window shape).
             float bonus = jumpBoost * Mathf.Clamp01(chargeRatio) * upward * Mathf.Max(0f, timing);
             float clamped = Mathf.Clamp(bonus, 0f, maxCap);
-            // Pre-bonus speed gate: slime.Velocity here is the launch velocity the controller has
-            // built up so far (base power × chargeRatio + carrier inheritance + hyperdash) but
-            // BEFORE the rope adds bonus. A high-fall EnergyConversion launch already has high
-            // pre-bonus speed → falloff multiplier reaches 0 → rope adds nothing → the slime
-            // launches with its full converted energy and goes no higher than it naturally would.
-            // A normal (charge-only) launch has lower pre-bonus speed → full multiplier → full
-            // boost. Linear falloff between boostFalloffStartSpeed and boostFalloffEndSpeed.
+            // slime.Velocity here is the launch speed built so far but BEFORE the rope bonus, so a
+            // high-fall EnergyConversion launch falls off to 0 and gains no extra height.
             float preBonusSpeed = slime != null ? slime.Velocity.magnitude : 0f;
             float speedMul = boostFalloffEndSpeed > boostFalloffStartSpeed
                 ? 1f - Mathf.Clamp01(Mathf.InverseLerp(boostFalloffStartSpeed, boostFalloffEndSpeed, preBonusSpeed))
@@ -806,9 +659,7 @@ namespace SlimeJumping.Platforms
 
         public Vector2 PostprocessLaunchVelocity(Vector2 launchVel)
         {
-            // Guarantee the slime leaves with at least minLaunchVerticalSpeed of upward
-            // (worldUp) speed. A near-horizontal aim otherwise drops the slime onto the
-            // rope's spring rebound, which then catches it and re-attaches.
+            // A near-horizontal aim otherwise drops onto the rope's rebound and gets re-caught.
             if (minLaunchVerticalSpeed > 0f)
             {
                 float upSpeed = Vector2.Dot(launchVel, worldUp);
@@ -820,9 +671,8 @@ namespace SlimeJumping.Platforms
 
         public Vector2 ConsumeRiderCarryDelta(Vector2 _worldContact)
         {
-            // Carry channel is unused — TautLine writes rb.position absolutely each FU
-            // in SnapSlimeIfAttached. Returning zero here keeps SlimeController's
-            // existing carry-add-to-rb.position branch a no-op for this rope.
+            // Carry channel unused — TautLine writes rb.position absolutely each FU, so zero here
+            // keeps SlimeController's carry-add branch a no-op for this rope.
             return Vector2.zero;
         }
     }

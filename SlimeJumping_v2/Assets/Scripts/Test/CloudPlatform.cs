@@ -4,13 +4,8 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Platforms
 {
-    // 구름 발판. 슬라임이 올라타면:
-    //   1) 무게로 아래로 눌림(sink) — 붙어있는 슬라임도 같이 내려감.
-    //   2) 리바운드로 올라오며 슬라임을 위로 발사 + 구름은 몽실 puff 로 흩어지며 소멸.
-    //   3) 발사 높이 = 점프(Space) 타이밍. 안 누르면 조금만 뜸, 바닥 리바운드 순간에 맞추면 최대.
-    // 비주얼은 자식 씬 메시(CloudDisperser.sceneCloud). 콜라이더 = 메시 실루엣 PolygonCollider2D
-    // (MeshToCollider2DGenerator 가 만드는 {mesh}_Collider2D wrapper 자식). 둘 분리.
-    // 발사는 SlimeController.ForceAirborneWithVelocity (JumpPad 와 동일 경로).
+    // 구름 발판: 올라타면 sink → 리바운드로 발사(높이 = Space 타이밍) → puff 로 흩어지며 소멸.
+    // 비주얼 = 자식 씬 메시(CloudDisperser.sceneCloud), 콜라이더 = 실루엣 PolygonCollider2D wrapper 자식. 둘 분리.
     [RequireComponent(typeof(Rigidbody2D))]
     public class CloudPlatform : MonoBehaviour, IPlatformEffect
     {

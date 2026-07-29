@@ -11,8 +11,7 @@ namespace SlimeJumping.Physics
             ? material.ToModifiers()
             : SurfaceModifiers.Default;
 
-        // Resolves ceiling thresholds for a collider. Reads SurfaceTag(s) on parents;
-        // first enabled tag wins. Falls back to SlimeSettings if none / no override.
+        // First enabled SurfaceTag up the parent chain wins; no tag / no override falls back to SlimeSettings.
         public static void ResolveCeilingThresholds(Collider2D col, SlimeSettings settings,
             out float ceilingThreshold, out float ceilingReattachThreshold)
         {

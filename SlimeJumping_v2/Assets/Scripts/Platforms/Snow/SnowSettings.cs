@@ -12,16 +12,8 @@ namespace SlimeJumping.Platforms.Snow
         Parabola = 3,
     }
 
-    /// <summary>
-    /// Single source of truth for snow tuning. SnowField references one of these assets;
-    /// every per-platform tweak (deposit slope, mesh density, carve depth/radius, recovery
-    /// rate) lives here so designers tune one file and every platform that points at it
-    /// updates together. Fall back to inspector-shipped defaults when no asset is wired.
-    ///
-    /// Material is intentionally part of the settings — same shader is used everywhere; if
-    /// a level wants a visually different snow, point that level's SnowField at a different
-    /// settings asset that holds the variant material.
-    /// </summary>
+    /// <summary>Shared snow tuning asset; every SnowField pointing at it updates together.
+    /// Material lives here too — a visually different snow means a second settings asset.</summary>
     [CreateAssetMenu(fileName = "SnowSettings", menuName = "SlimeJumping/Snow/Snow Settings", order = 200)]
     public sealed class SnowSettings : ScriptableObject
     {

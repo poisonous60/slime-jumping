@@ -10,9 +10,8 @@ namespace SlimeJumping.Platforms
         [SerializeField] Vector2[] localWaypoints;
         [SerializeField] TimingMode timingMode = TimingMode.Speed;
         [SerializeField] float speed = 2f;      // Speed mode: units/sec (travel time varies with leg length)
-        // Duration mode: seconds to traverse each leg. Index = lower endpoint, so a
-        // ping-pong reuses the same entry both directions. Need (waypoints - 1) entries;
-        // missing/zero entries fall back to defaultSegmentDuration.
+        // Duration mode: seconds per leg, indexed by the leg's lower endpoint (ping-pong
+        // reuses one entry). Missing/zero entries fall back to defaultSegmentDuration.
         [SerializeField] float[] segmentDurations;
         [SerializeField] float defaultSegmentDuration = 1f;
         [SerializeField] float waitTime = 0.5f;

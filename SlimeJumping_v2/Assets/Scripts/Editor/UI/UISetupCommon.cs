@@ -8,9 +8,7 @@ using SlimeJumping.UI.Framework;
 
 namespace SlimeJumping.EditorTools.UI
 {
-    /// Shared helpers for procedural UI prefab construction. Mirrors the pattern
-    /// of FullscreenCanvasSetupUtility and MemoSetup: each builder uses these
-    /// primitives to assemble a prefab, then PrefabUtility saves the result.
+    /// Shared primitives for procedural UI prefab construction; builders assemble, then PrefabUtility saves.
     internal static class UISetupCommon
     {
         public const string PrefabRoot = "Assets/Prefabs/UI";
@@ -100,10 +98,8 @@ namespace SlimeJumping.EditorTools.UI
 
         public static Canvas CreateOverlayCanvas(Transform parent, string name, int sortingOrder)
         {
-            // These ScreenSpaceOverlay canvases are nested under UIRoot, which has
-            // no parent Canvas. That makes them root-level canvases at render time
-            // (Unity treats ScreenSpaceOverlay canvases as roots regardless of
-            // hierarchy), so sortingOrder applies directly without overrideSorting.
+            // Unity treats ScreenSpaceOverlay canvases as roots regardless of nesting, so sortingOrder
+            // applies directly and overrideSorting is not needed.
             var go = CreateChild(parent, name, typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             var canvas = go.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -177,8 +173,7 @@ namespace SlimeJumping.EditorTools.UI
             lrt.offsetMin = new Vector2(12f, 4f);
             lrt.offsetMax = new Vector2(-12f, -4f);
 
-            // Attach juice. Profile ref is resolved lazily so the asset is
-            // created on first build instead of crashing the menu.
+            // Profile resolved lazily so the asset is created on first build instead of crashing the menu.
             var juice = go.AddComponent<UIButtonJuice>();
             juice.SetProfile(LoadOrCreateDefaultJuiceProfile());
 
@@ -193,9 +188,7 @@ namespace SlimeJumping.EditorTools.UI
             stagger.SetProfile(LoadOrCreateDefaultJuiceProfile());
             var so = new SerializedObject(stagger);
             so.FindProperty("effect").enumValueIndex = (int)effect;
-            // Panels trigger the stagger explicitly in UIPanel.Open() so the
-            // children's positions are settled and SelectTab-style Awake logic
-            // has had a chance to flip child active state before we capture.
+            // playOnEnable off: UIPanel.Open() triggers it later, once child active state and layout settled.
             so.FindProperty("playOnEnable").boolValue = false;
             so.FindProperty("manualTriggerOnly").boolValue = manualTriggerOnly;
             so.ApplyModifiedPropertiesWithoutUndo();

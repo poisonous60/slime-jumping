@@ -60,7 +60,6 @@ namespace SlimeJumping.Editor
 
             Event e = Event.current;
 
-            // Cyan centerline.
             Handles.color = new Color(0.3f, 0.8f, 1f, 0.9f);
             for (int i = 0; i < n - 1; i++)
             {
@@ -69,7 +68,6 @@ namespace SlimeJumping.Editor
                 Handles.DrawLine(a, b, 2f);
             }
 
-            // Shift-click on a centerline edge → insert a new point at the projection.
             if (e.type == EventType.MouseDown && e.button == 0 && e.shift)
             {
                 if (TryPickEdge(wz, e.mousePosition, out int edgeIdx, out Vector2 localInsert))
@@ -82,7 +80,6 @@ namespace SlimeJumping.Editor
                 }
             }
 
-            // Per-point handles: drag to move, Ctrl-click to delete.
             for (int i = 0; i < n; i++)
             {
                 Vector2 local = wz.GetCenterlinePointLocal(i);

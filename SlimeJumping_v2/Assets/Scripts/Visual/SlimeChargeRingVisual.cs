@@ -4,18 +4,10 @@ using SlimeJumping.Settings;
 
 namespace SlimeJumping.Visual
 {
-    /// Floor-ellipse arc ring drawn while the slime is in Charging state.
-    /// Pure visual leaf — reads Controller state in LateUpdate, writes transform
-    /// and MaterialPropertyBlock. Never touches physics.
-    ///
-    /// Design rationale is in docs/대화.md and the plan at
-    /// ~/.claude/plans/docs-md-charging-melodic-shell.md. Key points:
-    ///  * Ring tilts with surface via `spin * tilt` so perspective camera
-    ///    foreshortens it into an ellipse (distinct from a judgment-circle UI).
-    ///  * Fill arc is continuous (no posterize) to avoid flicker when WASD
-    ///    pulls aim inward and ChargingProgress decreases.
-    ///  * Rotation Slerps toward target so sliding across angle breaks doesn't
-    ///    snap the ring orientation.
+    /// Floor-ellipse arc ring drawn while Charging. Pure visual leaf — reads Controller state in
+    /// LateUpdate, writes transform + MaterialPropertyBlock, never physics.
+    ///  * Fill arc stays continuous: WASD aim can lower ChargingProgress, and quantizing it flickers.
+    ///  * Rotation Slerps toward target so sliding across angle breaks doesn't snap the ring.
     public class SlimeChargeRingVisual : MonoBehaviour
     {
         [SerializeField] private SlimeController controller;

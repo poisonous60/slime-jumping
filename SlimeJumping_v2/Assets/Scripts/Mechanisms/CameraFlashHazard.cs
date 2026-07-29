@@ -34,9 +34,7 @@ namespace SlimeJumping.Mechanisms
 
         void Awake()
         {
-            // Scene migration: the old per-scene FullscreenEffectCanvas was replaced
-            // by the UIRoot prefab, so serialized scene refs may be null. Fall back
-            // to scanning the scene for the new FlashCanvasController under UIRoot.
+            // Scenes that don't serialize this ref fall back to a scene scan (canvas lives on the UIRoot prefab).
             if (flashCanvas == null)
                 flashCanvas = FindFirstObjectByType<FlashCanvasController>(FindObjectsInactive.Include);
         }

@@ -69,8 +69,7 @@ namespace SlimeJumping.Editor
             so.FindProperty("outlineLine").objectReferenceValue = line;
             so.ApplyModifiedProperties();
 
-            // Pre-populate outline points so the user sees them in the scene view
-            // before entering Play mode.
+            // Pre-populate so the shape shows in the scene view without entering Play.
             wz.GenerateCirclePoints();
             wz.SyncColliderToRestShape();
             EditorUtility.SetDirty(wz);
@@ -103,10 +102,7 @@ namespace SlimeJumping.Editor
             return mat;
         }
 
-        /// <summary>
-        /// Sprites/Default: Cull Off (so winding doesn't matter), supports vertex colors,
-        /// premultiplied alpha, no lighting required. Works in built-in and URP 2D Renderer.
-        /// </summary>
+        /// <summary>Sprites/Default: Cull Off (winding-agnostic), vertex colors, no lighting; works in built-in and URP 2D.</summary>
         static Material MakeWaterMaterial(Color color)
         {
             var sh = Shader.Find("Sprites/Default");

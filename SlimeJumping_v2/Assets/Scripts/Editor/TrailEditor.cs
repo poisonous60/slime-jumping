@@ -210,7 +210,6 @@ namespace SlimeJumping.EditorTools
         {
             var mgr = (WorldTrailManager)target;
 
-            // Memory label — live.
             var res = mgr.PlannedResolution;
             long bytes = mgr.PlannedMemoryBytes;
             string mem = FormatBytes(bytes);
@@ -221,7 +220,6 @@ namespace SlimeJumping.EditorTools
                 EditorGUILayout.HelpBox("RT size clamped — reduce worldSize or pixelsPerUnit.", MessageType.Warning);
             }
 
-            // Save-mismatch warning.
             if (Application.isPlaying == false) DrawSaveMismatchWarning(mgr);
 
             if (GUILayout.Button("Fit Bounds to Scene Ground"))
@@ -242,9 +240,6 @@ namespace SlimeJumping.EditorTools
                         mgr.MarkDirty();
                     }
                 }
-                // Clear All works in both modes:
-                //  - Play: blit black over live RTs + mark dirty so auto-save overwrites files.
-                //  - Edit: delete all world + local save files for this scene key (no live RTs to clear).
                 string clearAllLabel = Application.isPlaying ? "Clear All (World + Locals)" : "Delete All Scene Saves";
                 if (GUILayout.Button(clearAllLabel))
                 {
@@ -264,9 +259,8 @@ namespace SlimeJumping.EditorTools
             DrawDefaultInspector();
         }
 
-        // Cached save-meta read so we don't hit disk every OnInspectorGUI. The inspector repaints
-        // continuously in some editor states (scene view hover, animation curve preview, etc.)
-        // and File.ReadAllText per repaint is a significant cost.
+        // Meta read is cached: the inspector repaints continuously in some editor states
+        // (scene view hover, curve preview), and File.ReadAllText per repaint is a real cost.
         private WorldTrailManager cachedMgr;
         private string cachedSaveKey;
         private double cachedAtTime;
@@ -337,7 +331,6 @@ namespace SlimeJumping.EditorTools
             string root = Path.Combine(Application.persistentDataPath, "trail");
             if (!Directory.Exists(root)) { Debug.Log("[Trail] No save folder to clean."); return; }
 
-            // Delete the world save for this key.
             string worldBase = Path.Combine(root, Sanitize(mgr.SaveKey));
             int deleted = 0;
             foreach (var suffix in new[] { ".dat", ".meta" })
@@ -346,9 +339,7 @@ namespace SlimeJumping.EditorTools
                 if (File.Exists(p)) { File.Delete(p); deleted++; }
             }
 
-            // Delete every local_<sceneKey>_... for the active LocalTrailReceivers; we can derive
-            // per-target SaveKey by querying the live components (more reliable than pattern-matching
-            // on disk).
+            // Local SaveKeys come from the live components; pattern-matching filenames on disk is unreliable.
             foreach (var rc in Object.FindObjectsByType<LocalTrailReceiver>(FindObjectsSortMode.None))
             {
                 string localBase = Path.Combine(root, Sanitize(rc.SaveKey));
@@ -439,8 +430,7 @@ namespace SlimeJumping.EditorTools
             string mem = bytes < 1024 ? bytes + " B" : (bytes / 1024f).ToString("0.0") + " KB";
             EditorGUILayout.HelpBox($"Local RT: {res.x} × {res.y}  ·  {mem}  (R8)", MessageType.None);
 
-            // Material-variant check against the target renderer (which may live on a child,
-            // not this GameObject, now that the receiver is decoupled from the renderer).
+            // Target renderer may live on a child, not on this GameObject.
             var rend = rc.TargetRenderer;
             if (rend != null && rend.sharedMaterial != null && rend.sharedMaterial.shader != null)
             {

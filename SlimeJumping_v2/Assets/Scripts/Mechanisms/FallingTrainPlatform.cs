@@ -9,18 +9,8 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// One-shot falling train. Sequential connector failure → broken-hinge sag →
-    /// silence beat → physics-driven fall (Rigidbody2D Dynamic) → first-ground-contact
-    /// hit-stop → settle → permanent Static shortcut platform.
-    ///
-    /// Inherits <see cref="PlatformMotor"/>. The slime rides the train via
-    /// PlatformCarrier through every phase, including the physics-driven fall —
-    /// see the Velocity/AngularVelocity property overrides which forward to
-    /// rb.linearVelocity/rb.angularVelocity once the body is Dynamic.
-    ///
-    /// Designer iteration workflow: adjust Train Transform.position to set the
-    /// fall START. Physics determines the END. Console logs the settled pose.
-    /// Use [ContextMenu] "DEBUG: Trigger Fall Now" to skip telegraph during testing.
+    /// One-shot falling train: sequential connector failure → sag → silence beat →
+    /// physics fall (Dynamic) → hit-stop → settle → permanent Static shortcut platform.
     [DisallowMultipleComponent]
     [AddComponentMenu("SlimeJumping/Mechanisms/Falling Train Platform")]
     public class FallingTrainPlatform : PlatformMotor
@@ -188,12 +178,8 @@ namespace SlimeJumping.Mechanisms
         private float lastSettledRot;
         private bool hasLastSettled;
 
-        // --- PlatformCarrier coupling: forward physics velocity once Dynamic ---
-        // base.Velocity / base.AngularVelocity are computed from MovePosition deltas,
-        // which are no-ops on Dynamic bodies. PlatformCarrier reads these properties
-        // each FixedUpdate to inject velocity into the slime — so during physics
-        // phases we forward the actual rb velocity, otherwise the slime would freeze
-        // mid-air while the train physics-falls without it.
+        // base.Velocity is computed from MovePosition deltas, which are no-ops on a Dynamic
+        // body — forward the real rb velocity or the carried slime freezes mid-air.
         public override Vector2 Velocity =>
             (state == TrainState.Falling || state == TrainState.Settling)
                 ? rb.linearVelocity
@@ -241,13 +227,12 @@ namespace SlimeJumping.Mechanisms
                 case TrainState.Falling:
                     fallElapsed += dt;
                     CheckSettleSafetyTimeout();
-                    // Passive — physics drives the body. Returning rb.position keeps
-                    // PlatformMotor's prevPosition tracking in sync (no spurious deltas).
+                    // Physics drives the body; returning rb.position keeps PlatformMotor's
+                    // prevPosition in sync so it emits no spurious deltas.
                     return (rb.position, rb.rotation);
 
                 case TrainState.HitStop:
-                    // Held by Kinematic with zero velocity. Return current pose so base
-                    // FixedUpdate's MovePosition is a no-op (target == current).
+                    // Held Kinematic at zero velocity; current pose makes MovePosition a no-op.
                     return (rb.position, rb.rotation);
 
                 case TrainState.Settling:
@@ -268,14 +253,12 @@ namespace SlimeJumping.Mechanisms
         {
             telegraphElapsed += dt;
 
-            // Rider exit short-circuit.
             if (fallOnRiderExit && riderSensor != null && riderSensor.RiderCount == 0)
             {
                 EnterFalling();
                 return (rb.position, rb.rotation);
             }
 
-            // Fire the next snap if it's time.
             if (nextSnapIdx < connectors.Count && telegraphElapsed >= nextSnapTime)
             {
                 SnapConnector(nextSnapIdx);
@@ -292,7 +275,6 @@ namespace SlimeJumping.Mechanisms
                 }
             }
 
-            // Drive active sag transition.
             if (sagging)
             {
                 sagAnimTimer += dt;
@@ -316,7 +298,6 @@ namespace SlimeJumping.Mechanisms
                 creakSource.Stop();
             }
 
-            // All snaps done + silence beat elapsed → fall.
             if (nextSnapIdx >= connectors.Count
                 && telegraphElapsed >= lastSnapFinishTime + silenceBeforeFall)
             {
@@ -336,8 +317,7 @@ namespace SlimeJumping.Mechanisms
             Vector2 pivotWorld;
             bool hasPivot = TryGetRemainingPivotWorld(i, out pivotWorld);
 
-            // Capture the snapped anchor's CURRENT world position — used by EnterFalling
-            // as the off-center impulse application point for natural tumble seed.
+            // EnterFalling applies the release impulse here, off-center, to seed the tumble.
             lastSnappedConnectorWorldPos = TrainLocalToWorld(connectorLocalPositions[i]);
 
             if (hasPivot)
@@ -355,7 +335,6 @@ namespace SlimeJumping.Mechanisms
                 sagging = true;
             }
 
-            // Snap effects.
             if (c.snapSound != null)
                 SoundService.PlayAt(c.snapSound, c.anchor != null ? c.anchor.position : (Vector3)currentSagPos,
                                     SoundCategory.SFX_Object, impactVolume);
@@ -405,13 +384,9 @@ namespace SlimeJumping.Mechanisms
 
         private void TickSettling(float dt)
         {
-            // Rest-snap: kill micro-tremble at *final rest*, NOT during a tumble's
-            // glancing contacts. Snap requires:
-            //   (a) train is touching ground
-            //   (b) BOTH linear AND angular below thresholds
-            //   (c) (a)+(b) held continuously for restSnapStableTime
-            // A tumbling train that briefly grazes ground while spinning fast won't
-            // satisfy (b), so angular velocity is preserved through the air phase.
+            // Rest-snap kills micro-tremble at final rest only: requiring ground contact +
+            // both speeds low + held for restSnapStableTime keeps a fast-spinning train that
+            // grazes the ground mid-tumble from having its angular velocity zeroed.
             bool touching = rb.IsTouchingLayers(groundLayers);
             bool linearLow = rb.linearVelocity.sqrMagnitude < restSnapLinearSpeed * restSnapLinearSpeed;
             bool angularLow = Mathf.Abs(rb.angularVelocity) < restSnapAngularSpeed;
@@ -493,10 +468,8 @@ namespace SlimeJumping.Mechanisms
             rb.constraints = RigidbodyConstraints2D.None;
             if (fallPhysicsMaterial != null) rb.sharedMaterial = fallPhysicsMaterial;
 
-            // Off-center release impulse at the last-snapped connector — free angular
-            // momentum from the lever arm. AddForceAtPosition with ForceMode2D.Impulse
-            // takes Δp directly (mass-independent), so multiply by mass to make the
-            // inspector value read as "Δv applied to the body at this point."
+            // AddForceAtPosition with ForceMode2D.Impulse takes Δp directly, so × mass makes
+            // the inspector value read as "Δv applied at this point".
             if (releaseImpulse.sqrMagnitude > 0.0001f)
             {
                 Vector2 applyAt = lastSnappedConnectorWorldPos.sqrMagnitude > 0.0001f
@@ -517,9 +490,8 @@ namespace SlimeJumping.Mechanisms
             int otherLayerMask = 1 << c.gameObject.layer;
             if ((groundLayers.value & otherLayerMask) == 0) return;
 
-            // Speed + time guards: when the train transitions Kinematic→Dynamic, contacts
-            // that already exist (e.g. slime resting on top) re-evaluate next FixedUpdate
-            // and would fire OnCollisionEnter2D with near-zero velocity. Filter those out.
+            // On Kinematic→Dynamic, pre-existing contacts (slime resting on top) re-fire
+            // OnCollisionEnter2D at near-zero velocity — these guards filter them out.
             if (fallElapsed < impactMinFallTime) return;
             if (rb.linearVelocity.sqrMagnitude < impactMinSpeed * impactMinSpeed) return;
 
@@ -532,16 +504,14 @@ namespace SlimeJumping.Mechanisms
         {
             state = TrainState.HitStop;
 
-            // Stash physics state and freeze visually by switching to Kinematic with zero
-            // velocity for the duration. timeScale dip alone would still allow forward
-            // momentum through the freeze; Kinematic gives a clean stop.
+            // Kinematic + zero velocity for the freeze: a timeScale dip alone still lets
+            // forward momentum carry through it.
             hitStopSavedVelocity = rb.linearVelocity;
             hitStopSavedAngular = rb.angularVelocity;
             rb.linearVelocity = Vector2.zero;
             rb.angularVelocity = 0f;
             rb.bodyType = RigidbodyType2D.Kinematic;
 
-            // 3-layer SFX
             if (crackSound != null)
                 SoundService.PlayAt(crackSound, impactPos, SoundCategory.SFX_Object, impactVolume);
             if (groanSound != null)
@@ -583,8 +553,8 @@ namespace SlimeJumping.Mechanisms
             settledTimer = 0f;
             restSnapStableTimer = 0f;
 
-            // Resume physics with bled-down velocity — train is "compressed" against
-            // the ground after the freeze, not still falling at full speed.
+            // Resume with bled-down velocity — the train reads as compressed against the
+            // ground after the freeze, not still falling at full speed.
             rb.bodyType = RigidbodyType2D.Dynamic;
             rb.linearVelocity = hitStopSavedVelocity * postHitStopVelocityRetention;
             rb.angularVelocity = hitStopSavedAngular * postHitStopAngularRetention;
@@ -677,7 +647,6 @@ namespace SlimeJumping.Mechanisms
 #if UNITY_EDITOR
         private void OnDrawGizmosSelected()
         {
-            // Connector markers + indices.
             for (int i = 0; i < connectors.Count; i++)
             {
                 var c = connectors[i];

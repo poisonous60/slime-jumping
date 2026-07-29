@@ -2,13 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Waypoint path between two PipeEntrances, stored in this GameObject's LOCAL
-    /// space so the path follows when the parent (test setup root, level chunk)
-    /// is moved in the editor. SampleAtDistance returns world coordinates.
-    /// Designer constraint: keep this transform's lossyScale at 1 — TotalLength
-    /// reads local distances, so non-unit scale would desync the arc-length math.
-    /// </summary>
+    /// <summary>Waypoint path between two PipeEntrances, stored in LOCAL space (SampleAtDistance
+    /// returns world). lossyScale must stay 1 — TotalLength is local, so scale desyncs arc length.</summary>
     public class PipePath : MonoBehaviour
     {
         [Tooltip("Path waypoints in this transform's local space. First = entry endpoint, last = exit endpoint.")]
@@ -51,11 +46,8 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        /// <summary>
-        /// Sample a world-space point along the path at the given arc-length distance.
-        /// Distance is clamped to [0, TotalLength]. Tangent is the unit world
-        /// direction of the segment that contains the sample.
-        /// </summary>
+        /// <summary>World point at the given arc length (clamped to [0, TotalLength]); tangent is the
+        /// containing segment's unit world direction.</summary>
         public Vector2 SampleAtDistance(float distance, out Vector2 tangent)
         {
             tangent = Vector2.right;

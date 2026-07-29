@@ -9,15 +9,12 @@ public class SlimeVisual : MonoBehaviour
     [SerializeField] private SlimeController slimeController;
     [SerializeField] private SlimeVisualSettings settings;
     [SerializeField] private SlimeSettings slimeSettings;
-    // Slime-cut tuning (body-scale spring lives there with the rest of the cut feel).
-    // Null-safe: without it the displayed scale snaps to the physics ratio (no slosh).
+    // Null-safe: without it the displayed body scale snaps to the physics ratio (no slosh).
     [SerializeField] private SlimeSplitSettings splitSettings;
     [SerializeField] private CircleCollider2D slimeCollider;
     [SerializeField] private Transform body;
-    // Sibling root of the 3D mesh subtree. Lives at Slime/SlimeVisual3d (next
-    // to this SlimeVisual GO). Receives the same localScale/localPosition writes
-    // body does, so bulk squash/stretch propagates to the mesh. May be null
-    // during the migration window before the user wires it.
+    // Sibling root of the 3D mesh subtree (Slime/SlimeVisual3d), fed the same
+    // localScale/localPosition writes as body. May be null if unwired.
     [SerializeField] private Transform body3d;
     [SerializeField] private Transform face;
     [SerializeField] private SpriteRenderer eyesRenderer;
@@ -46,12 +43,9 @@ public class SlimeVisual : MonoBehaviour
     private Vector2 smoothedScale = Vector2.one;
     private Vector2 scaleVelocity;
 
-    // Parallel smoothing of just the velocity-stretch contribution so we can
-    // subtract it from body3d's applied scale. The 3D mesh handles velocity
-    // stretch in the shader (volume-preserving, rotated-ellipse along world
-    // velocity) instead of through body.localScale's axis-aligned scale,
-    // which can't express a diagonal rugby ball. body (archived 2D sprite)
-    // still receives full scale including velStr — no regression there.
+    // Velocity-stretch contribution smoothed in parallel so it can be subtracted from
+    // body3d's scale: the shader stretches along world velocity, which axis-aligned
+    // localScale can't express (diagonal rugby ball). body keeps the full scale.
     private Vector2 smoothedVelStr;
     private Vector2 velStrSmoothVel;
 
@@ -59,37 +53,28 @@ public class SlimeVisual : MonoBehaviour
     private Vector2 smoothedOffset;
     private Vector2 offsetVelocity;
 
-    // Body scale (slime-cut). The physics BodyScaleRatio steps down instantly on a cut and
-    // ramps back up while healing; the displayed ratio chases it through an underdamped
-    // spring (WaterZone_v2-style Hooke + damping) so the body visibly sloshes as it gathers
-    // into a smaller round blob, and grows back without popping. 1 = rest, multiplies the
-    // whole bulk scale/offset uniformly (face is a child of body, so its tuned proportion
-    // to the body survives every size).
+    // Displayed cut ratio chases the physics BodyScaleRatio through an underdamped spring so
+    // the body sloshes instead of popping. 1 = rest, multiplies bulk scale/offset uniformly.
     private float displayedBodyScale = 1f;
     private float bodyScaleSpringVel;
     private Vector3 faceRestScale = Vector3.one;
 
-    // Pulled by SlimeSplitSequence to keep the transient cut-face clip glued to the
-    // sloshing displayed size (the flat face closes exactly as the body rounds up).
+    // Read by SlimeSplitSequence to keep the cut-face clip glued to the sloshing size.
     public float DisplayedBodyScale => displayedBodyScale;
 
-    // Cut-transition layer 2 (asymmetric gather): SlimeSplitSequence pushes a WORLD-space
-    // offset each frame during CLOSE — the body visually migrates toward the cut face while
-    // the collider stays centered, so the far side reads as flowing in to cover the wound.
-    // Zeroed by the sequence when the transition ends.
+    // WORLD-space offset pushed by SlimeSplitSequence during CLOSE; the collider stays
+    // centered, so the far side reads as flowing in. Sequence zeroes it when done.
     private Vector2 cutGatherWorld;
     public void SetCutGatherOffset(Vector2 worldOffset) => cutGatherWorld = worldOffset;
 
-    // One-shot kick to the body-scale spring (e.g. the regrow-complete "pop"). Positive =
-    // outward overshoot.
+    // One-shot kick to the body-scale spring. Positive = outward overshoot.
     public void AddBodyScaleImpulse(float velocity) => bodyScaleSpringVel += velocity;
 
     // Impact (C-2)
     private float impactTimer = -1f;
     private float impactMagnitude;
 
-    // Pong overlay (Phase 3) — driven by SlimeController.OnFrictionDetach.
-    // pongTimer < 0 = idle. Set to 0 on event, advances each LateUpdate, returns to -1 when finished.
+    // Pong overlay — pongTimer < 0 = idle, 0 on OnFrictionDetach, back to -1 when finished.
     private float pongTimer = -1f;
     private float pongIntensity;
 
@@ -106,39 +91,30 @@ public class SlimeVisual : MonoBehaviour
 
     // Shader asymmetry
     private SpriteRenderer bodyRenderer;
-    // 3D mesh renderer mirror — dual-pushed alongside the SpriteRenderer through
-    // the migration's step-5 comparison window. After the SpriteRenderer is
-    // disabled at step 6, the dual-push collapses to the mesh path only.
     private MeshRenderer bodyMeshRenderer;
     private MeshFilter bodyMeshFilter;
     private MaterialPropertyBlock mpb;
     private static readonly int AsymmetryID = Shader.PropertyToID("_Asymmetry");
     private static readonly int ChargeDipID = Shader.PropertyToID("_ChargeDip");
     private static readonly int DipCenterUID = Shader.PropertyToID("_DipCenterU");
-    // _SurfaceNormalWS / _DipDirWS feed SlimeDeform.hlsl. The "WS" suffix is
-    // the contract with the HLSL signature — both vectors are world-space.
+    // Feed SlimeDeform.hlsl; the WS suffix is the HLSL contract — both are world-space.
     private static readonly int SurfaceNormalWSID = Shader.PropertyToID("_SurfaceNormalWS");
     private static readonly int DipDirWSID = Shader.PropertyToID("_DipDirWS");
     // xyz = normalized world-space velocity, w = speed normalized to velocityStretchSpeedRef.
-    // Drives the teardrop front-hemisphere compression in SlimeDeform.hlsl.
     private static readonly int VelocityDirWSID = Shader.PropertyToID("_VelocityDirWS");
-    // Stretch amount pre-evaluated from velocityStretch3DCurve every frame.
-    // Pushing the result (instead of raw speed + curve) keeps the shader
-    // simple: just one scalar, no piecewise math in HLSL.
+    // Curve pre-evaluated CPU-side so the shader gets one scalar, no piecewise math in HLSL.
     private static readonly int VelocityStretchAmountID = Shader.PropertyToID("_VelocityStretchAmount");
-    // Generalized pinch squash: per-contact face normals + compression, consumed by SlimeDeform.hlsl
-    // section 3.5. Arrays are fixed-length PinchMax (must match the shader's PINCH_MAX and stay
-    // constant across SetVectorArray calls).
+    // Per-contact face normals + compression for SlimeDeform.hlsl 3.5. Fixed-length PinchMax:
+    // must match the shader's PINCH_MAX and stay constant across SetVectorArray calls.
     private const int PinchMax = 3;
     private static readonly int PinchCountID = Shader.PropertyToID("_PinchCount");
     private static readonly int PinchNormalWSID = Shader.PropertyToID("_PinchNormalWS");
     private static readonly int PinchCompID = Shader.PropertyToID("_PinchComp");
     private static readonly int PinchDisplaceScaleID = Shader.PropertyToID("_PinchDisplaceScale");
-    // World-space half-gap per contact (= distance from slime center to that wall's face). The shader
-    // plane-clamps every vertex past it back onto the plane → a genuine flat face exactly at the gap.
+    // World half-gap per contact; the shader plane-clamps every vertex past it back onto the plane.
     private static readonly int PinchHalfGapID = Shader.PropertyToID("_PinchHalfGap");
-    // World gap-center the plane-clamp measures from (the true midpoint between the plates, NOT the
-    // drifting mesh origin) so the carved slab aligns to both real plate faces.
+    // World gap-center the plane-clamp measures from — the true midpoint between the plates,
+    // NOT the drifting mesh origin.
     private static readonly int PinchCenterWSID = Shader.PropertyToID("_PinchCenterWS");
     private readonly Vector4[] pinchNormalBuf = new Vector4[PinchMax];
     private readonly float[] pinchCompBuf = new float[PinchMax];
@@ -146,52 +122,40 @@ public class SlimeVisual : MonoBehaviour
     private float smoothedSquashStrength;
     private float squashStrengthVel;
 
-    // body3d rest transform captured in Start. Per-frame deformation values from
-    // the bulk pipeline (assumed in a "1.0 = rest" convention) are multiplied
-    // onto these baselines so the user's hand-tuned SlimeVisual3d transform in
-    // the Scene survives Play. body itself doesn't need this treatment because
-    // its rest scale has always been (1,1,1) by construction.
+    // Rest transform captured in Start; per-frame "1.0 = rest" deform values multiply onto
+    // these so the hand-tuned SlimeVisual3d transform in the Scene survives Play.
     private Vector3 body3dRestScale = Vector3.one;
     private Vector3 body3dRestPosition;
     private Quaternion body3dRestRotation = Quaternion.identity;
-    // body3d's single child (Slime/SlimeVisual3d/MeshBaseline). Carries the inverse of the
-    // surface-alignment rotation, so the composed matrix is R·S·R⁻¹ — a symmetric, pure
-    // directional scale: the squash still compresses along the surface normal while the mesh
-    // itself keeps its world orientation. Without it the whole body visibly spins 180° when
-    // the slime sticks to a ceiling.
+    // body3d's child, carrying the inverse surface-alignment rotation (composed R·S·R⁻¹).
+    // Without it the whole body visibly spins 180° when the slime sticks to a ceiling.
     private Transform meshBaseline;
     private Quaternion meshBaselineRestRotation = Quaternion.identity;
-    // Rest-only cached mesh height (world units) and SlimeVisual's rest lossyScale.y.
-    // BodyNativeHeight divides these to produce a SlimeVisual-local value without
-    // reading live-deformed state, avoiding a per-frame feedback loop with PushDeform.
+    // Rest-only; reading live-deformed bounds/lossyScale here would create a per-frame
+    // feedback loop with PushDeform.
     private float body3dNativeHeightRest;
     private float transformRestLossyScaleY = 1f;
 
-    // Sit-pose depth shift bookkeeping. World-space Z of SlimeVisual + body3d at
-    // shift time; restored on release. Assumes Slime root's world Z is invariant
-    // during the sit (project design: root stays at Z=0, only visual Z moves).
+    // Sit-pose depth shift bookkeeping. Assumes the Slime root's world Z is invariant during
+    // the sit (root stays at Z=0, only visual Z moves).
     private bool sitDepthShiftActive;
     private float sitDepthOriginalVisualZ;
     private float sitDepthOriginalBody3dZ;
 
-    // External overrides applied while IsExternallyAnimated (BoxSleepAnimator etc.).
-    // All cleared on the gate toggle so stale state can't leak between sessions.
+    // External overrides applied while IsExternallyAnimated. All cleared on the gate toggle
+    // so stale state can't leak between sessions.
     private EyesForceState _eyesForceState = EyesForceState.None;
     private Quaternion? _externalRotationOverride;
-    // Face offset is a DELTA from the inspector-set rest position (captured in Start).
-    // When set, replaces UpdateFaceOffset's per-frame write entirely — drift/saccade
-    // pause while the override is active.
+    // DELTA from the inspector-set rest position. When set, replaces UpdateFaceOffset's
+    // per-frame write entirely — drift/saccade pause.
     private Vector3? _externalFaceOffset;
     private Vector3 faceRestLocalPosition;
 
-    // Additive scale overlay that external systems push in via SetExternalCompression
-    // (e.g. SlimeBurnVisual when the slime is being squeezed by a sustained granite
-    // beam against a wall). Added on top of the normal squash/stretch pipeline; not
-    // gated by IsExternallyAnimated. Default zero = no contribution.
+    // Additive scale overlay pushed in via SetExternalCompression; NOT gated by
+    // IsExternallyAnimated.
     private Vector2 externalCompression;
 
-    // External animation gate — when true, body is externally driven; face keeps its own pipeline.
-    // Used by IExternalController implementers (sit-pose, firework recoil, pipe transit, etc.).
+    // External animation gate — body is externally driven; face keeps its own pipeline.
     private bool isExternallyAnimated;
     public bool IsExternallyAnimated
     {
@@ -225,17 +189,13 @@ public class SlimeVisual : MonoBehaviour
             slimeController.OnFrictionDetach += HandleFrictionDetach;
         bodyRenderer = body.GetComponent<SpriteRenderer>();
         transformRestLossyScaleY = transform.lossyScale.y;
-        // Capture the inspector-set face position as the rest baseline. Done in Start
-        // (before any LateUpdate) so UpdateFaceOffset's per-frame writes don't taint it.
+        // Captured in Start, before any LateUpdate, so UpdateFaceOffset's writes don't taint it.
         if (face != null)
         {
             faceRestLocalPosition = face.localPosition;
             faceRestScale = face.localScale;
         }
-        // The 3D mesh now lives on a sibling subtree (Slime/SlimeVisual3d/...)
-        // rather than under the 2D body. Walk that subtree to cache the
-        // renderer + filter. Stays null if body3d isn't wired, in which case
-        // the mesh-side dual-push short-circuits.
+        // Stays null if body3d isn't wired, in which case the mesh-side push short-circuits.
         if (body3d != null)
         {
             bodyMeshRenderer = body3d.GetComponentInChildren<MeshRenderer>();
@@ -260,8 +220,7 @@ public class SlimeVisual : MonoBehaviour
     {
         if (isExternallyAnimated)
         {
-            // External animator drives body (scale/position/shader). Face animation
-            // (drift + blink) keeps running so the slime feels alive while sitting.
+            // Face animation (drift + blink) keeps running so the slime feels alive while sitting.
             CacheVelocity();
             UpdateFaceOffset();
             ApplyExternalFaceOffset();
@@ -279,13 +238,10 @@ public class SlimeVisual : MonoBehaviour
         Vector2 surfSq = ComputeSurfaceSquash();
         Vector2 velStr = ComputeVelocityStretch();
         Vector2 chargeSq = ComputeChargingSquash();
-        // Pinch is NO LONGER a whole-body localScale term — it is a genuine per-contact, local
-        // vertex deform pushed to the GPU (mesh MPB block below → SlimeDeform.hlsl section 3.5).
+        // Pinch is not a whole-body scale term — per-contact vertex deform on the GPU below.
         Vector2 targetScale = Vector2.one + surfSq + velStr + chargeSq;
         smoothedScale = SmoothDampV2(smoothedScale, targetScale, ref scaleVelocity, settings.deformSmoothTime);
-        // Parallel-smooth the velStr contribution alone at the same rate; used
-        // to subtract velStr from body3d's applied scale below. Linear because
-        // SmoothDampV2 passes maxSpeed=Infinity internally.
+        // Smoothed alone at the same rate so it can be subtracted from body3d's scale below.
         smoothedVelStr = SmoothDampV2(smoothedVelStr, velStr, ref velStrSmoothVel, settings.deformSmoothTime);
 
         // Scale: fast layer
@@ -305,10 +261,8 @@ public class SlimeVisual : MonoBehaviour
         Vector2 targetOff = sag + lean + chargePush;
         smoothedOffset = SmoothDampV2(smoothedOffset, targetOff, ref offsetVelocity, settings.offsetSmoothTime);
 
-        // Body scale (slime-cut): an underdamped spring chases the physics ratio (semi-implicit
-        // Euler, dt clamped so an editor hitch can't blow it up). During CLOSE the physics ramps
-        // along closeBodyCurve, so the visible shrink is that curve with goo lag; the natural
-        // overshoot at the ramp's end is the settle slosh. springK/damping tune both.
+        // Body scale (slime-cut): underdamped spring chasing the physics ratio, semi-implicit
+        // Euler with dt clamped so an editor hitch can't blow it up.
         {
             float physScale = slimeController.BodyScaleRatio;
             if (splitSettings == null)
@@ -343,10 +297,8 @@ public class SlimeVisual : MonoBehaviour
             float scaleExt = Mathf.Max(0f, (appliedScale.x - 1f) * colliderWorldRadius);
             float desiredReach = offsetMag + scaleExt;
 
-            // Use slimeController.Position (rb.position, physics-step coords) instead of
-            // the interpolated transform.position. Physics2D.Raycast queries the platform's
-            // collider in physics-step space; if the origin is interpolated, the clearance
-            // distance drifts between physics steps on moving platforms and chatters the clamp.
+            // rb.position, not the interpolated transform.position — Physics2D queries in
+            // physics-step space; an interpolated origin chatters the clamp on moving platforms.
             float clearance = QueryClearance(
                 slimeController.Position, sagDir,
                 colliderWorldRadius + desiredReach + settings.visualClearanceSkin);
@@ -364,13 +316,9 @@ public class SlimeVisual : MonoBehaviour
             }
         }
 
-        // Ground compensation — body.localScale.y < 1 shrinks the visual symmetrically
-        // around body center, lifting the surface-touching edge off the ground. Push
-        // body toward the attached surface by (1-scale.y) * strength so the edge
-        // stays planted. Applied AFTER visualClearance clamp because it compensates
-        // a mathematical artifact of symmetric scaling, not a corner penetration —
-        // the clamp would otherwise zero this out on flat ground (clearance = collider
-        // radius, maxReach = 0, ratio = 0).
+        // Symmetric y-scale < 1 lifts the surface-touching edge off the ground; push toward the
+        // surface to keep it planted. Must run AFTER the clearance clamp — on flat ground
+        // clearance = collider radius, so maxReach = 0 and the clamp would zero this out.
         if (slimeController.CurrentState != SlimeController.SlimeState.Airborne)
         {
             float yCompress = Mathf.Max(0f, 1f - appliedScale.y);
@@ -383,8 +331,7 @@ public class SlimeVisual : MonoBehaviour
         appliedScale *= displayedBodyScale;
         appliedOffset *= displayedBodyScale;
 
-        // Cut gather (world units, already shaped by the sequence's curve) — applied after
-        // the body-scale multiply so its magnitude is exactly what the sequence computed.
+        // Applied after the body-scale multiply so the magnitude is exactly what the sequence computed.
         if (cutGatherWorld.sqrMagnitude > 1e-10f)
             appliedOffset += (Vector2)transform.InverseTransformVector(cutGatherWorld);
 
@@ -394,34 +341,15 @@ public class SlimeVisual : MonoBehaviour
         body.localPosition = bulkPosition;
         if (body3d != null)
         {
-            // bulkPosition is authored in body's parent-frame (SlimeVisual's
-            // local space). body3d lives directly under the Slime root, a
-            // frame scaled differently from SlimeVisual. Convert by this
-            // transform's localScale so the world-space offset matches body's.
-            // Scale already multiplies onto body3dRestScale so no conversion
-            // needed — lossyScale equivalence is preserved when rest matches.
-            // Rotation: body rotates so local Y = surface normal (UpdateDeformAxis).
-            // Mirror that so bulkScale.y compresses along surface normal on the
-            // mesh too — otherwise the squash always points along world Y and
-            // looks wrong on walls/ceilings.
-            //
-            // Subtract smoothedVelStr so the velocity-stretch contribution is
-            // NOT applied here; the shader's volume-preserving stretch (5b in
-            // SlimeDeform.hlsl) handles it along world velocity direction.
-            // This avoids the diagonal-ball issue caused by axis-aligned scale.
-            // velStr was summed into appliedScale before the body-scale multiply, so its
-            // subtraction here must scale by the same ratio. Z (depth) shrinks uniformly
-            // with the body-scale ratio — bulkScale.z stays 1 for the 2D sprite.
+            // bulkPosition is in SlimeVisual's local frame while body3d sits under the Slime root,
+            // so convert by this transform's localScale. velStr is subtracted (same body-scale
+            // ratio) — the shader stretches along world velocity; localScale can't do diagonal.
             var bulkScale3D = new Vector3(
                 bulkScale.x - smoothedVelStr.x * displayedBodyScale,
                 bulkScale.y - smoothedVelStr.y * displayedBodyScale,
                 bulkScale.z * displayedBodyScale);
-            // Surface alignment (body.localRotation) composed over the designer's rest
-            // rotation, then undone again on the child baseline. The mesh subtree ends up
-            // under R·S·R⁻¹ — the non-uniform scale still acts along the surface normal
-            // (squash points into the wall/ceiling), but the mesh keeps its world
-            // orientation instead of spinning with the surface.
-            // Assumes SlimeVisual.transform.localRotation == identity (C-1 tenet).
+            // R·S·R⁻¹: squash still acts along the surface normal while the mesh keeps its world
+            // orientation. Assumes SlimeVisual.transform.localRotation == identity (C-1 tenet).
             body3d.localRotation = body.localRotation * body3dRestRotation;
             if (meshBaseline != null)
                 meshBaseline.localRotation = Quaternion.Inverse(body.localRotation) * meshBaselineRestRotation;
@@ -430,10 +358,6 @@ public class SlimeVisual : MonoBehaviour
             body3d.localPosition = body3dRestPosition + Vector3.Scale(transform.localScale, bulkPosition);
         }
 
-        // Shader properties — computed once, dual-pushed below to both the
-        // SpriteRenderer (legacy 2D shader) and the MeshRenderer (new 3D
-        // shader) so the two visuals stay in lock-step during the migration's
-        // comparison window.
         float asymmetry = -smoothedSquashStrength * settings.surfaceSquashAsymmetry;
         float chargeDip = chargingCurve * settings.chargingDipMax;
 
@@ -455,15 +379,11 @@ public class SlimeVisual : MonoBehaviour
             bodyRenderer.SetPropertyBlock(mpb);
         }
 
-        // Mesh dual-push: same scalars + new world-space vectors for SlimeDeform.hlsl.
-        // _DipDirWS reuses the dipCenterU scalar (= aimTangent * lateralShift)
-        // as the lateral bias along the surface tangent.
+        // _DipDirWS reuses dipCenterU (= aimTangent * lateralShift) as lateral bias along the tangent.
         if (bodyMeshRenderer != null && mpb != null)
         {
             Vector3 surfaceNormalWS = new Vector3(lastSurfaceNormal.x, lastSurfaceNormal.y, 0f);
-            // Dip lands on the slime's outward face (TOP, away from the
-            // surface) — same convention as the 2D shader's V=top dip.
-            // Lateral term biases it along the surface tangent based on aim.
+            // Dip lands on the outward face, away from the surface — same convention as the 2D shader.
             Vector3 dipDirWS = surfaceNormalWS;
             if (dipCenterU != 0f)
             {
@@ -472,21 +392,14 @@ public class SlimeVisual : MonoBehaviour
             }
             if (dipDirWS.sqrMagnitude > 1e-6f) dipDirWS.Normalize();
 
-            // Teardrop front-compression needs world velocity direction + speed norm.
-            // Reuse velocityStretchSpeedRef as the "full speed" normalizer so this
-            // ramps up on the same curve as the body.localScale velocity stretch.
+            // Reuses velocityStretchSpeedRef so this ramps on the same curve as the localScale stretch.
             float rawSpeed = cachedVelocity.magnitude;
             float speedNorm = Mathf.Clamp01(rawSpeed / Mathf.Max(0.01f, settings.velocityStretchSpeedRef));
             Vector2 velDir = cachedVelocity.sqrMagnitude > 0.01f ? cachedVelocity.normalized : Vector2.zero;
             Vector4 velocityDirWS = new Vector4(velDir.x, velDir.y, 0f, speedNorm);
 
-            // 3D velocity-stretch amount: remap rawSpeed so speedMin→0 and
-            // speedMax→1 on the AnimationCurve's X axis, then sample.
-            // speedMin/Max define the *reference* anchors, NOT hard clamps —
-            // speeds beyond them still sample the curve at extrapolated x, so
-            // designers can draw keys past x=1 to make stretch keep growing
-            // at high speeds. Unity's default ClampForever WrapMode takes
-            // over at the curve's actual leftmost/rightmost keys.
+            // speedMin/Max are curve-X anchors, NOT clamps — faster speeds sample extrapolated x,
+            // so keys past x=1 keep growing; Unity's ClampForever takes over past the outer keys.
             float stretchDenom = Mathf.Max(0.01f, settings.velocityStretch3DSpeedMax - settings.velocityStretch3DSpeedMin);
             float stretchT = (rawSpeed - settings.velocityStretch3DSpeedMin) / stretchDenom;
             float velocityStretchAmount = settings.velocityStretch3DCurve != null
@@ -501,7 +414,6 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetVector(VelocityDirWSID, velocityDirWS);
             mpb.SetFloat(VelocityStretchAmountID, velocityStretchAmount);
 
-            // Generalized pinch squash — per-contact local flatten against each closing wall.
             int pinchCount = BuildPinchDeform();
             mpb.SetFloat(PinchCountID, pinchCount);
             mpb.SetVectorArray(PinchNormalWSID, pinchNormalBuf);
@@ -521,10 +433,8 @@ public class SlimeVisual : MonoBehaviour
         prevState = slimeController.CurrentState;
     }
 
-    // Native body height in SlimeVisual-local units. Used by external animators to
-    // compute pivot-compensation offsets for body.localPosition.y (body is a child of
-    // SlimeVisual). Rest-only values — never reads live-deformed bounds/lossyScale,
-    // which would create a feedback loop with per-frame PushDeform.
+    // Native body height in SlimeVisual-local units, from rest-only values — reading live
+    // deformed bounds would feed back into the per-frame PushDeform.
     public float BodyNativeHeight
     {
         get
@@ -539,11 +449,8 @@ public class SlimeVisual : MonoBehaviour
         }
     }
 
-    // Shifts the visual (face/eyes/mouth via SlimeVisual transform AND the sibling
-    // body3d subtree) to a target world Z, so both 2D-sorted face sprites and the
-    // 3D mesh stay depth-aligned relative to each other during a sit pose.
-    // World-space Z is used (not localPosition.z) because SetExternalDeform rewrites
-    // body3d.localPosition every frame. Assumes Slime root world Z is invariant.
+    // Shifts the visual + sibling body3d subtree to a target world Z so face sprites and mesh stay
+    // depth-aligned. World Z, not localPosition.z, which SetExternalDeform rewrites every frame.
     public void ApplySitDepthShift(float worldZ)
     {
         if (sitDepthShiftActive) return;
@@ -580,63 +487,47 @@ public class SlimeVisual : MonoBehaviour
         }
     }
 
-    // Explicit per-feature API for external controllers that need a specific surface
-    // normal for the shader (sit pose wants world-up). Other IExternalController
-    // users (firework recoil, pipe transit) are unaffected unless they call this.
+    // Lets an external controller pin the shader's surface normal (sit pose wants world-up).
     public void SetExternalSurfaceNormal(Vector2 normal)
     {
         if (normal.sqrMagnitude > 1e-6f)
             lastSurfaceNormal = normal.normalized;
     }
 
-    // Force the eye sprite regardless of blink scheduler. Stun still wins.
-    // Pass EyesForceState.None to release back to normal blink behavior.
+    // Force the eye sprite regardless of blink scheduler. Stun still wins; None releases.
     public void SetEyesForced(EyesForceState state)
     {
         _eyesForceState = state;
     }
 
-    // Composes a full XYZ rotation (Euler-driven on the caller side) onto body3d's
-    // rest rotation inside SetExternalDeform. Pass null to clear. Caller is responsible
-    // for clearing once the animation completes — leaving an override active will keep
-    // body3d rotated even after the gate closes (ResetDeformationState clears it as a
-    // safety net on IsExternallyAnimated toggle).
+    // Composed onto body3d's rest rotation in SetExternalDeform. Caller must clear it — a stale
+    // override keeps body3d rotated after the gate closes (ResetDeformationState is the net).
     public void SetExternalRotation(Quaternion? rotation)
     {
         _externalRotationOverride = rotation;
     }
 
-    // Sets a delta from the inspector-set rest position of the face transform
-    // (captured in Start). When set, REPLACES UpdateFaceOffset's per-frame write —
-    // natural drift/saccade pause while the override is active. Pass null to clear
-    // and let UpdateFaceOffset resume control.
+    // Delta from the face's rest position. While set it REPLACES UpdateFaceOffset's write —
+    // natural drift/saccade pause. null clears.
     public void SetExternalFaceOffset(Vector3? offset)
     {
         _externalFaceOffset = offset;
     }
 
-    // Additive overlay onto the body scale pipeline. extraScale is added to the
-    // composed (smoothedScale + impact + breath + tremor + coyote) before clamping,
-    // so e.g. (0.15, -0.15) squashes Y by 15% on top of whatever is already happening.
-    // Set to Vector2.zero to release. Caller is responsible for smoothing the input.
+    // Added onto the composed body scale before clamping. Vector2.zero releases; caller smooths.
     public void SetExternalCompression(Vector2 extraScale)
     {
         externalCompression = extraScale;
     }
 
-    // Face subtree root (eyes + mouth sprites). SlimeSplitSequence reads its child
-    // SpriteRenderers to clip the face along the same wound planes as the body.
+    // SlimeSplitSequence reads its child SpriteRenderers to clip the face along the wound planes.
     public Transform FaceTransform => face;
 
-    // Public refs for systems that need to attach decals/effects on the slime visual
-    // (e.g. SlimeBurnVisual placing burn marks). body is the legacy 2D sprite root,
-    // body3d is the 3D mesh root. Either can be null depending on visual setup;
-    // SlimeBurnVisual prefers body3d if present.
+    // Attach points for decals/effects. Either can be null depending on visual setup.
     public Transform Body => body;
     public Transform Body3d => body3d;
-    // body3d's rest localScale captured in Start. SlimeSplitSequence pulls the world cut
-    // plane back through (live rotation × REST scale) so the rendered cut counter-rotates
-    // with the body (world-fixed orientation) but rides the live squash/stretch scale.
+    // SlimeSplitSequence pulls the world cut plane back through (live rotation × REST scale) so
+    // the cut stays world-fixed in orientation but rides the live squash/stretch.
     public Vector3 Body3dRestScale => body3dRestScale;
 
     private void ApplyExternalFaceOffset()
@@ -645,7 +536,6 @@ public class SlimeVisual : MonoBehaviour
         face.localPosition = faceRestLocalPosition + _externalFaceOffset.Value;
     }
 
-    // Called by external animators (e.g. SitPoseAnimator) while IsExternallyAnimated is true.
     // Silently ignored when the gate is off, so runaway calls can't corrupt the normal pipeline.
     public void SetExternalDeform(Vector3 localScale, Vector3 localPosition, float asymmetry, float chargeDip)
     {
@@ -657,20 +547,15 @@ public class SlimeVisual : MonoBehaviour
         }
         if (body3d != null)
         {
-            // Sit pose skips surface alignment — apply rest rotation only, unless an
-            // external animator (e.g. BoxSleepAnimator) provided an explicit override.
             // Override is composed on the LEFT so it acts as a world-space pre-rotation
-            // (project tenet C-1: SlimeVisual.transform.localRotation == identity, so
-            // body3d local axes equal world axes).
+            // (C-1 tenet: SlimeVisual.transform.localRotation == identity).
             body3d.localRotation = _externalRotationOverride.HasValue
                 ? _externalRotationOverride.Value * body3dRestRotation
                 : body3dRestRotation;
-            // External animators want their rotation SEEN (box-sleep tips the slime over),
-            // so the baseline holds no counter-rotation under the gate.
+            // External animators want their rotation SEEN, so no counter-rotation under the gate.
             if (meshBaseline != null) meshBaseline.localRotation = meshBaselineRestRotation;
             body3d.localScale = Vector3.Scale(body3dRestScale, localScale);
-            // Preserve existing localPosition.z so ApplySitDepthShift's world-Z
-            // shift isn't wiped every frame. Only X/Y come from localPosition.
+            // Preserve localPosition.z so ApplySitDepthShift's world-Z shift isn't wiped each frame.
             Vector3 target = body3dRestPosition + Vector3.Scale(transform.localScale, localPosition);
             body3d.localPosition = new Vector3(target.x, target.y, body3d.localPosition.z);
         }
@@ -683,10 +568,7 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetFloat(DipCenterUID, 0f);
             bodyRenderer.SetPropertyBlock(mpb);
         }
-        // Mesh dual-push under the external-animation gate. Surface normal
-        // tracks the most recent grounded value; dipDir defaults to the
-        // anti-normal direction (no lateral aim under sit pose / firework
-        // recoil / pipe transit).
+        // Surface normal tracks the last grounded value; no lateral aim under the external gate.
         if (bodyMeshRenderer != null && mpb != null)
         {
             Vector3 surfaceNormalWS = new Vector3(lastSurfaceNormal.x, lastSurfaceNormal.y, 0f);
@@ -698,8 +580,7 @@ public class SlimeVisual : MonoBehaviour
             mpb.SetFloat(ChargeDipID, chargeDip);
             mpb.SetVector(SurfaceNormalWSID, surfaceNormalWS);
             mpb.SetVector(DipDirWSID, dipDirWS);
-            // External animators (sit pose, firework recoil, pipe transit) don't
-            // have meaningful velocity — zero out so front-compress + stretch are inert.
+            // External animators have no meaningful velocity — zero so front-compress/stretch are inert.
             mpb.SetVector(VelocityDirWSID, Vector4.zero);
             mpb.SetFloat(VelocityStretchAmountID, 0f);
             bodyMeshRenderer.SetPropertyBlock(mpb);
@@ -721,8 +602,7 @@ public class SlimeVisual : MonoBehaviour
         squashStrengthVel = 0f;
         externalCompression = Vector2.zero;
 
-        // Clear external overrides so stale state from a previous override session
-        // (e.g. SitPose followed by BoxSleep) can't leak into the next.
+        // Clear external overrides so a previous session (SitPose → BoxSleep) can't leak in.
         _eyesForceState = EyesForceState.None;
         _externalRotationOverride = null;
         _externalFaceOffset = null;
@@ -739,9 +619,8 @@ public class SlimeVisual : MonoBehaviour
             body3d.localRotation = body3dRestRotation;
             if (meshBaseline != null) meshBaseline.localRotation = meshBaselineRestRotation;
         }
-        // prevGravityUp freezes during the external gate (updated only inside
-        // UpdateDeformAxis). Use the controller's live GravityUp as the fresh
-        // source of truth; normal LateUpdate overwrites this on the next frame.
+        // lastSurfaceNormal goes stale under the external gate; reseed from the controller's
+        // live GravityUp (normal LateUpdate overwrites it next frame).
         lastSurfaceNormal = slimeController != null ? slimeController.GravityUp : Vector2.up;
 
         if (bodyRenderer != null && mpb != null)
@@ -774,12 +653,12 @@ public class SlimeVisual : MonoBehaviour
             lastNonZeroVelocity = cachedVelocity;
     }
 
-    // --- Deformation axis (replaces old body rotation) ---
+    // --- Deformation axis ---
 
     private void UpdateDeformAxis()
     {
-        // Detect gravity direction change: snap body.up and reset scale state
-        // to prevent deformation along intermediate slerp angles.
+        // Gravity flip: snap body.up and reset scale state, else the blob deforms along the
+        // intermediate slerp angles.
         Vector2 currentGravityUp = slimeController.GravityUp;
         if (Vector2.Dot(prevGravityUp, currentGravityUp) < 0.7f)
         {
@@ -808,12 +687,9 @@ public class SlimeVisual : MonoBehaviour
             targetAxis = lastSurfaceNormal;
         }
 
-        // Every squash term is (a, -a) about body's local Y, so +axis and -axis describe the
-        // SAME deformation — the axis is a line, not a direction. Take whichever sign is
-        // nearest the current body.up, so a floor->ceiling flip costs 0 degrees of slerp
-        // instead of sweeping the whole blob's stretch axis through a visible 180 turn.
-        // Walls still turn the honest 90. The true (signed) normal stays in
-        // lastSurfaceNormal for the shader, which does care which side faces the surface.
+        // Squash is (a, -a) about local Y, so the axis is a line, not a direction — take the sign
+        // nearest body.up, else a floor->ceiling flip sweeps the stretch axis a visible 180.
+        // lastSurfaceNormal keeps the signed normal for the shader.
         if (Vector2.Dot((Vector2)body.up, targetAxis) < 0f) targetAxis = -targetAxis;
 
         lastDeformAxis = targetAxis;
@@ -845,11 +721,8 @@ public class SlimeVisual : MonoBehaviour
     private float pinchCompSmoothed;
     private float pinchCompVel;
 
-    // Fills the pinch deform MPB buffers from the controller's reported contacts and returns the
-    // active contact count (0 = no squeeze → shader section 3.5 is a no-op). The master compression
-    // is SmoothDamped so the dents ease in on catch and out on release instead of popping. Each
-    // active contact's world face normal + compression flatten the slime locally against that wall
-    // in SlimeDeform.hlsl section 3.5 — genuine, per-contact, local; no whole-body scale.
+    // Fills the pinch MPB buffers from the controller's contacts, returns the active count
+    // (0 = shader 3.5 no-op). Compression is SmoothDamped so dents ease in/out instead of popping.
     private int BuildPinchDeform()
     {
         float target = slimeController.PinchActive ? Mathf.Clamp01(slimeController.PinchCompression01) : 0f;
@@ -857,9 +730,8 @@ public class SlimeVisual : MonoBehaviour
 
         int reported = slimeController.PinchActive ? Mathf.Min(slimeController.PinchContactCount, PinchMax) : 0;
         int count = pinchCompSmoothed > 1e-3f ? reported : 0;
-        // World half-gap from the smoothed compression: gap/2 = (1 − comp)·R. Derived from the same
-        // smoothed comp the dent uses, so the plane-clamp eases in/out in lock-step (no pop), and R is
-        // the slime's full (visual) radius — the mesh is full-size, the shader flattens it to this plane.
+        // gap/2 = (1 − comp)·R off the same smoothed comp the dent uses, so the plane-clamp eases
+        // in lock-step (no pop); R is the slime's full visual radius.
         float fullR = slimeSettings != null ? slimeSettings.slimeRadius : 0.4f;
         float halfGap = Mathf.Max(0f, (1f - pinchCompSmoothed) * fullR);
         for (int i = 0; i < PinchMax; i++)
@@ -868,8 +740,7 @@ public class SlimeVisual : MonoBehaviour
             {
                 Vector2 n = slimeController.GetPinchContactNormal(i);
                 pinchNormalBuf[i] = new Vector4(n.x, n.y, 0f, 0f);
-                // All contacts currently share one compression (comp01), so the smoothed master is
-                // the right per-contact value; revisit if walls ever report differing compression.
+                // All contacts share one comp01 today; revisit if walls ever report differing values.
                 pinchCompBuf[i] = pinchCompSmoothed;
                 pinchHalfGapBuf[i] = halfGap;
             }
@@ -938,11 +809,8 @@ public class SlimeVisual : MonoBehaviour
 
     // --- Friction detach pong (Phase 3) ---
     //
-    // Subscribes to SlimeController.OnFrictionDetach. Phase 3 lives on the fast
-    // (smoothed-bypass) scale layer so the release pop happens on the same frame
-    // the controller transitions to Airborne instead of being eased through
-    // SmoothDampV2 like the Phase 1 stress (which goes through the shader, not
-    // body.localScale).
+    // On the fast (smoothed-bypass) scale layer so the release pop lands the same frame the
+    // controller goes Airborne, instead of being eased through SmoothDampV2.
     private void HandleFrictionDetach(Vector2 detachVel, Vector2 sNormal, float overshoot)
     {
         pongTimer = 0f;
@@ -972,9 +840,8 @@ public class SlimeVisual : MonoBehaviour
     private Vector2 ComputeCoyoteSquash()
     {
         if (slimeSettings == null) return Vector2.zero;
-        // Prefer the controller's active duration (matches the per-surface override
-        // SurfaceMaterial may have applied at landing); fall back to the global
-        // setting when nothing is currently armed.
+        // The controller's armed duration carries SurfaceMaterial's per-surface override;
+        // fall back to the global setting when nothing is armed.
         float armedDuration = slimeController.EnergyCoyoteDuration;
         float duration = armedDuration > 0f ? armedDuration : slimeSettings.energyConversionCoyoteTime;
         if (duration <= 0f)
@@ -1039,8 +906,8 @@ public class SlimeVisual : MonoBehaviour
     {
         if (slimeController.CurrentState == SlimeController.SlimeState.Airborne)
         {
-            // Decompose along body.up (current visual orientation), not GravityUp directly.
-            // body.up slerps toward GravityUp; using it here avoids axis mismatch during transitions.
+            // Decompose along body.up, not GravityUp — body.up slerps, so this avoids an axis
+            // mismatch during transitions.
             Vector2 bodyUp = (Vector2)body.up;
             Vector2 gravityDir = -bodyUp;
             Vector2 horizontalDir = new Vector2(bodyUp.y, -bodyUp.x);
@@ -1166,7 +1033,7 @@ public class SlimeVisual : MonoBehaviour
         return new Vector2(value, -value);
     }
 
-    // --- Face offset (unchanged from C-1) ---
+    // --- Face offset ---
 
     private void UpdateFaceOffset()
     {
@@ -1203,16 +1070,15 @@ public class SlimeVisual : MonoBehaviour
         currentFaceOffset = Vector2.SmoothDamp(
             currentFaceOffset, target, ref faceVelocity, settings.faceSmoothTime);
 
-        // Face is a SIBLING of body (Slime/SlimeVisual/Face), so the body-scale multiply on
-        // body.localScale never reaches it — scale it explicitly so the tuned face-to-body
-        // proportion survives every size, and shrink the drift offset with it.
+        // Face is a SIBLING of body, so the body-scale multiply on body.localScale never reaches
+        // it — scale it explicitly, and shrink the drift offset with it.
         Vector2 finalFacePos = (Vector2)body.localPosition + currentFaceOffset * displayedBodyScale;
         face.localPosition = new Vector3(finalFacePos.x, finalFacePos.y, face.localPosition.z);
         face.localRotation = Quaternion.identity;
         face.localScale = faceRestScale * displayedBodyScale;
     }
 
-    // --- Blink (unchanged from C-1) ---
+    // --- Blink ---
 
     private void UpdateBlink()
     {
@@ -1227,8 +1093,7 @@ public class SlimeVisual : MonoBehaviour
             return;
         }
 
-        // External force override (BoxSleepAnimator etc.). Stun above still wins.
-        // Defers nextBlinkTime so the natural blink doesn't fire the instant force releases.
+        // Defers nextBlinkTime so the natural blink doesn't fire the instant the force releases.
         if (_eyesForceState != EyesForceState.None)
         {
             if (eyesRenderer.sprite == eyesStun) eyesRenderer.sprite = eyesOpen;
@@ -1238,8 +1103,7 @@ public class SlimeVisual : MonoBehaviour
             return;
         }
 
-        // Recovery: stun branch leaves sprite on eyesStun; restore eyesOpen immediately
-        // rather than waiting for the next blink cycle (would otherwise linger 3-7s).
+        // Stun branch leaves the sprite on eyesStun; restore now or it lingers 3-7s to the next blink.
         if (eyesRenderer.sprite == eyesStun)
             eyesRenderer.sprite = eyesOpen;
 
@@ -1259,8 +1123,7 @@ public class SlimeVisual : MonoBehaviour
     }
 
     // --- Visual clearance ---
-    // Limitation: ray from inside a deeply-penetrated collider won't detect it (Physics2D semantics).
-    // If clamp fails at deep penetration, expand to 3-ray fan (see plan fallback #2).
+    // Limitation: a ray from inside a deeply-penetrated collider won't detect it (Physics2D).
 
     private float QueryClearance(Vector2 origin, Vector2 direction, float maxDist)
     {
@@ -1270,12 +1133,9 @@ public class SlimeVisual : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             if (clearanceHits[i].collider == slimeCollider) continue;
-            // Skip trigger colliders: the clearance clamp only guards the visual against
-            // penetrating SOLID surfaces. One-way / passable triggers (TautLine ropes,
-            // hazard zones, water, etc. — all isTrigger on the ground layer) are not solid;
-            // letting them register collapses the body offset to ~0 the instant the slime
-            // nears them, snapping the visual even though rb.position never moves. (Confirmed:
-            // a rope trigger hit at distance 0 forced ratio→0 and jumped body.localPosition ~1m.)
+            // Skip triggers: one-way/passable colliders on the ground layer (TautLine ropes,
+            // hazards, water) are not solid — a rope trigger hits at distance 0, forcing ratio→0
+            // and jumping body.localPosition ~1m while rb.position never moves.
             if (clearanceHits[i].collider.isTrigger) continue;
             if (clearanceHits[i].distance < closest)
                 closest = clearanceHits[i].distance;

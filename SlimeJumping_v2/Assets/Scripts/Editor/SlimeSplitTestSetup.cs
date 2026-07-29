@@ -8,17 +8,8 @@ using SlimeJumping.Settings;
 
 namespace SlimeJumping.Editor
 {
-    /// <summary>
-    /// Wires up the slime-split reaction so it can be seen immediately, and a
-    /// one-click "trigger now" so you don't have to land a real high-speed hit.
-    ///
-    /// Setup (edit mode): creates the SlimeSplitSettings asset + a Mat_SlimeChunk
-    /// material variant (so chunk look is tunable independently of the live slime),
-    /// adds a SlimeSplitManager with SlimeSplitSequence, and points every Knife/Saw
-    /// hazard in the open scene at it.
-    ///
-    /// Trigger (play mode): slices the live slime on the spot.
-    /// </summary>
+    /// <summary>Edit mode: builds the split settings/chunk material and wires every Knife/Saw hazard.
+    /// Play mode: slices the live slime on demand.</summary>
     public static class SlimeSplitTestSetup
     {
         private const string SettingsPath = "Assets/Settings/SlimeSplitSettings.asset";
@@ -52,12 +43,10 @@ namespace SlimeJumping.Editor
             var so = new SerializedObject(seq);
             so.FindProperty("settings").objectReferenceValue = settings;
             so.FindProperty("chunkMaterial").objectReferenceValue = chunkMat;
-            // settings + chunkMaterial are the only serialized fields; the body mesh, face
-            // renderers and SlimeVisual are auto-resolved from the slime at runtime (Begin).
+            // Body mesh, face renderers and SlimeVisual are resolved from the slime in Begin().
             so.ApplyModifiedProperties();
 
-            // Body-scale spring (slosh) tuning lives in the same settings asset — wire the
-            // visual to it so the displayed size springs instead of snapping.
+            // Body-scale spring tuning shares this asset; without it the displayed size snaps.
             var visual = slime.GetComponentInChildren<SlimeVisual>(true);
             if (visual != null)
             {
@@ -109,8 +98,7 @@ namespace SlimeJumping.Editor
             Debug.Log("[SlimeSplitTest] Split triggered.");
         }
 
-        // Mid-air self-split (double-jump fuel): ejects a piece downward and shrinks the body.
-        // The recoil impulse is gameplay's job, so this menu only shows the volume/visual side.
+        // Volume/visual side of the mid-air self-split only; the recoil impulse is gameplay's job.
         [MenuItem("SlimeJumping/Effects/Trigger Self Split Now (Play Mode)")]
         public static void TriggerSelfSplitNow()
         {
@@ -130,9 +118,7 @@ namespace SlimeJumping.Editor
             Debug.Log("[SlimeSplitTest] Self split triggered.");
         }
 
-        // Movement-regression check at a fixed small size, bypassing the split sequence and
-        // heal timeline entirely: force the physics ratio and play — crawl/launch/wall/ceiling
-        // should all behave, just smaller.
+        // Forces the physics ratio directly, bypassing the split sequence and heal timeline.
         [MenuItem("SlimeJumping/Effects/Body Scale 0.6 (Play Mode)")]
         public static void ForceBodyScaleSmall() => ForceBodyScale(0.6f);
 
@@ -156,9 +142,8 @@ namespace SlimeJumping.Editor
             Debug.Log($"[SlimeSplitTest] BodyScale forced to {ratio:F2}.");
         }
 
-        // DynamicMeshCutter reads CPU mesh data at runtime, which requires Read/Write
-        // enabled on the cut source mesh. This only changes the import flag (keeps a CPU
-        // copy) — rendering is byte-for-byte identical, so the live slime is unaffected.
+        // DynamicMeshCutter reads CPU mesh data at runtime — the source mesh import must have
+        // Read/Write enabled or the cut fails.
         private static void EnsureSlimeMeshReadable(SlimeController slime)
         {
             var mf = slime.GetComponentInChildren<MeshFilter>(true);

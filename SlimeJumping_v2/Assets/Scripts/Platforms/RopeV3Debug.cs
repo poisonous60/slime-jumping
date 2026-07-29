@@ -6,16 +6,8 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Platforms
 {
-    // Investigates V3 rope-rider coupling bugs (spurious detach, opposite-
-    // direction kick on landing, rope drift while charging). Pulls per-FU
-    // snapshots from RopeV3 + SlimeController into a ring buffer; on each
-    // configured trigger (detach / attach / high speed / manual mark) dumps
-    // a window of frames around the event to the console with a cooldown so
-    // multiple events per session are captured.
-    //
-    // Reads only — never writes to controller or rope. Per memory rule:
-    // debug pulls from controller/rope, never pushes; no debug fields in
-    // SlimeController.
+    // Ring-buffers per-FU rope/slime snapshots and dumps a window around each trigger
+    // (detach / attach / high speed / manual). Read-only: pulls state, never writes back.
     [RequireComponent(typeof(RopeV3))]
     [DefaultExecutionOrder(100)]
     public class RopeV3Debug : MonoBehaviour
@@ -99,7 +91,6 @@ namespace SlimeJumping.Platforms
         int fuCounter;
         int lastDumpFu = int.MinValue;
 
-        // Event countdown — when set > 0, every FU we decrement; on 0, dump.
         int pendingDumpAt;
         bool hasPendingDump;
         string pendingReason;
@@ -195,7 +186,6 @@ namespace SlimeJumping.Platforms
             head = (head + 1) % ring.Length;
             if (count < ring.Length) count++;
 
-            // Trigger detection — only fire when nothing is already pending.
             if (!hasPendingDump && (fuCounter - lastDumpFu) >= eventCooldownFus)
             {
                 string reason = DetectTrigger(f);
@@ -216,8 +206,7 @@ namespace SlimeJumping.Platforms
                 pendingReason = null;
             }
 
-            // Manual mark via key — captured outside FixedUpdate normally, but
-            // checking here is fine since input system polls at fixed cadence.
+            // wasPressedThisFrame read from FixedUpdate: fine only because the input system polls at fixed cadence.
             var kb = Keyboard.current;
             if (kb != null && kb[manualMarkKey].wasPressedThisFrame)
                 MarkManualEvent();

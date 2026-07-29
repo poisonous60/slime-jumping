@@ -4,10 +4,8 @@ using UnityEngine.UI;
 
 namespace SlimeJumping.UI
 {
-    /// Attach under a Canvas to add a click SFX to every Button in its hierarchy.
-    /// Uses its own pooled AudioSource (optionally routed through a mixer group) so
-    /// it works in scenes that don't host a SoundService. Also exposes a
-    /// hover-SFX entry point that UIButtonJuice calls from IPointerEnter.
+    /// Click/hover SFX for every Button under this hierarchy, via its own AudioSource
+    /// so scenes without a SoundService still get UI sound. PlayHover is called by UIButtonJuice.
     public class UIClickSoundInstaller : MonoBehaviour
     {
         [SerializeField] private AudioClip clickClip;

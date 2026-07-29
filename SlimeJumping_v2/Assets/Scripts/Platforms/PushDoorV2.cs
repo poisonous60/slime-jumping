@@ -54,14 +54,8 @@ namespace SlimeJumping.Platforms
         [SerializeField] float minOpenTime = 1f;
         [SerializeField] LayerMask reactivateCheckLayers;
 
-        // Removed contactCooldown auto-rearm: it caused continuous re-impulse every
-        // tick while slime stayed attached, making v2 feel identical to v1's
-        // continuous-push model. wasInContact now resets ONLY on RemoveRider() —
-        // i.e. one impulse per attachment, exactly the "edge-triggered" intent.
-
-        // Cached at Awake so runtime changes to transform.position.z or hingeOffset.z
-        // don't mid-flight change clamp range / open threshold. Edit hingeOffset in
-        // the Inspector while stopped; changes take effect on next play.
+        // Cached at Awake: moving the door or editing hingeOffset at runtime must not rescale
+        // the clamp range / open threshold mid-flight.
         float cachedDoorDepth;
         float cachedOpenThreshold;
         Vector2 cachedRight;
@@ -73,8 +67,7 @@ namespace SlimeJumping.Platforms
         float xVelocity;
         float openTimer;
 
-        // Contact-edge tracking: impulse fires once per new contact, not every FixedUpdate.
-        // Resets only when slime detaches (RemoveRider).
+        // One impulse per attachment: resets only in RemoveRider, never on a timer.
         bool wasInContact;
 
         BoxCollider2D doorCollider;
@@ -117,8 +110,7 @@ namespace SlimeJumping.Platforms
             float rad = baseRotation * Mathf.Deg2Rad;
             cachedRight = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
 
-            // Z is 2D-physics-invariant, so using transform.position.z here is safe.
-            // Captured once at Awake — moving the door at runtime won't rescale clamp.
+            // Z is 2D-physics-invariant, so transform.position.z is safe here.
             float autoDepth = transform.position.z + hingeOffset.z;
             cachedDoorDepth = doorDepthOverride > 0f
                 ? doorDepthOverride
@@ -128,31 +120,26 @@ namespace SlimeJumping.Platforms
 
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity, bool isCharging)
         {
-            // Edge-triggered: impulse only on the frame contact begins
             if (wasInContact) return;
             wasInContact = true;
 
-            // Project relative velocity onto door normal (cachedRight)
             Vector2 doorVelocity = Velocity;
             float vRel = Vector2.Dot(riderVelocity - doorVelocity, cachedRight);
             float impactMag = Mathf.Abs(vRel) * Mathf.Max(riderMass, 0.0001f);
-            // Newton's 3rd law: door receives momentum in the same direction as the
-            // slime's velocity along the door normal. (Previously had a stray '-' that
-            // pushed the door TOWARD the slime — visible bug.)
+            // Sign follows the slime's velocity along the normal; negating it pushes the door
+            // back toward the slime.
             float dir = Mathf.Sign(vRel);
 
             if (oneWay)
             {
                 float allowed = Mathf.Sign(oneWayDirection);
-                // Wrong-side impact acts as a wall: ComputeMotion clamps currentX on
-                // the disallowed side, so adding jiggle here would be silently erased.
-                // Return without touching xVelocity — feels like solid resistance.
+                // ComputeMotion clamps currentX on the disallowed side, so jiggle added here
+                // would be silently erased — return instead, which reads as solid resistance.
                 if (dir * allowed < 0f) return;
             }
 
             if (impactMag < openThresholdImpact)
             {
-                // Soft tap: only a small jiggle, don't commit to opening
                 xVelocity += dir * impactMag * jiggleScale;
                 return;
             }
@@ -238,8 +225,7 @@ namespace SlimeJumping.Platforms
         {
             openAngleDeg = Mathf.Clamp(openAngleDeg, 1f, 90f);
             oneWayDirection = oneWayDirection >= 0 ? 1 : -1;
-            // Floor at 0.1 (not 0.0001) so designer-set tiny values don't extrapolate
-            // the response curve into runaway territory.
+            // Floor at 0.1: smaller values extrapolate the response curve into runaway territory.
             impactReference = Mathf.Max(0.1f, impactReference);
             impulseScale = Mathf.Max(0f, impulseScale);
             jiggleScale = Mathf.Max(0f, jiggleScale);
@@ -258,9 +244,7 @@ namespace SlimeJumping.Platforms
 
         void OnDrawGizmosSelected()
         {
-            // Draw the swing range so designers can see how far the door can open.
-            // Editor-time uses transform.position.z + hingeOffset.z (same formula as
-            // runtime cachedDoorDepth) so the gizmo matches in-game extents.
+            // Depth must use the same formula as runtime cachedDoorDepth or the gizmo lies.
             Vector3 axisLocal = rotationAxis.sqrMagnitude > 0.0001f ? rotationAxis.normalized : Vector3.up;
             float depth = doorDepthOverride > 0f
                 ? doorDepthOverride
@@ -272,19 +256,16 @@ namespace SlimeJumping.Platforms
             Vector3 closedDirLocal = leafFwd * depth;
             Vector3 hingeWorld = transform.TransformPoint(hingeOffset);
 
-            // Hinge axis indicator (short line through hinge)
             Vector3 axisWorld = transform.TransformDirection(axisLocal);
             Gizmos.color = Color.cyan;
             Gizmos.DrawLine(hingeWorld - axisWorld * 0.5f, hingeWorld + axisWorld * 0.5f);
 
-            // Closed-position leaf line (yellow ray from hinge to leaf tip)
             Vector3 closedTip = transform.TransformPoint(hingeOffset + closedDirLocal);
             Gizmos.color = Color.yellow;
             Gizmos.DrawLine(hingeWorld, closedTip);
 
-            // Sanity: if leafForwardLocal is parallel to rotationAxis, the arc
-            // collapses (rotation around the leaf-direction does nothing). Draw a
-            // red X at the hinge to flag the misconfig.
+            // leafForwardLocal parallel to rotationAxis collapses the arc to a point;
+            // red X flags that misconfig.
             float dotAL = Mathf.Abs(Vector3.Dot(leafFwd, axisLocal));
             if (dotAL > 0.99f)
             {
@@ -297,7 +278,6 @@ namespace SlimeJumping.Platforms
                 return;
             }
 
-            // Swing arc + extreme positions
             if (oneWay)
             {
                 float allowedSign = oneWayDirection >= 0 ? +1f : -1f;
@@ -328,7 +308,7 @@ namespace SlimeJumping.Platforms
                 prev = worldPt;
 
                 if (i == 0 || i == segments)
-                    Gizmos.DrawLine(hingeWorld, worldPt); // ray to extreme positions
+                    Gizmos.DrawLine(hingeWorld, worldPt);
             }
         }
     }

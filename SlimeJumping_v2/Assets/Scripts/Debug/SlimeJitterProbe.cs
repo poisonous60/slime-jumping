@@ -4,11 +4,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Drop on the Slime root. While enabled, samples per-frame deltas of
-    /// values that could cause visual trembling and prints the largest
-    /// oscillations to the Unity console. Press G to start a capture window.
-    /// </summary>
+    /// <summary>On the Slime root: logs per-frame deltas of trembling-prone transforms for a capture window started by the trigger key.</summary>
     public class SlimeJitterProbe : MonoBehaviour
     {
         [SerializeField] SlimeController controller;

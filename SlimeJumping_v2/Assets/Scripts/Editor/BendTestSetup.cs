@@ -8,10 +8,8 @@ using SlimeJumping.Rendering;
 
 namespace SlimeJumping.Editor
 {
-    // One-click setup for the MegaFiers-bend + LocalTrail validation harness.
-    // Generates a subdivided flat plane mesh (UV0 = rest-pose normalized to [0,1]),
-    // a material using Platform_Trail_Bend shader, and a GameObject prefab with the
-    // full bend+trail stack. Dropped into the active scene at the scene-view pivot.
+    // One-click setup for the MegaFiers-bend + LocalTrail harness: mesh (UV0 = rest-pose
+    // normalized to [0,1]) + Platform_Trail_Bend material + bend/trail prefab.
     public static class BendTestSetup
     {
         const string MeshAssetPath     = "Assets/Prebs/Platform/Meshes/BendTestBox.asset";
@@ -34,7 +32,6 @@ namespace SlimeJumping.Editor
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
             Undo.RegisterCreatedObjectUndo(instance, "Setup BendTest Platform");
 
-            // Park in front of camera / scene pivot for visibility.
             var view = SceneView.lastActiveSceneView;
             if (view != null) instance.transform.position = view.pivot + new Vector3(0f, 0f, 0f);
             Selection.activeGameObject = instance;
@@ -61,13 +58,8 @@ namespace SlimeJumping.Editor
             return mesh;
         }
 
-        // 3D box mesh. X∈[0,L] (bend pivot at left), Y∈[-h/2,h/2], Z∈[-d/2,d/2].
-        // Long faces (front/back/top/bottom) are subdivided along X so the bend
-        // reads as a smooth curve; end caps are plain quads. UV0 on every face
-        // = rest-pose XY normalized to [0,1] so Platform_Trail_Bend shader samples
-        // the trail mask at the same coord LocalTrailReceiver paints to. This
-        // means top/bottom/side faces all sample the *edge* strip of the RT —
-        // which is where the slime actually paints when it touches the surface.
+        // 3D box, X∈[0,L] (bend pivot at left). Long faces subdivided along X so the bend
+        // reads smooth. UV0 = rest-pose XY in [0,1], the frame LocalTrailReceiver paints in.
         static void PopulateBox(Mesh mesh, float length, float height, float depth, int segX)
         {
             int vx = Mathf.Max(2, segX + 1);
@@ -79,9 +71,6 @@ namespace SlimeJumping.Editor
             var n  = new List<Vector3>(8 * vx);
             var t  = new List<int>();
 
-            // Long subdivided face (two rows in a secondary axis). uvV is the
-            // constant UV.y to stamp on every vertex of this face; the trail's
-            // "band" for this face ends up at v=uvV on the mask.
             void AddLongFace(Vector3 normal, System.Func<float, int, Vector3> posFn, float uvVTop, float uvVBot, bool flipWinding)
             {
                 int start = v.Count;
@@ -101,9 +90,7 @@ namespace SlimeJumping.Editor
                 }
             }
 
-            // Front (+Z, facing camera) — trail is clearly visible here. UV.y
-            // spans 0..1 so the shader can also show trails painted anywhere
-            // in the receiver rect (not just the top/bottom edges).
+            // Front (+Z) — UV.y spans 0..1 so trails painted anywhere in the rect show here.
             AddLongFace(
                 new Vector3(0f, 0f, 1f),
                 (u, row) => new Vector3(u * length, row == 0 ? minY : maxY, maxZ),
@@ -115,8 +102,7 @@ namespace SlimeJumping.Editor
                 (u, row) => new Vector3(u * length, row == 0 ? minY : maxY, minZ),
                 uvVTop: 1f, uvVBot: 0f, flipWinding: true);
 
-            // Top (+Y) — slime walks on this. UV.y = 1 across the whole face
-            // (the top edge of the receiver rect).
+            // Top (+Y) — slime walks on this.
             AddLongFace(
                 new Vector3(0f, 1f, 0f),
                 (u, row) => new Vector3(u * length, maxY, row == 0 ? maxZ : minZ),
@@ -183,7 +169,7 @@ namespace SlimeJumping.Editor
             var root = new GameObject("BendTestPlatform");
             try
             {
-                // Rigid collider — bend is purely visual, slime walks on this flat box.
+                // Bend is purely visual; collider stays a flat box.
                 var col = root.AddComponent<BoxCollider2D>();
                 col.size = new Vector2(BoxLength, BoxHeight);
                 col.offset = new Vector2(BoxLength * 0.5f, 0f);
@@ -193,16 +179,14 @@ namespace SlimeJumping.Editor
                 var mr = root.AddComponent<MeshRenderer>();
                 mr.sharedMaterial = material;
 
-                // MegaModifyObject wants the source mesh reference. cachedMesh is set
-                // internally on Awake — in the editor we just provide originalMesh.
+                // MegaModifyObject sets cachedMesh itself on Awake; editor only supplies originalMesh.
                 var modify = root.AddComponent<MegaModifyObject>();
                 modify.originalMesh = mesh;
                 modify.UpdateMode = MegaUpdateMode.LateUpdate;
                 modify.recalcbounds = true;
                 modify.NormalMethod = MegaNormalMethod.Mega;
 
-                // MegaBend.CalcR treats `axis` as the mesh's LENGTH axis (bbox span
-                // along it determines radius). Our plane spans X∈[0,L] → axis=X.
+                // MegaBend.CalcR treats `axis` as the LENGTH axis (bbox span sets radius).
                 var bend = root.AddComponent<MegaBend>();
                 bend.axis = MegaAxis.X;
                 bend.angle = 0f;
@@ -213,9 +197,8 @@ namespace SlimeJumping.Editor
                 drvSo.FindProperty("bend").objectReferenceValue = bend;
                 drvSo.ApplyModifiedPropertiesWithoutUndo();
 
-                // Receiver's (localMin, localSize) == mesh rest-pose extents, so
-                // StampAt's `(lp - localMin)/localSize` produces the same normalized
-                // [0,1] UV the mesh carries in UV0 → paint and sample share a frame.
+                // (localMin, localSize) must equal the mesh rest-pose extents, else StampAt's
+                // normalized coord and the mesh's UV0 disagree and the trail lands elsewhere.
                 var receiver = root.AddComponent<LocalTrailReceiver>();
                 var recSo = new SerializedObject(receiver);
                 recSo.FindProperty("localMin").vector2Value  = new Vector2(0f, -BoxHeight * 0.5f);

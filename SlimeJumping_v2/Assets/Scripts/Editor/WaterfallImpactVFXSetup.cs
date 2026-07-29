@@ -30,8 +30,6 @@ namespace SlimeJumping.Editor
             var vfx = root.AddComponent<WaterfallImpactVFX>();
             var so = new SerializedObject(vfx);
 
-            // Default path: pipe가 오른쪽으로 2 유닛 나가다 꺾이는 느낌의 두 점.
-            // 씬에서 핸들로 자유 편집 (shift-click 삽입, ctrl-click 삭제).
             var pathProp = so.FindProperty("pathPointsLocal");
             pathProp.arraySize = 2;
             pathProp.GetArrayElementAtIndex(0).vector2Value = Vector2.zero;

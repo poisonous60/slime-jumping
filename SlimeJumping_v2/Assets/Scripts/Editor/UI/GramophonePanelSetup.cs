@@ -9,10 +9,6 @@ using SlimeJumping.UI.Panels;
 namespace SlimeJumping.EditorTools.UI
 {
     /// Builds Assets/Prefabs/UI/Panels/GramophonePanel.prefab.
-    /// Layout: dim backdrop + centered box → Title / Subtitle / ScrollRect of
-    /// track rows / Stop+Cancel action row. The ScrollRect uses a
-    /// VerticalLayoutGroup + ContentSizeFitter on its Content so an arbitrary
-    /// number of track rows scrolls cleanly.
     public static class GramophonePanelSetup
     {
         public const string PrefabPath = UISetupCommon.PanelPrefabRoot + "/GramophonePanel.prefab";
@@ -51,10 +47,8 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.TagSlot(box, UISlotType.ContentRoot);
             UISetupCommon.AddContainerStagger(box);
 
-            // Second stagger lives on the panel root and is used by
-            // GramophonePanel.RebuildList to animate dynamically spawned track
-            // rows via PlayForList(). manualTriggerOnly so UIPanel.Open() does
-            // not also fire it against the panel root's structural children.
+            // Stagger for dynamically spawned rows (PlayForList). manualTriggerOnly, else
+            // UIPanel.Open() also fires it against the panel root's structural children.
             var rowStagger = UISetupCommon.AddContainerStagger(root,
                 UIContainerStagger.StaggerEffect.ScalePop, manualTriggerOnly: true);
 
@@ -83,10 +77,8 @@ namespace SlimeJumping.EditorTools.UI
             scrollImg.color = UISetupCommon.ColorSliderBG;
             UISetupCommon.AddLayoutElement(scrollGO, minHeight: ScrollHeight, preferredHeight: ScrollHeight);
 
-            // RectMask2D instead of Mask + Image — Mask's stencil setup is
-            // fragile when children are instantiated from an inactive template
-            // at runtime (rows render blank). RectMask2D is CPU-clipped and
-            // works regardless of activation order.
+            // RectMask2D, not Mask + Image: Mask's stencil setup breaks when children are
+            // instantiated from an inactive template at runtime (rows render blank).
             var viewport = UISetupCommon.CreateChild(scrollGO.transform, "Viewport",
                 typeof(RectTransform), typeof(RectMask2D));
             var viewportRT = viewport.GetComponent<RectTransform>();
@@ -96,8 +88,7 @@ namespace SlimeJumping.EditorTools.UI
             viewportRT.offsetMax = new Vector2(-(ScrollbarWidth + 8f), -8f);
             UISetupCommon.TagSlot(viewport, UISlotType.ScrollViewport);
 
-            // Content — holds dynamic track rows. VerticalLayoutGroup sizes each
-            // row, ContentSizeFitter tracks overall height so the scrollbar works.
+            // Content — holds dynamic track rows; ContentSizeFitter tracks height so the scrollbar works.
             var content = UISetupCommon.CreateChild(viewport.transform, "Content", typeof(RectTransform));
             var contentRT = content.GetComponent<RectTransform>();
             contentRT.anchorMin = new Vector2(0f, 1f);

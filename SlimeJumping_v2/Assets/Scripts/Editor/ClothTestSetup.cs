@@ -5,15 +5,6 @@ using SlimeJumping.Mechanisms;
 namespace SlimeJumping.Editor
 {
     // Editor-only scene builder for ClothField (#16 passable curtain).
-    // Menu: SlimeJumping/Mechanism/Setup Cloth Test.
-    //
-    // Builds three curtains that exercise the 3D-oriented authoring:
-    //   - Cloth_Doorway_Light : rotated so width extends along world Z,
-    //                           light drag coefficient.
-    //   - Cloth_Doorway_Heavy : same orientation, heavy drag.
-    //   - Cloth_Wall          : canonical flat curtain (local plane = world XY),
-    //                           offset in world Z so the doorway curtains don't
-    //                           visually interfere.
     public static class ClothTestSetup
     {
         const int GroundLayer = 7;          // Environment in TagManager
@@ -78,9 +69,8 @@ namespace SlimeJumping.Editor
             CreatePlatform("LaunchPad_Left", root.transform,
                 new Vector3(-10f, -2f, 0f), new Vector3(3f, 1f, 1f));
 
-            // PRIMARY test curtains — CAMERA-FACING (Euler(0,0,0)). Slime motion, wind sway
-            // and cloth deformation all happen in the cloth's local XY plane = world XY,
-            // so every effect is visible from the standard 2.5D camera.
+            // Camera-facing (Euler 0,0,0): cloth simulates in its LOCAL XY plane, so deformation
+            // is only visible from the 2.5D camera while local XY = world XY.
             CreateCurtain(root.transform, "Cloth_Light",
                 new Vector3(-5f, 4f, 0f),
                 Quaternion.identity,
@@ -91,10 +81,8 @@ namespace SlimeJumping.Editor
                 Quaternion.identity,
                 HeavyCurtain());
 
-            // Optional angled variant — slight Y rotation to feel 3D without hiding behind
-            // depth. Rotating all the way to Euler(0, 90, 0) creates a true "doorway" where
-            // the curtain's width runs along world Z, but its deformation is invisible from
-            // the camera — leave that for specific corridor use-cases authored manually.
+            // Slight Y rotation only. Euler(0, 90, 0) gives a true doorway, but its deformation
+            // runs along world Z = invisible from the camera.
             CreateCurtain(root.transform, "Cloth_Angled30",
                 new Vector3(0f, 4f, 3f),
                 Quaternion.Euler(0f, 30f, 0f),

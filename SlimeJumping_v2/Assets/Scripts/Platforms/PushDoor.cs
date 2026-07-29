@@ -80,20 +80,17 @@ namespace SlimeJumping.Platforms
 
             if (isPushing)
             {
-                // Pushing: constant acceleration, capped speed
                 xVelocity += pushDirection * pushAccel * dt;
                 xVelocity = Mathf.Clamp(xVelocity, -pushMaxSpeed, pushMaxSpeed);
             }
             else
             {
-                // Returning: spring-damper pulls back to closed
                 float force = -returnStiffness * currentX - returnDamping * xVelocity;
                 xVelocity += force * dt;
             }
 
             currentX += xVelocity * dt;
 
-            // Clamp to limits
             if (oneWay)
             {
                 float sign = Mathf.Sign(oneWayDirection);
@@ -101,7 +98,6 @@ namespace SlimeJumping.Platforms
                 if (sign < 0 && currentX > 0f) { currentX = 0f; xVelocity = Mathf.Min(xVelocity, 0f); }
             }
 
-            // Collider toggle
             UpdateColliderState();
 
             return (basePosition + cachedRight * currentX, baseRotation);
@@ -120,7 +116,6 @@ namespace SlimeJumping.Platforms
             }
             else if (!doorCollider.enabled && openTimer <= 0f && !shouldBeOpen)
             {
-                // Timer expired and currentX below threshold — try reactivation
                 doorCollider.enabled = true;
 
                 ContactFilter2D filter = new ContactFilter2D

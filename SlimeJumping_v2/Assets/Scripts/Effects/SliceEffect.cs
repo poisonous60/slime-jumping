@@ -4,11 +4,7 @@ using SlimeJumping.Audio;
 
 namespace SlimeJumping.Effects
 {
-    /// <summary>
-    /// One-shot VFX for slime being cut by Knife/Saw hazards.
-    /// Spawned at the contact point, oriented so local +Y aligns with the signed tangent
-    /// (slime's slide direction along the blade edge).
-    /// </summary>
+    /// <summary>One-shot slime-cut VFX, spawned at the contact point with local +Y along the signed tangent.</summary>
     public class SliceEffect : MonoBehaviour
     {
         [SerializeField] private ParticleSystem particles;
@@ -16,10 +12,7 @@ namespace SlimeJumping.Effects
         [SerializeField, Range(0f, 1f)] private float sfxVolume = 1f;
         [SerializeField, Range(0f, 0.5f)] private float pitchJitter = 0.1f;
 
-        /// <summary>
-        /// Instantiate and play a slice effect. `signedTangent` should point in the
-        /// slime's slide direction (not the blade's rotation direction).
-        /// </summary>
+        /// <summary>Instantiate and play. signedTangent is the slime's slide direction, not the blade's rotation direction.</summary>
         public static SliceEffect Spawn(SliceEffect prefab, Vector3 contactPoint, Vector2 signedTangent)
         {
             if (prefab == null) return null;

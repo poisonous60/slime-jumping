@@ -3,15 +3,9 @@ using UnityEngine;
 namespace SlimeJumping.Platforms.ThinIceV2
 {
     /// <summary>
-    /// Single source of truth for ThinIce v2 shared assets AND default behavior tuning.
-    /// Every <see cref="ThinIcePlatformV2"/> resolves to one of these instead of binding
-    /// per-platform in the inspector. Per-platform fields stay as optional overrides
-    /// (toggle-gated section by section). The canonical asset lives at
-    /// <c>Assets/Resources/ThinIceV2Config.asset</c> and is auto-loaded; per-platform
-    /// override is exposed for special variants (e.g. a different ice tone in another biome).
-    ///
-    /// Run <c>SlimeJumping/Thin Ice v2/Generate Default Config and Prefabs</c> once to create
-    /// the asset + the two VFX prefabs it points at.
+    /// Shared assets + default tuning for ThinIce v2; per-platform fields are optional overrides.
+    /// Canonical asset auto-loads from <c>Assets/Resources/ThinIceV2Config.asset</c>, created by
+    /// <c>SlimeJumping/Thin Ice v2/Generate Default Config and Prefabs</c>.
     /// </summary>
     [CreateAssetMenu(fileName = "ThinIceV2Config",
         menuName = "SlimeJumping/Thin Ice v2/Config", order = 0)]
@@ -75,15 +69,9 @@ namespace SlimeJumping.Platforms.ThinIceV2
         public AudioClip regenSound;
         [Range(0f, 1f)] public float soundVolume = 1f;
 
-        // ---------------------------------------------------------------------
-
         const string ResourcesPath = "ThinIceV2Config";
 
-        /// <summary>
-        /// Returns the override if assigned, otherwise the canonical asset at
-        /// <c>Assets/Resources/ThinIceV2Config.asset</c>. May return null if neither exists —
-        /// callers warn-and-bail rather than crash.
-        /// </summary>
+        /// <summary>Override if assigned, else the canonical Resources asset. Null if neither exists.</summary>
         public static ThinIceV2Config Resolve(ThinIceV2Config @override)
         {
             if (@override != null) return @override;

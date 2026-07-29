@@ -2,9 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    // Beam mode — single thick laser drawn from muzzle along the locked direction.
-    // The actual rendering + per-frame sweep + sustainedHit handling lives on
-    // GraniteBlastBeam (the spawned GameObject's component); this partial just spawns it.
+    // Beam mode — single thick laser from the muzzle along the locked direction.
+    // Rendering + sweep + sustainedHit live on GraniteBlastBeam; this partial only spawns it.
     public partial class GraniteBlastEmitter
     {
         private void SpawnBeam()

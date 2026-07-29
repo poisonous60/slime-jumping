@@ -3,11 +3,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Temporary diagnostic logger for landing interpolation pop.
-    /// Logs rb.position.x vs transform.position.x around Airborne→Attached transitions.
-    /// Attach to the same GameObject as SlimeController, or assign via inspector.
-    /// </summary>
+    /// <summary>Landing-pop diagnostic: logs rb.position.x vs transform.position.x around Airborne→Attached transitions.</summary>
     public class LandingPositionLogger : MonoBehaviour
     {
         [SerializeField] private SlimeController slimeController;
@@ -16,7 +12,6 @@ namespace SlimeJumping.Debugging
         private Rigidbody2D rb;
         private SlimeController.SlimeState prevState;
 
-        // Ring buffer for logging around transitions
         private struct LogEntry
         {
             public int frame;
@@ -51,7 +46,6 @@ namespace SlimeJumping.Debugging
 
             var state = slimeController.CurrentState;
 
-            // Detect Airborne → Attached transition
             if (prevState == SlimeController.SlimeState.Airborne && state == SlimeController.SlimeState.Attached)
             {
                 transitionFrame = Time.frameCount;
@@ -87,7 +81,6 @@ namespace SlimeJumping.Debugging
                 velX = rb.linearVelocity.x,
             });
 
-            // After transition, count post-landing frames then flush
             if (transitionFrame >= 0 && !flushed)
             {
                 postTransitionCount++;

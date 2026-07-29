@@ -5,10 +5,7 @@ using SlimeJumping.UI.Animation;
 
 namespace SlimeJumping.UI.Framework
 {
-    /// Base class for every screen-space panel. Handles CanvasGroup fade and a
-    /// PrimeTween scale-in pop, raycast toggling, and registration with the
-    /// scene's UIManager. Concrete panels override OnAfterAwake/OnAfterOpen/
-    /// OnAfterClose as needed.
+    /// Screen-space panel base: CanvasGroup fade + PrimeTween scale pop, raycast toggling, UIManager registration.
     [RequireComponent(typeof(CanvasGroup))]
     [RequireComponent(typeof(RectTransform))]
     public abstract class UIPanel : MonoBehaviour
@@ -40,9 +37,8 @@ namespace SlimeJumping.UI.Framework
             canvasGroup.blocksRaycasts = false;
             contentRect = transform as RectTransform;
             if (contentRect != null) contentRect.localScale = Vector3.one;
-            // NOTE: don't SetActive(false) here — Unity skips Start on GameObjects
-            // deactivated during their own Awake, so registration would never run.
-            // The CanvasGroup above already hides the panel visually.
+            // Don't SetActive(false) here — Unity skips Start on GameObjects deactivated
+            // during their own Awake, so registration would never run.
 
             CacheSlots();
             OnAfterAwake();

@@ -9,19 +9,12 @@ using UnityEngine;
 
 namespace SlimeJumping.EditorTools
 {
-    // Collinear / curve simplification of terrain PolygonCollider2D paths via
-    // Ramer-Douglas-Peucker. Targets only mesh-derived terrain colliders
-    // (MeshCollider2DWrapper marker), excludes triggers and any object whose
-    // shape is rewritten at runtime (TautLine, DeformablePlatform, SnakeSpine,
-    // MegaDeform2DCollider, WaterCurrentZone). Provides a SceneView preview
-    // (green = original, red = proposed) before commit so the user can verify
-    // each collider visually.
+    // RDP simplification of mesh-derived terrain PolygonCollider2D paths, with a
+    // SceneView preview (green = original, red = proposed) before commit.
     public class TerrainColliderOptimizer : EditorWindow
     {
-        // Components whose presence on a wrapper makes the collider unsafe to
-        // pre-bake — they rewrite SetPath at runtime, or read GetPath shape and
-        // would visually desync if curve simplification changed the outline.
-        // Matched by simple type-name string (no assembly dependency).
+        // Unsafe to pre-bake: these rewrite SetPath at runtime or read GetPath shape,
+        // so a simplified outline desyncs. Matched by type name, no assembly ref.
         static readonly HashSet<string> BlockedComponentNames = new HashSet<string>
         {
             "TautLine",
@@ -29,9 +22,8 @@ namespace SlimeJumping.EditorTools
             "SnakeSpine",
             "MegaDeform2DCollider",
             "WaterCurrentZone",
-            // SnowField uses its host polygon for placement masks; curve simplification
-            // would let snow drift outside the simplified outline. Collinear-only would
-            // be safe, but a single conservative blocklist is simpler than per-mode rules.
+            // SnowField masks placement off the host polygon — a simplified outline
+            // lets snow drift outside it.
             "SnowField",
         };
 
@@ -45,8 +37,7 @@ namespace SlimeJumping.EditorTools
         float collinearEpsilon = 0.001f;   // chord error in meters; 0.001 ~= "purely collinear"
         float curveEpsilon = 0.03f;        // 3 cm chord error; ~3° on a 2 m radius arc
 
-        // Preview cache keyed by GameObject InstanceID so the SceneView callback
-        // can render without holding component refs across domain reloads.
+        // Keyed by InstanceID, not component refs — those go stale across domain reload.
         static Dictionary<int, PreviewEntry> previewCache = new Dictionary<int, PreviewEntry>();
 
         struct PreviewEntry
@@ -339,9 +330,8 @@ namespace SlimeJumping.EditorTools
 
         // === RDP ===
 
-        // Simplify a closed polygon path via RDP. Uses two diametrically-opposite
-        // anchor points (the pair with maximum pairwise distance) to split the
-        // loop into two open polylines — avoids seam artifacts at index 0.
+        // Splits the loop at the two farthest-apart verts before running RDP —
+        // splitting at index 0 instead leaves a seam artifact there.
         public static Vector2[] SimplifyClosedPath(Vector2[] path, float epsilon)
         {
             if (path == null) return path;
@@ -361,7 +351,6 @@ namespace SlimeJumping.EditorTools
             }
             if (anchorA == anchorB) return path;
 
-            // Build two halves: anchorA..anchorB (forward) and anchorB..anchorA (forward, wrapping).
             var half1 = new List<Vector2>();
             for (int idx = anchorA; ; idx = (idx + 1) % n)
             {
@@ -383,13 +372,11 @@ namespace SlimeJumping.EditorTools
             result.AddRange(simp1);
             for (int i = 1; i < simp2.Length - 1; i++) result.Add(simp2[i]);
 
-            // Guard: never return below 3 vertices for a polygon path.
             if (result.Count < MinPostSimplifyVertexCount) return path;
             return result.ToArray();
         }
 
-        // Iterative RDP on an open polyline; keeps endpoints, drops interior
-        // vertices whose perpendicular distance from the chord is < epsilon.
+        // Iterative RDP on an open polyline; endpoints always kept.
         static Vector2[] RDP(Vector2[] points, float epsilon)
         {
             int n = points.Length;
@@ -427,8 +414,6 @@ namespace SlimeJumping.EditorTools
             return result.ToArray();
         }
 
-        // Perpendicular distance from point p to the infinite line through a and b.
-        // |cross(b-a, p-a)| / |b-a|. Falls back to point-to-point distance for degenerate ab.
         static float PerpDistanceToLine(Vector2 p, Vector2 a, Vector2 b)
         {
             Vector2 ab = b - a;

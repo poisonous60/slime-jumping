@@ -4,12 +4,7 @@ using UnityEngine;
 
 namespace SlimeJumping.EditorTools
 {
-    /// <summary>
-    /// Runs MeshToCollider2DGenerator then collapses the result to the single largest
-    /// path — mirrors the "Keep largest path only" button in PolygonCollider2DOptimizer
-    /// (bbox-area selection). Added as a separate menu so the original multi-path
-    /// generator stays untouched.
-    /// </summary>
+    /// <summary>MeshToCollider2DGenerator, then collapse to the single largest path — mirrors PolygonCollider2DOptimizer's "Keep largest path only" (bbox area).</summary>
     public static class MeshToCollider2DGeneratorLargestOnly
     {
         private const string MenuPath =
@@ -46,8 +41,7 @@ namespace SlimeJumping.EditorTools
             return true;
         }
 
-        // Matches PolygonCollider2DOptimizer.KeepLargestPath: picks the path with the
-        // largest axis-aligned bounding box and drops the rest.
+        // Mirrors PolygonCollider2DOptimizer.KeepLargestPath: largest bbox wins, rest dropped.
         private static void KeepLargestPath(PolygonCollider2D pc, int pathsBeforeGeneration)
         {
             int droppedCount = pc.pathCount - 1;

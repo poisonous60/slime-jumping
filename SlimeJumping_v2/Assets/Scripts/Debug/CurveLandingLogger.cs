@@ -5,10 +5,8 @@ using SlimeJumping.Physics;
 namespace SlimeJumping.Debugging
 {
     /// <summary>
-    /// Diagnostic logger for curved surface landing stutter.
-    /// Captures per-frame data for ~15 frames after Airborne->Attached/Charging transition.
-    /// Logs: position delta, normal/tangent rotation, Phase A convergence,
-    /// velocity, stick decel timer, slide ramp timer.
+    /// Diagnostic dump for curved-surface landing stutter: per-frame state for the first
+    /// captureFrames fixed steps after an Airborne -> Attached/Charging transition.
     /// </summary>
     public class CurveLandingLogger : MonoBehaviour
     {
@@ -36,7 +34,6 @@ namespace SlimeJumping.Debugging
 
             var state = slimeController.CurrentState;
 
-            // Detect Airborne -> Attached/Charging transition
             if (prevState == SlimeController.SlimeState.Airborne
                 && (state == SlimeController.SlimeState.Attached
                     || state == SlimeController.SlimeState.Charging))
@@ -62,17 +59,13 @@ namespace SlimeJumping.Debugging
             Vector2 rbVel = rb.linearVelocity;
             var probe = slimeController.Probe;
 
-            // Position delta
             Vector2 posDelta = pos - prevPosition;
 
-            // Normal rotation (signed angle change)
             float normalAngleDeg = Vector2.SignedAngle(prevNormal, normal);
 
-            // Phase A data
             int phaseAIter = probe.PhaseAIterations;
             float phaseARem = probe.PhaseARemainingPenetration;
 
-            // Timers
             float stickT = slimeController.StickTimer;
             float decelT = slimeController.StickDeccelTimer;
             float rampT = slimeController.SlideRampTimer;

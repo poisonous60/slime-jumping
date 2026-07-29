@@ -3,9 +3,8 @@ using UnityEngine;
 
 namespace SlimeJumping.UI.Animation
 {
-    /// Wraps a TextMeshProUGUI so any value-change call runs through Set(),
-    /// firing a small bump tween. Callers that need silent updates can still
-    /// touch .text directly via the Label property.
+    /// Value changes go through Set() and fire a bump tween; callers wanting a silent
+    /// update touch .text directly via the Label property.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(TextMeshProUGUI))]
     [RequireComponent(typeof(RectTransform))]
@@ -44,7 +43,6 @@ namespace SlimeJumping.UI.Animation
             EnsureRefs();
             if (value == lastValue)
             {
-                // Same value — don't bump and don't write.
                 return;
             }
             label.text = value;
@@ -63,9 +61,7 @@ namespace SlimeJumping.UI.Animation
 
         private void OnDisable()
         {
-            // Reset priming so the next time the panel is opened and OnAfterAwake-
-            // style initial population runs through Set(), the first call is
-            // silent again.
+            // Un-prime so the next panel open's initial population is silent again.
             primed = false;
             lastValue = null;
         }

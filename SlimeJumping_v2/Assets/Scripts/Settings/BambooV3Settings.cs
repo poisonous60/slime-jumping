@@ -2,23 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Settings
 {
-    /// <summary>
-    /// Gameplay tuning for BambooPlatformV3. Eleven knobs, nothing else — every other
-    /// quantity the stalk uses (bend from an impact, sag under the rider's weight) is
-    /// derived from the cantilever ODE and the rider's own mass/position, not from a
-    /// multiplier.
-    ///
-    /// Contrast with BambooSettings (v1), which carries 26 knobs because seven layers of
-    /// non-physical correction sit on top of the same ODE: impact-speed curves, contact
-    /// height shaping applied on top of the moment arm that already encodes height, a
-    /// second spring set that swaps in the frame the rider leaves, and two decay rates
-    /// outside the damping ratio. v1 is unchanged and still used by the existing stalks;
-    /// V3 is the model for new gameplay bamboo.
-    ///
-    /// Per-stalk fields (length, segment count, radius, colours, node geometry, toon
-    /// lighting, tessellation, backgroundOnly) live on BambooPlatformV3 itself so stalks
-    /// sharing this asset can still look different.
-    /// </summary>
+    /// <summary>Shared gameplay tuning for BambooPlatformV3 — bend and sag come from the cantilever
+    /// ODE, not from multipliers (v1's 26-knob correction stack). Per-stalk look stays on the component.</summary>
     [CreateAssetMenu(fileName = "BambooV3Settings", menuName = "SlimeJumping/Bamboo V3 Settings", order = 211)]
     public sealed class BambooV3Settings : ScriptableObject
     {

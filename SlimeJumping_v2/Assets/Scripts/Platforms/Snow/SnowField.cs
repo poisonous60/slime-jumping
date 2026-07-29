@@ -4,44 +4,22 @@ using UnityEngine.Serialization;
 
 namespace SlimeJumping.Platforms.Snow
 {
-    /// <summary>How <see cref="SnowField"/> decides what to drop from each snow tri
-    /// when masking against foreign colliders. See SnowField.maskMode tooltip.</summary>
+    /// <summary>How <see cref="SnowField"/> decides what to drop from each snow tri when masking against foreign colliders.</summary>
     public enum OverlapMaskMode
     {
-        /// <summary>Legacy 4-sample drop (default). Drops a tri if any of its 3 verts
-        /// or centroid is inside any foreign collider. Cascades via shared verts.</summary>
+        /// <summary>Drops a whole tri if any of its 3 verts or centroid is inside a foreign collider; cascades via shared verts.</summary>
         SampleBased = 0,
 
-        /// <summary>Sutherland-Hodgman geometric subtraction. Clips each tri exactly at
-        /// the foreign collider's edges, producing kept geometry == (tri ∩ NOT foreign).
-        /// Falls back to SampleBased per pair for unsupported foreigns.</summary>
+        /// <summary>Sutherland-Hodgman subtraction, keeping (tri ∩ NOT foreign). Falls back to SampleBased per pair for unsupported foreigns.</summary>
         GeometricClipping = 1,
     }
 
     /// <summary>
-    /// Drape a slope-filtered snow visual on a mesh-based platform. Spawns one child
-    /// "SnowStrip_N" GameObject per upward-facing connected component of the host's
-    /// triangulation; each child gets a snow mesh whose vertex displacement is driven
-    /// by an MPB-bound 1D heightBuf (Phase 2 GPU shader path).
-    ///
-    /// Pure visual: no collider, no SurfaceTag — the slime always walks on the host's
-    /// own collider. The snow follows the host's full 3D top surface (slopes, hills,
-    /// heightmap bumps, undulation in Z), not just a planar cross-section.
-    ///
-    /// Phase 2 dynamics (this file):
-    ///  - Optional barycentric subdivision (subdivLevels) so low-poly hosts have enough
-    ///    vertex density for visible carve dips without changing surface shape.
-    ///  - Registers (hostCollider → this) with SnowFieldRegistry on enable so a single
-    ///    SnowStamper on the slime can route OnLanded events here in O(1).
-    ///  - HandleLanded converts world contact to mesh-local and fans the carve out to
-    ///    every child SnowStrip (each does its own AABB pre-filter).
-    ///  - FixedUpdate ticks recovery only on strips currently dirty/recovering and
-    ///    prunes them from the active set once fully recovered → idle cost 0.
-    ///
-    /// Phase 2.1 (current): per-vertex height now ships to the GPU as a
-    /// StructuredBuffer&lt;float&gt; (_SnowHeightBuf) bound per-renderer via MPB; replaces
-    /// the previous V×1 RFloat Texture2D so dense subdivided patches that exceed GPU
-    /// max texture width upload cleanly.
+    /// Drape a slope-filtered snow visual on a mesh-based platform: one child
+    /// "SnowStrip_N" per upward-facing connected component of the host triangulation,
+    /// height driven by an MPB-bound StructuredBuffer&lt;float&gt; (_SnowHeightBuf).
+    /// Pure visual — no collider; the slime walks on the host's own collider. Carve
+    /// routes via SnowFieldRegistry(hostCollider → this) and ticks only activeStrips.
     /// </summary>
     [ExecuteAlways]
     [DisallowMultipleComponent]
@@ -100,9 +78,7 @@ namespace SlimeJumping.Platforms.Snow
         [Tooltip("On the next rebuild, log every Collider2D that the overlap mask treated as 'foreign' (and dropped snow tris against), and draw their world-space bounds as red wire boxes in the scene view. Use to diagnose unexpected gaps — toggle on, click Rebuild Now, look at the console + scene view to find the offender. The console entry is clickable and pings the GameObject in the hierarchy.")]
         public bool debugLogMaskColliders = false;
 
-        // Snapshot of last rebuild's foreign colliders. Populated only when
-        // debugLogMaskColliders is on; consumed by OnDrawGizmos for the red wire cubes.
-        // HashSet to dedupe across patches that share foreign candidates.
+        // Last rebuild's foreign colliders; filled only when debugLogMaskColliders is on.
         [System.NonSerialized] readonly HashSet<Collider2D> debugLastForeignColliders = new HashSet<Collider2D>();
 
         // -- Settings accessors (settings asset wins, otherwise fall back) -------
@@ -116,12 +92,12 @@ namespace SlimeJumping.Platforms.Snow
         const float DefaultSettleRate      = 0f;
         const float DefaultHeightMaxMult   = 1.5f;
 
-        // Background fields cover every upward face: the slope filter opens to the
+        // Background fields cover every upward face: slope filter opens to the
         // extractor's clamp ceiling and single-triangle patches are kept.
         const float BackgroundMaxSnowSlopeDeg = 89.99f;
         const int   BackgroundMinPatchTris    = 1;
-        // Subdivision exists to give carve dips resolution. A background field never
-        // carves, so the extra tris only buy sub-pixel shading aliasing at distance.
+        // Subdivision only buys carve resolution; a background field never carves,
+        // so extra tris would just alias at distance.
         const int   BackgroundSubdivLevels    = 0;
 
         public float MaxSnowSlopeDeg =>
@@ -142,36 +118,28 @@ namespace SlimeJumping.Platforms.Snow
 
         public int SlopeCutTaperHops => settings != null ? settings.slopeCutTaperHops : 0;
 
-        // Cached host mesh hash so the editor watcher can prompt a rebuild when the host
-        // mesh changes (Unity doesn't fire a callback on MeshFilter.sharedMesh swaps).
+        // Unity fires no callback on MeshFilter.sharedMesh swaps, so the editor watcher
+        // polls this hash to know the host mesh changed.
         [HideInInspector] public int lastHostMeshHash;
 
         // Dedupe delayCall storms — slider drags fire OnValidate many times per frame.
         [System.NonSerialized] bool rebuildScheduled;
 
-        // Strips currently dirty (recently carved) or still recovering toward heightRest.
-        // Idle SnowField has zero entries → FixedUpdate is a no-op.
+        // Dirty or still-recovering strips; empty on an idle field → FixedUpdate no-ops.
         [System.NonSerialized] readonly HashSet<SnowStrip> activeStrips = new HashSet<SnowStrip>();
         [System.NonSerialized] List<SnowStrip> tickBuffer;
 
-        // Track the collider we actually registered so OnDisable unregisters the same
-        // key even if hostCollider got reassigned in the inspector mid-session.
+        // Unregister by the key we actually registered — hostCollider can be reassigned
+        // in the inspector mid-session.
         [System.NonSerialized] Collider2D registeredCollider;
 
-        // Runtime clone of SnowSettings.snowMaterial with Phase 3 textures + keywords
-        // applied. Created in RebuildNow, assigned to every child SnowStrip renderer,
-        // disposed in ClearChildren / OnDisable / OnDestroy. The shared snowMaterial
-        // asset itself is never mutated (matches the read-only invariant the rest of
-        // the system already follows for per-strip heightBuf via MPB).
+        // Clone of SnowSettings.snowMaterial; the shared asset is never mutated.
         [System.NonSerialized] Material runtimeMaterial;
 
-        // Meshes this field built. Duplicating the GO copies the SnowStrip children with
-        // their MeshFilter still pointing at the ORIGINAL's runtime mesh, so ClearChildren
-        // must destroy only what it owns — the copy's set is empty (NonSerialized) and it
-        // detaches instead of destroying.
+        // Duplicating the GO copies SnowStrip children whose MeshFilter still points at
+        // the ORIGINAL's mesh, so ClearChildren may only destroy meshes in this set.
         [System.NonSerialized] readonly HashSet<Mesh> ownedMeshes = new HashSet<Mesh>();
 
-        // Property IDs for runtime-material texture pushes.
         static readonly int IdGradientRamp    = Shader.PropertyToID("_GradientRamp");
         static readonly int IdFootprintAlbedo = Shader.PropertyToID("_FootprintAlbedo");
         static readonly int IdFootprintTint   = Shader.PropertyToID("_FootprintTint");
@@ -200,9 +168,8 @@ namespace SlimeJumping.Platforms.Snow
 
         void OnEnable()
         {
-            // Children spawned by RebuildNow use HideFlags.DontSave, so they're gone after
-            // a scene reload / domain reload in edit mode. Re-emit them via the delayCall
-            // path so the snow visual reappears without manual Rebuild Now clicks.
+            // Children are HideFlags.DontSave, so a scene/domain reload wipes them —
+            // re-emit or the snow visual stays gone until a manual Rebuild Now.
             if (!Application.isPlaying) { ScheduleRebuild(); return; }
 
             if (hostCollider != null)
@@ -219,10 +186,8 @@ namespace SlimeJumping.Platforms.Snow
                 SnowFieldRegistry.Unregister(registeredCollider);
                 registeredCollider = null;
             }
-            // Flush any pending uploads before forgetting the strips — otherwise the GPU
-            // texture stays at its last-uploaded value while heightCurrent[] has moved on
-            // from recent recovery ticks. Toggling enable in play mode without a rebuild
-            // would otherwise show stale snow depth until a fresh carve forces another flush.
+            // Flush before forgetting the strips, else the GPU buffer keeps its last
+            // uploaded value and a re-enable shows stale depth until the next carve.
             foreach (var s in activeStrips)
                 if (s != null) s.FlushIfDirty();
             activeStrips.Clear();
@@ -256,11 +221,7 @@ namespace SlimeJumping.Platforms.Snow
         const float DefaultRadiusPerImpact  = 0.05f;
         const float DefaultRadiusMax        = 0.8f;
 
-        /// <summary>Convert a world-space contact + raw impact speed into a per-strip
-        /// gaussian carve. depth/radius mapping comes from SnowSettings so designers
-        /// can retune one asset and every platform that points at it picks up the
-        /// change. Soft impacts (below minImpactSpeed) are rejected. Mapping result
-        /// is fanned out to the generic <see cref="Carve"/>.</summary>
+        /// <summary>Map a world contact + impact speed through SnowSettings into <see cref="Carve"/>; impacts below minImpactSpeed are rejected.</summary>
         public void HandleLanded(Vector2 contactWorld, float impactSpeed)
         {
             float minImpact = settings != null ? settings.minImpactSpeed : DefaultMinImpactSpeed;
@@ -279,11 +240,7 @@ namespace SlimeJumping.Platforms.Snow
         const CarveProfileType DefaultCarveProfile = CarveProfileType.RaisedCosine;
         public CarveProfileType CarveProfile => settings != null ? settings.carveProfile : DefaultCarveProfile;
 
-        /// <summary>Generic carve at a world-space point. Use this for non-landing
-        /// sources (blast radius, projectiles, debug tools) where the caller already
-        /// knows the desired dip depth and radius — bypasses the impact-speed mapping
-        /// in <see cref="HandleLanded"/>. Each child strip AABB-prefilters; only
-        /// strips that actually changed enter the active recovery tick set.</summary>
+        /// <summary>Carve at a world point with explicit depth/radius, bypassing the impact-speed mapping in <see cref="HandleLanded"/>.</summary>
         public void Carve(Vector2 contactWorld, float depth, float radius)
         {
             if (sourceMeshFilter == null) return;
@@ -304,15 +261,7 @@ namespace SlimeJumping.Platforms.Snow
             }
         }
 
-        /// <summary>Crater + raised rim splash at a world-space point. Pairs with
-        /// <see cref="Carve"/> as the explicit-args sibling that also pushes a wider
-        /// surrounding raise (capped at heightRest * <see cref="HeightMaxMultiplier"/>).
-        /// dipRadius controls the inner crater footprint; ringRadius is the outer
-        /// raise footprint and should be larger than dipRadius. The two operations
-        /// share the strip walk and CarveProfile — the raise's center-peaked falloff
-        /// re-fills the crater partially, but as long as dipDepth dominates ringRaise
-        /// the dent stays visible. Off-snow / zero-rest verts are ignored by
-        /// RaiseLocal automatically.</summary>
+        /// <summary>Crater + raised rim at a world point. ringRadius must exceed dipRadius, and dipDepth must dominate ringRaise or the raise's center-peaked falloff refills the crater.</summary>
         public void Splash(Vector2 contactWorld, float dipDepth, float dipRadius, float ringRaise, float ringRadius)
         {
             if (sourceMeshFilter == null) return;
@@ -341,13 +290,8 @@ namespace SlimeJumping.Platforms.Snow
             }
         }
 
-        /// <summary>Mesh-local nearest-vertex hit-test against heightRest > 0. Returns
-        /// the winning strip + vertIdx so callers (RefreshSnowBlend → ApplySnowDrag)
-        /// can read heightCurrent / heightRest in O(1) without re-running the sweep.
-        /// The slope-normal primary gate (surfaceNormal.y ≥ cos(maxSnowSlopeDeg))
-        /// is the caller's responsibility — keeping it out of this method lets the
-        /// caller skip the InverseTransformPoint and the per-strip walk entirely
-        /// when the contact is on a steep face that can't carry snow anyway.</summary>
+        /// <summary>Nearest-vertex hit-test against heightRest &gt; 0. The slope-normal gate
+        /// (surfaceNormal.y ≥ cos(maxSnowSlopeDeg)) is deliberately the caller's job.</summary>
         public bool TryFindFootprintHit(Vector2 worldXY, out SnowStrip strip, out int vertIdx)
         {
             strip = null;
@@ -371,11 +315,7 @@ namespace SlimeJumping.Platforms.Snow
             return false;
         }
 
-        /// <summary>Sample remaining snow coverage at a world-space xy point. 0 = bare
-        /// or outside any patch, 1 = full untouched thickness. Read-only — gameplay's
-        /// single entry point for "is this point on snow, and how much". Walks each
-        /// child strip's AABB pre-filter then nearest-vertex; returns the maximum
-        /// when patches overlap.</summary>
+        /// <summary>Remaining snow coverage at a world xy: 0 = bare or off-patch, 1 = full thickness; max across overlapping patches.</summary>
         public float SampleDepthRatio01(Vector2 worldXY)
         {
             if (sourceMeshFilter == null) return 0f;
@@ -431,8 +371,8 @@ namespace SlimeJumping.Platforms.Snow
                 if (inChildren[i] == null) continue;
                 if (inChildren[i].gameObject == gameObject) continue;
                 if (inChildren[i].sharedMesh == null) continue;
-                // Skip our own spawned SnowStrip_* children — picking one of those as the
-                // host would feed the snow's previous output back in as input next rebuild.
+                // Skip our own SnowStrip_* children, else the previous rebuild's output
+                // becomes the next rebuild's input.
                 if (inChildren[i].GetComponent<SnowStrip>() != null) continue;
                 sourceMeshFilter = inChildren[i];
                 return;
@@ -450,9 +390,8 @@ namespace SlimeJumping.Platforms.Snow
 #endif
         }
 
-        // Walk this GO and parent chain looking for a Collider2D. Mirrors the d2-style
-        // setup where the platform's PolygonCollider2D lives on the parent and the mesh
-        // (with this SnowField) lives on a child.
+        // Walk the parent chain: the platform's collider usually lives on the parent
+        // while the mesh (with this SnowField) lives on a child.
         void ResolveHostCollider()
         {
             if (backgroundOnly) { hostCollider = null; return; }
@@ -479,18 +418,13 @@ namespace SlimeJumping.Platforms.Snow
                 return;
             }
 
-            // Reset foreign-collider snapshot so the gizmo reflects only THIS rebuild's
-            // candidates. Done unconditionally — the cache is cheap and the toggle gates
-            // the population step inside MaskOutOverlap.
             debugLastForeignColliders.Clear();
 
             var mesh = sourceMeshFilter.sharedMesh;
             var patches = SnowTopSurfaceExtractor.Extract(mesh, MaxSnowSlopeDeg, detectSlopeCut: SlopeCutTaperHops > 0);
 
-            // Mask requires hostCollider to recognise its OWN collider as host —
-            // otherwise the host's polygon hits OverlapPoint at every interior vert
-            // and the entire patch gets dropped. Warn + skip masking instead of
-            // silently producing nearly-empty snow.
+            // Without hostCollider the host's own polygon hits OverlapPoint at every
+            // interior vert and the whole patch drops — warn and skip the mask instead.
             bool maskActive = excludeOverlapWithOtherPlatforms && !backgroundOnly;
             if (maskActive && hostCollider == null)
             {
@@ -505,8 +439,6 @@ namespace SlimeJumping.Platforms.Snow
             ClearChildren();
             activeStrips.Clear();
 
-            // Rebuild the runtime material clone so child renderers below pick it up
-            // with current Phase 3 textures + keywords from SnowSettings applied.
             BuildRuntimeMaterial();
 
             int emitted = 0;
@@ -515,18 +447,16 @@ namespace SlimeJumping.Platforms.Snow
                 var patch = patches[s];
                 if (patch.verts == null || patch.verts.Length < 3) continue;
                 int triCount = patch.tris != null ? patch.tris.Length / 3 : 0;
-                // Min-tri filter on ORIGINAL host triangulation, not the subdivided result —
-                // otherwise 1-tri noise patches get inflated past the threshold.
+                // Filter on the ORIGINAL triangulation, not the subdivided result, else
+                // 1-tri noise patches inflate past the threshold.
                 if (triCount < MinPatchTris) continue;
 
                 int subdiv = SubdivLevels;
                 if (subdiv > 0)
                     patch = SnowPatchSubdivider.Subdivide(patch, subdiv);
 
-                // Drop tris hidden behind other platforms so overlapping meshes don't
-                // z-fight. Runs after Subdivide so the mask works at the same vertex
-                // resolution the snow mesh will be emitted at; runs before BFS taper
-                // so the new boundary verts get the same edge ramp as the original rim.
+                // Order matters: after Subdivide so the mask runs at emit resolution,
+                // before the BFS taper so new boundary verts get the same edge ramp.
                 if (maskActive)
                 {
                     patch = MaskOutOverlap(patch, sourceMeshFilter.transform);
@@ -557,14 +487,8 @@ namespace SlimeJumping.Platforms.Snow
                     }
                 }
 
-                // Compute the per-vertex height ramp as the MIN of two BFS passes:
-                //   1. edgeTaperHops BFS seeded by ALL boundary verts
-                //   2. slopeCutTaperHops BFS seeded ONLY by slope-cut boundary verts
-                // Each pass yields a 0..1 ramp via SmoothStep(hop / hopBudget). Verts
-                // unreached by a pass score 1.0 (no taper from that source). Final height
-                // = restThick * min(rampMesh, rampSlopeCut) so whichever taper is more
-                // restrictive wins, allowing slope-cut endings to fade further inland
-                // than mesh-edge boundaries (or in isolation, when edgeTaperHops=0).
+                // Height ramp = min of two BFS passes (all-boundary seeds, slope-cut-only
+                // seeds); verts unreached by a pass score 1.0 so the stricter taper wins.
 
                 static int[] BFSHops(HashSet<int>[] adjGraph, int vertCount, IEnumerable<int> seeds)
                 {
@@ -601,9 +525,8 @@ namespace SlimeJumping.Platforms.Snow
                 }
                 if (runSlopeCutBFS && adj != null)
                 {
-                    // Seed from boundary verts that are slope-cut adjacent. Filter
-                    // by current boundary so verts whose slope-cut edges were dropped
-                    // by Mask don't seed phantom taper holes inside the patch.
+                    // Filter seeds by the CURRENT boundary, else verts whose slope-cut
+                    // edges the mask dropped seed phantom taper holes inside the patch.
                     var boundarySet = new HashSet<int>();
                     for (int e = 0; e < patch.boundaryEdges.Length; e++) boundarySet.Add(patch.boundaryEdges[e]);
                     var seeds = new List<int>();
@@ -630,21 +553,12 @@ namespace SlimeJumping.Platforms.Snow
                     heights[v] = restThick * Mathf.SmoothStep(0f, 1f, ramp);
                 }
 
-                // Per-vertex slope-based height modulation. Replaces the previous
-                // hard-coded smoothstep — designer now controls the angle→height
-                // mapping via SnowSettings.slopeToHeightScale. Default curve fades
-                // from full at 18° to 0 at 45°, mimicking the old behaviour.
-                //
-                // The face-level slope filter at SnowTopSurfaceExtractor cuts tris
-                // whose face normal exceeds maxSnowSlopeDeg, but a vertex shared by
-                // several borderline tris ends up with an averaged normal that can
-                // read a non-trivial angle even when the surface is visually flat.
-                // The user is aware of this and accepts it; mitigate by flattening
-                // the low-angle portion of the curve if it bleeds onto level ground.
+                // Per-vertex slope→height via SnowSettings.slopeToHeightScale. Verts shared
+                // by borderline tris carry an averaged normal that reads a non-trivial
+                // angle on flat ground — flatten the curve's low end if snow thins there.
                 {
-                    // Background fields skip the curve: their slope filter is wide open, so
-                    // a curve that zeroes past ~57 deg would emit zero-thickness snow that
-                    // sits coplanar with the host and z-fights.
+                    // Background fields skip the curve: their slope filter is wide open,
+                    // so a zeroing curve emits coplanar snow that z-fights the host.
                     var slopeCurve = backgroundOnly ? null
                         : settings != null ? settings.slopeToHeightScale : null;
                     if (slopeCurve != null && slopeCurve.length > 0)
@@ -662,17 +576,15 @@ namespace SlimeJumping.Platforms.Snow
 
                 var go = new GameObject($"SnowStrip_{emitted}");
                 emitted++;
-                // Follow the host's layer so background snow stays on the background
-                // camera instead of being drawn over it by the overlay pass.
+                // Follow the host's layer, else background snow lands on the overlay
+                // camera and draws over the background.
                 go.layer = gameObject.layer;
                 go.transform.SetParent(transform, worldPositionStays: false);
                 go.transform.localPosition = Vector3.zero;
                 go.transform.localRotation = Quaternion.identity;
                 go.transform.localScale = Vector3.one;
-                // DontSave (not just DontSaveInBuild): keep these out of the edit-mode scene
-                // file too. Their meshes are runtime-built and would deserialize as null
-                // after a reload, leaving empty SnowStrip GOs in the hierarchy. OnEnable
-                // re-emits them via ScheduleRebuild whenever the scene/domain reloads.
+                // DontSave, not DontSaveInBuild: their meshes are runtime-built and
+                // deserialize as null, leaving empty SnowStrip GOs in a saved scene.
                 go.hideFlags = HideFlags.DontSave;
 
                 var mf = go.AddComponent<MeshFilter>();
@@ -684,9 +596,7 @@ namespace SlimeJumping.Platforms.Snow
                 ss.vertNormals = patch.vertNormals;
                 ss.tris = patch.tris;
                 ss.boundaryEdges = patch.boundaryEdges;
-                // heights is the per-vertex rest profile (taper-shaped). Phase 2 starts
-                // heightCurrent at the rest profile (fresh, untouched snow); carve will
-                // mutate heightCurrent only.
+                // Carve mutates heightCurrent only; heightRest stays the taper profile.
                 ss.heightRest = heights;
                 ss.heightCurrent = (float[])heights.Clone();
                 ss.host = transform;
@@ -704,11 +614,8 @@ namespace SlimeJumping.Platforms.Snow
             lastHostMeshHash = ComputeHostMeshHash(mesh);
         }
 
-        // Z-aware variant: when useZ is true, a foreign hit only counts if the
-        // sample's world Z is within zWindow of the foreign's pre-cached world Z.
-        // Lets a single SnowField on a Z-deep mesh keep snow on its back-Z slice
-        // (deep in the void behind foreground objects) while still masking the
-        // front-Z slice that shares Z with foreground colliders.
+        // useZ: a hit only counts within zWindow of the foreign's world Z, so a Z-deep
+        // mesh keeps snow on its back slice while its front slice still masks.
         static bool HitsAnyForeign(Vector3 worldPos, List<Collider2D> foreign, float[] foreignZs, bool useZ, float zWindow)
         {
             Vector2 xy = new Vector2(worldPos.x, worldPos.y);
@@ -722,11 +629,8 @@ namespace SlimeJumping.Platforms.Snow
             return false;
         }
 
-        // Membership test against the manual-keep override list. Used both during
-        // candidate filtering (so our own override colliders never act as foreign
-        // maskers, even if the user forgot isTrigger=true) and during the per-tri
-        // restore pass (so a seam tri the foreign mask dropped gets resurrected
-        // when it overlaps a keep collider).
+        // Also used during candidate filtering so an override collider never acts as a
+        // foreign masker, even when the user forgot isTrigger=true.
         bool IsManualKeep(Collider2D c)
         {
             if (manualKeepColliders == null) return false;
@@ -735,13 +639,8 @@ namespace SlimeJumping.Platforms.Snow
             return false;
         }
 
-        // Tri-vs-keep-collider overlap. Replaces the old 4-sample (3 verts + centroid)
-        // OverlapPoint check, which only fired when one of those 4 specific points was
-        // inside the collider — small ones between sample points restored nothing,
-        // partially-covered tris restored either fully or not at all → blocky "grid"
-        // pattern visible in the result. The proper overlap test fires whenever the
-        // collider and triangle actually share any area. Output is still tri-granular —
-        // bump SnowSettings.subdivLevels for finer boundaries.
+        // Area overlap, not 4-sample OverlapPoint: sampling missed keep colliders that
+        // sat between the 4 points and restored tris all-or-nothing (blocky grid).
         bool TriOverlapsAnyKeep(Vector2 a, Vector2 b, Vector2 c, ref Vector2[] worldPathBuf)
         {
             if (manualKeepColliders == null) return false;
@@ -756,19 +655,14 @@ namespace SlimeJumping.Platforms.Snow
 
         static bool TriOverlapsCollider(Vector2 a, Vector2 b, Vector2 c, Collider2D col, ref Vector2[] worldPathBuf)
         {
-            // Cheap path: any tri vert inside the collider (Unity's optimized PIP works
-            // for every Collider2D subtype, so this branch covers Circle/Capsule/Edge/
-            // Composite "for free" without a type-specific edge extraction).
+            // Cheap path: OverlapPoint works for every Collider2D subtype, so this
+            // covers Circle/Capsule/Edge/Composite without type-specific extraction.
             if (col.OverlapPoint(a)) return true;
             if (col.OverlapPoint(b)) return true;
             if (col.OverlapPoint(c)) return true;
 
-            // Type-specific edge extraction for the proper overlap test (poly vert in tri
-            // + edge-edge cross). Supported: PolygonCollider2D, BoxCollider2D. Other
-            // types fall back to the cheap path only — partial overlaps where neither
-            // a tri vert nor a collider vert is inside the other (e.g. a small circle
-            // crossing a tri edge between vertices) won't restore. Acceptable trade-off
-            // for now; bump subdivLevels or use a Polygon/Box if you hit that case.
+            // Only Polygon/Box get the exact test; other types keep the cheap path, so
+            // a partial overlap with no vertex inside the other shape won't restore.
             if (col is PolygonCollider2D poly)
             {
                 var polyT = poly.transform;
@@ -792,9 +686,8 @@ namespace SlimeJumping.Platforms.Snow
 
             if (col is BoxCollider2D box)
             {
-                // Build world-space corners from local size + offset so a rotated box
-                // is handled correctly. Box.bounds (axis-aligned in world) would lose
-                // orientation if the GO is rotated.
+                // Corners from local size + offset: box.bounds is world-axis-aligned and
+                // loses orientation on a rotated GO.
                 var boxT = box.transform;
                 Vector2 half = box.size * 0.5f;
                 Vector2 ofs = box.offset;
@@ -842,9 +735,8 @@ namespace SlimeJumping.Platforms.Snow
             return !(hasNeg && hasPos);
         }
 
-        // Strict (non-collinear, non-endpoint-sharing) segment intersection. Collinear
-        // overlaps are rare in practice and would already be caught by the
-        // PointInTri / OverlapPoint checks above.
+        // Strict (non-collinear, non-endpoint-sharing) segment intersection; collinear
+        // overlaps are left to the PointInTri / OverlapPoint checks above.
         static bool SegmentsIntersect(Vector2 p1, Vector2 p2, Vector2 p3, Vector2 p4)
         {
             Vector2 r = p2 - p1;
@@ -859,23 +751,16 @@ namespace SlimeJumping.Platforms.Snow
 
         // -- GeometricClipping mask path (Sutherland-Hodgman) --
 
-        // Clip-polygon vertex during SH passes. worldXY drives the clip math; the (ba,
-        // bb, bc) barycentric coords reference the parent tri's three corners so we
-        // can interpolate mesh-local position + normal cleanly after all clipping is
-        // done. Lerping bary across multiple clip steps yields a true convex
-        // combination of the original three corners — same as a barycentric sample.
+        // worldXY drives the clip math; (ba, bb, bc) carry the parent tri's barycentric
+        // coords so mesh-local pos + normal interpolate once, after all clipping.
         struct ClipVert
         {
             public Vector2 worldXY;
             public float ba, bb, bc;
         }
 
-        // GeometricClipping mode entry point. For each tri: (1) preempt clipping if it
-        // overlaps a manual-keep collider; (2) for each foreign collider that survives
-        // the Z filter, either clip via SH or fall back per-pair to sample-based for
-        // unsupported foreign types and the foreign-fully-inside-tri rare case; (3)
-        // fan-triangulate the kept polygon. Returns the original patch unchanged if no
-        // tri was actually clipped (fast path when nothing in foreign overlaps).
+        // Per tri: keep-collider preempt → SH-subtract each foreign (sample-based per pair
+        // when unsupported) → fan-triangulate. Returns patch unchanged if nothing clipped.
         SnowTopSurfaceExtractor.TopPatch ApplyClippingMask(
             SnowTopSurfaceExtractor.TopPatch patch,
             Transform meshT,
@@ -895,10 +780,9 @@ namespace SlimeJumping.Platforms.Snow
             var outSlopeCut = hasSlopeCut ? new List<bool>(origV) : null;
             var outTris     = new List<int>(patch.tris.Length);
 
-            // Position-quantized dedup: adjacent tris that emit a clip vert at the same
-            // shared edge (same intersection with foreign) MUST collapse to one index,
-            // otherwise the boundary regen below sees the seam as two separate boundaries
-            // and the BFS taper seeds spurious rims through the patch interior.
+            // Adjacent tris emitting a clip vert at the same shared edge MUST collapse to
+            // one index, else boundary regen sees a seam and the BFS taper seeds spurious
+            // rims through the patch interior.
             const float quant = 1e-4f;
             var posToIdx = new Dictionary<long, int>(origV * 2);
 
@@ -917,12 +801,9 @@ namespace SlimeJumping.Platforms.Snow
                 return newIdx;
             }
 
-            // Per-tri buffers (allocated lazily inside the loop to avoid leaking state).
-            // Reusable foreign world-space vert buffer.
             Vector2[] foreignWorldBuf = null;
-            // Reused per-foreign decomposition output. Cleared+filled by
-            // TryDecomposeForeignPolygon. Each element is a Vector2[] (typically a triangle)
-            // representing one convex piece of the foreign in world XY.
+            // One convex world-XY piece of the foreign per element, filled by
+            // TryDecomposeForeignPolygon.
             var decomposedPieces = new List<Vector2[]>(16);
 
             bool anyClipped = false;
@@ -960,15 +841,7 @@ namespace SlimeJumping.Platforms.Snow
                 float triMinY = Mathf.Min(wa.y, Mathf.Min(wb.y, wc.y));
                 float triMaxY = Mathf.Max(wa.y, Mathf.Max(wb.y, wc.y));
 
-                // Polygon-difference algorithm. Maintain `pieces` = the kept-so-far convex
-                // pieces of the tri after subtracting all foreigns processed so far. Each
-                // subsequent foreign is subtracted from each piece independently.
-                //
-                // Subtraction primitive: for each foreign edge (CCW), split current by
-                // the edge into (inside, outside). Outside is final → goes to nextPieces.
-                // Inside continues to next edge. After all edges, the remaining "inside
-                // every edge" piece is the part of current that's inside the foreign,
-                // which we discard. This produces tri − foreign as a list of convex pieces.
+                // Polygon difference: `pieces` = convex fragments of the tri kept so far.
                 var pieces = new List<List<ClipVert>>();
                 var initial = new List<ClipVert>(3);
                 initial.Add(new ClipVert { worldXY = new Vector2(wa.x, wa.y), ba = 1f, bb = 0f, bc = 0f });
@@ -987,15 +860,12 @@ namespace SlimeJumping.Platforms.Snow
                     // Z filter — same window as SampleBased, applied per pair via centroid Z.
                     if (useZ && Mathf.Abs(wcen.z - foreignZs[fi]) > zWin) continue;
 
-                    // Foreign AABB pre-filter: skip foreigns whose world-AABB doesn't
-                    // overlap the tri's AABB. Most scene-wide foreigns are far away, so
-                    // this rejects them with cheap math. If every foreign is rejected
-                    // here, triClipped stays false → emit original tri unchanged.
+                    // AABB pre-filter; if every foreign is rejected here triClipped stays
+                    // false and the original tri is emitted unchanged.
                     var fb = col.bounds;
                     if (fb.max.x < triMinX || fb.min.x > triMaxX ||
                         fb.max.y < triMinY || fb.min.y > triMaxY) continue;
 
-                    // Get convex CCW world-space verts for this foreign, or 0 if unsupported.
                     int foreignN = TryGetConvexForeignWorldVerts(col, ref foreignWorldBuf);
                     if (foreignN >= 3)
                     {
@@ -1005,11 +875,8 @@ namespace SlimeJumping.Platforms.Snow
                         continue;
                     }
 
-                    // Convex fast-path rejected (concave / multi-path PolygonCollider2D, or
-                    // Edge/Composite). Try decomposition: split the foreign into convex
-                    // pieces (typically triangles via ear-clipping) and subtract each as
-                    // its own convex polygon. (foreign − ∪ pieces) ⇔ ((tri − piece₁) − …)
-                    // by union-distribution of subtraction over disjoint pieces.
+                    // Convex fast-path rejected (concave / multi-path polygon, Edge,
+                    // Composite): decompose into convex pieces and subtract each.
                     int pieceCount = TryDecomposeForeignPolygon(col, decomposedPieces, ref foreignWorldBuf);
                     if (pieceCount > 0)
                     {
@@ -1024,9 +891,7 @@ namespace SlimeJumping.Platforms.Snow
                         continue;
                     }
 
-                    // Decomposition also failed: sample-based fallback for THIS pair only.
-                    // Preserves SampleBased mode's cascade behaviour on foregrounds that
-                    // neither the convex fast-path nor the decomposer can handle.
+                    // Decomposition failed too: sample-based fallback for THIS pair only.
                     if (HitsAnyForeignOne(col, wa, foreignZs, fi, useZ, zWin) ||
                         HitsAnyForeignOne(col, wb, foreignZs, fi, useZ, zWin) ||
                         HitsAnyForeignOne(col, wc, foreignZs, fi, useZ, zWin) ||
@@ -1035,7 +900,7 @@ namespace SlimeJumping.Platforms.Snow
                         triDropped = true;
                         break;
                     }
-                    triClipped = true; // sample-based fallback ran; mark as processed
+                    triClipped = true;
                 }
 
                 if (triDropped) continue;
@@ -1043,8 +908,7 @@ namespace SlimeJumping.Platforms.Snow
 
                 if (!triClipped)
                 {
-                    // No clipping ran for this tri (all foreigns Z-filtered or AABB-rejected) —
-                    // emit the tri unchanged using its three original corners.
+                    // Every foreign was Z-filtered or AABB-rejected: emit unchanged.
                     int ka = Canon(va, na, sca);
                     int kb = Canon(vb, nb, scb);
                     int kc = Canon(vc, nc, scc);
@@ -1052,10 +916,8 @@ namespace SlimeJumping.Platforms.Snow
                     continue;
                 }
 
-                // Detect the "no actual cut happened" case (foreign passed AABB but didn't
-                // intersect the tri geometrically): pieces is exactly [originalTri]. In
-                // that case emit unchanged so the output is byte-identical to SampleBased
-                // for tris that no foreign actually clips.
+                // Foreign passed AABB but didn't actually cut: pieces is [originalTri],
+                // so emit the original corners rather than re-deriving them.
                 if (pieces.Count == 1 && pieces[0].Count == 3 &&
                     pieces[0][0].ba > 0.999f && pieces[0][1].bb > 0.999f && pieces[0][2].bc > 0.999f)
                 {
@@ -1133,10 +995,8 @@ namespace SlimeJumping.Platforms.Snow
             };
         }
 
-        // Emit a single clip-vert: barycentric-interpolate mesh-local pos + normal +
-        // slope-cut flag, then dedup via Canon. Only original tri corners (bary == 1
-        // on one axis) inherit their slopeCut flag; new clip verts on the foreign
-        // boundary set slopeCut = false (mask cuts are not slope cuts).
+        // Barycentric-interpolate pos + normal, then dedup via Canon. Only original tri
+        // corners inherit slopeCut — a mask cut is not a slope cut.
         static int EmitClipVert(
             ClipVert cv,
             Vector3 va, Vector3 vb, Vector3 vc,
@@ -1153,13 +1013,8 @@ namespace SlimeJumping.Platforms.Snow
             return canon(ml, nrm, sc);
         }
 
-        // Polygon-difference primitive: split the input polygon by a directed edge
-        // (edgeStart → edgeEnd) into the "inside" half-plane (LEFT of edge for CCW
-        // clip polygon) and the "outside" half (RIGHT). Crossing edges emit an
-        // intersection point added to BOTH outputs. Both halves are convex if input
-        // was convex (a half-plane intersected with a convex polygon stays convex).
-        // Used by ApplyClippingMask to compute T - foreign as the union of "outside"
-        // pieces accumulated across all foreign edges.
+        // Split the polygon by a directed edge into inside (LEFT, for a CCW clip polygon)
+        // and outside (RIGHT); crossings emit the intersection point into BOTH halves.
         static void SplitPolygonByEdge(List<ClipVert> input, Vector2 edgeStart, Vector2 edgeEnd,
                                        List<ClipVert> insideOut, List<ClipVert> outsideOut)
         {
@@ -1200,11 +1055,8 @@ namespace SlimeJumping.Platforms.Snow
             }
         }
 
-        // True iff p is on the OUTSIDE (right) side of the CCW-oriented edge.
-        // For a CCW polygon: cross(p - edgeStart, edgeDir) > 0 ⇔ p is on the RIGHT
-        // of the edge ⇔ exterior of the polygon. (The earlier `< 0` was wrong — it
-        // returns LEFT/interior; that's the bug that made GeometricClipping compute
-        // `tri ∩ foreign` instead of `tri − foreign`.)
+        // For a CCW polygon, cross > 0 is RIGHT of the edge = exterior. Flipping the sign
+        // silently turns the whole mask into `tri ∩ foreign`.
         static bool IsOutsideEdge(Vector2 p, Vector2 edgeStart, Vector2 edgeDir)
         {
             Vector2 d = p - edgeStart;
@@ -1212,10 +1064,8 @@ namespace SlimeJumping.Platforms.Snow
             return cross > 0f;
         }
 
-        // Intersection of segment (prev, curr) with the line through (edgeStart, +edgeDir).
-        // Bary coords lerp at the same t — this chains correctly through multi-edge clips
-        // because each lerp is a convex combination, and the composition of convex
-        // combinations is itself a convex combination of the originals.
+        // Intersection of segment (prev, curr) with the line through (edgeStart, +edgeDir);
+        // bary lerps at the same t, which stays valid through multi-edge clips.
         static ClipVert EdgeEdgeIntersect(ClipVert prev, ClipVert curr, Vector2 edgeStart, Vector2 edgeDir)
         {
             Vector2 p1 = prev.worldXY, p2 = curr.worldXY;
@@ -1233,14 +1083,8 @@ namespace SlimeJumping.Platforms.Snow
             };
         }
 
-        // Subtract one convex CCW piece from the running pieces list.
-        // pieces (snow-tri fragments after prior subtractions) is consumed; result
-        // is the new pieces collection = (input pieces − piece). Each input piece
-        // is split per piece-edge into outside-half (kept) and inside-half (continues
-        // to next edge); after all edges, leftover inside is the part covered by
-        // piece → discard. This is the same per-edge SH loop the original
-        // ApplyClippingMask ran inline; extracted so it can be reused once per
-        // decomposed convex piece.
+        // Returns (input pieces − piece): each piece is split per piece-edge, outside-half
+        // kept, inside-half carried on, and the final inside-all leftover discarded.
         static List<List<ClipVert>> SubtractConvexPieceFromPieces(
             List<List<ClipVert>> pieces, Vector2[] pieceVerts, int pieceN)
         {
@@ -1266,14 +1110,9 @@ namespace SlimeJumping.Platforms.Snow
             return nextPieces;
         }
 
-        // Decompose a foreign collider into a list of convex CCW pieces in world XY.
-        // Used as a slow-path when TryGetConvexForeignWorldVerts rejects the collider
-        // (concave PolygonCollider2D, multi-path PolygonCollider2D). On success, the
-        // pieces tile the foreign with disjoint convex polygons (typically triangles
-        // from ear-clipping). Returns piece count, 0 = decomposition not applicable
-        // or self-check failed → caller falls back to sample-based.
-        //
-        // Reuses scratch as a path extraction buffer; expand on demand.
+        // Slow path when TryGetConvexForeignWorldVerts rejects the collider: tile the
+        // foreign with disjoint convex CCW pieces in world XY. Returns piece count;
+        // 0 = not applicable or self-check failed → caller falls back to sample-based.
         static int TryDecomposeForeignPolygon(
             Collider2D col, List<Vector2[]> piecesOut, ref Vector2[] scratch)
         {
@@ -1285,8 +1124,7 @@ namespace SlimeJumping.Platforms.Snow
             var polyT = poly.transform;
             Vector2 ofs = poly.offset;
 
-            // Extract every path to its own world-XY array. Validate simplicity per
-            // path. Single-path uses scratch; multi-path allocates per-path.
+            // Every path to its own world-XY array, validated simple.
             Vector2[][] paths;
             if (pathCount == 1)
             {
@@ -1325,9 +1163,8 @@ namespace SlimeJumping.Platforms.Snow
                 }
             }
 
-            // Nesting depth: # of OTHER paths whose interior contains this path's
-            // first vertex. Even depth = solid (outer), odd depth = hole. Assumes
-            // paths don't cross (true for MeshToCollider2DGenerator output).
+            // Even depth = solid, odd = hole. Assumes paths never cross (true for
+            // MeshToCollider2DGenerator output).
             var depth = new int[pathCount];
             if (pathCount > 1)
             {
@@ -1343,8 +1180,6 @@ namespace SlimeJumping.Platforms.Snow
                 }
             }
 
-            // Per-outer process: normalise winding, gather direct holes, bridge,
-            // ear-clip, accumulate. Track expected area for end-of-function check.
             float expectedArea = 0f;
             var holeBuf = new List<Vector2[]>(4);
             var merged = new List<Vector2>();
@@ -1385,7 +1220,6 @@ namespace SlimeJumping.Platforms.Snow
                     }
                 }
 
-                // Build merged polygon: outer first, then each hole spliced via bridge.
                 merged.Clear();
                 for (int v = 0; v < outerN; v++) merged.Add(outer[v]);
                 for (int h = 0; h < holeBuf.Count; h++)
@@ -1397,7 +1231,6 @@ namespace SlimeJumping.Platforms.Snow
                     }
                 }
 
-                // Convert merged List → Vector2[] for ear-clip API.
                 int mergedN = merged.Count;
                 var mergedArr = new Vector2[mergedN];
                 for (int k = 0; k < mergedN; k++) mergedArr[k] = merged[k];
@@ -1427,18 +1260,9 @@ namespace SlimeJumping.Platforms.Snow
             return piecesOut.Count;
         }
 
-        // Splice a hole (CW) into an outer (CCW) at a chosen bridge vertex, producing
-        // a single weakly simple CCW polygon. The merged sequence inserts:
-        //     outer[..bridgeIdx], M (hole rightmost), hole[mIdx+1..mIdx-1], M', V'
-        // after position bridgeIdx, where M' and V' duplicate M and outer[bridgeIdx]
-        // to close the bridge. Ear-clipping handles the duplicate verts via its
-        // collinear-cleanup fallback.
-        //
-        // Bridge vertex selection: rightmost-vert-of-hole + closest +x ray-cast hit
-        // on outer. Picks the higher-x endpoint of the hit edge as bridge target.
-        // Skips Eberly's full visibility refinement — for foreign collider shapes
-        // the simple heuristic suffices in practice; on failure caller falls back
-        // to sample-based.
+        // Splice a CW hole into a CCW outer → one weakly simple CCW polygon; the duplicated
+        // bridge verts are cleared by ear-clipping's collinear fallback. Bridge pick skips
+        // Eberly's visibility refinement (rightmost hole vert + closest +x hit).
         static bool BridgeHoleIntoOuter(List<Vector2> outer, Vector2[] hole)
         {
             int holeN = hole.Length;
@@ -1478,10 +1302,7 @@ namespace SlimeJumping.Platforms.Snow
 
             if (bridgeOuterIdx < 0) return false;
 
-            // Splice after bridgeOuterIdx:
-            //   ..., outer[bridgeOuterIdx], M, hole[mIdx+1], hole[mIdx+2], ...,
-            //        hole[mIdx-1], hole[mIdx]=M, outer[bridgeOuterIdx], ...
-            // (M and outer[bridgeOuterIdx] each appear twice — bridge edges.)
+            // M and outer[bridgeOuterIdx] each appear twice — those are the bridge edges.
             Vector2 V = outer[bridgeOuterIdx];
             var insertion = new List<Vector2>(holeN + 2);
             insertion.Add(M);
@@ -1492,10 +1313,8 @@ namespace SlimeJumping.Platforms.Snow
             return true;
         }
 
-        // Extract a convex CCW polygon (in world XY) from the foreign collider.
-        // Returns the vertex count, or 0 if unsupported / non-convex / multi-path —
-        // the caller falls back to sample-based for that pair, preserving current
-        // behavior on collider types this clipper doesn't handle precisely.
+        // Convex CCW world-XY polygon for the foreign collider; returns 0 for
+        // unsupported / non-convex / multi-path so the caller uses sample-based.
         static int TryGetConvexForeignWorldVerts(Collider2D col, ref Vector2[] worldBuf)
         {
             if (col is BoxCollider2D box)
@@ -1534,12 +1353,9 @@ namespace SlimeJumping.Platforms.Snow
                     Vector3 pw = polyT.TransformPoint(new Vector3(path[i].x + ofs.x, path[i].y + ofs.y, 0f));
                     worldBuf[i] = new Vector2(pw.x, pw.y);
                 }
-                // Strip near-collinear intermediate verts before convexity check.
-                // MeshToCollider2DGenerator emits many evenly-spaced verts along
-                // visually-straight edges; feeding them all into SH per-edge
-                // subtraction accumulates float drift that nibbles ~1 sub-tri off
-                // the snow rim at the foreign boundary. Simplifying to true corners
-                // first keeps the SH input geometrically equivalent but tight.
+                // MeshToCollider2DGenerator's evenly-spaced verts on straight edges each
+                // become an SH half-plane; the accumulated float drift nibbles ~1 sub-tri
+                // off the snow rim, so collapse them to true corners first.
                 n = SimplifyCollinear(worldBuf, n, 1e-4f);
                 if (n < 3) return 0;
                 if (!IsConvex(worldBuf, n)) return 0;
@@ -1555,9 +1371,8 @@ namespace SlimeJumping.Platforms.Snow
 
             if (col is CircleCollider2D circle)
             {
-                // 24-gon in local space, then TransformPoint each. Under uniform scale
-                // matches OverlapPoint's "circle of radius * max_scale". Non-uniform scale
-                // yields an ellipse approximation — accepted as edge case.
+                // 24-gon: matches OverlapPoint under uniform scale; non-uniform scale
+                // yields an ellipse approximation, accepted.
                 const int N = 24;
                 var cT = circle.transform;
                 Vector2 ofs = circle.offset;
@@ -1582,8 +1397,7 @@ namespace SlimeJumping.Platforms.Snow
 
             if (col is CapsuleCollider2D capsule)
             {
-                // Capsule = two semicircles + two straight edges. 12 segments per cap.
-                // direction picks which axis is "long". Local space, TransformPoint each.
+                // Two semicircles + two straight edges, 12 segments per cap.
                 const int CAP_SEG = 12;
                 var cT = capsule.transform;
                 Vector2 ofs = capsule.offset;
@@ -1594,14 +1408,10 @@ namespace SlimeJumping.Platforms.Snow
                 if (vertical) { r = sz.x * 0.5f; L = Mathf.Max(0f, sz.y - sz.x); }
                 else          { r = sz.y * 0.5f; L = Mathf.Max(0f, sz.x - sz.y); }
 
-                // Vert layout (vertical, CCW): right-bottom corner, right-top corner,
-                // top semicircle interior+end (CAP_SEG verts at θ=π/12..π), left-bottom
-                // corner, bottom semicircle interior (CAP_SEG-1 verts at θ=π+π/12..π+11π/12).
-                // Total = 2 + CAP_SEG + 1 + (CAP_SEG - 1) = 2*CAP_SEG + 2.
+                // 2 corners + CAP_SEG top-arc + 1 corner + (CAP_SEG-1) bottom-arc verts.
                 int N = 2 * CAP_SEG + 2;
                 if (worldBuf == null || worldBuf.Length < N) worldBuf = new Vector2[N];
-                // Local alias: C# disallows capturing `ref` parameters in nested
-                // closures, so the emit lambda below uses this non-ref reference.
+                // C# forbids capturing a `ref` parameter in a lambda, hence the alias.
                 var buf = worldBuf;
 
                 // Build in long-axis-vertical local frame, then rotate 90° if horizontal.
@@ -1623,8 +1433,7 @@ namespace SlimeJumping.Platforms.Snow
                     float theta = (i / (float)CAP_SEG) * Mathf.PI;
                     Emit(r * Mathf.Cos(theta), halfL + r * Mathf.Sin(theta));
                 }
-                // last top-arc vert was (-r, halfL) — the left-top corner; left edge goes
-                // straight down to left-bottom.
+                // last top-arc vert is the left-top corner; left edge runs straight down.
                 Emit(-r, -halfL);                                 // left-bottom (= bottom arc θ=π)
                 for (int i = 1; i < CAP_SEG; i++)                // bottom arc θ=π+π/CAP_SEG..π+11π/12
                 {
@@ -1663,8 +1472,7 @@ namespace SlimeJumping.Platforms.Snow
             return true;
         }
 
-        // Shoelace signed-area test. Positive area = CCW (in standard math orientation
-        // with +Y up, which matches Unity world XY).
+        // Shoelace test: positive area = CCW with +Y up, matching Unity world XY.
         static bool IsCCW(Vector2[] verts, int n)
         {
             float area2 = 0f;
@@ -1677,8 +1485,7 @@ namespace SlimeJumping.Platforms.Snow
             return area2 > 0f;
         }
 
-        // Signed double-area of a simple polygon. Caller can take Mathf.Abs(.) * 0.5f
-        // for the area magnitude. Sign is positive for CCW, negative for CW.
+        // Signed DOUBLE area; take Mathf.Abs(.) * 0.5f for the magnitude.
         static float PolygonSignedArea2(Vector2[] verts, int n)
         {
             float a = 0f;
@@ -1691,25 +1498,9 @@ namespace SlimeJumping.Platforms.Snow
             return a;
         }
 
-        // Remove vertices that lie within `epsilon` perpendicular distance of the
-        // line through their immediate neighbours (= near-collinear intermediate
-        // verts). Iterates until no more removals so a long collinear run collapses
-        // fully. Preserves CCW winding and exact polygon area (collinear verts
-        // contribute zero to the shoelace integral). In-place: surviving verts are
-        // packed at verts[0..return-1].
-        //
-        // Use case: MeshToCollider2DGenerator produces PolygonCollider2D paths with
-        // many evenly-sampled verts along edges that are visually straight. When the
-        // SH per-edge subtraction loop iterates each of these as a separate
-        // half-plane, slightly different normals (from float noise / actual tilt)
-        // cause precision drift at the snow-tri rim. Simplifying to true corners
-        // first keeps the SH input geometrically equivalent but algorithmically
-        // tight.
-        //
-        // epsilon = 1e-4f (= 0.1mm in world units) is well below any genuine corner
-        // perpendicular-distance (which scales with edge length, typically ≥ 0.05).
-        // Safe margin so this never removes a real corner — only float-noise
-        // intermediate verts.
+        // Drop near-collinear verts in place (survivors packed at verts[0..return-1]);
+        // winding and area are preserved. epsilon is a perpendicular distance — 1e-4
+        // (0.1mm) sits far below any genuine corner, which scales with edge length.
         static int SimplifyCollinear(Vector2[] verts, int n, float epsilon)
         {
             if (n < 4) return n;
@@ -1749,8 +1540,7 @@ namespace SlimeJumping.Platforms.Snow
 
             if (remaining == n) return n;
 
-            // Pack survivors via linked-list walk (preserves order). Temp buffer
-            // because the walk reads from verts[] indices we'd otherwise overwrite.
+            // Temp buffer: the linked-list walk reads verts[] indices we'd overwrite.
             int start = -1;
             for (int i = 0; i < n; i++) if (alive[i]) { start = i; break; }
             if (start < 0) return 0;
@@ -1766,11 +1556,8 @@ namespace SlimeJumping.Platforms.Snow
             return remaining;
         }
 
-        // Even-odd ray-cast point-in-polygon. Used to classify multi-path nesting
-        // in TryDecomposeForeignPolygon. Boundary points are not handled specially
-        // (in/out flips at horizontal-line crossings); for our use the test point
-        // is a polygon's own vertex which is never on another path's edge in a
-        // properly authored multi-path collider.
+        // Even-odd ray cast; boundary points are undefined, which is safe here because
+        // callers only test a path's own vertex against a different path.
         static bool PointInPolygon(Vector2 p, Vector2[] verts, int n)
         {
             bool inside = false;
@@ -1785,11 +1572,8 @@ namespace SlimeJumping.Platforms.Snow
             return inside;
         }
 
-        // Self-intersection test: any two non-adjacent edges crossing → not a simple
-        // polygon. O(n²) edge-pair test, fine for foreign sizes (~17 verts). Reuses
-        // SegmentsIntersect's strict-cross check (collinear overlaps not flagged, but
-        // those would already break ear-clipping in a way the validator catches via
-        // "no ear found" failure).
+        // O(n²) self-intersection test. Collinear overlaps slip through SegmentsIntersect
+        // but surface later as ear-clipping's "no ear found" failure.
         static bool ValidatePolygonSimple(Vector2[] verts, int n)
         {
             if (n < 3) return false;
@@ -1809,16 +1593,9 @@ namespace SlimeJumping.Platforms.Snow
             return true;
         }
 
-        // Ear-clipping triangulation of a simple polygon. Input may be CCW or CW —
-        // canonicalised to CCW internally. Output triangles are CCW in world XY.
-        // Appends one Vector2[3] per triangle to trianglesOut (caller clears on entry).
-        // Returns false on degenerate / non-simple input (no ear found in a full pass,
-        // or remaining vert count not 3 at end). Caller falls back to sample-based
-        // when this returns false.
-        //
-        // Naive O(n³) implementation (no ear-cache, alive bitmap scanned linearly).
-        // For foreign sizes ≲ 30 this is ~30k ops — invisible against the SH per-edge
-        // loop that runs per-tri downstream. Optimise only if profiling demands.
+        // Ear-clip a simple polygon (CW or CCW in, CCW tris out) appending to
+        // trianglesOut; false on degenerate / non-simple input. Naive O(n³), fine for
+        // foreign sizes ≲ 30 next to the per-tri SH loop downstream.
         static bool TryEarClipPolygon(Vector2[] verts, int n, List<Vector2[]> trianglesOut)
         {
             if (n < 3) return false;
@@ -1872,11 +1649,8 @@ namespace SlimeJumping.Platforms.Snow
                 }
                 if (foundEar) continue;
 
-                // No convex ear found. Fallback: drop a collinear / zero-area
-                // vertex (cross ≈ 0) without emitting a triangle. Handles bridge-
-                // induced duplicate verts in multi-path holes-aware decomposition,
-                // and stripping accidental collinear runs in real polygons. If
-                // even this finds nothing, the polygon is non-simple → fail.
+                // No ear: drop a zero-area vertex without emitting a triangle — this is
+                // what clears the bridge-induced duplicate verts from hole splicing.
                 bool removedCollinear = false;
                 for (int v = 0; v < n; v++)
                 {
@@ -1908,13 +1682,7 @@ namespace SlimeJumping.Platforms.Snow
             return true;
         }
 
-        // (Note: an earlier `IsForeignFullyInsideTri` rare-case detector was removed —
-        // the polygon-difference algorithm in ApplyClippingMask handles the donut case
-        // natively because each split-by-edge correctly accumulates the four "outside"
-        // pieces around a fully-enclosed foreign.)
-
-        // Single-collider variant of HitsAnyForeign — used by the per-pair fallback
-        // inside the clipping branch where we already know which foreign we're testing.
+        // Single-collider variant of HitsAnyForeign for the per-pair clipping fallback.
         static bool HitsAnyForeignOne(Collider2D col, Vector3 worldPos, float[] foreignZs, int idx, bool useZ, float zWindow)
         {
             if (col == null) return false;
@@ -1922,22 +1690,9 @@ namespace SlimeJumping.Platforms.Snow
             return col.OverlapPoint(new Vector2(worldPos.x, worldPos.y));
         }
 
-        // Filter out triangles where any of (3 verts, centroid) — in world XY — falls
-        // inside another Collider2D on the mask. Rebuild the patch's verts/normals/
-        // tris/boundaryEdges from the kept tris so the BFS taper downstream sees the
-        // new directed boundary and curls the snow rim down at the cut edge.
-        //
-        // Perf: instead of calling scene-wide Physics2D.OverlapPoint per sample (which
-        // at subdivLevels=5 fired hundreds of thousands of scene queries and froze
-        // the editor), we collect candidate foreign colliders ONCE via a patch-AABB
-        // OverlapAreaAll, then test each tri sample against that small candidate list
-        // with the per-collider Collider2D.OverlapPoint. SnowField↔SnowField arbitration
-        // (overlapPriority + InstanceID tiebreak) is applied during candidate filtering.
-        //
-        // SyncTransforms is needed because RebuildNow is called from Awake during scene
-        // load; at that point the Physics2D scene hasn't yet synced freshly-deserialized
-        // transforms and OverlapAreaAll would return nothing — leaving the snow visually
-        // unmasked in play mode while edit mode (where time has elapsed) worked fine.
+        // Candidates from ONE patch-AABB OverlapArea — per-sample scene queries froze the
+        // editor at subdivLevels=5. SyncTransforms first: RebuildNow runs from Awake before
+        // Physics2D syncs deserialized transforms, and OverlapArea would return nothing.
         SnowTopSurfaceExtractor.TopPatch MaskOutOverlap(
             SnowTopSurfaceExtractor.TopPatch patch, Transform meshT)
         {
@@ -1964,9 +1719,7 @@ namespace SlimeJumping.Platforms.Snow
             var hitList = new List<Collider2D>(16);
             Physics2D.OverlapArea(new Vector2(wxmin, wymin), new Vector2(wxmax, wymax), filter, hitList);
 
-            // Reduce candidates to the foreign-and-loses-arbitration set. Anything else
-            // (host's own collider, sister SnowField that wins arbitration, our own
-            // manual-keep polys) is ignored.
+            // Keep only colliders that are foreign AND win arbitration against us.
             int myId = hostCollider != null ? hostCollider.GetInstanceID() : GetInstanceID();
             var foreign = new List<Collider2D>(hitList.Count);
             for (int i = 0; i < hitList.Count; i++)
@@ -1974,10 +1727,8 @@ namespace SlimeJumping.Platforms.Snow
                 var h = hitList[i];
                 if (h == null) continue;
                 if (h == hostCollider) continue;
-                // Belt-and-braces: our own manual-keep polys are an override mechanism,
-                // not occluders. Triggers are already excluded by useTriggers=false above,
-                // but skip them here too so a non-trigger keep poly can't accidentally
-                // mask the field it's supposed to restore.
+                // A keep poly authored without isTrigger would otherwise mask the very
+                // field it exists to restore.
                 if (IsManualKeep(h)) continue;
                 if (SnowFieldRegistry.TryGet(h, out var otherField) && otherField != null && otherField != this)
                 {
@@ -1989,8 +1740,6 @@ namespace SlimeJumping.Platforms.Snow
                 foreign.Add(h);
             }
 
-            // Debug log — surface every foreign collider this patch is masking against,
-            // with hierarchy path and bounds. Click the log entry to ping the GO.
             if (debugLogMaskColliders)
             {
                 var sb = new System.Text.StringBuilder();
@@ -2015,8 +1764,7 @@ namespace SlimeJumping.Platforms.Snow
                 return patch;
             }
 
-            // Pre-cache per-foreign world Z so the per-tri Z-window check avoids a
-            // transform.position dispatch per (tri, foreign) pair.
+            // Pre-cache world Z to avoid a transform.position dispatch per (tri, foreign).
             var foreignZs = new float[foreign.Count];
             for (int i = 0; i < foreign.Count; i++)
             {
@@ -2027,23 +1775,16 @@ namespace SlimeJumping.Platforms.Snow
             bool useZ = maskUsesZ;
             float zWin = maskZWindow;
             bool hasKeepPolys = manualKeepColliders != null && manualKeepColliders.Count > 0;
-            // Reused per-collider world-space path buffer for the tri-vs-collider overlap test.
             Vector2[] keepPathBuf = null;
 
-            // Mode branch: GeometricClipping path runs Sutherland-Hodgman tri-vs-foreign
-            // subtraction and produces its own re-derived patch (incl. boundary). Returns
-            // the original patch unchanged if no tris were actually clipped.
+            // GeometricClipping re-derives its own patch, boundary included.
             if (maskMode == OverlapMaskMode.GeometricClipping)
             {
                 return ApplyClippingMask(patch, meshT, foreign, foreignZs, useZ, zWin, hasKeepPolys, ref keepPathBuf);
             }
 
-            // SampleBased path (default, unchanged from before this commit). Sample 4
-            // points per tri (3 verts + centroid) for the FOREIGN mask.
-            // Centroid-only kept tris that straddle the overlap boundary — one vertex
-            // pokes into the other platform — producing a thin tearing band along the
-            // seam. Dropping the tri if any of the 4 samples is inside another platform
-            // lets the BFS taper close the gap cleanly.
+            // 4 samples per tri (3 verts + centroid): centroid alone kept straddling tris
+            // whose vertex poked into the other platform, tearing a band along the seam.
             for (int t = 0; t < triCount; t++)
             {
                 int ia = patch.tris[t * 3];
@@ -2062,10 +1803,8 @@ namespace SlimeJumping.Platforms.Snow
                             || HitsAnyForeign(wc,   foreign, foreignZs, useZ, zWin)
                             || HitsAnyForeign(wcen, foreign, foreignZs, useZ, zWin);
 
-                // Manual-keep override: tri-vs-poly overlap test (NOT 4-sample). Restore
-                // the tri whenever it shares any area with a user-drawn keep polygon —
-                // verts of one inside the other, or edges cross. Old 4-sample test left
-                // a blocky grid pattern when the polygon sat between sample points.
+                // Area overlap, NOT 4-sample: a keep poly sitting between sample points
+                // restored nothing and left a blocky grid.
                 if (dropTri && hasKeepPolys)
                 {
                     Vector2 a2 = new Vector2(wa.x, wa.y);
@@ -2128,10 +1867,8 @@ namespace SlimeJumping.Platforms.Snow
                 newTris[wt++] = oldToNew[patch.tris[t * 3 + 2]];
             }
 
-            // Re-derive directed boundary edges (a→b appears, b→a doesn't) from the
-            // filtered triangulation. Same scheme SnowTopSurfaceExtractor uses, so the
-            // taper / side-strip downstream treats this output identically to a fresh
-            // patch.
+            // Directed boundary (a→b present, b→a absent) — same scheme
+            // SnowTopSurfaceExtractor uses, so downstream sees a normal patch.
             var dirSet = new HashSet<long>();
             for (int t = 0; t < newTris.Length; t += 3)
             {
@@ -2170,8 +1907,8 @@ namespace SlimeJumping.Platforms.Snow
             }
             foreach (var go in toKill)
             {
-                // Free the runtime-built mesh first — destroying the GO alone leaks the
-                // Mesh until GC runs, and every slider tweak rebuilds.
+                // Destroying the GO alone leaks the runtime Mesh until GC, and every
+                // slider tweak rebuilds.
                 var mf = go.GetComponent<MeshFilter>();
                 if (mf != null && mf.sharedMesh != null)
                 {
@@ -2196,9 +1933,8 @@ namespace SlimeJumping.Platforms.Snow
             var baseMat = SnowMaterial;
             if (baseMat == null) return;
 
-            // Clone the asset so keyword/texture writes here never dirty the source.
-            // HideFlags.DontSave keeps the clone out of the scene file — same posture
-            // as the per-strip heightBuf.
+            // Clone so keyword/texture writes never dirty the source asset; DontSave
+            // keeps it out of the scene file.
             runtimeMaterial = new Material(baseMat)
             {
                 name = baseMat.name + " (Snow Runtime)",
@@ -2212,10 +1948,8 @@ namespace SlimeJumping.Platforms.Snow
         {
             if (runtimeMaterial == null) return;
 
-            // Textures: only push when set. Null-push would override the source
-            // material's slot with a black 1×1 (Quibli reads ramps as black =
-            // everything-shadowed). Skipping null lets the source material's bound
-            // texture (or shader default) survive.
+            // Never push a null texture: it overrides the slot with a black 1×1 and
+            // Quibli reads a black ramp as everything-shadowed.
             if (settings != null)
             {
                 if (settings.shadowRamp      != null) runtimeMaterial.SetTexture(IdGradientRamp,    settings.shadowRamp);
@@ -2247,10 +1981,7 @@ namespace SlimeJumping.Platforms.Snow
 
         void OnDestroy()
         {
-            // When the SnowField is removed (or the GO is destroyed), drop all child
-            // SnowStrip_* GameObjects so the snow visual disappears with the component.
-            // If the parent GO is being destroyed too, Unity destroys the children anyway
-            // — our calls are redundant but null-checked.
+            // Drop the SnowStrip_* children so the visual leaves with the component.
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
                 var c = transform.GetChild(i);
@@ -2288,9 +2019,7 @@ namespace SlimeJumping.Platforms.Snow
 
         void OnDrawGizmos()
         {
-            // Debug overlay: foreign colliders the last rebuild treated as maskers,
-            // drawn as red wire boxes using world-space AABB. Independent of the patch
-            // outline gizmos so it stays visible whether or not the field is selected.
+            // Red wire boxes for last rebuild's maskers; drawn even when unselected.
             if (debugLogMaskColliders && debugLastForeignColliders.Count > 0)
             {
                 Gizmos.color = new Color(1f, 0.25f, 0.25f, 0.9f);
@@ -2307,7 +2036,7 @@ namespace SlimeJumping.Platforms.Snow
 
             var t = sourceMeshFilter.transform;
 
-            // Recompute on draw (cheap for typical patch sizes; only runs when selected).
+            // Recompute on draw; cheap for typical patch sizes.
             var patches = SnowTopSurfaceExtractor.Extract(sourceMeshFilter.sharedMesh, MaxSnowSlopeDeg, detectSlopeCut: SlopeCutTaperHops > 0);
 
             if (drawPatchOutlines)
@@ -2339,8 +2068,7 @@ namespace SlimeJumping.Platforms.Snow
             }
         }
 
-        // "Path/To/GO" — used in mask-debug logs so the user can find the offending
-        // collider quickly even when the scene has many similarly-named GameObjects.
+        // "Path/To/GO" for mask-debug logs; scenes have many same-named GameObjects.
         static string GetGameObjectPath(GameObject go)
         {
             if (go == null) return "(null)";

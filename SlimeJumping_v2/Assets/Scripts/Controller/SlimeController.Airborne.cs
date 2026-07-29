@@ -16,19 +16,15 @@ namespace SlimeJumping.Controller
             if (postLaunchAirControlLockTimer > 0f)
                 postLaunchAirControlLockTimer -= dt;
 
-            // Apex threshold locks air control while rising hard. In a fluid medium
-            // (water etc.) the upward velocity comes from buoyancy, not a launch —
-            // the player should still be able to steer. Bypass the apex gate while submerged.
+            // Apex gate locks air control while rising hard, but in fluid the rise is buoyancy,
+            // not a launch — steering must still work, so bypass it while submerged.
             bool airControlActive = InFluid
                 || (postLaunchAirControlLockTimer <= 0f
                     && Vector2.Dot(velocity, gravityUp) <= settings.apexThreshold);
 
-            // Gravity
-            // W/S scale picks rising vs falling variant by actual velocity direction —
-            // independent of airControlActive, so steering still works while above apex.
-            // In fluid: intentionally ignore velocity sign and use the dedicated in-fluid
-            // values instead. Water movement is buoyancy-driven and has no clean apex, so
-            // a rising/falling split would make submerged steering feel inconsistent.
+            // W/S variant picked by actual velocity direction, so steering still works above apex.
+            // In fluid the sign is ignored: buoyancy has no clean apex, so a rising/falling split
+            // makes submerged steering feel inconsistent.
             float gravityScale = 1f;
             float inputYRaw = inputReader.LastInputMove.y;
             if (InFluid)
@@ -45,23 +41,16 @@ namespace SlimeJumping.Controller
                     gravityScale = isRisingByVelocity ? settings.diveGravityScaleRising : settings.diveGravityScaleFalling;
             }
 
-            // Asymmetric gravity uses the existing airControlActive split (apex-gated),
-            // unchanged from before so rising/falling multipliers behave identically.
+            // Asymmetric gravity reuses the apex-gated airControlActive split.
             float asymScale = airControlActive ? settings.fallingGravityScale : settings.risingGravityScale;
             velocity += -gravityUp * Mathf.Abs(settings.gravity) * gravityScale * asymScale * dt;
 
-            // Land on any surface
             if (isTouchingSurface)
             {
-                // Rope contact correction. EdgeCollider2D is a 1-D polyline with no
-                // inherent outside; fast vertical motion can land the slime on the
-                // underside. Detect that case by the contact normal pointing into
-                // gravity, then place the slime's center exactly slimeRadius above
-                // the rope's nearest point and re-orient the contact frame upward.
-                // Position offset is exactly slimeRadius (not + contactSkin) so the
-                // next FU's surface probe still registers overlap — otherwise the
-                // slime detaches, gravity pulls it back through the polyline, and
-                // we re-teleport every FU (visible as up-down oscillation).
+                // EdgeCollider2D is a polyline with no inherent outside; fast vertical motion can
+                // land the slime on the underside. Offset is exactly slimeRadius (not + contactSkin)
+                // so next FU's probe still overlaps — otherwise detach → fall through → re-teleport
+                // every FU, visible as up-down oscillation.
                 if (currentRope != null && surfaceCollider == currentRope.Edge
                     && Vector2.Dot(surfaceNormal, gravityUp) < 0f)
                 {
@@ -73,18 +62,12 @@ namespace SlimeJumping.Controller
 
                 float surfaceUp = Vector2.Dot(surfaceNormal, gravityUp);
 
-                // Resolve per-surface ceiling reattach threshold from the candidate's
-                // SurfaceTag — surfaceMod still reflects the previous attach, so we look
-                // up from the new collider directly.
+                // surfaceMod still reflects the previous attach — resolve from the new collider.
                 SurfaceTag.ResolveCeilingThresholds(surfaceCollider, settings,
                     out _, out float landingReattachThreshold);
 
-                // Ceiling: never sticky-attach (no permanent hang). But if the player buffered
-                // a charge (or is air-holding), enter a brief charge-and-launch off the ceiling.
-                // The aim auto-drifts along -surfaceNormal (into the ceiling), so a released or
-                // auto-fired launch points downward — a plunge that sets up an energy-conversion
-                // floor landing. No charge request → cancel normal velocity and stay airborne so
-                // the slime simply falls back off the ceiling.
+                // Ceiling never sticky-attaches. A buffered/held charge instead starts a brief charge
+                // whose aim drifts into the ceiling, so the launch plunges downward.
                 if (surfaceUp < landingReattachThreshold)
                 {
                     bool ceilingChargeRequested = chargeBufferTimer > 0f
@@ -106,8 +89,8 @@ namespace SlimeJumping.Controller
                     return;
                 }
 
-                // BlockAttach (e.g. water zone): don't attach, cancel normal velocity.
-                // Don't return — fall through to air control so slime can move away.
+                // BlockAttach (e.g. water zone): cancel normal velocity but do NOT return — fall
+                // through to air control so the slime can move away.
                 if (blockAttachCount > 0)
                 {
                     surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
@@ -115,7 +98,6 @@ namespace SlimeJumping.Controller
                 else
                 {
 
-                // Get landing platform velocity (including angular contribution) before attaching
                 Vector2 landingPlatformVel = GetSurfaceVelocity(surfaceCollider);
 
                 bool chargeRequested = chargeBufferTimer > 0f
@@ -128,7 +110,6 @@ namespace SlimeJumping.Controller
                 } // end else (blockAttach)
             }
 
-            // Air control: horizontal acceleration with speed cap (last-input-wins)
             // "Horizontal" = perpendicular to effective gravity, not necessarily world-X.
             if (airControlActive)
             {
@@ -163,11 +144,8 @@ namespace SlimeJumping.Controller
 
         }
 
-        // Common impact capture for the landing→Charging and landing→Attached transitions.
-        // Records platform-relative impact velocity, attaches the carrier, resolves the new
-        // surface material, then applies wall-attach dampening + impact-redirect. Returns the
-        // landing surface angle; outputs the impact magnitude (for stick scaling) and the
-        // post-redirect tangent speed.
+        // Shared landing capture: platform-relative impact, carrier attach, surface material,
+        // then wall dampening + impact-redirect. Returns the landing surface angle.
         private float CaptureLandingImpact(Vector2 landingPlatformVel, out float impactMagnitude, out float effectiveTangent)
         {
             Vector2 relativeVel = velocity - landingPlatformVel;
@@ -177,8 +155,7 @@ namespace SlimeJumping.Controller
             impactTangentSpeed = tangentSpeed;
             impactNormalSpeed = normalSpeed;
             stickDeccelTimer = 0f;
-            // currentRope was already set this frame by UpdateRopeReference — hand it the
-            // pre-attach velocity here BEFORE the attach zeroes it.
+            // Hand the rope the pre-attach velocity BEFORE the attach below zeroes it.
             if (currentRope != null)
                 currentRope.ApplyRiderImpact(rb.position, relativeVel);
 
@@ -193,8 +170,7 @@ namespace SlimeJumping.Controller
             return landingAngle;
         }
 
-        // Routes the post-retention landed tangent speed into whichever channel the surface uses
-        // (inertial → slideVelocity, legacy → crawlVelocity) and zeroes the airborne velocity.
+        // Routes landed tangent speed into the surface's channel (inertial → slideVelocity, else crawlVelocity).
         private void RouteLandedTangent(float landedTangent)
         {
             if (surfaceMod.useInertialSlide)
@@ -210,10 +186,8 @@ namespace SlimeJumping.Controller
             velocity = Vector2.zero;
         }
 
-        // Shadow-velocity → energy-conversion spawn distance: inverts the launch power curve so
-        // a rate=1 conversion preserves launch height. impactSpeed is the velocity the launch
-        // energy would have if flown back down to the current height (a launch-rise-land returns
-        // less than a launch-fall-land). Reads conversionCount for the rate; does NOT increment.
+        // Inverts the launch power curve so a rate=1 conversion preserves launch height.
+        // Reads conversionCount for the rate; does NOT increment it.
         private float ComputeEnergyConversionSpawnDistance(out float impactSpeed)
         {
             float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
@@ -263,16 +237,15 @@ namespace SlimeJumping.Controller
             CheckPlatformEffect(surfaceCollider);
         }
 
-        // No Space at landing → sticky landing (energy lost), and arm the energy-conversion coyote
-        // so a Space press within the grace window still grants the would-have-been expanded radius.
+        // No Space at landing → sticky landing; arms the energy-conversion coyote so a late Space
+        // press still grants the would-have-been expanded radius.
         private void AttachFromLanding(Vector2 landingPlatformVel, float surfaceUp)
         {
             float landingAngle = CaptureLandingImpact(landingPlatformVel, out float landingSpeed, out float effectiveTangent);
             TryArmBambooV2Rebound(landingSpeed);
             RouteLandedTangent(ComputeLandingCrawlVelocity(effectiveTangent, landingAngle));
 
-            // Per-surface override (SurfaceMaterial.overrideEnergyConversionCoyoteTime) lets springy
-            // surfaces extend the post-landing window for late-Space energy conversion.
+            // SurfaceMaterial.overrideEnergyConversionCoyoteTime lets springy surfaces extend the window.
             bool isFloorLanding = surfaceUp >= settings.stickSlopeThreshold;
             bool coyoteArmed = false;
             float coyoteWindow = surfaceMod.GetEnergyConversionCoyoteTime(settings);
@@ -289,9 +262,8 @@ namespace SlimeJumping.Controller
                 }
             }
 
-            // conversionCount resets on floor landing only. Wall chains keep subsequentConversionRate.
-            // When coyote is armed on a floor landing, the reset is deferred to pending expiry so a
-            // coyote-consumed conversion continues the chain (matches the Space-held branch).
+            // conversionCount resets on floor landing only (wall chains keep subsequentConversionRate);
+            // deferred while coyote is armed so a coyote-consumed conversion continues the chain.
             if (isFloorLanding)
             {
                 stickTimer = 0f;
@@ -312,15 +284,9 @@ namespace SlimeJumping.Controller
         {
             float landed = effectiveTangent * surfaceMod.landingVelocityRetention.Evaluate(landingAngle);
 
-            // Charged-launch return: cap the EXCESS over the player's "explicit speed budget" by
-            // landingExcessGain. Baseline = max(|preLaunchSlideV|, aimPower) so BOTH pre-launch slide
-            // (natural inertia, must not be clipped on a fast-slide launch) AND the aim power the
-            // player chose to spend (stationary launches must not collapse to zero) are preserved.
-            // Only the residual gain — projection efficiency on curved surfaces, frictionless airtime,
-            // gravity-from-height — is dialed.
-            //
-            // External-arrival flights leave launchOriginValid=false so this is a no-op for them,
-            // preserving Inertial Slide / impact-redirect "ride up the curve" intact.
+            // Cap only the EXCESS over max(|preLaunchSlideV|, aimPower): pre-launch slide and the aim
+            // power the player spent must survive; only the residual gain is dialed.
+            // External-arrival flights leave launchOriginValid=false, keeping Inertial Slide intact.
             if (launchOriginValid)
             {
                 float baseline = Mathf.Max(Mathf.Abs(launchOriginSlideV), launchOriginAimPower);
@@ -334,9 +300,8 @@ namespace SlimeJumping.Controller
                 launchOriginValid = false;
             }
 
-            // Optional non-linear remap of final tangent speed (saturating curve for ice etc.).
-            // Toggle gates the feature so authored curves can be temporarily disabled without
-            // losing keys. Applied last so it covers regular and charged-launch landings.
+            // Optional non-linear remap (saturating curve for ice); toggle keeps authored keys
+            // when disabled. Applied last so it covers both landing paths.
             if (surfaceMod.enableLandingTangentSpeedRemap)
             {
                 var remap = surfaceMod.landingTangentSpeedRemapCurve;

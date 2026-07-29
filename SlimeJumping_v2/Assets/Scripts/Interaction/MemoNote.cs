@@ -4,10 +4,7 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Interaction
 {
-    /// <summary>
-    /// Tier 3 verification interactable: logs note text to console on interact.
-    /// Requires a trigger Collider2D on the same GameObject, set to the Interactable layer.
-    /// </summary>
+    /// <summary>Logs note text on interact; needs a trigger Collider2D on this GameObject, Interactable layer.</summary>
     public class MemoNote : MonoBehaviour, IInteractable
     {
         [SerializeField] [TextArea] private string noteText = "Hello, Slime!";

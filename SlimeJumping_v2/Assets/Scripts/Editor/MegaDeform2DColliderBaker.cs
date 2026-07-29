@@ -6,12 +6,8 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Editor
 {
-    // Custom inspector + baker for MegaDeform2DCollider.
-    //
-    // "Baking" means: inspect the source mesh in its REST pose, produce an ordered
-    // list of vertex indices that describe the desired 2D silhouette, and stamp
-    // that list back onto the component's contourIndices. At runtime the component
-    // just reads those indices out of the deformed mesh — no search per frame.
+    // Bakes an ordered silhouette vertex-index list from the source mesh's REST pose
+    // into contourIndices; runtime only re-reads those indices off the deformed mesh.
     [CustomEditor(typeof(MegaDeform2DCollider))]
     public class MegaDeform2DColliderBaker : UnityEditor.Editor
     {
@@ -315,7 +311,6 @@ namespace SlimeJumping.Editor
             var pickedOrder = new Dictionary<int, int>(picked.Length);
             for (int i = 0; i < picked.Length; i++) pickedOrder[picked[i]] = i;
 
-            // Preview polyline connecting picked verts in order.
             if (picked.Length >= 2)
             {
                 Handles.color = new Color(0.2f, 1f, 1f, 0.8f);
@@ -333,8 +328,6 @@ namespace SlimeJumping.Editor
                 }
             }
 
-            // Vertex dots. Iterate once to dedupe by world position so clicking a
-            // visually-shared corner doesn't silently pick a twin index.
             var worldVerts = new Vector3[verts.Length];
             for (int i = 0; i < verts.Length; i++) worldVerts[i] = tr.TransformPoint(verts[i]);
 
@@ -391,7 +384,7 @@ namespace SlimeJumping.Editor
                     {
                         if ((verts[list[j]] - vp).sqrMagnitude < eps2)
                         {
-                            // Identical world-position vert already picked; silently skip.
+                            // Twin vert at the same position already picked.
                             return;
                         }
                     }
@@ -407,9 +400,8 @@ namespace SlimeJumping.Editor
 
         // ---- Programmatic bake (TopEdge) ----
 
-        // Picks vertices whose Y matches mesh bounds.max.y AND whose Z matches `zTarget`,
-        // sorts them along X, dedupes near-duplicate X values, returns the ordered indices.
-        // Exposed so other editor tools (e.g. BendTestDeformingSetup) can bake programmatically.
+        // Verts at bounds.max.y and z≈zTarget, X-sorted and X-deduped. Public so other
+        // editor tools (e.g. BendTestDeformingSetup) can bake without the inspector.
         public static int[] BakeTopEdge(Mesh mesh, float zTarget, float yEps, float zEps, float xDedupeEps)
         {
             var verts = mesh.vertices;
@@ -440,14 +432,9 @@ namespace SlimeJumping.Editor
 
         // ---- Programmatic bake (ZSlice) ----
 
-        // Slice the mesh at z = zTarget. Pick verts within zEps, keep only triangles
-        // whose ALL three verts are in the slice, then walk the BOUNDARY of that
-        // sub-mesh as a closed cycle (each boundary edge appears in exactly one
-        // slice-triangle, interior edges appear in two).
-        //
-        // Works for closed 3D meshes (e.g. BendTestBox) where the 2D silhouette at
-        // the chosen Z IS an actual chain of mesh edges all lying on that plane.
-        // Returns null with a diagnostic string if no slice triangles exist.
+        // Walks the boundary of the z≈zTarget slice sub-mesh as a closed cycle
+        // (boundary edge = in exactly one slice tri, interior = two). Only valid when
+        // the silhouette at that Z is a real chain of coplanar mesh edges. Null on failure.
         public static int[] BakeZSlice(
             Mesh mesh, float zTarget, float zEps, float dedupeEps, bool forceCcw, out string diag)
         {
@@ -465,8 +452,8 @@ namespace SlimeJumping.Editor
                 }
             }
 
-            // Canonicalize by world position: collapse duplicate-position verts onto the
-            // lowest-index occurrence so the edge graph is a simple (non-multi) graph.
+            // Collapse duplicate-position verts to the lowest index, else the edge graph
+            // is a multigraph and the boundary walk branches.
             var canon = new int[verts.Length];
             for (int i = 0; i < verts.Length; i++) canon[i] = i;
             float e2 = dedupeEps * dedupeEps;
@@ -485,8 +472,7 @@ namespace SlimeJumping.Editor
                 }
             }
 
-            // Count edges across slice-triangles (both verts in slice). An edge is stored
-            // with (min, max) so undirected equality works via dictionary key.
+            // Keyed (min, max) so the dictionary compares edges undirected.
             var edgeCount = new Dictionary<(int a, int b), int>();
             int sliceTriCount = 0;
 

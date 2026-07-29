@@ -8,8 +8,6 @@ namespace SlimeJumping.Controller
         // Current drag zone (set by DragZone.OnTriggerEnter/Exit, single zone only)
         public DragZone CurrentDragZone { get; private set; }
 
-        // --- Drag Zone API (called by DragZone.cs) ---
-
         public void OnDragZoneEnter(DragZone zone)
         {
             velocity *= zone.entryMultiplier;

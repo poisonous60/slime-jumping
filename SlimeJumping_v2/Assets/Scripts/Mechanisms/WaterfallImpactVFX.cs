@@ -4,15 +4,9 @@ using UnityEngine.Serialization;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// Stream path defined as a list of local-space offset points from this GameObject's
-    /// transform. The LineRenderer connects them in order, and from the LAST point a ray
-    /// is cast along rayDirection. Every collider in targetColliders that the ray hits
-    /// (distance-sorted, up to maxHits) becomes a chained vertex on the line and gets its
-    /// own splash PS. This allows water to visually flow through multiple water wheels
-    /// stacked vertically.
-    ///
-    /// Editor scene handles (custom inspector): yellow sphere per path point, shift-click
-    /// an edge to insert, ctrl-click a point to delete, drag to move.
+    /// LineRenderer through local-space path points; from the LAST point a ray chains through every
+    /// targetColliders hit (distance-sorted, max maxHits), each becoming a vertex + its own splash PS.
+    /// Scene handles: shift-click an edge to insert a point, ctrl-click a point to delete.
     [DisallowMultipleComponent]
     [AddComponentMenu("SlimeJumping/Mechanisms/Waterfall Impact VFX")]
     public class WaterfallImpactVFX : MonoBehaviour
@@ -32,8 +26,7 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] LayerMask hitLayers = ~0;
         [Range(1, 8)] [SerializeField] int maxHits = 4;
 
-        // Legacy single-collider field — kept hidden for one-shot migration of scenes
-        // that were authored before targetColliders existed.
+        // Hidden legacy field; MigrateLegacyTarget folds old scenes into targetColliders once.
         [HideInInspector]
         [FormerlySerializedAs("targetCollider")]
         [SerializeField] Collider2D legacyTargetCollider;
@@ -120,8 +113,7 @@ namespace SlimeJumping.Mechanisms
             for (int i = 0; i < n && hitPoints.Count < maxHits; i++)
             {
                 var c = rayBuffer[i].collider;
-                // `Contains` uses Equals — Unity's overloaded `==` handles destroyed refs,
-                // so a destroyed collider in the list will not spuriously match.
+                // `Contains` uses Equals, so a destroyed collider in the list won't spuriously match.
                 if (c != null && targetColliders.Contains(c))
                 {
                     hitPoints.Add(rayBuffer[i].point);

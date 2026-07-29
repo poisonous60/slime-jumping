@@ -6,9 +6,7 @@ using UnityEngine.UI;
 
 namespace SlimeJumping.EditorTools
 {
-    /// One-shot generator for the SceneTransition prefab + iris material. Run this
-    /// once (or again after deleting either asset) from
-    /// Tools/SlimeJumping/Setup Scene Transition.
+    /// One-shot generator for the SceneTransition prefab + iris material.
     public static class SceneTransitionSetup
     {
         private const string ResourcesFolder = "Assets/Resources";
@@ -35,7 +33,6 @@ namespace SlimeJumping.EditorTools
                 return;
             }
 
-            // --- Material (create or refresh). ---
             Material mat = AssetDatabase.LoadAssetAtPath<Material>(MaterialPath);
             if (mat == null)
             {
@@ -53,7 +50,6 @@ namespace SlimeJumping.EditorTools
             mat.SetFloat("_Aspect", 16f / 9f);
             EditorUtility.SetDirty(mat);
 
-            // --- Build the root Canvas GameObject. ---
             var root = new GameObject("SceneTransition");
             var canvas = root.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -70,7 +66,6 @@ namespace SlimeJumping.EditorTools
             group.blocksRaycasts = true;
             group.interactable = false;
 
-            // --- Fade image (flat black, used for phase 1). ---
             var fadeGo = new GameObject("Fade");
             fadeGo.transform.SetParent(root.transform, false);
             var fadeRt = fadeGo.AddComponent<RectTransform>();
@@ -79,7 +74,6 @@ namespace SlimeJumping.EditorTools
             fadeImg.color = new Color(0f, 0f, 0f, 0f);
             fadeImg.raycastTarget = true;
 
-            // --- Iris image (iris-masked black, used for phases 4–6). ---
             var irisGo = new GameObject("Iris");
             irisGo.transform.SetParent(root.transform, false);
             var irisRt = irisGo.AddComponent<RectTransform>();
@@ -90,14 +84,12 @@ namespace SlimeJumping.EditorTools
             irisImg.raycastTarget = true;
             irisGo.SetActive(false);
 
-            // --- AudioSource for the transition sounds. ---
             var audio = root.AddComponent<AudioSource>();
             audio.playOnAwake = false;
             audio.loop = false;
             audio.spatialBlend = 0f;
             audio.volume = 1f;
 
-            // --- Controller. Wire up serialized refs via SerializedObject. ---
             var ctrl = root.AddComponent<SceneTransitionController>();
             var so = new SerializedObject(ctrl);
             so.FindProperty("canvas").objectReferenceValue = canvas;
@@ -110,7 +102,6 @@ namespace SlimeJumping.EditorTools
             so.FindProperty("irisExpandClip").objectReferenceValue = FindClip(IrisExpandClipName);
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            // --- Save prefab and clean up the scene object. ---
             PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
             Object.DestroyImmediate(root);
 

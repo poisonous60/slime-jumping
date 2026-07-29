@@ -3,24 +3,11 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms
 {
-    // Trampoline-coupled rope. Same Verlet simulation core as Rope (v1) and
-    // RopeV2 — only the rider-coupling channel differs.
-    //
-    //   v1 / v2 : rider weight is a force injected into riderAccum, impact
-    //             is a one-shot pos[] kick. Rope and slime are loosely
-    //             coupled — rope can dip/rebound out from under the slime.
-    //
-    //   v3      : rider is modeled as a Hookean spring pulling nearby nodes
-    //             toward (attach-time pos − sag-depth − impact-compression)
-    //             along the gravity axis. The slime is positionally coupled
-    //             via ConsumeRiderCarryDelta() — controller adds the contact
-    //             segment's per-FU world displacement to rb.position so the
-    //             slime travels through the dip-and-rebound cycle with the
-    //             rope (no detach when rope dips faster than the surface
-    //             probe budget). Launch bonus reuses v2's two-curve formula.
-    //
-    // Assumes Multi probe mode (slime's rb.linearVelocity is zeroed by the
-    // teleport branch, so carry is the sole tracking channel).
+    // Trampoline-coupled rope. Verlet core shared with Rope/RopeV2; the rider is a Hookean
+    // spring pulling nearby nodes toward (attach snapshot − sag − impact compression) along
+    // gravity, and the slime is positionally carried via ConsumeRiderCarryDelta so it cannot
+    // detach when the rope dips faster than the surface probe. Assumes Multi probe mode
+    // (rb.linearVelocity is zeroed by the teleport branch, so carry is the only tracking channel).
     [ExecuteAlways]
     [DefaultExecutionOrder(-100)]
     public class RopeV3 : MonoBehaviour, IRopePlatform
@@ -242,9 +229,7 @@ namespace SlimeJumping.Platforms
             int substeps = Mathf.Clamp(simulationSubsteps, 1, 8);
             float subDt = Time.fixedDeltaTime / substeps;
 
-            // Carry delta accumulates across substeps. Sample the contact
-            // *before* the first substep so the per-FU delta covers all
-            // sub-step motion at the rider's locked segment/t.
+            // Sample before the first substep, else the per-FU carry misses sub-step motion.
             bool sampleCarry = riderActive && attachSnapshotValid && riderSegment >= 0;
             if (sampleCarry)
                 prevContactSampled = SamplePosAt(riderSegment, riderSegmentT);
@@ -261,9 +246,7 @@ namespace SlimeJumping.Platforms
             EvaluateMaxTension();
             SyncVisual();
 
-            // riderActive must be re-asserted by the controller every FU via
-            // ReportRiderContact; absent that, the spring deactivates next
-            // step (slime detached, or paused calling).
+            // Controller must re-assert via ReportRiderContact every FU, else the spring dies.
             riderActive = false;
         }
 
@@ -305,10 +288,8 @@ namespace SlimeJumping.Platforms
                 pos[i] = next;
             }
 
-            // Rider spring — Hookean pull toward (attachPos − depth × falloff)
-            // along gravity axis, with viscous damping. Applied as Verlet position
-            // step (Δpos = accel × dt²) so it composes naturally with Jakobsen
-            // tension on the constraint pass below.
+            // Applied as a Verlet position step (Δpos = accel × dt²) so it composes with the
+            // Jakobsen tension pass below instead of fighting it.
             if (riderActive && attachSnapshotValid)
             {
                 Vector2 ropeDown = ComputeRopeDownDir();
@@ -339,8 +320,6 @@ namespace SlimeJumping.Platforms
                         }
                     }
 
-                    // Decay impact compression at the spring's damped natural rate
-                    // so the trampoline naturally relaxes back toward steady-state.
                     float decayRate = Mathf.Sqrt(Mathf.Max(0.01f, riderSpringStiffness)) * riderSpringDamping;
                     activeImpactDepth = Mathf.Max(0f, activeImpactDepth * (1f - decayRate * dt));
                 }
@@ -491,8 +470,6 @@ namespace SlimeJumping.Platforms
 
         Vector2 ComputeRopeDownDir()
         {
-            // Gravity-aligned "down". Falls back to (0,-1) when gravity is zero
-            // (e.g. orbital scenes). Per CLAUDE.md: 2D platformer, world-space down.
             Vector2 g = Physics2D.gravity;
             float m = g.magnitude;
             if (m < 1e-4f) return new Vector2(0f, -1f);
@@ -506,20 +483,17 @@ namespace SlimeJumping.Platforms
             if (nodeCount == 0) return;
 
             riderSegment = FindNearestSegment(worldContact, out riderSegmentT);
-            // Snapshot the rope's current shape as the spring's reference frame.
-            // The slime touched here NOW; subsequent spring force pulls toward
-            // (snapshot − depth) so equilibrium is depth below where contact landed.
+            // Snapshot the current shape as the spring's reference frame — equilibrium is
+            // depth below where contact landed, not below the rope's rest shape.
             Array.Copy(pos, attachPos, nodeCount);
             attachSnapshotValid = true;
 
             Vector2 ropeDown = ComputeRopeDownDir();
             float vDown = Mathf.Max(0f, Vector2.Dot(impactVelocity, ropeDown));
-            // Stack on top of any decaying compression from a prior impact so a
-            // double-pump trampoline accumulates as the player bounces.
+            // Stacks on any decaying compression so a double-pump trampoline accumulates.
             activeImpactDepth += vDown * impactCompressionFromVelocity;
 
-            // Reset carry sampling baseline so the first ConsumeRiderCarryDelta
-            // after attach reports motion from THIS frame onward, not pre-attach.
+            // Reset the baseline, else the first consume after attach replays pre-attach motion.
             prevContactSampled = SamplePosAt(riderSegment, riderSegmentT);
             carryDeltaAccum = Vector2.zero;
         }
@@ -530,13 +504,12 @@ namespace SlimeJumping.Platforms
 
             riderActive = true;
             riderMass = mass;
-            // Refresh segment lock — slime may have crawled along the rope. Carry
-            // tracks the current parametric location, not the original attach point.
+            // Re-lock every step — the slime crawls along the rope, so carry must track its
+            // current parametric location, not the original attach point.
             riderSegment = FindNearestSegment(worldContact, out riderSegmentT);
 
-            // First-touch fallback: ApplyRiderImpact normally seeds attachPos, but
-            // a zero-velocity attach (e.g. instantiating a slime already on the rope)
-            // wouldn't trigger it. Capture here too.
+            // A zero-velocity attach (slime spawned already on the rope) never calls
+            // ApplyRiderImpact, so seed the snapshot here too.
             if (!attachSnapshotValid)
             {
                 Array.Copy(pos, attachPos, nodeCount);
@@ -595,9 +568,8 @@ namespace SlimeJumping.Platforms
 
         public void NotifyLaunchRebound(Vector2 worldContact)
         {
-            // Slime is leaving — release the spring's reference frame so the
-            // rope returns to natural Verlet+gravity behavior, and zero any
-            // remaining carry so a re-attach doesn't replay stale motion.
+            // Release the spring reference frame and zero the carry, else a re-attach
+            // replays stale motion.
             attachSnapshotValid = false;
             activeImpactDepth = 0f;
             carryDeltaAccum = Vector2.zero;

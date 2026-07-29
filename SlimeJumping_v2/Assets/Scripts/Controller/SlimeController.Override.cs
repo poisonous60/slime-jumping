@@ -5,18 +5,11 @@ namespace SlimeJumping.Controller
 {
     public partial class SlimeController
     {
-        // --- External controller override ---
         private IExternalController _override;
         public bool HasOverride => _override != null;
 
-        // --- External Controller Override ---
 
-        /// <summary>
-        /// Direct velocity write. Only callable while HasOverride==true.
-        /// Use AddExternalVelocity / MultiplyVelocity for normal velocity changes.
-        /// NOTE: OverridePosition is not yet needed — add when #5/#27/#31 require
-        /// path-based slime movement during override.
-        /// </summary>
+        /// <summary>Direct velocity write; override context only. Normal changes go through AddExternalVelocity/MultiplyVelocity.</summary>
         public void OverrideVelocity(Vector2 v)
         {
             if (!HasOverride)
@@ -27,11 +20,7 @@ namespace SlimeJumping.Controller
             velocity = v;
         }
 
-        /// <summary>
-        /// Direct position write. Only callable while HasOverride==true. Used by
-        /// path-based traversal controllers (#31 pipe transit) that lerp the slime
-        /// along an external path while suspending normal physics.
-        /// </summary>
+        /// <summary>Direct position write; override context only. For path-based traversal that suspends normal physics.</summary>
         public void OverridePosition(Vector2 p)
         {
             if (!HasOverride)
@@ -50,7 +39,6 @@ namespace SlimeJumping.Controller
                 _override.OnReleaseControl(this);
             }
 
-            // Clean up current state
             if (carrier != null) carrier.Detach();
             ClearPlatformEffect();
             surfaceMod = settings.BuildDefaultModifiers();
@@ -59,9 +47,8 @@ namespace SlimeJumping.Controller
             surfaceMaterialOverrideStack.Clear();
             hasOverrideMods = false;
             stunTimer = 0f;
-            // Pending energy-conversion coyote would otherwise survive the override
-            // (timer only ticks in FixedUpdateAttached) and fire a spurious energy
-            // conversion on the next Attached landing after release.
+            // Coyote timer only ticks in FixedUpdateAttached, so it survives the override
+            // and fires a spurious energy conversion on the next landing.
             ClearPendingEnergyConversion(executeDeferredReset: false);
 
             // Unity doesn't fire OnTriggerExit2D after override — clear stale candidates
@@ -78,21 +65,16 @@ namespace SlimeJumping.Controller
             _override.OnReleaseControl(this);
             _override = null;
 
-            // SetOverride cleared detector candidates; if we're still overlapping
-            // the same interactable (e.g. standing up from a bench), Unity won't
-            // re-fire OnTriggerEnter2D. Rescan current overlaps so W works again.
+            // Still overlapping the same interactable? Unity won't re-fire
+            // OnTriggerEnter2D, so without a rescan W stops working.
             interactionDetector.Rescan();
 
-            // Clear stale gravity fields (slime may have moved during override).
-            // NOTE: If slime is still physically inside a GravityField after release,
-            // that zone won't re-fire OnTriggerEnter2D. The IExternalController
-            // implementation is responsible for moving the slime outside gravity zones
-            // before releasing, or the zone will be silently orphaned until re-entry.
+            // Same trap: a slime left inside a GravityField gets no fresh OnTriggerEnter2D,
+            // so the IExternalController must move it out before releasing.
             gravityFieldStack.Clear();
             gravityUp = Vector2.up;
             gravityRight = Vector2.right;
 
-            // Resume as Airborne
             launchSpeed = 0f;
             launchPosition = rb.position;
             conversionCount = 0;

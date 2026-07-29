@@ -4,12 +4,7 @@ using SlimeJumping.Physics;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Diagnostic logger for corner oscillation bug.
-    /// Logs 5 checks: active contacts, primary flip, attach toggle/lockout,
-    /// Phase A convergence, and per-contact surface angles.
-    /// Attach to the same GameObject as SlimeController, or assign via inspector.
-    /// </summary>
+    /// <summary>Corner-oscillation diagnostics: contacts, primary flip, attach toggle/lockout, Phase A convergence, per-contact angles.</summary>
     public class CornerDiagnosticLogger : MonoBehaviour
     {
         [SerializeField] private SlimeController slimeController;
@@ -54,7 +49,6 @@ namespace SlimeJumping.Debugging
         {
             int total = probe.ContactCount;
 
-            // Main summary line
             var sb = new System.Text.StringBuilder(512);
             sb.Append($"[F{Time.frameCount}] CORNER | State={slimeController.CurrentState}");
             sb.Append($" | Contacts: {active}/{total}");
@@ -65,7 +59,6 @@ namespace SlimeJumping.Debugging
             if (flipped) sb.Append(" [FLIPPED]");
             Debug.Log(sb.ToString());
 
-            // Per-contact detail
             for (int i = 0; i < total; i++)
             {
                 var col = probe.GetContactCollider(i);

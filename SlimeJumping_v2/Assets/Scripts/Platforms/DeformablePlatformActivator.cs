@@ -6,19 +6,8 @@ using UnityEditor;
 
 namespace SlimeJumping.Platforms
 {
-    /// <summary>
-    /// Scene-wide manager that keeps DeformablePlatform dents alive only while the slime
-    /// is within its interaction radius. Uses a trigger CircleCollider2D on a kinematic
-    /// Rigidbody2D that follows the slime — Unity's physics broadphase fires enter/exit
-    /// per platform, so no per-frame polling or per-platform distance checks happen.
-    ///
-    /// Exit → platform starts its rest-restore lerp (same path the fall-below check uses).
-    /// Enter → no-op. An in-progress reset is not cancelled (it'll finish on its own, and
-    /// any fresh impact will override it anyway via ApplyImpactAt).
-    ///
-    /// Drop one of these into any scene with DeformablePlatforms; platforms find it
-    /// automatically via the physics system — no references to wire up.
-    /// </summary>
+    /// <summary>Trigger circle following the slime keeps DeformablePlatform dents alive; exit starts
+    /// the platform's rest-restore. Broadphase enter/exit replaces per-platform distance polling.</summary>
     [RequireComponent(typeof(CircleCollider2D))]
     [RequireComponent(typeof(Rigidbody2D))]
     public class DeformablePlatformActivator : MonoBehaviour
@@ -47,8 +36,7 @@ namespace SlimeJumping.Platforms
 
         void Reset()
         {
-            // Applied when the component is first added — matches the Awake-time runtime setup
-            // so the editor inspector reflects the intended state immediately.
+            // Mirrors the Awake setup so the inspector shows the runtime state on add.
             var r = GetComponent<Rigidbody2D>();
             var c = GetComponent<CircleCollider2D>();
             if (r != null)
@@ -69,7 +57,7 @@ namespace SlimeJumping.Platforms
             rb  = GetComponent<Rigidbody2D>();
             col = GetComponent<CircleCollider2D>();
             rb.bodyType = RigidbodyType2D.Kinematic;
-            // Ensures trigger events fire even against kinematic-bodied platforms (safety net).
+            // Else trigger events never fire against kinematic-bodied platforms.
             rb.useFullKinematicContacts = true;
             rb.gravityScale = 0f;
             col.isTrigger = true;
@@ -110,8 +98,8 @@ namespace SlimeJumping.Platforms
                 if (cachedSlime != null) follow = cachedSlime.transform;
                 if (follow == null) return;
             }
-            // rb.position (not transform.position) so trigger events fire correctly in
-            // the same FixedUpdate step — PhysX computes overlaps against the Rigidbody pose.
+            // rb.position, not transform.position: overlaps are computed against the body pose,
+            // so a transform write misses trigger events in the same FixedUpdate step.
             rb.position = follow.position;
         }
 

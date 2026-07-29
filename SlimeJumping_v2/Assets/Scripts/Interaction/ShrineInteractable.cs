@@ -7,9 +7,8 @@ using SlimeJumping.UI;
 
 namespace SlimeJumping.Interaction
 {
-    /// On interact: spawns a will-o-the-wisp at wispAnchor, holds briefly,
-    /// then triggers the reverse iris transition to EndScene.
-    /// Takes slime override so movement is frozen during the sequence.
+    /// On interact: spawns a wisp at wispAnchor, holds, then runs the reverse iris transition
+    /// to EndScene. Takes slime override so movement is frozen for the whole sequence.
     public class ShrineInteractable : InteractableBase, IExternalController
     {
         [Header("Wisp")]

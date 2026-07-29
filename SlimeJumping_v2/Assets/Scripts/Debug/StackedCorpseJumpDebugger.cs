@@ -4,14 +4,9 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Debugging
 {
-    /// Read-only probe for the "can't jump (charge-launch) off a fallen bamboo
-    /// corpse that is stacked on a live stalk" bug. Attach to the Slime.
-    ///
-    /// Logs one [StackedJump] line per FixedUpdate while any corpse exists:
-    /// slime state / attach target / probe contacts / charge & lockout timers,
-    /// plus the corpse rigidbody state and the nearest live stalk's spring state.
-    /// State transitions and Launch events are promoted to LogWarning markers.
-    /// Pull-only: reads public getters, writes nothing back (CLAUDE.md rule).
+    /// Read-only probe for "can't charge-launch off a fallen bamboo corpse stacked on a live stalk".
+    /// Attach to the Slime; logs one [StackedJump] line per FixedUpdate while a corpse exists, with
+    /// state changes and Launch promoted to warnings. Pull-only: reads getters, writes nothing back.
     [DefaultExecutionOrder(3002)]
     public class StackedCorpseJumpDebugger : MonoBehaviour
     {

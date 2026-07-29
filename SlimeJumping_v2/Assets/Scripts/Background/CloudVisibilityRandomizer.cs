@@ -3,12 +3,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Background
 {
-    // Editor authoring tool: hits the "Randomize" button in the Inspector to
-    // randomly enable/disable the GameObjects N levels below this transform,
-    // then saves the result with the scene. No runtime behavior by default —
-    // turn on `randomizeOnStart` if you also want play-mode shuffling.
-    //
-    // Default depth = 3 matches CloudField → CloudBackground → CloudsN → Cloud_NN.
+    // Editor authoring tool: the Inspector button randomly enables/disables the GameObjects
+    // `depth` levels below this transform and saves the result with the scene.
     public class CloudVisibilityRandomizer : MonoBehaviour
     {
         [Tooltip("Hierarchy depth from this transform to the leaves to toggle. " +

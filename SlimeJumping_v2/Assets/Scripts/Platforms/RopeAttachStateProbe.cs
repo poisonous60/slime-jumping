@@ -3,14 +3,9 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Platforms
 {
-    // State-diff probe for the rope re-attach bug. The bug repros only when the
-    // slime had a non-rope contact between leaving the rope and re-touching it.
-    // This component logs a single line at every "rope-touch-arrive" event,
-    // tagged WORKING (no intermediate contact since last rope-leave) or
-    // SUSPECT (had intermediate contact). Run both repros, diff the lines, and
-    // the field that differs names the leaked state.
-    //
-    // Pull-only — never writes to SlimeController or RopeV3 (per project memory rule).
+    // State-diff probe for the rope re-attach bug: one line per rope-touch-arrive, tagged
+    // WORKING (no intermediate contact since rope-leave) or SUSPECT (had one). Diff the two —
+    // the field that differs names the leaked state. Pull-only, never writes to the slime.
     [DefaultExecutionOrder(110)]
     public class RopeAttachStateProbe : MonoBehaviour
     {
@@ -48,7 +43,6 @@ namespace SlimeJumping.Platforms
             bool surfIsRope = surf != null && surf == rope.Edge;
             bool surfIsOther = surf != null && !surfIsRope;
 
-            // Rope-arrive edge: not rope last frame → rope this frame.
             if (surfIsRope && !prevSurfaceWasRope)
             {
                 LogArrive();
@@ -56,7 +50,6 @@ namespace SlimeJumping.Platforms
                 lastIntermediateSurface = null;
             }
 
-            // Rope-leave edge: rope last frame → not rope this frame.
             if (!surfIsRope && prevSurfaceWasRope)
             {
                 if (logLeaves) LogLeave();
@@ -64,7 +57,6 @@ namespace SlimeJumping.Platforms
                 lastIntermediateSurface = null;
             }
 
-            // Intermediate touch: any non-rope contact while we're tracking.
             if (surfIsOther && !hadIntermediateSinceLeave)
             {
                 hadIntermediateSinceLeave = true;

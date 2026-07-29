@@ -14,7 +14,6 @@ public static class AudioPreviewShortcut
             return;
         }
         
-        // 새 클립 재생 전에 기존 재생 중인 것 모두 정지 (선택)
         StopAllAudio();
         
         var audioUtilType = typeof(AudioImporter).Assembly

@@ -6,20 +6,8 @@ using SlimeJumping.Platforms.ThinIceV2;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// V2 icicle hazard. Same Idle → Shaking → Falling → Broken → Regenerating
-    /// state machine as <see cref="IcicleHazard"/> v1, with two upgrades:
-    ///
-    ///   1. The fall speed is sampled from an AnimationCurve (time → units/sec)
-    ///      so authors can shape a slow → accelerating → constant profile.
-    ///      Past the curve's last keyframe time the final value is held.
-    ///
-    ///   2. On impact, instead of v1's silent collider-disable, the icicle
-    ///      shatters with the same vocabulary as <see cref="ThinIcePlatformV2"/>:
-    ///      mesh shards spawned across the collider bounds and launched outward
-    ///      with an inherited downward bias from the impact speed, a frost-cloud
-    ///      VFX puff, a shatter sound, and optional emissive flash + camera shake.
-    ///
-    /// v1 is intentionally left in place for existing scenes — this is a sibling.
+    /// Idle → Shaking → Falling → Broken → Regenerating icicle; curve-driven fall speed, shatters on impact.
+    /// Sibling of <see cref="IcicleHazard"/> v1, which stays in place for existing scenes.
     [DefaultExecutionOrder(-100)]
     [RequireComponent(typeof(Rigidbody2D))]
     public class IcicleHazardV2 : MonoBehaviour
@@ -374,8 +362,6 @@ namespace SlimeJumping.Mechanisms
             return hits > 0;
         }
 
-        // --- Curve sampling ---
-
         // Public so debug / inspector tools can preview the profile. Pure read.
         public float SampleFallSpeed(float t)
         {
@@ -384,8 +370,6 @@ namespace SlimeJumping.Mechanisms
             float clamped = Mathf.Min(t, lastKeyTime);
             return Mathf.Max(0f, fallSpeedCurve.Evaluate(clamped));
         }
-
-        // --- Transitions ---
 
         private void SetState(IcicleState newState)
         {
@@ -478,9 +462,7 @@ namespace SlimeJumping.Mechanisms
             Instantiate(frostCloudVFXPrefab, origin, Quaternion.identity);
         }
 
-        // Mirror of ThinIcePlatformV2.SpawnShards adapted for an icicle: uses our own
-        // collider's bounds, biases shards downward via inherited fall speed, otherwise
-        // identical (random outward radial + upward bias + spin + lifetime fade).
+        // Mirror of ThinIcePlatformV2.SpawnShards, plus downward bias from the impact speed.
         private void SpawnShards(float fallSpeedAtImpact)
         {
             if (shardRuntimePrefab == null) return;
@@ -575,8 +557,6 @@ namespace SlimeJumping.Mechanisms
             }
             SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, soundVolume);
         }
-
-        // --- Gizmos ---
 
         private void OnDrawGizmosSelected()
         {

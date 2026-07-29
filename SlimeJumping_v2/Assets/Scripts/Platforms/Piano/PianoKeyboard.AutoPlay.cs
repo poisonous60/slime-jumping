@@ -3,18 +3,10 @@ using UnityEngine;
 namespace SlimeJumping.Platforms.Piano
 {
     /// Idle auto-play half of the PianoKeyboard (opt-in via config.autoPlay.enabled).
-    ///
-    /// A rotation of recorded pieces. The slime stepping ONTO the piano picks the next piece and
-    /// immediately transposes the whole harmonize progression into that piece's key (and swaps in its
-    /// ornament preset), so everything the slime plays already belongs to the music that is about to
-    /// start. Then the slime plays — minPresses landings — walks away for idleSeconds, and the piano
-    /// finishes the thought by playing that same piece: the chords the player was just making resolve
-    /// into the recording instead of colliding with it.
-    ///
-    /// The sound is the recording; the keys are driven from a transcription of that same recording.
-    /// The clip's own playhead is the clock — nothing here counts frames or accumulates its own time,
-    /// so a hitch, a slow frame or a loop can never let the keys drift away from what is audible.
-    /// The slime landing on any key hands the instrument straight back (fade out, stop).
+    /// Arriving at the piano rotates to the next piece and transposes the harmonize progression into
+    /// its key, so what the slime plays belongs to the recording that starts after it walks away.
+    /// Sound = the recording, keys = a transcription of it, clocked off the clip's own playhead —
+    /// nothing accumulates time, so keys can never drift from what is audible.
     public partial class PianoKeyboard
     {
         private AudioSource autoPlaySource;
@@ -23,10 +15,9 @@ namespace SlimeJumping.Platforms.Piano
         private TextAsset autoPlayScoreSource;   // which TextAsset the cached score came from
         private bool autoPlayScoreBad;           // that TextAsset failed to parse — don't retry/log-spam
 
-        // The score the CURRENT performance is playing, captured at Start. Deliberately separate from
-        // the cache: the slime coming back rotates to the next song (which re-fills the cache) while
-        // this piece is still fading out, and clocking one recording's playhead against another
-        // recording's transcription would press keys that have nothing to do with what is audible.
+        // Separate from the cache on purpose: the returning slime rotates songs (refilling the cache)
+        // while this piece still fades out, and clocking one recording against another's
+        // transcription presses keys with nothing audible behind them.
         private PianoScoreData autoPlayingScore;
 
         private int autoPlaySongIndex = -1;      // -1 = nothing picked yet
@@ -44,8 +35,8 @@ namespace SlimeJumping.Platforms.Piano
         private float autoPlayLastContactTime = -999f;
         private float autoPlayEndedTime = -999f;
 
-        // If the clip never starts (audio data failed to load) the performance would otherwise sit
-        // "active" forever and the feature could never trigger again. Give up after this long.
+        // Audio data that never loads would leave the performance "active" forever and the feature
+        // could never fire again.
         private const float AutoPlayStartTimeout = 5f;
 
         /// Is the piano playing itself right now?
@@ -78,9 +69,8 @@ namespace SlimeJumping.Platforms.Piano
             {
                 if (!autoPlayContactPrev)
                 {
-                    // ARRIVING at the piano rotates the piece — not merely hopping key to key, which is
-                    // the same rising edge harmonize counts as a landing. Rotating per landing would
-                    // re-transpose mid-phrase every time the slime moved.
+                    // Only ARRIVING rotates: this rising edge also fires on every key-to-key hop, and
+                    // rotating there would re-transpose mid-phrase.
                     if (autoPlayAway)
                     {
                         autoPlayAway = false;
@@ -108,8 +98,8 @@ namespace SlimeJumping.Platforms.Piano
             bool gone = Time.time - autoPlayLastContactTime >= a.idleSeconds;
             bool rested = Time.time - autoPlayEndedTime >= a.cooldownSeconds;
 
-            // Gone long enough that coming back counts as a fresh visit, whether or not a performance
-            // actually happened (auto-play may be off, or the slime may not have played enough).
+            // Set even when no performance happened, else a slime that never earned one can't ever
+            // rotate the song again.
             if (gone) autoPlayAway = true;
 
             if (played && gone && rested) StartAutoPlay(a);
@@ -128,17 +118,15 @@ namespace SlimeJumping.Platforms.Piano
 
         // ── Rotation ────────────────────────────────────────────────────────────────────────────────
 
-        /// Advance to the next piece and make the instrument belong to it: the progression transposes
-        /// into its key and its ornament preset takes over, both as RUNTIME overrides so the shared
+        /// Advance to the next piece: key + ornaments applied as RUNTIME overrides only, so the shared
         /// PianoConfig asset is never written to.
         private void SelectNextSong(AutoPlaySettings a)
         {
             var list = a.songs;
             if (list == null || list.Count == 0) return;
 
-            // Only entries that are switched on AND actually wired can be picked. Doing this by
-            // rebuilding the candidate list each time (rather than skipping forward from the current
-            // index) is what keeps the rotation correct when the designer toggles songs at runtime.
+            // Rebuilt every time rather than stepping forward from the current index, so toggling
+            // songs at runtime can't corrupt the rotation.
             autoPlayPickable.Clear();
             for (int i = 0; i < list.Count; i++)
             {
@@ -163,9 +151,8 @@ namespace SlimeJumping.Platforms.Piano
             }
             else
             {
-                // Never the same piece twice running while anything else is available — an immediate
-                // repeat reads as "the rotation is broken", not as chance. Re-rolling uniformly over
-                // the other n-1 keeps every remaining piece equally likely.
+                // Never repeat while anything else is available — an immediate repeat reads as a
+                // broken rotation. Re-roll over the other n-1 keeps them equally likely.
                 int pick = Random.Range(0, n);
                 if (autoPlayPickable[pick] == autoPlaySongIndex)
                     pick = (pick + 1 + Random.Range(0, n - 1)) % n;
@@ -179,10 +166,8 @@ namespace SlimeJumping.Platforms.Piano
             int tonic = song.tonicMidi;
             ScaleType scale = song.scale;
 
-            // The song's own opening loop (+ accompaniment figure), baked offline into its score
-            // JSON by tools/extract_preview.py. When usable it replaces the shared schemas, so the
-            // slime's landings play THIS piece; songs without it keep the authored-schema path below
-            // completely unchanged.
+            // The song's own opening loop, baked offline into its score JSON by
+            // tools/extract_preview.py. When usable it replaces the shared schemas.
             bool hasScore = EnsureScore(song);
             ScorePreview preview = hasScore ? autoPlayScore.preview : null;
             var previewProg = PreviewUsable(preview) ? BuildPreviewProgression(preview) : null;
@@ -191,11 +176,8 @@ namespace SlimeJumping.Platforms.Piano
             {
                 if (tonic < 0)
                 {
-                    // The preview steps are voiced in the piece's own key — minor pieces included.
-                    // The relative-major detour in the else-branch exists only because the shared
-                    // schemas are tonic-relative; a progression extracted from the piece is not.
-                    // Melody snap stays safe: the minor pentatonic on the piece's real tonic is the
-                    // same note set the old detour produced (G minor penta = B♭ major penta).
+                    // Preview steps are voiced in the piece's own key, minor included — the
+                    // relative-major detour below is only needed by the tonic-relative schemas.
                     tonic = preview.tonicMidi;
                     scale = preview.minor ? ScaleType.Minor : ScaleType.Major;
                 }
@@ -211,23 +193,17 @@ namespace SlimeJumping.Platforms.Piano
                 {
                     int pc = ((autoPlayScore.key.tonicPc % 12) + 12) % 12;
 
-                    // A MINOR piece is tuned to its RELATIVE MAJOR, not to its own tonic. The authored
-                    // minor schemas (M1/M2) are built as the relative minor OF the tonic — ChordAmTonic
-                    // sits at -15..0, which from C4 is A minor. So a G minor piece needs tonic B♭ (+3) for
-                    // M1/M2 to land on G minor; feeding it G would put them on E minor, a third away from
-                    // the recording. The major schemas then sit on the relative major, which is exactly the
-                    // major/minor alternation those schemas were designed around.
+                    // A minor piece is tuned to its RELATIVE MAJOR: the authored minor schemas (M1/M2)
+                    // are the relative minor OF the tonic, so G minor needs tonic B♭ (+3) — feeding G
+                    // puts them on E minor, a third off the recording.
                     if (autoPlayScore.key.mode == "minor") pc = (pc + 3) % 12;
 
-                    // Placed in [60, 71]: the authored voicings reach 19 semitones below the tonic and the
-                    // low-interval-limit rule wants that bass at F2 (41) or above, so the tonic must not sit
-                    // below C4 — an octave lower would muddy every progression.
+                    // Must sit in [60, 71]: voicings reach 19 semitones below the tonic and the
+                    // low-interval-limit rule wants that bass at F2 (41) or above.
                     tonic = 60 + pc;
 
-                    // Major, deliberately, even for a minor piece: the tonic is now the relative major, and
-                    // a major pentatonic on it is the SAME note set as the minor pentatonic on the piece's
-                    // own tonic (B♭ major penta = G minor penta). Forcing Minor here would snap the melody
-                    // to B♭ minor instead, which is not in the recording's key at all.
+                    // Major even for a minor piece: major penta on the relative major is the same note
+                    // set as minor penta on its own tonic; Minor here would snap the melody a third off.
                     scale = ScaleType.Major;
                 }
             }
@@ -235,9 +211,6 @@ namespace SlimeJumping.Platforms.Piano
             if (tonic >= 0) h.SetKeyOverride(tonic, scale);
             h.SetOrnamentOverride(song.ornaments);
 
-            // Rotation is invisible until the piece starts, so say which one the slime just picked up.
-            // Without this there is no way to tell "the rotation did not fire" from "the rotation fired
-            // but this piece sounds like the last one".
             if (a.logSongChange)
             {
                 var o = song.ornaments;
@@ -263,36 +236,31 @@ namespace SlimeJumping.Platforms.Piano
             lastAdvanceTime = Time.time;
         }
 
-        /// Content-based validity for a song's preview block. Never judge by null alone: JsonUtility
-        /// can materialize a default ScorePreview instance when the JSON has no "preview" field at
-        /// all, so the shape of the data is the only trustworthy signal.
+        /// Validity by CONTENT, not null: JsonUtility materializes a default ScorePreview even when the
+        /// JSON has no "preview" field at all.
         private static bool PreviewUsable(ScorePreview p)
         {
             return p != null && p.steps != null && p.steps.Length >= 2
                    && p.tonicMidi >= 60 && p.tonicMidi <= 71;
         }
 
-        /// How many keys each of the song's strikes presses, e.g. "1212121212121212" for a song that
-        /// alternates bass and melody — the one-glance check that the rotation is playing THIS piece.
+        /// Keys per strike as a digit string, e.g. "1212..." for bass/melody alternation.
         private static string PreviewShape(ScorePreview p)
         {
             var sb = new System.Text.StringBuilder(p.steps.Length);
             for (int i = 0; i < p.steps.Length; i++)
             {
                 var s = p.steps[i];
-                int n = s == null || s.support == null ? 0 : s.support.Length;   // the figure itself
+                int n = s == null || s.support == null ? 0 : s.support.Length;
                 sb.Append((char)('0' + Mathf.Min(9, n)));
             }
             return sb.ToString();
         }
 
-        /// The JSON steps as runtime ChordSteps, ONE PER STEP so the list stays index-aligned with
-        /// ScorePreview.steps (the landing reads the strike by harmonizeIndex). Deliberately built
-        /// with object initializers over `new ChordStep()` — never deserialized straight into
-        /// ChordStep — so leftNext/centerNext/rightNext keep their -1 defaults and nextOptions stays
-        /// empty. That data shape is what makes HarmonyMath.NextIndex walk the song's opening
-        /// linearly and wrap, with zone branching and weighted dice naturally inert.
-        /// releaseSeconds stays 0 here: ring is now per NOTE, measured, inside the strike itself.
+        /// JSON steps as runtime ChordSteps, ONE PER STEP so the list stays index-aligned with
+        /// ScorePreview.steps. Never deserialize straight into ChordStep: leftNext/centerNext/rightNext
+        /// must keep their -1 defaults and nextOptions must stay empty, which is what makes
+        /// HarmonyMath.NextIndex walk linearly and leaves zone branching / weighted dice inert.
         private static System.Collections.Generic.List<ChordStep> BuildPreviewProgression(ScorePreview p)
         {
             var steps = new System.Collections.Generic.List<ChordStep>(p.steps.Length);
@@ -341,12 +309,10 @@ namespace SlimeJumping.Platforms.Piano
         {
             if (autoPlaySource == null || autoPlayingScore == null) { FinishAutoPlay(); return; }
 
-            // End-of-clip is checked BEFORE the fade branches, and only once the source has actually
-            // been heard. Two reasons, both real:
-            //   - a source whose audio data is still loading is not "finished", it has not begun;
-            //   - a non-looping clip that runs out DURING the fade-out reports time == 0, which the
-            //     loop-wrap test below would otherwise read as "looped" and rewind the cursor, making
-            //     keys at t≈0 press themselves with nothing audible behind them.
+            // End-of-clip before the fade branches, and only once actually heard: a source still
+            // loading has not begun (≠ finished), and a non-looping clip that ends DURING the fade-out
+            // reports time == 0, which the loop-wrap test below would read as "looped" and re-press
+            // keys at t≈0 with nothing audible behind them.
             if (autoPlaySource.isPlaying) autoPlayHeard = true;
             else if (autoPlayHeard) { FinishAutoPlay(); return; }
             else if (Time.time - autoPlayStartTime > AutoPlayStartTimeout) { FinishAutoPlay(); return; }
@@ -364,8 +330,8 @@ namespace SlimeJumping.Platforms.Piano
             autoPlaySource.volume = a.volume * autoPlayFade;
             if (!autoPlayHeard) return;   // nothing to clock the keys with yet
 
-            // THE CLIP IS THE CLOCK. Reading the playhead rather than accumulating deltaTime is what
-            // guarantees a key goes down on the frame its note is actually audible.
+            // The clip is the clock: reading the playhead, never accumulating deltaTime, is what keeps
+            // a key going down on the frame its note is audible.
             float t = autoPlaySource.time;
             if (t < autoPlayPrevClipTime) autoPlayNext = 0;   // looped back to the top
             autoPlayPrevClipTime = t;
@@ -378,8 +344,8 @@ namespace SlimeJumping.Platforms.Piano
             }
         }
 
-        /// Fade out and hand the piano back. Keys already down are left to rise on their own — killing
-        /// them here would also wipe the dip of the very key the returning slime just landed on.
+        /// Fade out and hand the piano back. Keys already down rise on their own — killing them here
+        /// would also wipe the dip of the key the returning slime just landed on.
         private void StopAutoPlay()
         {
             if (!autoPlayActive || autoPlayStopping) return;
@@ -402,8 +368,7 @@ namespace SlimeJumping.Platforms.Piano
             }
         }
 
-        // One sounding note = one key going down, at the depth its velocity earned and for as long as
-        // the transcription says it was held. Reuses harmonize's Visual tuning so the piano looks the
+        // One sounding note = one key down. Reuses harmonize's Visual tuning so the piano looks the
         // same whoever is playing it.
         private void PressScoreNote(AutoPlaySettings a, ScoreNote n)
         {
@@ -431,8 +396,7 @@ namespace SlimeJumping.Platforms.Piano
             autoPlaySource.loop = false;
             autoPlaySource.spatialBlend = 0f;
 
-            // Route through the same mixer group as the keys — it is the same instrument sounding,
-            // so whatever volume/FX the piano has applies to its own performance too.
+            // Same mixer group as the keys, so the piano's volume/FX apply to its own performance.
             for (int i = 0; i < keys.Count; i++)
                 if (keys[i] != null && keys[i].OutputGroup != null)
                 {
@@ -441,8 +405,7 @@ namespace SlimeJumping.Platforms.Piano
                 }
         }
 
-        /// Parse (and cache) one song's score. Only one score is held at a time: rotation happens when
-        /// the slime arrives at the piano, not per frame, so re-parsing a few KB there costs nothing.
+        /// Parse (and cache) one song's score; only one is held at a time.
         private bool EnsureScore(PianoSong song)
         {
             if (song == null || song.scoreJson == null) return false;
@@ -452,8 +415,8 @@ namespace SlimeJumping.Platforms.Piano
             autoPlayScoreBad = true;
             autoPlayScore = null;
 
-            // FromJson THROWS on malformed input rather than returning null, and this runs from Update
-            // via the rotation — one bad TextAsset would otherwise take the whole keyboard down.
+            // JsonUtility.FromJson THROWS on malformed input instead of returning null, and this runs
+            // from Update — one bad TextAsset would take the whole keyboard down.
             PianoScoreData parsed;
             try
             {

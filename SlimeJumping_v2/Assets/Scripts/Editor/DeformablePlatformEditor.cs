@@ -104,7 +104,6 @@ namespace SlimeJumping.Editor
                     continue;
                 }
 
-                // Left handle
                 EditorGUI.BeginChangeCheck();
                 Handles.color = LeftHandleColor;
                 Vector3 newLeftWorld = Handles.FreeMoveHandle(
@@ -118,7 +117,6 @@ namespace SlimeJumping.Editor
                     dp.BuildRuntime();
                 }
 
-                // Right handle
                 EditorGUI.BeginChangeCheck();
                 Handles.color = RightHandleColor;
                 Vector3 newRightWorld = Handles.FreeMoveHandle(
@@ -167,8 +165,7 @@ namespace SlimeJumping.Editor
             }
         }
 
-        // restLevels is sorted top→bottom (Y descending) by BuildRuntime.
-        // Return the index of the first level whose Y < hitY; 0 or Count means "above/below all".
+        // Assumes restLevels is sorted top→bottom (Y descending) by BuildRuntime.
         static int FindInsertionIndex(DeformablePlatform dp, float hitY)
         {
             for (int i = 0; i < dp.RestLevelCount; i++)

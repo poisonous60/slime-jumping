@@ -52,9 +52,7 @@ namespace SlimeJumping.Editor
             stormGo.transform.parent = root.transform;
             stormGo.transform.position = new Vector3(baseX, baseY + zoneHeight * 0.5f, 0f);
 
-            // PolygonCollider2D so designers can reshape the storm zone to non-rectangular
-            // areas. Seeded as a rectangle matching the old box so the test scene is
-            // unchanged until edited.
+            // PolygonCollider2D so the zone can be reshaped to non-rectangular areas.
             var col = stormGo.AddComponent<PolygonCollider2D>();
             col.isTrigger = true;
             col.points = RectPoints(zoneWidth, zoneHeight);
@@ -85,9 +83,8 @@ namespace SlimeJumping.Editor
             volume.weight = 0f;
             volume.sharedProfile = LoadOrCreateStormProfile();
 
-            // --- Snowflake material reused from Snow.prefab (no instance — the storm
-            // owns all snow inside the zone; stage-wide Snow.prefab instances are wired
-            // into suppressedSnowParticles by hand so they swap out on entry).
+            // --- Snowflake material reused from Snow.prefab; stage-wide Snow.prefab instances
+            // are wired into suppressedSnowParticles by hand so they swap out on entry.
             Material reusedSnowMaterial = null;
             var snowPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(SnowPrefabPath);
             if (snowPrefab != null)
@@ -100,8 +97,7 @@ namespace SlimeJumping.Editor
                 Debug.LogWarning($"Snow prefab missing at {SnowPrefabPath} — storm particles fall back to a plain white material.");
             }
 
-            // --- Storm-owned PS. Snowstorm2D owns it and drives spawn box/emission/
-            // velocity per frame — full-viewport volume spawn, camera-anchored.
+            // --- Storm-owned PS; Snowstorm2D drives spawn box/emission/velocity per frame.
             var stormPsGo = new GameObject("StormParticles");
             stormPsGo.transform.parent = stormGo.transform;
             stormPsGo.transform.localPosition = Vector3.zero;
@@ -122,63 +118,46 @@ namespace SlimeJumping.Editor
             Debug.Log("Snowstorm test setup complete. Phase cycle: WindLeft → CalmAfterLeft → WindRight → CalmAfterRight. Default starts in CalmAfterRight so the player has a quiet beat to read the rhythm.");
         }
 
-        // Storm-owned PS. Local sim space anchored to the camera (Snowstorm2D moves the
-        // PS transform to camera every LateUpdate); particles are visually glued to the
-        // viewport regardless of camera motion. Snowstorm2D drives the spawn box,
-        // emission rate, and velocity per frame — this configures only the static traits.
+        // Camera-anchored PS (Snowstorm2D moves the transform every LateUpdate). Static traits
+        // only; spawn box, emission rate and velocity are driven per frame.
         static void ConfigureStormPs(ParticleSystem ps, Material reusedSnowMaterial)
         {
             if (ps == null) return;
 
             var main = ps.main;
-            // LOCAL space: particles move with the camera-anchored PS transform; fast
-            // slime jumps no longer leave snow behind. Snowstorm2D asserts this at the
-            // cull site — flipping back to World will break the design.
+            // World space leaves snow behind on fast jumps; Snowstorm2D asserts Local at the cull site.
             main.simulationSpace = ParticleSystemSimulationSpace.Local;
             main.startLifetime = new ParticleSystem.MinMaxCurve(3f, 5f);
-            // startSpeed=0 — Snowstorm2D drives both X (wind drift) and Y (fall) via
-            // velocityOverLifetime. Box shape's default emit direction would otherwise
-            // push particles upward (its +Y axis), the opposite of what we want.
+            // 0 because velocityOverLifetime drives drift and fall; the Box shape's default
+            // emit direction is +Y and would push particles upward.
             main.startSpeed = 0f;
             main.startSize = new ParticleSystem.MinMaxCurve(0.10f, 0.18f);
             main.startColor = new ParticleSystem.MinMaxGradient(
                 new Color(1f, 1f, 1f, 0.85f),
                 new Color(0.8f, 0.88f, 1f, 0.85f));
-            // Sized to absorb peak emission without silent throttling. Peak rate 1800
-            // × max lifetime 5s = 9000 steady-state. 12000 leaves headroom.
+            // Peak 1800/s × 5 s lifetime = 9000 steady-state; headroom so emission isn't
+            // silently throttled.
             main.maxParticles = 12000;
             main.gravityModifier = 0.6f;
 
-            // Prewarm OFF on both strips — Snowstorm2D gates emission by slime presence
-            // weight (0 outside zone, lerps to 1 on entry). Prewarm would pre-populate
-            // particles at scene start regardless of slime location, producing a burst
-            // of falling snow in scenes where the slime hasn't entered the storm yet.
-            // The slime-entry fade-in (~0.66s) plus particle fall time fills the
-            // viewport quickly enough that prewarm isn't needed.
+            // Prewarm would pre-populate particles at scene start regardless of slime location,
+            // bursting snow into scenes the slime hasn't entered yet.
             main.prewarm = false;
             main.loop = true;
 
-            // Initial emission baseline; Snowstorm2D's ApplyStormParticles overwrites
-            // rateOverTime every LateUpdate frame, so this value is only active for
-            // the single frame before the first LateUpdate fires.
+            // Only live for the frame before the first LateUpdate; ApplyStormParticles owns it after.
             var emis = ps.emission;
             emis.rateOverTime = new ParticleSystem.MinMaxCurve(300f);
 
             var shape = ps.shape;
             shape.shapeType = ParticleSystemShapeType.Box;
             shape.boxThickness = Vector3.zero;
-            // Initial viewport-sized approximation; prewarm runs at PS enable BEFORE any
-            // LateUpdate, so a sane default avoids a one-frame point-spawn cloud.
-            // ApplyStormParticles overwrites this every frame with the camera-accurate
-            // full-viewport box.
+            // PS enable runs before any LateUpdate, so a viewport-sized default is needed to
+            // avoid a one-frame point-spawn cloud.
             shape.position = Vector3.zero;
             shape.scale = new Vector3(25f, 15f, 0f);
             shape.rotation = Vector3.zero;
 
-            // sizeOverLifetime: short fade-in so newly-spawned particles become visible
-            // almost immediately (they spawn above viewport so the fade doesn't matter
-            // visually but keeps cap-hit behavior smooth). Long visible plateau, brief
-            // fade-out at end of life.
             var sol = ps.sizeOverLifetime;
             sol.enabled = true;
             sol.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
@@ -191,10 +170,8 @@ namespace SlimeJumping.Editor
             var ext = ps.externalForces;
             ext.enabled = false;
 
-            // Noise module breaks the regular grid distribution that comes from a
-            // uniform Box spawn + uniform velocityOverLifetime — without this the
-            // snow tends to read as visible parallel "ruled lines" rather than
-            // organic snowfall. damping=true keeps the motion subtle.
+            // Without noise, uniform Box spawn + uniform velocityOverLifetime reads as parallel
+            // "ruled lines" instead of snowfall.
             var noise = ps.noise;
             noise.enabled = true;
             noise.strength = new ParticleSystem.MinMaxCurve(1.2f);
@@ -211,10 +188,8 @@ namespace SlimeJumping.Editor
             }
         }
 
-        // Prefer the snowflake material from Snow.prefab (round particle texture). Fall
-        // back to a fresh URP Particles/Unlit white if the prefab isn't present or its
-        // material can't be read — warn so the designer notices instead of silently
-        // getting an invisible/magenta PS.
+        // Prefer Snow.prefab's snowflake material; fall back to URP Particles/Unlit and warn,
+        // else the PS silently renders magenta.
         static Material ResolveStormMaterial(Material reused)
         {
             if (reused != null) return reused;
@@ -241,10 +216,6 @@ namespace SlimeJumping.Editor
             var profile = ScriptableObject.CreateInstance<VolumeProfile>();
             profile.name = "SnowstormProfile";
 
-            // Stronger defaults than the first pass — the previous tint was too subtle
-            // to read as "you are inside a blizzard". Vignette pushed up + a colder/
-            // darker color filter + a saturation drop combine into a noticeably colder
-            // mood at peak weight=1.
             var vignette = profile.Add<Vignette>(true);
             vignette.color.overrideState = true;
             vignette.color.value = new Color(0.4f, 0.55f, 0.75f);

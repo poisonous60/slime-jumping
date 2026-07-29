@@ -5,8 +5,6 @@ namespace SlimeJumping.Interaction
 {
     // Spawns SleepZParticle instances at a regular interval while IsEmitting is true.
     // Driven by BoxSleepInteractable, which polls BoxSleepAnimator.IsSleeping.
-    //
-    // Each Z is created at runtime via TextMeshPro — no prefab authoring needed.
     public class SleepZEmitter : MonoBehaviour
     {
         public float spawnInterval = 0.9f;

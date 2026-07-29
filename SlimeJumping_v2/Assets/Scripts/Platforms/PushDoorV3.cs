@@ -2,11 +2,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms
 {
-    // Slime impact -> Y-axis swing on a configurable target Transform.
-    // Collision footprint is rebuilt every FixedUpdate from the leaf mesh's
-    // 8 world-space corners, so the BoxCollider2D always matches the visual
-    // wherever the leaf swings to. Past openAngleDeg the collider disables
-    // and the slime passes through.
+    // Slime impact -> Y-axis swing on a target Transform. BC2D footprint is rebuilt
+    // every FixedUpdate from the leaf mesh corners; past openAngleDeg it disables.
     [RequireComponent(typeof(BoxCollider2D))]
     public class PushDoorV3 : PlatformMotor
     {
@@ -67,9 +64,7 @@ namespace SlimeJumping.Platforms
                  "0 으로 되돌리면 원래 회전 복원.")]
         [SerializeField, Range(-180f, 180f)] float editorPreviewAngleDeg = 0f;
 
-        // True "closed" rotation, captured at edit-time when the user first
-        // touches the preview slider, or via the right-click context menu.
-        // Serialized so play-mode entry uses the same baseline.
+        // Closed-pose baseline captured at edit time; serialized so play mode starts from it.
         [SerializeField, HideInInspector] Quaternion savedClosedLeafRotation = Quaternion.identity;
         [SerializeField, HideInInspector] bool savedClosedLeafRotationValid = false;
 
@@ -93,8 +88,6 @@ namespace SlimeJumping.Platforms
 
             if (leaf != null)
             {
-                // Use the explicitly-saved closed rotation if we have one. Otherwise
-                // assume the leaf's current rotation IS the closed pose.
                 baseLeafLocalRotation = savedClosedLeafRotationValid
                     ? savedClosedLeafRotation
                     : leaf.localRotation;
@@ -154,7 +147,6 @@ namespace SlimeJumping.Platforms
         {
             if (openTimer > 0f) openTimer -= dt;
 
-            // angular spring back toward 0 + drag
             angularVelocityDeg += -returnStiffness * currentAngleDeg * dt;
             angularVelocityDeg *= Mathf.Max(0f, 1f - angularDrag * dt);
             currentAngleDeg += angularVelocityDeg * dt;
@@ -205,10 +197,8 @@ namespace SlimeJumping.Platforms
         static readonly int[] AabbEdgeA = { 0, 0, 0, 1, 1, 2, 2, 3, 4, 4, 5, 6 };
         static readonly int[] AabbEdgeB = { 1, 2, 4, 3, 5, 3, 6, 7, 5, 6, 7, 7 };
 
-        // Compute the door's footprint at the slime's gameplay plane (world Z=0)
-        // by intersecting the leaf mesh's 3D AABB with the Z=0 plane. The 2D AABB
-        // of those intersection points is what the slime can collide against.
-        // Returns true if the door currently crosses Z=0 (collider can be active).
+        // Footprint = 2D AABB of the leaf AABB's intersection with the gameplay plane Z=0.
+        // Returns false when the door no longer crosses Z=0 (collider must go inactive).
         bool UpdateColliderShape()
         {
             if (doorCollider == null || leaf == null || !hasLeafMesh) return false;
@@ -233,14 +223,13 @@ namespace SlimeJumping.Platforms
             {
                 Vector3 a = cw[AabbEdgeA[i]];
                 Vector3 b = cw[AabbEdgeB[i]];
-                // Both endpoints strictly on the same side of Z=0 → no crossing.
                 if (a.z > 0f && b.z > 0f) continue;
                 if (a.z < 0f && b.z < 0f) continue;
 
                 float dz = b.z - a.z;
                 if (Mathf.Abs(dz) < 0.0001f)
                 {
-                    // Edge lies in / parallel to Z=0 plane → include both endpoints.
+                    // Edge parallel to Z=0 → take both endpoints.
                     if (a.x < wmin.x) wmin.x = a.x; if (a.x > wmax.x) wmax.x = a.x;
                     if (a.y < wmin.y) wmin.y = a.y; if (a.y > wmax.y) wmax.y = a.y;
                     if (b.x < wmin.x) wmin.x = b.x; if (b.x > wmax.x) wmax.x = b.x;
@@ -276,7 +265,6 @@ namespace SlimeJumping.Platforms
         {
             if (doorCollider == null) return;
 
-            // Pass-through if angle exceeds threshold OR door no longer crosses Z=0.
             bool shouldBeOpen = !hasZ0Crossing || Mathf.Abs(currentAngleDeg) >= openAngleDeg;
 
             if (shouldBeOpen && doorCollider.enabled)
@@ -332,9 +320,8 @@ namespace SlimeJumping.Platforms
                 ? rotationAxis.normalized
                 : Vector3.up;
 
-            // First touch: snapshot current leaf rotation as the closed reference and
-            // anchor the slider at 0. Avoids the "previous preview is baked in" trap
-            // where re-applying delta drifts.
+            // First touch snapshots the closed reference and re-anchors the slider at 0,
+            // else the previous preview bakes in and re-applied deltas drift.
             if (!savedClosedLeafRotationValid)
             {
                 savedClosedLeafRotation = leaf.localRotation;
@@ -342,7 +329,6 @@ namespace SlimeJumping.Platforms
                 editorPreviewAngleDeg = 0f;
             }
 
-            // Direct mapping: leaf = closed * AngleAxis(preview). No accumulation.
             leaf.localRotation = savedClosedLeafRotation
                                   * Quaternion.AngleAxis(editorPreviewAngleDeg, axis);
 
@@ -431,7 +417,7 @@ namespace SlimeJumping.Platforms
                 anyCross = true;
             }
 
-            // No Z=0 crossing → collapse collider so editor preview shows it as gone.
+            // No Z=0 crossing → collapse collider so the preview shows it as gone.
             if (!anyCross)
             {
                 bc.offset = Vector2.zero;

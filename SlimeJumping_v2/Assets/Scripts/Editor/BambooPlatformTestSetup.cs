@@ -21,9 +21,7 @@ namespace SlimeJumping.Editor
 
         static void SetupBambooTestInternal(string rootName, string settingsAssetPath)
         {
-            // Remove any stale BambooPlatformTest left over from a previous menu run —
-            // those still reference last-build's material/shader and won't pick up the
-            // latest defaults until the GameObject is recreated.
+            // A stale root keeps last-build's material/shader — recreate instead of reusing.
             var existing = GameObject.Find(rootName);
             if (existing != null) Object.DestroyImmediate(existing);
 
@@ -32,7 +30,6 @@ namespace SlimeJumping.Editor
             root.transform.position = Vector3.zero;
             var bambooSettings = AssetDatabase.LoadAssetAtPath<BambooSettings>(settingsAssetPath);
 
-            // Floor.
             CreateStaticPlatform("Floor", root.transform,
                 new Vector3(0f, -6f, 0f),
                 new Vector3(40f, 1f, 1f));
@@ -45,13 +42,10 @@ namespace SlimeJumping.Editor
                 new Vector3(18f, 0f, 0f),
                 new Vector3(1f, 16f, 1f));
 
-            // A small ledge to launch from.
             CreateStaticPlatform("LaunchPad", root.transform,
                 new Vector3(-12f, -4f, 0f),
                 new Vector3(3f, 1f, 1f));
 
-            // Bamboo grove: a few stalks of varying length / spring across the playfield,
-            // base pivot sitting on the floor.
             float floorTop = -5.5f; // floor center -6, half-height 0.5
             CreateBamboo(root.transform, "Bamboo_A", new Vector3(-6f, floorTop, 0f), length: 5.0f, segments: 12, bambooSettings);
             CreateBamboo(root.transform, "Bamboo_B", new Vector3(-2f, floorTop, 0f), length: 6.5f, segments: 14, bambooSettings);
@@ -78,8 +72,7 @@ namespace SlimeJumping.Editor
             go.transform.position = basePos;
             go.layer = 7;
 
-            // The platform adds Rigidbody2D itself in RebuildSegments, but we set the
-            // serialized fields first so RebuildSegments uses them.
+            // RebuildSegments would add its own Rigidbody2D — set bodyType before it runs.
             var rb = go.AddComponent<Rigidbody2D>();
             rb.bodyType = RigidbodyType2D.Kinematic;
 
@@ -89,8 +82,7 @@ namespace SlimeJumping.Editor
             so.FindProperty("settings").objectReferenceValue = bambooSettings;
             so.FindProperty("bambooLength").floatValue = length;
             so.FindProperty("segmentCount").intValue = segments;
-            // Force the stalk colors explicitly so leftover serialized data from any prior
-            // BambooPlatform component layout cannot leak into the new material.
+            // Set explicitly: serialized colors from a prior component layout leak into the material.
             so.FindProperty("stalkColorBase").colorValue = new Color(0.30f, 0.52f, 0.20f, 1f);
             so.FindProperty("stalkColorTip").colorValue = new Color(0.50f, 0.68f, 0.28f, 1f);
             so.FindProperty("shadowDarken").floatValue = 0.60f;

@@ -4,11 +4,7 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Editor
 {
-    /// <summary>
-    /// Scene-view handles for editing a WaypointSnakePath's route. Drag each waypoint in 3D,
-    /// insert/remove via the inspector header buttons. Waypoint numeric values (X/Y/Z, speedAfter,
-    /// loop, useCatmullRom, samplesPerSegment) remain editable via the default inspector.
-    /// </summary>
+    /// <summary>Scene-view drag handles for a WaypointSnakePath's route; numeric fields stay on the default inspector.</summary>
     [CustomEditor(typeof(WaypointSnakePath))]
     public class WaypointSnakePathEditor : UnityEditor.Editor
     {
@@ -61,12 +57,10 @@ namespace SlimeJumping.Editor
                 Vector3 localPos = posProp.vector3Value;
                 Vector3 worldPos = path.transform.TransformPoint(localPos);
 
-                // Label + sphere at the waypoint.
                 Handles.color = new Color(0.2f, 0.8f, 1f, 1f);
                 Handles.SphereHandleCap(0, worldPos, Quaternion.identity, 0.15f, EventType.Repaint);
                 Handles.Label(worldPos + new Vector3(0.2f, 0.25f, 0f), $"WP {i}");
 
-                // 3D position handle — lets the user drag in X/Y/Z.
                 EditorGUI.BeginChangeCheck();
                 Vector3 newWorld = Handles.PositionHandle(worldPos, Quaternion.identity);
                 if (EditorGUI.EndChangeCheck())
@@ -93,7 +87,6 @@ namespace SlimeJumping.Editor
             int oldSize = wpProp.arraySize;
             Undo.RecordObject(path, atEnd ? "Append Snake Waypoint" : "Insert Snake Waypoint");
 
-            // Seed the new waypoint by duplicating the edge (or default offset if empty).
             Vector3 seedLocal = Vector3.zero;
             float   seedSpeed = 2f;
             if (oldSize >= 1)

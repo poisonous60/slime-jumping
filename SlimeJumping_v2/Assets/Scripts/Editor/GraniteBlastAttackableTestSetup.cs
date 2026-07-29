@@ -6,14 +6,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Editor
 {
-    /// <summary>
-    /// Drops a single Beam-mode emitter that the slime can destroy by jumping into
-    /// it. Wires SpaceWarpEffect (BulbShatter material) + GraniteBlastEmitterAttackable
-    /// + trigger collider so a fresh scene gets a fully-functional attackable emitter
-    /// with one menu click.
-    ///
-    /// Re-runnable: deletes any prior "GraniteBlast_Attackable_Test" root before building.
-    /// </summary>
+    /// <summary>Drops one Beam-mode emitter the slime can destroy by jumping into it. Re-runnable.</summary>
     public static class GraniteBlastAttackableTestSetup
     {
         const string ShaderName = "SlimeJumping/SpaceWarp_BulbShatter";
@@ -45,13 +38,12 @@ namespace SlimeJumping.Editor
             root.transform.position = anchor;
             Undo.RegisterCreatedObjectUndo(root, "Create Granite Blast Attackable Test");
 
-            // Single beam-mode emitter so the "in-flight beam halts on contact" behavior
-            // is visible. Long firing window so the slime has time to jump in mid-fire.
+            // Long firing window on purpose, so the slime has time to jump in mid-fire.
             var emitterGO = new GameObject("Emitter_Beam_Attackable");
             emitterGO.transform.parent = root.transform;
             emitterGO.transform.position = anchor;
 
-            // Visual head (just so the emitter is visible — no gameplay role).
+            // Visual head only — no gameplay role.
             var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
             visual.name = "Visual";
             Object.DestroyImmediate(visual.GetComponent<BoxCollider>());
@@ -64,7 +56,6 @@ namespace SlimeJumping.Editor
             visualMat.SetColor("_EmissionColor", new Color(0.15f, 0.5f, 0.75f) * 1.4f);
             visual.GetComponent<MeshRenderer>().sharedMaterial = visualMat;
 
-            // Muzzle aimed back at the slime.
             var muzzle = new GameObject("Muzzle");
             muzzle.transform.parent = emitterGO.transform;
             muzzle.transform.localPosition = new Vector3(-0.8f, 0f, 0f);
@@ -92,8 +83,7 @@ namespace SlimeJumping.Editor
                 so.ApplyModifiedProperties();
             }
 
-            // Warp quad — child of the emitter, anchored at the emitter origin so the
-            // BulbShatter membrane spans emitter→slime when TriggerStretch fires.
+            // Anchored at the emitter origin so the membrane spans emitter→slime on TriggerStretch.
             var warpGO = GameObject.CreatePrimitive(PrimitiveType.Quad);
             warpGO.name = "SpaceWarp";
             Object.DestroyImmediate(warpGO.GetComponent<MeshCollider>());
@@ -107,7 +97,6 @@ namespace SlimeJumping.Editor
             {
                 var so = new SerializedObject(warp);
                 so.FindProperty("targetRenderer").objectReferenceValue = warpRenderer;
-                // Anchor on the emitter root so the membrane base sits on the emitter.
                 so.FindProperty("anchor").objectReferenceValue = emitterGO.transform;
                 so.FindProperty("baseWidth").floatValue   = QuadHeight;
                 so.FindProperty("tipWidth").floatValue    = QuadHeight;
@@ -120,7 +109,6 @@ namespace SlimeJumping.Editor
                 so.ApplyModifiedProperties();
             }
 
-            // Trigger volume + Attackable component on the emitter root.
             var trigger = emitterGO.AddComponent<CircleCollider2D>();
             trigger.isTrigger = true;
             trigger.radius = 0.85f;

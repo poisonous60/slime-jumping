@@ -39,13 +39,11 @@ namespace SlimeJumping.Editor
 
         static GameObject CreateKnife(string name, Transform parent, Vector3 hostPos)
         {
-            // Root — kinematic rigidbody so child trigger routes OnTrigger to the child only,
-            // not here. Actually we just need the body to be a static scene object; no rigidbody needed.
             var go = new GameObject(name);
             go.transform.parent = parent;
             go.transform.position = hostPos;
 
-            // Body (flat side — the "safe" surface) with a NON-trigger collider
+            // Body (flat side) = the "safe" surface.
             var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
             body.name = "Body";
             Object.DestroyImmediate(body.GetComponent<BoxCollider>());
@@ -58,8 +56,7 @@ namespace SlimeJumping.Editor
             bodyCol.size = Vector2.one;
             body.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.85f, 0.85f, 0.9f));
 
-            // Edge (hazard) child — thin BoxCollider2D (trigger) on the top face.
-            // KnifeHazard component lives on this child.
+            // KnifeHazard lives on this child, not the root — only the top face is hazardous.
             var edge = new GameObject("Edge");
             edge.transform.parent = go.transform;
             edge.transform.localPosition = new Vector3(0f, 0.18f, 0f); // just above body top
@@ -77,7 +74,6 @@ namespace SlimeJumping.Editor
             so.FindProperty("bodyRoot").objectReferenceValue = body.transform;
             so.ApplyModifiedProperties();
 
-            // Visual indicator of edge (red stripe)
             var edgeVisual = GameObject.CreatePrimitive(PrimitiveType.Cube);
             edgeVisual.name = "EdgeVisual";
             Object.DestroyImmediate(edgeVisual.GetComponent<BoxCollider>());

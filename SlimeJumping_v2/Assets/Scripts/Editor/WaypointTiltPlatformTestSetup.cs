@@ -89,15 +89,13 @@ namespace SlimeJumping.Editor
             sensorCol.size = new Vector2(deckSize.x * 0.95f, 0.6f);
             var sensor = sensorGo.AddComponent<PlatformRiderSensor>();
 
-            // RiderActivatedMotor requires WaypointPlatform; wire CanAdvance manually instead.
-            // Hook it up via a tiny inline component that ties sensor → CanAdvance.
+            // RiderActivatedMotor requires WaypointPlatform, so a small gate ties sensor → CanAdvance.
             var gate = go.AddComponent<WaypointTiltRiderGate>();
             var gateSo = new SerializedObject(gate);
             gateSo.FindProperty("sensor").objectReferenceValue = sensor;
             gateSo.ApplyModifiedProperties();
 
-            // Visual child — placeholder cube (separate from collider so visual rotation
-            // could later be animated independently if desired).
+            // Visual child — placeholder cube, kept separate from the collider.
             var visualGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
             visualGo.name = "Visual";
             Object.DestroyImmediate(visualGo.GetComponent<BoxCollider>());

@@ -26,13 +26,11 @@ namespace SlimeJumping.Editor
             CreateBoxPlatform("LaunchWall", root.transform,
                 new Vector3(-7f, 1f, 0f), new Vector3(1f, 9f, 1f));
 
-            // The deformable pillar — tall, narrow, rectangle default.
             CreateDeformablePillar("ClayPillar", root.transform,
                 new Vector3(4f, 0f, 0f),
                 width: 1.5f, height: 7f, segmentCount: 22,
                 preset: DeformablePlatformSpawner.ShapePreset.Rectangle);
 
-            // A wider block at a different height.
             CreateDeformablePillar("ClayBlock", root.transform,
                 new Vector3(1f, 4.5f, 0f),
                 width: 3f, height: 1.5f, segmentCount: 8,
@@ -111,7 +109,6 @@ namespace SlimeJumping.Editor
 
         static void EnsureActivator(Transform parent)
         {
-            // One activator per scene — skip if another already exists.
             if (Object.FindAnyObjectByType<DeformablePlatformActivator>() != null) return;
 
             var go = new GameObject("DeformableActivator");
@@ -119,8 +116,7 @@ namespace SlimeJumping.Editor
             var rb  = go.AddComponent<Rigidbody2D>();
             var col = go.AddComponent<CircleCollider2D>();
             go.AddComponent<DeformablePlatformActivator>();
-            // AddComponent in script doesn't fire Reset, so apply the runtime config explicitly
-            // — this way the Inspector reflects the correct state immediately, not only after Play.
+            // AddComponent doesn't fire Reset — configure explicitly or the Inspector shows defaults.
             rb.bodyType = RigidbodyType2D.Kinematic;
             rb.useFullKinematicContacts = true;
             rb.gravityScale = 0f;
@@ -130,7 +126,6 @@ namespace SlimeJumping.Editor
 
         static void EnsureDirectionalLight(Transform parent)
         {
-            // If the scene already has a directional light, don't add another.
             foreach (var l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
                 if (l.type == LightType.Directional) return;
 
@@ -140,8 +135,7 @@ namespace SlimeJumping.Editor
             l2.type = LightType.Directional;
             l2.intensity = 1.1f;
             l2.shadows = LightShadows.Soft;
-            // Warm-ish 3/4 front-left angle so the front-face bumps cast micro-shadows
-            // and the left side face catches light differently from the right.
+            // 3/4 front-left so the front-face bumps cast micro-shadows.
             go.transform.rotation = Quaternion.Euler(45f, -30f, 0f);
         }
 

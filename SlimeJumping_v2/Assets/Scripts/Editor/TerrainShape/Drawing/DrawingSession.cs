@@ -9,8 +9,7 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
     {
         public DrawSubTool subTool = DrawSubTool.Rectangle;
 
-        // Primitive drag state (Rectangle/Triangle/Circle): MouseDown sets dragStartLocal,
-        // MouseUp commits.
+        // Primitive drag (Rectangle/Triangle/Circle): MouseDown sets the start, MouseUp commits.
         public bool dragging;
         public Vector2 dragStartLocal;
         public Vector2 dragCurrentLocal;
@@ -26,8 +25,7 @@ namespace SlimeJumping.TerrainShape.Editor.Drawing
         public float stampRotationDeg;
         public float stampScale = 1f;
 
-        // Captured at the start of a stroke (Shift held = subtract / eraser). When true the
-        // commit applies PolygonOps.Subtract instead of Union. Reset by EndStroke.
+        // Shift held at stroke start: commit applies PolygonOps.Subtract instead of Union.
         public bool subtractMode;
 
         public void EndStroke()

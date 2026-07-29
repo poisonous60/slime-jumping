@@ -4,10 +4,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Audio
 {
-    /// Per-gramophone playlist of selectable BGM tracks. Authored as a
-    /// ScriptableObject asset so multiple gramophones can share or swap
-    /// libraries without touching scene prefabs. Keep data-only — no runtime
-    /// state lives here.
+    /// Selectable BGM tracks for a gramophone. Data-only — keep runtime state out.
     [CreateAssetMenu(menuName = "SlimeJumping/Audio/Phonograph Playlist", fileName = "PhonographPlaylist")]
     public class PhonographPlaylist : ScriptableObject
     {

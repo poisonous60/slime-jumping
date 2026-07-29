@@ -6,9 +6,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Platforms.Snow.EditorScripts
 {
-    /// <summary>One-shot helper that wires SnowField.settings / hostCollider and adds
-    /// a SnowStamper to the slime in MainScene + SampleScene. Reports a punch list to
-    /// the console; saves dirty scenes. Idempotent — safe to re-run.</summary>
+    /// <summary>Wires SnowField.settings/hostCollider and adds a SnowStamper to the slime in MainScene + SampleScene. Idempotent.</summary>
     public static class SnowSceneWirer
     {
         const string DefaultSettingsPath = "Assets/Settings/Snow_Default.asset";

@@ -11,9 +11,8 @@ namespace SlimeJumping.Editor
         [MenuItem("SlimeJumping/Mechanism/Setup Falling Train Test")]
         public static void Setup()
         {
-            // Clear selection BEFORE destroying — otherwise component inspectors that were
-            // pointing at children of the old root (AudioSource/Transform/Rigidbody2D/...)
-            // throw SerializedObjectNotCreatableException for one frame after destroy.
+            // Must clear selection BEFORE destroying, else inspectors pointing at the old
+            // root's children throw SerializedObjectNotCreatableException for a frame.
             Selection.activeObject = null;
 
             var existing = GameObject.Find("FallingTrainTest");
@@ -22,7 +21,6 @@ namespace SlimeJumping.Editor
             var root = new GameObject("FallingTrainTest");
             Undo.RegisterCreatedObjectUndo(root, "Create Falling Train Test");
 
-            // Train carriage (placeholder cube — replace mesh+collider when 3D model arrives).
             var train = new GameObject("Train_Carriage");
             train.transform.SetParent(root.transform, false);
             train.transform.position = new Vector3(0f, 4f, 0f);
@@ -34,14 +32,13 @@ namespace SlimeJumping.Editor
             var solid = train.AddComponent<BoxCollider2D>();
             solid.size = new Vector2(6f, 1.4f);
 
-            // Visual root — placeholder cube. Replace with imported FBX later.
+            // Placeholder — replace with the imported FBX.
             var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
             visual.name = "Visual";
             DestroyAnyColliders(visual);
             visual.transform.SetParent(train.transform, false);
             visual.transform.localScale = new Vector3(6f, 1.4f, 1.4f);
 
-            // Rider sensor — sits above the carriage so the slime entering from above is detected.
             var sensorGo = new GameObject("RiderSensor");
             sensorGo.transform.SetParent(train.transform, false);
             sensorGo.transform.localPosition = new Vector3(0f, 1.2f, 0f);
@@ -50,7 +47,6 @@ namespace SlimeJumping.Editor
             sensorCol.size = new Vector2(6f, 2f);
             var sensor = sensorGo.AddComponent<PlatformRiderSensor>();
 
-            // Connector anchors — left and right couplings.
             var leftConn = new GameObject("Connector_Left");
             leftConn.transform.SetParent(train.transform, false);
             leftConn.transform.localPosition = new Vector3(-3f, 0f, 0f);
@@ -59,13 +55,11 @@ namespace SlimeJumping.Editor
             rightConn.transform.SetParent(train.transform, false);
             rightConn.transform.localPosition = new Vector3(3f, 0f, 0f);
 
-            // Audio source for creak loop.
             var creakSrc = train.AddComponent<AudioSource>();
             creakSrc.playOnAwake = false;
             creakSrc.loop = true;
             creakSrc.spatialBlend = 1f;
 
-            // Cinemachine impulses — share two sources: one for snaps, one for impact.
             var snapImpulseGo = new GameObject("SnapImpulse");
             snapImpulseGo.transform.SetParent(train.transform, false);
             snapImpulseGo.AddComponent<CinemachineImpulseSource>();
@@ -76,7 +70,7 @@ namespace SlimeJumping.Editor
             impactImpulseGo.AddComponent<CinemachineImpulseSource>();
             var impactImpulse = impactImpulseGo.AddComponent<ImpulseEmitter>();
 
-            // Debris placeholder prefab — small dynamic cube. User can swap for a real prefab.
+            // Placeholder debris — swap for a real prefab.
             var debrisTemplate = GameObject.CreatePrimitive(PrimitiveType.Cube);
             debrisTemplate.name = "Debris_Template";
             DestroyAnyColliders(debrisTemplate);
@@ -87,24 +81,21 @@ namespace SlimeJumping.Editor
             debrisTemplate.SetActive(false);
             debrisTemplate.transform.SetParent(root.transform, false);
 
-            // Heavy train physics material — high friction so it doesn't slide forever,
-            // small bounciness for visible impact bounce. Micro-tremble afterward is
-            // killed by FallingTrainPlatform's rest-snap (not by zero bounciness).
+            // Non-zero bounciness is intentional: the post-impact micro-tremble is killed by
+            // FallingTrainPlatform's rest-snap, not by zeroing bounciness here.
             var heavyMat = new PhysicsMaterial2D("Train_Heavy")
             {
                 friction = 0.7f,
                 bounciness = 0.1f
             };
 
-            // Placeholder ground so the test scene actually has something to land on.
-            // User can delete or move once they have real terrain.
+            // Placeholder — delete or move once real terrain exists.
             var ground = new GameObject("PlaceholderGround");
             ground.transform.SetParent(root.transform, false);
             ground.transform.position = new Vector3(0f, -3.5f, 0f);
             var groundCol = ground.AddComponent<BoxCollider2D>();
             groundCol.size = new Vector2(20f, 1f);
 
-            // Configure the train script.
             var falling = train.AddComponent<FallingTrainPlatform>();
             var so = new SerializedObject(falling);
             so.FindProperty("riderSensor").objectReferenceValue = sensor;

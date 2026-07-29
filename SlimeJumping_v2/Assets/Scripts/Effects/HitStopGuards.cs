@@ -4,12 +4,8 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Effects
 {
-    /// Scene-level installer for the two vetoes every gameplay scene needs: hitstop
-    /// must not fire while the slime is charging the slingshot (would warp physics of
-    /// an in-progress aim) and must not fire while the options panel is open (panel
-    /// policy is explicitly "do not touch Time.timeScale"). Leave a field unassigned
-    /// to skip that guard. Custom vetoes can still call HitStopService.AddGuard
-    /// directly without using this component.
+    /// Installs the two standard hitstop vetoes: slime charging (hitstop would warp an in-progress aim)
+    /// and options panel open (panel policy: never touch Time.timeScale). Unassigned field = that guard skipped.
     [DisallowMultipleComponent]
     public class HitStopGuards : MonoBehaviour
     {

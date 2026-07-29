@@ -4,10 +4,7 @@ using UnityEngine.Rendering.Universal;
 
 namespace SlimeJumping.EditorTools
 {
-    /// One-shot menu utility: adds the B&amp;W impact-frame FullScreenPassRendererFeature
-    /// to Assets/Settings/UniversalRenderer.asset and wires it to
-    /// Assets/Art/Materials/M_ImpactFrameGrayscale.mat at the "After Rendering Post
-    /// Processing" injection point. Idempotent: re-running just reports "already wired".
+    /// Adds the B&amp;W impact-frame FullScreenPassRendererFeature to UniversalRenderer.asset, wired to M_ImpactFrameGrayscale after post-processing. Idempotent.
     public static class ImpactFrameRendererFeatureSetup
     {
         private const string RendererPath = "Assets/Settings/UniversalRenderer.asset";
@@ -96,11 +93,8 @@ namespace SlimeJumping.EditorTools
             Debug.Log($"[ImpactFrameSetup] Added '{FeatureName}' to {RendererPath} (material={material.name}, injection=AfterRenderingPostProcessing, requirements=Depth). Feature count is now {rendererData.rendererFeatures.Count}.");
         }
 
-        /// Writes `requirements = Depth (1)` on the feature via SerializedObject if the
-        /// value is not already Depth-inclusive. Returns true when a change was applied.
-        /// Defensive: the URP asset already has RequireDepthTexture on globally, but
-        /// stamping the per-feature flag survives future URP asset edits or a Render
-        /// Graph mode switch.
+        /// Stamps `requirements |= Depth` on the feature, true if changed; the global RequireDepthTexture
+        /// alone does not survive URP asset edits or a Render Graph mode switch.
         private static bool EnsureDepthRequirement(FullScreenPassRendererFeature feature)
         {
             const int DepthFlag = 1;

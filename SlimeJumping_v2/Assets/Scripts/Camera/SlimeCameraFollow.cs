@@ -1,6 +1,6 @@
 using UnityEngine;
 
-// Deprecated: replaced by Cinemachine (CinemachineBrain on Main Camera + SlimeVCam) in SampleScene. Kept for reference.
+// Deprecated: Cinemachine (CinemachineBrain + SlimeVCam) drives the camera instead.
 namespace SlimeJumping.Camera
 {
     public class SlimeCameraFollow : MonoBehaviour

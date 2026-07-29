@@ -4,11 +4,7 @@ using SlimeJumping.Platforms.ThinIceV2;
 
 namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
 {
-    /// Custom inspector for ThinIcePlatformV2. Adds a tiny header showing what the
-    /// shared <see cref="ThinIceV2Config"/> resolves to (Resources auto-load OR an
-    /// inspector-assigned override) and a one-click button to generate the default
-    /// config + VFX prefabs if they don't exist yet. The rest of the inspector is
-    /// the default property drawer — only behavior tuning lives there now.
+    /// Inspector for ThinIcePlatformV2: shows the resolved <see cref="ThinIceV2Config"/> plus a generate-defaults button.
     [CustomEditor(typeof(ThinIcePlatformV2))]
     [CanEditMultipleObjects]
     public class ThinIcePlatformV2Editor : UnityEditor.Editor
@@ -38,8 +34,6 @@ namespace SlimeJumping.Platforms.ThinIceV2.EditorOnly
                 EditorGUILayout.LabelField($"Shards in set: {(resolved.shardSet != null ? resolved.shardSet.shards.Count : 0)}",
                                            EditorStyles.miniLabel);
 
-                // Quick warnings if the config is half-wired — easier to spot here than
-                // hunting down NullReferenceException at runtime.
                 if (resolved.shardSet == null)
                     EditorGUILayout.HelpBox("Config has no shardSet — shatter will spawn nothing.", MessageType.Warning);
                 if (resolved.shardRuntimePrefab == null)

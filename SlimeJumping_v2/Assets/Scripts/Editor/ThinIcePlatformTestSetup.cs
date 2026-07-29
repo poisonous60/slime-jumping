@@ -28,33 +28,28 @@ namespace SlimeJumping.Editor
                 new Vector3(11f, 1f, 0f), new Vector3(1f, 11f, 1f));
 
             // --- ThinIce variants ---
-            // 1. Default timings — baseline reference.
             CreateThinIce("ThinIce_Default", root.transform,
                 new Vector3(-6f, 0f, 0f), new Vector3(3f, 0.5f, 1f),
                 triggerDelay: 1.0f, crumbleDuration: 0.15f,
                 respawnTime: 3.0f, regenDuration: 0.6f);
 
-            // 2. Fast trigger — almost instant shatter on landing.
             CreateThinIce("ThinIce_Fast", root.transform,
                 new Vector3(-2f, 0f, 0f), new Vector3(3f, 0.5f, 1f),
                 triggerDelay: 0.3f, crumbleDuration: 0.1f,
                 respawnTime: 2.0f, regenDuration: 0.4f);
 
-            // 3. Slow trigger — easy to escape; long regen for observation.
             CreateThinIce("ThinIce_Slow", root.transform,
                 new Vector3(2f, 0f, 0f), new Vector3(3f, 0.5f, 1f),
                 triggerDelay: 2.0f, crumbleDuration: 0.2f,
                 respawnTime: 4.0f, regenDuration: 1.2f);
 
-            // 4. Permanent — never regenerates (respawnTime < 0).
+            // respawnTime < 0 = never regenerates
             CreateThinIce("ThinIce_Permanent", root.transform,
                 new Vector3(6f, 0f, 0f), new Vector3(3f, 0.5f, 1f),
                 triggerDelay: 1.0f, crumbleDuration: 0.15f,
                 respawnTime: -1f, regenDuration: 0.6f);
 
-            // 5. Stacked higher tile — chain two ThinIce tiles to verify
-            //    overlap-check behavior (upper tile should not regen while
-            //    slime is resting on it, etc.).
+            // stacked pair: upper tile must not regen while the slime rests on it
             CreateThinIce("ThinIce_Upper", root.transform,
                 new Vector3(-2f, 3.5f, 0f), new Vector3(4f, 0.5f, 1f),
                 triggerDelay: 1.0f, crumbleDuration: 0.15f,
@@ -79,8 +74,7 @@ namespace SlimeJumping.Editor
         static GameObject CreateThinIce(string name, Transform parent, Vector3 pos, Vector3 scale,
             float triggerDelay, float crumbleDuration, float respawnTime, float regenDuration)
         {
-            // Root: collider + ThinIcePlatform script. Visual is a child so shake/scale
-            // on Visual does not feed back into the collider.
+            // Visual is a child so shake/scale on it never feeds back into the collider.
             var go = new GameObject(name);
             go.transform.parent = parent;
             go.transform.position = pos;
@@ -90,7 +84,6 @@ namespace SlimeJumping.Editor
             var col = go.AddComponent<BoxCollider2D>();
             col.size = Vector2.one;
 
-            // --- Visual child (Cube primitive) ---
             var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
             visual.name = "Visual";
             Object.DestroyImmediate(visual.GetComponent<BoxCollider>());
@@ -102,14 +95,12 @@ namespace SlimeJumping.Editor
             var renderer = visual.GetComponent<MeshRenderer>();
             renderer.sharedMaterial = EnsureIceMaterial();
 
-            // --- Shatter particles (child of Visual) ---
             var psGo = new GameObject("ShatterParticles");
             psGo.transform.SetParent(visual.transform, worldPositionStays: false);
             psGo.transform.localPosition = Vector3.zero;
             var ps = psGo.AddComponent<ParticleSystem>();
             ConfigureShatterParticles(ps);
 
-            // --- ThinIcePlatform component wiring ---
             var ice = go.AddComponent<ThinIcePlatform>();
             var so = new SerializedObject(ice);
             so.FindProperty("triggerDelay").floatValue = triggerDelay;
@@ -130,7 +121,6 @@ namespace SlimeJumping.Editor
 
         static void ConfigureShatterParticles(ParticleSystem ps)
         {
-            // Tuned for a quick outward burst when the tile shatters.
             var main = ps.main;
             main.duration = 0.5f;
             main.loop = false;

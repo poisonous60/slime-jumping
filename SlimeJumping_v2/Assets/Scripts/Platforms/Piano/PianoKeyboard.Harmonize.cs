@@ -4,11 +4,9 @@ using UnityEngine.Audio;
 
 namespace SlimeJumping.Platforms.Piano
 {
-    /// Progression-harmonize half of the PianoKeyboard (opt-in via config.harmonize.enabled). Each
-    /// landing advances a chord progression one step, plays that step's voicing (+ a position-snapped
-    /// melody) through a PianoVoicePool, thickens by velocity, sinks the chord's keys visually, and —
-    /// when branching is authored — lets the landing zone pick the next step. When disabled the
-    /// keyboard plays each key's literal note exactly as before (this whole file early-returns).
+    /// Progression-harmonize half of PianoKeyboard (opt-in via config.harmonize.enabled): each landing advances
+    /// the progression, plays that step through a PianoVoicePool and sinks its keys. Disabled = whole file
+    /// early-returns and every key plays its literal note.
     public partial class PianoKeyboard
     {
         private PianoVoicePool harmonizePool;
@@ -57,9 +55,8 @@ namespace SlimeJumping.Platforms.Piano
         {
             harmonizePool?.Tick(Time.deltaTime);
 
-            // Idle or left the piano → restart the CURRENT schema, not the whole list. Jumping to 0
-            // would undo every schema the player rolled into, so a platformer's normal pauses would
-            // pin the piano to schema 1 forever.
+            // Idle → restart the CURRENT schema, not the whole list: jumping to 0 undoes every schema the
+            // player rolled into, pinning the piano to schema 1 through a platformer's normal pauses.
             if (config != null && harmonizePoolBuilt && config.harmonize.enabled
                 && Time.time - lastAdvanceTime > config.harmonize.resetIdleSeconds)
                 harmonizeIndex = Mathf.Clamp(harmonizeLoopStart, 0, Mathf.Max(0, config.harmonize.Progression.Count - 1));
@@ -67,9 +64,8 @@ namespace SlimeJumping.Platforms.Piano
 
         private void HarmonizeDisable()
         {
-            // Avoid leaking the voice pool / NotePlayed subscription when the component is disabled or
-            // the scene unloads. Without this, Update() (and its pool Tick) stops while notes are still
-            // mid-release, freezing them at their last volume and leaving the AudioSources alive.
+            // Without teardown, Update() (and its pool Tick) stops while notes are mid-release: they freeze at
+            // their last volume and the AudioSources stay alive.
             if (harmonizePoolBuilt) TeardownHarmonize();
             ReleaseKeyVisuals();
         }
@@ -104,8 +100,7 @@ namespace SlimeJumping.Platforms.Piano
             harmonizePool?.Dispose();
             harmonizePool = null;
 
-            // Snap keys back up, but KEEP the map: auto-play drives the same 88 visuals and may be
-            // running (or about to) while harmonize is off. It is released in HarmonizeDisable.
+            // KEEP the map: auto-play drives the same 88 visuals while harmonize is off. Released in HarmonizeDisable.
             foreach (var kv in keyVisuals)
                 if (kv.Value != null) kv.Value.ResetNow();
 
@@ -132,9 +127,8 @@ namespace SlimeJumping.Platforms.Piano
             float release = step.releaseSeconds > 0f ? step.releaseSeconds : h.defaultReleaseSeconds;
             release *= SustainMultiplier(h.Ornaments);   // damper up while the slime stands on a pedal
 
-            // The note stops at the LATER of its measured length and the press: a measured few tens of
-            // ms (or a mis-detected one) must not cut it off while the slime is still standing there,
-            // and a long measured note must not be cut off by a quick jump either. Both paths.
+            // The note stops at the LATER of its measured length and the press: a few-ms (or mis-measured) note
+            // must not cut off while the slime stands there, and a long one must not be cut by a quick jump.
             harmonizePool.sustainNewNotes = h.sustainWhileStanding;
 
             harmonizePool.envelope = new PianoVoicePool.Envelope
@@ -148,10 +142,8 @@ namespace SlimeJumping.Platforms.Piano
                 velocityHigh = h.brightnessVelocityHigh,
             };
 
-            // The rotation song's own strike for this step, played verbatim. It replaces the whole
-            // rebuild-and-decorate path below — voice leading, velocity density and every ornament
-            // exist to invent a chord shape, and inventing one is exactly what overwrote the song's
-            // measured voicing and made every piece sound alike.
+            // The song's own strike for this step, verbatim. It replaces the rebuild-and-decorate path below:
+            // inventing a chord shape overwrote the song's measured voicing and made every piece sound alike.
             var previewSteps = h.PreviewSteps;
             if (h.previewGesture && previewSteps != null
                 && harmonizeIndex < previewSteps.Length && previewSteps[harmonizeIndex] != null)
@@ -189,14 +181,12 @@ namespace SlimeJumping.Platforms.Piano
                 HarmonyMath.VoiceLead(chordScratch, prevChordScratch, orn.voiceLeadingKeepLow, ceiling);
             }
 
-            // velocity density thickens the CHORD (octave-double its top) on strong landings — not the
-            // melody, so the ducked chordVol never touches the full-volume lead.
+            // Density thickens the CHORD, not the melody, so the ducked chordVol never touches the lead.
             HarmonyMath.ApplyVelocityDensity(chordScratch, vel, h);
             if (orn.dropTwo) HarmonyMath.DropTwo(chordScratch);
             FindSuspension(orn);
 
-            // play: melody first (louder / dyad-scaled), then the chord as whatever figure is enabled;
-            // dedupe so nothing double-triggers.
+            // melody first (louder / dyad-scaled), then the chord figure; dedupe so nothing double-triggers.
             playedScratch.Clear();
             MelodySnapMode melSnap = h.snapLandedKeyToChord ? MelodySnapMode.ChordTones
                                    : step.overrideSnapMode ? step.snapMode : h.snapMode;
@@ -237,9 +227,8 @@ namespace SlimeJumping.Platforms.Piano
             prevChordScratch.Clear();
             prevChordScratch.AddRange(chordScratch);
 
-            // NOTE: key visuals are NOT driven from here. Every note that sounds — including the
-            // delayed ones inside an ornament — comes back through PianoVoicePool.NotePlayed and
-            // presses its own key there (OnNoteSounded), so sound and picture can't drift apart.
+            // Key visuals are NOT driven from here: every sounding note (an ornament's delayed ones included)
+            // comes back through PianoVoicePool.NotePlayed and presses its own key, so the two can't drift.
 
             AdvanceHarmonizeStep(h, step, vel);
         }
@@ -261,23 +250,16 @@ namespace SlimeJumping.Platforms.Piano
         }
 
         // ── The song's own figure ────────────────────────────────────────────────────────────────
-        // One landing = what the song actually played here: its notes, at its measured offsets, its
-        // measured loudness, ringing for as long as they really rang (pedal included).
-        //
-        // The landed key is BLENDED IN, not swapped for the melody. Replacing the sung note with the
-        // landed key removed the piece's own line and left an arbitrary note on top of it — the
-        // reason it read as not belonging. Now the whole figure sounds, and the landed key joins as
-        // one more voice: snapped into the pitch classes the song is using right here, and set at the
-        // figure's own level so it sits inside the texture. Lead mode restores the old behaviour.
+        // The landed key is BLENDED IN, not swapped for the melody: replacing the sung note removed the piece's
+        // own line and left an arbitrary note on top of it. Lead mode is the swap-for-melody behaviour.
         private void PlayPreviewGesture(HarmonizeSettings h, ScorePreviewStep step,
                                         float landingVol, float sustain)
         {
             var support = step.support;
             bool lead = h.previewPlayerAsLead;
 
-            // Loudness and timbre come from the SONG's measured dynamics, not from how fast the
-            // slime hit the key: a hard landing playing louder than the piece ever plays breaks the
-            // reproduction. The landing curve is opt-in.
+            // Loudness/timbre come from the SONG's measured dynamics: a hard landing playing louder than the
+            // piece ever plays breaks the reproduction. The landing curve is opt-in.
             float baseVol = h.previewUseLandingVelocity ? landingVol : h.masterVolume;
 
             int supportTop = int.MinValue;
@@ -298,17 +280,14 @@ namespace SlimeJumping.Platforms.Piano
             float spreadScale = maxDt > h.gestureMaxSpreadSeconds && maxDt > 0f
                               ? h.gestureMaxSpreadSeconds / maxDt : 1f;
 
-            // Blend: the landed key is voiced like the rest of the figure (its mean level and
-            // length), so it reads as part of the playing. Lead: it is the singing voice and takes
-            // that voice's own measured dynamics.
+            // Blend: the landed key takes the figure's mean level/length so it sits inside the texture.
+            // Lead: it is the singing voice and takes that voice's own measured dynamics.
             float playerVel = lead || voiced == 0 ? Mathf.Clamp01(step.melodyVel) : velSum / voiced;
             float playerHold = HoldOf(lead || voiced == 0 ? step.melodyHold : holdSum / voiced, h);
             float playerFall = FallOf(lead || voiced == 0 ? step.melodyFall : fallSum / voiced, h, sustain);
 
-            // Which pitch classes the landed key is allowed to use. Chord-snap mode narrows that to the
-            // tones the figure itself strikes, so the pressed key can only ever be a note of the chord
-            // that is sounding — the song's melodic material (snapPcs also carries the line it sings,
-            // passing tones included) is what could still put the key a step outside the harmony.
+            // Which pitch classes the landed key may use. Chord-snap narrows it to the tones the figure itself
+            // strikes; snapPcs also carries the sung line's passing tones, which can sit outside the harmony.
             pcsScratch.Clear();
             if (h.snapLandedKeyToChord && support != null)
                 for (int i = 0; i < support.Length; i++)
@@ -329,11 +308,8 @@ namespace SlimeJumping.Platforms.Piano
                 if (contactingKeys[i] == null) continue;
                 int m = SnapLandedKey(contactingKeys[i].MidiNote, pcsScratch, h, lead, supportTop);
                 while (melodyScratch.Contains(m)) m += 12;
-                // The landed key often falls on a note the figure already strikes. Doubling the very
-                // same pitch is inaudible as a separate event (identical sample, identical onset) and
-                // only makes that one voice loud — so move it an octave, where it is still a tone of
-                // this chord but reads as its own note. Chord-snap mode makes that collision the norm,
-                // which is why the key can no longer simply be dropped here.
+                // The landed key often falls on a pitch the figure already strikes; doubling it is inaudible as
+                // a separate event and only makes that voice loud, so move it an octave (still a chord tone).
                 if (!lead && FigureHas(support, m))
                 {
                     if (m + 12 <= 108) m += 12;
@@ -351,11 +327,9 @@ namespace SlimeJumping.Platforms.Piano
 
             if (support == null) return;
 
-            // Chord blur: play the pitches of this stretch as ONE chord instead of walking the
-            // song's note order. Copying the transcription note for note read as a clumsy imitation
-            // of the piece; the harmony and the way it is played carry the impression on their own.
-            // Everything measured survives — level, length, tail, register — only the melodic order
-            // is dropped, and the chord rolls by blurRollSeconds so it does not land as a block.
+            // Chord blur: this stretch's pitches as ONE chord instead of the song's note order — copying the
+            // transcription note for note read as a clumsy imitation. Level, length, tail and register all
+            // survive; only the melodic order goes, and the chord rolls by blurRollSeconds so it isn't a block.
             chordScratch.Clear();
             for (int i = 0; i < support.Length; i++)
             {
@@ -371,9 +345,7 @@ namespace SlimeJumping.Platforms.Piano
                 int midi = chordScratch[k];
                 var n = FindNote(support, midi);
                 prevChordScratch.Add(midi);   // keep the legacy path honest if it ever resumes
-                // Only lead mode drops a clashing voice: there the landed key stands in for the
-                // melody, so a neighbouring note muddies it. Otherwise nothing the song played is
-                // removed.
+                // Only lead mode drops a clashing voice — there the landed key stands in for the melody.
                 if (lead && ClashesWithMelody(midi, h.melodyClashSemitones)) continue;
                 float delay = h.previewChordBlur
                             ? (chordScratch.Count > 1 ? h.blurRollSeconds * k / (chordScratch.Count - 1) : 0f)
@@ -395,10 +367,8 @@ namespace SlimeJumping.Platforms.Piano
         private static float HoldOf(float measured, HarmonizeSettings h)
             => Mathf.Min(h.gestureMaxRingSeconds, Mathf.Max(0.05f, measured));
 
-        // How long the string is then left to die away. The song's own pedal tail if it had one;
-        // otherwise the configured damper, stretched while the slime stands on the pedal. Applying
-        // the slime's pedal on top of a tail the song already pedalled would hold a note far longer
-        // than the piece ever does.
+        // How long the string is left to die away: the song's own pedal tail if it had one, else the configured
+        // damper stretched by the slime's pedal. Applying both would hold a note far longer than the piece does.
         private static float FallOf(float measured, HarmonizeSettings h, float sustain)
         {
             float fall = measured > 0f ? measured : h.damperSeconds * sustain;
@@ -412,11 +382,8 @@ namespace SlimeJumping.Platforms.Piano
             return false;
         }
 
-        // The landed key, moved to the nearest of the pitch classes it is allowed to use here (see the
-        // caller: the figure's own tones in chord-snap mode, otherwise the song's material). That is at
-        // most a tone of movement, and none at all when the key is already on one of them.
-        // Only lead mode lifts the note above the figure: a blended voice belongs inside the texture,
-        // at the octave the slime actually landed on.
+        // The landed key moved to the nearest pitch class it may use here (see caller) — at most a tone.
+        // Only lead mode lifts it above the figure; a blended voice stays at the octave the slime landed on.
         private static int SnapLandedKey(int keyMidi, List<int> pcs, HarmonizeSettings h,
                                          bool lead, int supportTop)
         {
@@ -435,9 +402,8 @@ namespace SlimeJumping.Platforms.Piano
             return best;
         }
 
-        // A support note this close to the melody muddies it. The song never had this collision —
-        // it comes from the landed key being somewhere the song was not — so the smaller chord is
-        // the more song-like answer.
+        // A support note this close muddies the melody. The song never had the collision (it comes from the
+        // landed key being somewhere the song was not), so dropping the voice is the more song-like answer.
         private bool ClashesWithMelody(int midi, int semitones)
         {
             for (int i = 0; i < melodyScratch.Count; i++)
@@ -445,14 +411,9 @@ namespace SlimeJumping.Platforms.Piano
             return false;
         }
 
-        // One PianoKeyVisual per key MESH, covering all 88 — the 52 white ones ride their KeyMotor, the
-        // 36 black ones are inert meshes under the piano root. MIDI comes from the mesh name using the
-        // builder's own rule (PianoKey.001 = 21), so accidentals light up the real black key instead of
-        // the nearest white one. Components are added at runtime so the scene and PianoKeyboardBuilder
-        // stay untouched.
-        //
-        // Shared: both harmonize and auto-play press these, and either may be on without the other, so
-        // this is idempotent and the map outlives a harmonize teardown.
+        // One PianoKeyVisual per key MESH, all 88. MIDI comes from the mesh name via the builder's own rule
+        // (PianoKey.001 = 21) so accidentals light the real black key, and components are added at runtime so
+        // the scene stays untouched. Shared with auto-play: idempotent, and the map outlives a teardown.
         private void EnsureKeyVisuals()
         {
             if (keyVisuals.Count > 0) return;
@@ -483,9 +444,8 @@ namespace SlimeJumping.Platforms.Piano
             keyMidis.Clear();
         }
 
-        // Notes can legitimately fall outside the 88 keys — a low pedal point, an octave-doubled top,
-        // a chiptune burst lifted an octave, a glissando running off the end. The pool still sounds them
-        // (pitch-shifted from the nearest sample), so the nearest key must move rather than nothing.
+        // Notes can legitimately fall outside the 88 keys (pedal point, octave-doubled top, glissando running
+        // off). The pool still sounds them pitch-shifted, so the nearest key must move rather than nothing.
         private PianoKeyVisual ResolveKeyVisual(int midi)
         {
             if (keyVisuals.TryGetValue(midi, out var exact)) return exact;
@@ -501,8 +461,7 @@ namespace SlimeJumping.Platforms.Piano
             return keyVisuals.TryGetValue(nearest, out var near) ? near : null;
         }
 
-        // Fired by the voice pool at each note's true onset — including the delayed notes of a rolled
-        // chord, an Alberti figure, a chiptune burst or a suspension's resolution.
+        // Fired by the voice pool at each note's true onset, including an ornament's delayed notes.
         private void OnNoteSounded(int midi, float volume, float releaseSeconds)
         {
             if (config == null) return;
@@ -514,9 +473,8 @@ namespace SlimeJumping.Platforms.Piano
             float loud = h.masterVolume > 0.0001f ? Mathf.Clamp01(volume / h.masterVolume) : 1f;
             float depth = h.visualSinkDepth * Mathf.Lerp(h.visualMinDepthScale, h.visualDepthVelocityScale, loud);
 
-            // Pedal down = dampers off: the string keeps ringing after the key comes back up, so the
-            // key must NOT stay pinned for the (now much longer) tail. Gated on the same toggle that
-            // lengthens the audio — otherwise a pedal that doesn't sustain would still shorten the key.
+            // Pedal down = dampers off: the string rings on after the key comes up, so the key must NOT stay
+            // pinned for the longer tail. Gated on the same toggle that lengthens the audio.
             float hold = (h.Ornaments.sustainPedal && AnyPedalPressed())
                 ? h.visualPedaledHoldSeconds
                 : Mathf.Clamp(releaseSeconds * h.visualHoldScale, h.visualHoldSeconds, h.visualMaxHoldSeconds);
@@ -532,8 +490,7 @@ namespace SlimeJumping.Platforms.Piano
             return false;
         }
 
-        // Damper up: while the slime stands on any pedal every tail gets longer, exactly like the real
-        // instrument. PianoPedal was a mute prop until now (it only sank and played its own click).
+        // Damper up: while the slime stands on any pedal every tail gets longer.
         private float SustainMultiplier(OrnamentSettings o)
         {
             if (!o.sustainPedal || pedals == null) return 1f;
@@ -542,9 +499,8 @@ namespace SlimeJumping.Platforms.Piano
             return 1f;
         }
 
-        // A suspension holds one note of the PREVIOUS chord over the new one and resolves it down by
-        // step ("approached by the same note and resolves down by step"). Only fires when the previous
-        // chord actually has a note sitting a step above one of this chord's upper voices.
+        // A suspension holds one note of the PREVIOUS chord over the new one and resolves it down by step.
+        // Only fires when the previous chord has a note a step above one of this chord's upper voices.
         private void FindSuspension(OrnamentSettings o)
         {
             susIndex = -1;
@@ -564,8 +520,7 @@ namespace SlimeJumping.Platforms.Piano
             }
         }
 
-        // A run in the direction the slime travelled, when it crossed a big gap. The landing note is
-        // still instant; the run trails after it, so the jump distance becomes a musical gesture.
+        // A run in the direction the slime travelled after a big gap; the landing note itself stays instant.
         private void PlayGlissando(OrnamentSettings o, HarmonizeSettings h, ChordStep step,
                                    MelodySnapMode snap, float vol, float release)
         {
@@ -586,9 +541,8 @@ namespace SlimeJumping.Platforms.Piano
             }
         }
 
-        // The chord, played as whichever performance figure is switched on. Every figure's FIRST note is
-        // instant — only later notes are offset — so the landing and its sound never separate.
-        // Precedence when several are on: chiptune > Alberti > rolled > block.
+        // Every figure's FIRST note is instant — only later notes are offset — so the landing and its sound
+        // never separate. Precedence when several are on: chiptune > Alberti > rolled > block.
         private void PlayChordFigure(OrnamentSettings o, float vol, float release, float vel)
         {
             if (chordScratch.Count == 0) return;
@@ -604,10 +558,8 @@ namespace SlimeJumping.Platforms.Piano
 
             if (o.chiptuneArp)
             {
-                // "In early video game music, arpeggios were often the only way to play a chord" —
-                // cycle the chord tones fast enough that the ear fuses them into harmony.
-                // Deliberately NOT run through playedScratch: re-striking the same tones over and over
-                // IS the technique. Same for the Alberti figure below (its "high" note sounds twice).
+                // Cycle the chord tones fast enough that the ear fuses them into harmony. Deliberately NOT run
+                // through playedScratch: re-striking the same tones IS the technique (same for Alberti below).
                 int lift = 12 * o.chiptuneOctaveUp;
                 for (int i = 0; i < o.chiptuneNotes; i++)
                     harmonizePool.Play(chordScratch[i % chordScratch.Count] + lift,

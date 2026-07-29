@@ -56,9 +56,7 @@ namespace SlimeJumping.VFX
         private void ApplyMain()
         {
             var main = _ps.main;
-            // World simulation: existing particles stay in their world position when
-            // the camera moves. Only the spawn region follows the camera (via the GO
-            // transform); the snow itself does not drag along with the slime.
+            // World space, else the snow drags along with the camera instead of only the spawn box moving.
             main.simulationSpace = ParticleSystemSimulationSpace.World;
         }
 
@@ -96,11 +94,8 @@ namespace SlimeJumping.VFX
             return Mathf.Tan(targetCamera.fieldOfView * 0.5f * Mathf.Deg2Rad) * Mathf.Max(dist, 0.01f);
         }
 
-        // Manual polygon cull. Replaces the previous Trigger-module approach, which
-        // didn't reliably kill particles spawned outside the polygon — visible snow
-        // ended up filling the whole camera viewport regardless of the assigned area.
-        // OverlapPoint on the PolygonCollider2D handles arbitrary multi-path polygons
-        // exactly and runs every LateUpdate over the ~hundreds of live particles.
+        // Manual cull, not the Trigger module: that failed to kill particles spawned outside the polygon
+        // and snow filled the whole viewport. OverlapPoint handles multi-path polygons exactly.
         private void CullOutsidePolygon()
         {
             if (emitterArea == null) return;

@@ -5,27 +5,11 @@ using SlimeJumping.Physics;
 
 namespace SlimeJumping.Debugging
 {
-    // Read-only diagnostic for the "slime wedges in a concave corner and keeps
-    // accelerating instead of transitioning smoothly onto the wall face" bug.
-    // Pulls everything from SlimeController + SurfaceProbe public getters — writes
-    // nothing back (see CLAUDE.md: debug scripts pull from controller, never push).
-    //
-    // Runs at order 3002 so it samples AFTER the Attached handler + SnapToSurface +
-    // any platform position writes, i.e. the slime's final resting state each FU.
-    //
-    // The suspected mechanism (to confirm with this log):
-    //   FixedUpdateAttached → ComputeSlideSpeed (inertial branch) does
-    //       slideVelocity += gravAlongTangent * ... * dt   EVERY frame, unconditionally.
-    //   At a concave corner ProjectVelocityAgainstContacts clips the *commanded*
-    //   velocity to ~0 (motion into both surfaces is cancelled), but the inertial
-    //   slideVelocity STORE keeps integrating gravity → it grows without producing
-    //   motion (wedge), then releases as a phantom launch when the wedge breaks.
-    //   The existing drain only fires when velocity.sqrMagnitude < 0.01.
-    //
-    // Smoking gun to look for in the log:
-    //   actualSpd ≈ 0 (motion clipped)  AND  |slideVel| rising frame-over-frame
-    //   AND gravTan != 0  →  the WEDGE-ACCEL line fires. If drainArmed=False at the
-    //   same time, the drain guard is too tight to catch this geometry.
+    // Read-only diagnostic for "slime wedges in a concave corner and keeps accelerating".
+    // Order 3002 → samples after the Attached handler + SnapToSurface + platform writes.
+    // Suspected: ProjectVelocityAgainstContacts clips commanded velocity to ~0 while
+    // ComputeSlideSpeed keeps integrating gravity into slideVelocity → phantom launch.
+    // Fingerprint: actualSpd≈0 + |slideVel| rising + gravTan!=0 → WEDGE-ACCEL line.
     [DefaultExecutionOrder(3002)]
     [DisallowMultipleComponent]
     [AddComponentMenu("SlimeJumping/Debug/Corner Wedge Accel Debugger")]
@@ -67,8 +51,7 @@ namespace SlimeJumping.Debugging
             bool attached = state == SlimeController.SlimeState.Attached
                          || state == SlimeController.SlimeState.Charging;
 
-            // Position + slideVel channel deltas (sampled every FU so deltas stay valid
-            // across the trigger gate). slideVel = inertial store = TangentSpeed - CrawlVelocity.
+            // Sampled before the trigger gate so deltas stay valid across skipped frames.
             Vector2 pos = slime.Position;
             float slideVel = slime.TangentSpeed - slime.CrawlVelocity;
             Vector2 dPos = hasLast ? pos - lastPos : Vector2.zero;

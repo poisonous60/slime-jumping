@@ -3,11 +3,7 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Base class for trigger zones that apply continuous effects to the slime.
-    /// Handles enter/exit detection and slime tracking.
-    /// Subclasses override ApplyEffect and optionally OnSlimeEnter/OnSlimeExit.
-    /// </summary>
+    /// <summary>Trigger zone base: tracks the slime across multiple colliders and calls ApplyEffect while it overlaps.</summary>
     [RequireComponent(typeof(Collider2D))]
     public abstract class EnvironmentalZone : MonoBehaviour
     {
@@ -53,9 +49,8 @@ namespace SlimeJumping.Mechanisms
         protected virtual void OnSlimeExit(SlimeController slime) { }
         protected abstract void ApplyEffect(SlimeController slime, float dt);
 
-        // Disabling/destroying the zone mid-overlap wouldn't fire OnTriggerExit2D,
-        // leaving Push/Pop counters (blockAttach, inFluid, ...) stranded on the slime.
-        // Treat disable as exit so the slime's fluid-state counters stay balanced.
+        // Disable/destroy mid-overlap fires no OnTriggerExit2D, stranding the slime's
+        // Push/Pop counters (blockAttach, inFluid). Treat disable as exit.
         protected virtual void OnDisable()
         {
             if (trackedSlime != null)

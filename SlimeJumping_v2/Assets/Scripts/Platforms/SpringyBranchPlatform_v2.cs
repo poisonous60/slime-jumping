@@ -3,19 +3,11 @@ using MegaFiers;
 
 namespace SlimeJumping.Platforms
 {
-    // SpringyBranch that BENDS instead of rotating. Same spring-damper/pump dynamics
-    // as v1, but the scalar state now drives MegaBend.angle — the mesh deforms, and
-    // MegaDeform2DCollider propagates the deformation to the 2D collider. The branch's
-    // Transform is world-fixed in both position and rotation; all motion is in the
-    // deforming mesh+collider stack.
-    //
-    // Why inherit PlatformMotor: SlimeController.Airborne.carrier.Attach() walks up
-    // to find a PlatformMotor; without one, the rider-impulse pump never wires up.
-    //
-    // Why override AngularVelocity: the base FixedUpdate computes it from rigid TRS
-    // deltas which are 0 here. PlatformCarrier.GetEffectiveVelocity sums
-    // (Velocity + AngularVelocity × arm); we return a synthetic ω so rider × arm ≈
-    // true surface dY/dt at the rider's contact point on the bent beam.
+    // Bend-based SpringyBranch: the spring-damper state drives MegaBend.angle, the mesh
+    // deforms, MegaDeform2DCollider follows. The Transform stays world-fixed.
+    // Inherits PlatformMotor because carrier.Attach() walks up to find one — without it
+    // the rider-impulse pump never wires up. AngularVelocity is overridden because the
+    // base computes it from rigid TRS deltas, which are always 0 here.
     public class SpringyBranchPlatform_v2 : PlatformMotor
     {
         [Header("Bend Target")]
@@ -74,15 +66,11 @@ namespace SlimeJumping.Platforms
                  "you want a small nudge without creating a new Transform.")]
         [SerializeField] Vector2 pivotWorldOffset;
 
-        // Where the Rigidbody2D sits in the world — captured once in Awake and
-        // returned verbatim from ComputeMotion so PlatformMotor.MovePosition keeps
-        // the transform pinned. Never overwritten; independent of the bend pivot.
+        // Captured once in Awake and returned verbatim from ComputeMotion so
+        // PlatformMotor.MovePosition keeps the transform pinned. Independent of the bend pivot.
         Vector2 basePosition;
         float baseRotation;
 
-        // Physics bend pivot in world space. Used for rider arm calculation,
-        // gravity torque, and the OnDrawGizmos arc. Refreshed live by
-        // ComputePivotWorld().
         Vector2 pivotWorldPos;
         float bendAngle;
         float bendAngleVel;
@@ -94,12 +82,8 @@ namespace SlimeJumping.Platforms
         float currentRiderMass;
         float currentRiderArmSqr;
 
-        // World position of the physics bend pivot. Sources (priority):
-        //   1. pivotAnchor override (user-placed Transform)
-        //   2. motor transform's own position
-        // pivotWorldOffset is added on top of whichever source was picked.
-        // Intentionally does NOT read MegaBend.gizmoPos — physics pivot is
-        // self-owned and fully decoupled from the visual modifier.
+        // Intentionally does NOT read MegaBend.gizmoPos — the physics pivot is
+        // self-owned and decoupled from the visual modifier.
         Vector2 ComputePivotWorld()
         {
             if (pivotAnchor != null)
@@ -125,16 +109,9 @@ namespace SlimeJumping.Platforms
         public float CurrentDeflectionDeg => bendAngle;
         public override float VelocityTransferScale => velocityTransferScale;
 
-        // Cantilever uniform-curvature model: surface Y-drop at arc r ≈ r²·θ/(2L),
-        // so dY/dt ≈ (r²/2L)·θ_dot. PlatformCarrier uses (AngularVelocity × arm) as
-        // the tangential contribution, so we want AngularVelocity·r = (r²/2L)·θ_dot
-        // → AngularVelocity = (r/2L)·θ_dot.
-        //
-        // UNIT: the base contract is deg/s (PlatformMotor computes it as
-        // DeltaRotation_deg / dt, and PlatformCarrier converts via Deg2Rad
-        // before cross-producting with arm). bendAngleVel is already deg/s,
-        // so no conversion here — returning rad/s would under-scale launch
-        // velocity by ~57× and break jumping entirely.
+        // Cantilever uniform-curvature: surface dY/dt at arc r ≈ (r²/2L)·θ_dot, and
+        // PlatformCarrier uses AngularVelocity × arm → AngularVelocity = (r/2L)·θ_dot.
+        // Contract is deg/s; returning rad/s under-scales launch velocity ~57× and kills jumping.
         public override float AngularVelocity
         {
             get
@@ -158,9 +135,8 @@ namespace SlimeJumping.Platforms
 
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity, bool isCharging)
         {
-            // Rider arm is measured FROM the physics pivot, TOWARD the rider,
-            // and expressed in the MOTOR's own local frame. The motor owns
-            // the physics frame; MegaBend's transform is not consulted.
+            // Rider arm is pivot→rider in the MOTOR's local frame; MegaBend's transform
+            // is never consulted.
             Vector2 pivot = ComputePivotWorld();
             pivotWorldPos = pivot;
             Vector2 r = (Vector2)transform.InverseTransformDirection(riderWorldPos - pivot);
@@ -189,8 +165,8 @@ namespace SlimeJumping.Platforms
                 }
             }
 
-            // Match v1: on first attach, baseline from zero so SlimeController's
-            // post-Attach velocity zero-out doesn't register as a phantom Δv.
+            // First attach baselines from zero, else SlimeController's post-Attach
+            // velocity zero-out registers as a phantom Δv.
             previousRiderVel = firstAttach ? Vector2.zero : riderVelocity;
             hasPrevRiderVel = true;
 
@@ -242,12 +218,9 @@ namespace SlimeJumping.Platforms
                 if (bendAngleVel < 0f) bendAngleVel = -bendAngleVel * clampRestitution;
             }
 
-            // Dead-zone snap. Without a rider, underdamped oscillation keeps
-            // producing microscopic angle deltas — MegaBend then rewrites
-            // vertices with tiny displacements and MegaDeform2DCollider propagates
-            // them, making the collider outline visibly "breathe" even at rest.
-            // Below these inspector-tunable thresholds snap to exact zero so
-            // MegaBend's `|angle| < 1e-6 → no-op` path kicks in.
+            // Riderless underdamped oscillation leaves microscopic angle deltas; MegaBend
+            // keeps rewriting verts and the collider outline visibly "breathes" at rest.
+            // Snap to exact zero so MegaBend's |angle| < 1e-6 no-op path kicks in.
             if (!riderAttached
                 && Mathf.Abs(bendAngle) < restAngleEpsilon
                 && Mathf.Abs(bendAngleVel) < restVelocityEpsilon)
@@ -258,29 +231,19 @@ namespace SlimeJumping.Platforms
 
             pendingRiderTorque = 0f;
 
-            // Keep the physics pivot fresh — if the user is moving a
-            // pivotAnchor or pivotWorldOffset live, the motor picks up the
-            // new pivot next frame for torque/gizmo purposes.
             pivotWorldPos = ComputePivotWorld();
 
-            // Return basePosition (not pivotWorldPos!) so PlatformMotor.MovePosition
-            // keeps the Rigidbody2D pinned to the original transform location.
-            // All visible motion happens in the deforming mesh; the root stays put.
+            // basePosition, not pivotWorldPos — the Rigidbody2D stays pinned to its
+            // original location; all visible motion is in the deforming mesh.
             return (basePosition, baseRotation);
         }
 
         void LateUpdate()
         {
             if (bend == null) return;
-            // Visual adapter: physics → MegaBend. MegaModifyObject.LateUpdate
-            // consumes bend.angle to rewrite mesh.vertices; MegaDeform2DCollider
-            // (execution order int.MaxValue) reads those verts to update the
-            // 2D collider — all within this same frame.
-            //
-            // MegaBend.axis=X with default dir renders positive angle as
-            // "tip up" in world, opposite of gravity-driven physics output.
-            // The axis switch lives here at the visual seam so physics never
-            // sees MegaAxis. Extend when new axes are used.
+            // MegaModifyObject.LateUpdate rewrites verts from bend.angle, MegaDeform2DCollider
+            // (execution order int.MaxValue) picks them up in the same frame.
+            // MegaBend.axis=X renders positive angle as "tip up", opposite of physics — flip here.
             float signed = bendAngle;
             if (bend.axis == MegaAxis.X) signed = -signed;
             bend.angle = signed;
@@ -293,16 +256,13 @@ namespace SlimeJumping.Platforms
             Vector3 pivot3 = ComputePivotWorld();
             Gizmos.DrawSphere(pivot3, Mathf.Max(0.12f, branchLength * 0.03f));
 
-            // Physics-frame gizmo — no MegaBend introspection. Length axis is
-            // the motor transform's +X (matches r.x used in ApplyRiderInfluence);
-            // drop axis is bendDownWorld (the user-declared tip-deflection dir).
+            // Physics frame: length axis is transform.+X (matches r.x in ApplyRiderInfluence),
+            // drop axis is bendDownWorld. No MegaBend introspection.
             Vector3 worldLengthAxis = transform.right;
             Vector3 worldDropDir = ((Vector3)bendDownWorld).normalized;
             if (worldDropDir.sqrMagnitude < 1e-8f) worldDropDir = Vector3.down;
 
-            // Debug marker: when the MegaBend component sits on a different
-            // transform than the physics pivot, show where it lives so setup
-            // mistakes are visible.
+            // Marks a MegaBend sitting on a different transform than the physics pivot.
             if (bend != null && Vector3.Distance(pivot3, bend.transform.position) > 1e-3f)
             {
                 Gizmos.color = new Color(0f, 1f, 1f, 0.35f);
@@ -310,11 +270,8 @@ namespace SlimeJumping.Platforms
                 Gizmos.color = Color.cyan;
             }
 
-            // Physics convention: positive bendAngle = CCW in transform-local XY.
-            // For lengthAxis=+X and dropDir=-Y, CCW (positive) curves tip toward
-            // +Y (AWAY from dropDir). Negate so the gizmo drop direction matches
-            // bendDownWorld — i.e. gravity-driven negative bendAngle renders as
-            // a visible downward arc.
+            // Positive bendAngle = CCW, which curves the tip AWAY from dropDir.
+            // Negate so gravity-driven negative bendAngle draws a downward arc.
             float angleDeg = Application.isPlaying ? -bendAngle : 0f;
             float angleRad = angleDeg * Mathf.Deg2Rad;
             Vector3 prev = pivot3;

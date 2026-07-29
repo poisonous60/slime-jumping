@@ -2,8 +2,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    // PreFire telegraph LineRenderer — a thin warning line drawn live from muzzle
-    // through the current aim while the emitter charges, so the player can react.
+    // PreFire telegraph LineRenderer — warning line from muzzle along the current aim while charging.
     public partial class GraniteBlastEmitter
     {
         private LineRenderer telegraphLR;
@@ -24,9 +23,7 @@ namespace SlimeJumping.Mechanisms
         private void UpdateTelegraph()
         {
             if (telegraphLR == null || !telegraphLR.enabled) return;
-            // Live origin + direction — telegraph chases the slime through PreFire
-            // instead of locking at PreFire entry. No "FireStart locks position"
-            // concept; the line just shows where the bolt will currently aim.
+            // Aim is re-read every frame; deliberately not locked at PreFire entry.
             Vector3 origin = AimOrigin();
             Vector2 dir = AimDirection2D();
             float reach = maxRange;

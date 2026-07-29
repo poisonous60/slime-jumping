@@ -140,12 +140,10 @@ namespace SlimeJumping.Mechanisms
             Gizmos.color = new Color(0.3f, 0.9f, 1f, 0.25f);
             Gizmos.DrawWireSphere(origin, trackingRange);
 
-            // Live lens direction (yellow, updates with inspector changes)
             Vector3 lensWorldNow = headTransform.rotation * lensLocal;
             Gizmos.color = Color.yellow;
             Gizmos.DrawLine(origin, origin + lensWorldNow * 2f);
 
-            // Initial (rest) basis
             Quaternion idleWorld = Application.isPlaying && captured
                 ? (headTransform.parent != null ? headTransform.parent.rotation : Quaternion.identity) * initialLocalRotation
                 : headTransform.rotation;
@@ -155,7 +153,6 @@ namespace SlimeJumping.Mechanisms
             Gizmos.color = new Color(0.3f, 0.9f, 1f, 0.9f);
             Gizmos.DrawLine(origin, origin + fwd * trackingRange);
 
-            // Draw the clamp box as 4 extreme edge directions + connecting arcs
             Gizmos.color = new Color(0.3f, 0.9f, 1f, 0.5f);
             Vector3 dL = DirFromYawPitch(fwd, right, up, -maxLeftDeg, 0f);
             Vector3 dR = DirFromYawPitch(fwd, right, up,  maxRightDeg, 0f);
@@ -166,7 +163,6 @@ namespace SlimeJumping.Mechanisms
             Gizmos.DrawLine(origin, origin + dU * trackingRange);
             Gizmos.DrawLine(origin, origin + dD * trackingRange);
 
-            // 4 corner directions
             Gizmos.color = new Color(0.3f, 0.9f, 1f, 0.3f);
             Vector3 cTL = DirFromYawPitch(fwd, right, up, -maxLeftDeg,  maxUpDeg);
             Vector3 cTR = DirFromYawPitch(fwd, right, up,  maxRightDeg, maxUpDeg);

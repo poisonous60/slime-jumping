@@ -3,14 +3,9 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Mechanisms
 {
-    // v2 = v1 (slime physics push + in-zone stripe particles) + ParticleSystemForceField
-    // sync that drives snow particles. ForceField direction/size is auto-derived from
-    // windAcceleration and the BoxCollider2D bounds. Snow particles must have
-    // ExternalForces enabled with influenceMask = WindForceField layer.
-    //
-    // windAcceleration is in the zone's **local space** — rotating the transform on Z
-    // rotates the wind direction together: slime push, stripe particles, snow ForceField,
-    // and side fields all follow the parent rotation.
+    // Slime push + stripe particles + ParticleSystemForceField sync for snow.
+    // Snow particles need ExternalForces enabled with influenceMask = WindForceField layer.
+    // windAcceleration is local-space: rotating the transform rotates the wind with it.
     [RequireComponent(typeof(Collider2D))]
     public class WindZone2D_v2 : MonoBehaviour
     {
@@ -96,8 +91,7 @@ namespace SlimeJumping.Mechanisms
             var main = windParticles.main;
             main.startLifetime = new ParticleSystem.MinMaxCurve(lifetime * 0.85f, lifetime);
             main.startSpeed = 0f;
-            // Local sim space so emitted particles inherit the rotated parent — stripes
-            // visually rotate with the WindZone instead of staying world-aligned.
+            // Local sim space, else stripes stay world-aligned instead of rotating with the zone.
             main.simulationSpace = ParticleSystemSimulationSpace.Local;
 
             var shape = windParticles.shape;
@@ -107,8 +101,7 @@ namespace SlimeJumping.Mechanisms
 
             var vel = windParticles.velocityOverLifetime;
             vel.enabled = true;
-            // velocity is in windParticles' local frame; windParticles is rotated to align
-            // its +X with windDir, so velocity is just (particleSpeed, 0, 0).
+            // windParticles is rotated so its +X is windDir; velocity is in that local frame.
             vel.space = ParticleSystemSimulationSpace.Local;
             vel.x = particleSpeed;
             vel.y = 0f;
@@ -127,10 +120,8 @@ namespace SlimeJumping.Mechanisms
             var ff = snowForceField;
             ff.shape = ParticleSystemForceFieldShape.Box;
 
-            // Box ForceField half-extents = endRange × lossyScale (verified empirically).
-            // We match localScale to BoxCollider2D.size (intuitive sizing) and pin endRange=0.5
-            // so the field covers exactly the visible collider bounds — without this the field
-            // is 2× too big and particles outside the visible zone still get accelerated.
+            // Box ForceField half-extents = endRange × lossyScale; pin endRange=0.5 or the
+            // field is 2× the collider and accelerates particles outside the visible zone.
             ff.endRange = 0.5f;
 
             var ffT = ff.transform;
@@ -138,9 +129,7 @@ namespace SlimeJumping.Mechanisms
             {
                 ffT.localPosition = new Vector3(box.offset.x, box.offset.y, 0f);
                 ffT.localRotation = Quaternion.identity;
-                // Z = 100 (with endRange=0.5 → Z half-extent = 50): effectively infinite
-                // depth so particles drifting in Z (e.g. from a 3D noise module) don't
-                // randomly fall outside the field's Z range and miss the force.
+                // Z = 100 → half-extent 50: particles drifting in Z can't fall out of the field.
                 ffT.localScale = new Vector3(box.size.x, box.size.y, 100f);
             }
 
@@ -149,9 +138,8 @@ namespace SlimeJumping.Mechanisms
             ff.directionY = new ParticleSystem.MinMaxCurve(windAcceleration.y);
             ff.directionZ = new ParticleSystem.MinMaxCurve(0f);
 
-            // Linear drag (force ∝ velocity, not velocity²): terminal velocity = accel / drag,
-            // which makes snowDrag intuitively map to a target speed. Quadratic drag would make
-            // drag values much smaller and harder to reason about (terminal = √(accel/drag)).
+            // Linear drag: terminal = accel / drag, so snowDrag maps to a target speed.
+            // Quadratic (multiplyDragByParticleVelocity) gives terminal = √(accel/drag) instead.
             ff.multiplyDragByParticleVelocity = false;
             ff.multiplyDragByParticleSize = false;
             ff.drag = new ParticleSystem.MinMaxCurve(snowDrag);
@@ -257,8 +245,7 @@ namespace SlimeJumping.Mechanisms
             if (trackedSlime == null) return;
 
             float dt = Time.fixedDeltaTime;
-            // windAcceleration is local-space; convert to world for slime physics so the
-            // push direction rotates with the transform.
+            // Local-space acceleration → world, so the push rotates with the transform.
             Vector2 worldWindAcc = transform.TransformDirection(windAcceleration);
             float mag = worldWindAcc.magnitude;
             if (mag < 0.0001f) return;
@@ -284,11 +271,8 @@ namespace SlimeJumping.Mechanisms
                     falloff = Mathf.Clamp01(1f - alongWind / terminalSpeed);
             }
 
-            // AddSustainedFlowImpulse (not AddExternalVelocity) so the push integrates into
-            // slideVelocity/crawlVelocity in Attached/Charging instead of just bumping the
-            // single-frame `velocity` that the state handler overwrites next tick. Without
-            // this, Attached wind only ever contributes ~accel*dt per frame regardless of
-            // attachedMultiplier — same multiplier as Airborne would still feel ~50× weaker.
+            // AddSustainedFlowImpulse, not AddExternalVelocity: the latter only bumps the
+            // single-frame velocity that Attached/Charging overwrite, so wind feels ~50× weaker.
             Vector2 deltaV = worldWindDir * (mag * multiplier * falloff * dt);
             trackedSlime.AddSustainedFlowImpulse(deltaV);
         }
@@ -312,8 +296,7 @@ namespace SlimeJumping.Mechanisms
 
         void OnDrawGizmosSelected()
         {
-            // Editor-time transform rotation doesn't trigger OnValidate; re-sync here so
-            // visuals follow rotation gizmo edits while the zone is selected.
+            // Transform rotation doesn't fire OnValidate — re-sync so visuals follow the gizmo.
             if (!Application.isPlaying)
             {
                 SyncParticles();

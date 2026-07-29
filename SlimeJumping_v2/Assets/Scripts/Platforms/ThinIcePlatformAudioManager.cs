@@ -5,11 +5,7 @@ using UnityEditor;
 
 namespace SlimeJumping.Platforms
 {
-    /// <summary>
-    /// Broadcasts a shared audio clip set to every ThinIcePlatform in the active
-    /// scene so individual tiles don't need per-instance inspector assignment.
-    /// Mirrors the WaterZoneAudioManager pattern.
-    /// </summary>
+    /// <summary>Broadcasts one shared clip set to every ThinIcePlatform in the scene, so tiles need no per-instance assignment.</summary>
     [DefaultExecutionOrder(-50)]
     public class ThinIcePlatformAudioManager : MonoBehaviour
     {

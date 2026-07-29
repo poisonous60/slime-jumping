@@ -4,21 +4,8 @@ using UnityEngine;
 
 namespace SlimeJumping.Platforms.Snow.EditorScripts
 {
-    /// <summary>
-    /// Authors a Quibli toon ramp PNG from the colors / step / width fields on a
-    /// SnowSettings asset. Output is written next to the settings asset under a
-    /// SnowRamps/ folder and auto-assigned to that settings' shadowRamp slot.
-    ///
-    /// Two entry points:
-    ///   • Generate(SnowSettings)   — called by the SnowSettings inspector button,
-    ///                                 uses that asset's colors and step parameters
-    ///   • Generate()               — menu shortcut that targets the canonical
-    ///                                 Assets/Settings/Snow_Default.asset
-    ///
-    /// The ramp is sampled by Quibli's stock LightingPhysicallyBased_DSTRM via
-    /// uv = (NdotL * 0.5 + 0.5, 0.5), so this is a 1D horizontal gradient — height is
-    /// padded to 4 px purely so Unity's importer doesn't squash to 1×1.
-    /// </summary>
+    /// <summary>Authors a Quibli toon ramp PNG from a SnowSettings asset and assigns it to shadowRamp.</summary>
+    /// Quibli samples it at uv=(NdotL*0.5+0.5, 0.5) — 1D gradient; Height=4 only so the importer doesn't squash it to 1×1.
     public static class SnowRampGenerator
     {
         const int   Height            = 4;
@@ -36,8 +23,7 @@ namespace SlimeJumping.Platforms.Snow.EditorScripts
             Generate(settings);
         }
 
-        /// <summary>Generate / overwrite the ramp PNG using the colors+step on the
-        /// given settings asset, and assign it to settings.shadowRamp.</summary>
+        /// <summary>Generate / overwrite the ramp PNG and assign it to settings.shadowRamp.</summary>
         public static void Generate(SnowSettings settings)
         {
             if (settings == null) return;

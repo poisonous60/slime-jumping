@@ -80,7 +80,6 @@ namespace SlimeJumping.Editor
 
             Event e = Event.current;
 
-            // Draw outline.
             Handles.color = new Color(0.3f, 0.8f, 1f, 0.9f);
             for (int i = 0; i < n; i++)
             {
@@ -89,7 +88,6 @@ namespace SlimeJumping.Editor
                 Handles.DrawLine(a, b, 2f);
             }
 
-            // Shift-click edge to insert.
             if (e.type == EventType.MouseDown && e.button == 0 && e.shift)
             {
                 if (TryPickEdge(wz, e.mousePosition, out int edgeIdx, out Vector2 localInsert))
@@ -102,14 +100,12 @@ namespace SlimeJumping.Editor
                 }
             }
 
-            // Point handles.
             for (int i = 0; i < n; i++)
             {
                 Vector2 local = wz.GetOutlinePointLocal(i);
                 Vector3 world = t.TransformPoint(local);
                 float handleSize = HandleUtility.GetHandleSize(world) * HandleScreenSize;
 
-                // Ctrl-click delete.
                 if (e.type == EventType.MouseDown && e.button == 0 && e.control)
                 {
                     Vector2 guiPos = HandleUtility.WorldToGUIPoint(world);

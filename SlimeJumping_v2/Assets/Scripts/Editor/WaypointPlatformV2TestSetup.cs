@@ -5,13 +5,7 @@ using SlimeJumping.Physics;
 
 namespace SlimeJumping.Editor
 {
-    /// <summary>
-    /// Spawns a WaypointPlatformV2 test bed with three clusters:
-    ///   A. Mount-trigger trip + range hold (F1)
-    ///   B. Tilt + ice → idle slime slides off (forced jumping)
-    ///   C. Leader/partner sandwich → slime extrudes out the side (F2)
-    /// Tune waypoints/speeds in the inspector afterward (visual test).
-    /// </summary>
+    /// <summary>Spawns a WaypointPlatformV2 test bed: A mount-trip + range hold, B tilt+ice slide-off, C leader/partner sandwich.</summary>
     public static class WaypointPlatformV2TestSetup
     {
         const string IcePath = "Assets/Settings/SurfaceMaterials/Ice.asset";
@@ -117,16 +111,13 @@ namespace SlimeJumping.Editor
             if (ice != null) pso.FindProperty("iceMaterial").objectReferenceValue = ice;
             pso.ApplyModifiedProperties();
 
-            // Return zone (ThinIce RespawnZone model): the slime extrudes out the SIDE (tangent),
-            // so the box wraps the squeeze region — slime inside while pinched, outside once it
-            // pops past the deck edge → exit fires ReturnAllMembers → both decks retract together.
-            // Centered on the two decks' vertical midpoint; X ≈ deck span so a side-extrude exits.
+            // Box wraps the squeeze region: slime inside while pinched, outside once it side-extrudes,
+            // so the exit fires ReturnAllMembers. X must be ≈ deck span or the extrude never leaves.
             CreateReturnZone("C_ReturnZone", parent, c + new Vector3(0f, 3.4f, 0f),
                 new Vector2(5f, 6f), leader, partner);
         }
 
-        // Builds a WaypointReturnZone wrapping the given member platforms (added as explicitMembers
-        // since they are siblings, not children). Trigger box + kinematic body so OnTriggerExit fires.
+        // WaypointReturnZone over sibling platforms; kinematic body + trigger box, else OnTriggerExit never fires.
         static void CreateReturnZone(string name, Transform parent, Vector3 pos, Vector2 size,
                                      params WaypointPlatformV2[] members)
         {

@@ -3,23 +3,7 @@ using UnityEngine;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>
-    /// Designer-authored navigation graph for GraniteBlast Branching mode. The
-    /// emitter runs A* over this graph at fire time to compute a curved path from
-    /// muzzle to the slime's vicinity, instead of going in a straight line. Use
-    /// this in zones where the designer wants the laser to weave around terrain
-    /// features rather than aim directly at the slime.
-    ///
-    /// Authoring: nodes are stored in this transform's local space so a level
-    /// chunk can be moved/instantiated as a unit. Edges are undirected; A* treats
-    /// each as bidirectional. Drop the component on a child of the level zone,
-    /// place nodes (Vector3[] in inspector) and edges (Vector2Int pairs of node
-    /// indices), and wire it on GraniteBlastEmitter.navGraph.
-    ///
-    /// Performance: small graphs (< 100 nodes) are fine for per-fire A*; one
-    /// allocation-free PriorityQueue + reused scratch buffers. Don't use this for
-    /// thousands of nodes.
-    /// </summary>
+    /// <summary>Designer-authored nav graph the GraniteBlast emitter A*s over per fire. Nodes are transform-local, edges undirected; sized for &lt; 100 nodes.</summary>
     public class GraniteBlastNavGraph : MonoBehaviour
     {
         [Tooltip("Local-space node positions. Z is honored — set non-zero Z to make A* paths swerve in depth.")]
@@ -39,9 +23,6 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private LayerMask edgeValidationMask = (1 << 7);
 
         // --- adjacency cache ---
-        // Built lazily on first FindPath. Rebuilt if the inspector edits invalidate
-        // it (currently no auto-detection of edits during play — tweak edges in
-        // edit-mode and the cache rebuilds the next time the scene reloads).
         private List<int>[] adjacency;
         private bool adjacencyDirty = true;
 
@@ -68,11 +49,7 @@ namespace SlimeJumping.Mechanisms
             adjacencyDirty = false;
         }
 
-        /// <summary>
-        /// Returns the index of the closest node to a world-space point, or -1 if
-        /// the graph is empty. Distance is full Vector3 (so Z matters). LOS is NOT
-        /// considered — for LOS-filtered selection use ClosestVisibleNode.
-        /// </summary>
+        /// <summary>Closest node to a world point (full Vector3 distance), or -1 if empty. No LOS check — see ClosestVisibleNode.</summary>
         public int ClosestNodeIndex(Vector3 world)
         {
             int n = NodeCount;
@@ -87,12 +64,7 @@ namespace SlimeJumping.Mechanisms
             return best;
         }
 
-        /// <summary>
-        /// Returns the index of the closest node that has clear LOS from the query
-        /// point — Linecast on wallMask must NOT hit anything. Returns -1 if no
-        /// node satisfies LOS (caller should fall back to a direct fire / bezier).
-        /// wallMask=0 disables LOS filtering and degrades to ClosestNodeIndex.
-        /// </summary>
+        /// <summary>Closest node with clear LOS on wallMask, or -1 if none (caller falls back to direct fire). wallMask=0 degrades to ClosestNodeIndex.</summary>
         public int ClosestVisibleNode(Vector3 world, LayerMask wallMask)
         {
             int n = NodeCount;
@@ -106,10 +78,7 @@ namespace SlimeJumping.Mechanisms
                 Vector3 wp = GetWorldNode(i);
                 float d = (wp - world).sqrMagnitude;
                 if (d >= bestSqr) continue; // can't improve
-                // Linecast (XY 2D) on wallMask. Slime/triggers explicitly excluded
-                // via Physics2D.queriesHitTriggers behavior — we use Linecast which
-                // honors layer mask, and wallMask should be wall-layers only (caller
-                // contract: don't include slime layer here).
+                // Caller contract: wallMask must be wall layers only, never the slime layer.
                 var hit = Physics2D.Linecast(world, wp, wallMask);
                 if (hit.collider != null) continue;
                 bestSqr = d;
@@ -118,19 +87,13 @@ namespace SlimeJumping.Mechanisms
             return best;
         }
 
-        /// <summary>
-        /// Picks a random LOS-visible node within (1 + radiusTolerance) × nearestDist
-        /// of the query point. radiusTolerance=0 returns ClosestVisibleNode. Uses
-        /// reservoir sampling so each tendril sees a freshly sampled entry/exit node
-        /// when the graph has multiple equally-good options near the muzzle/slime.
-        /// </summary>
+        /// <summary>Random LOS-visible node within (1 + radiusTolerance) × nearestDist; radiusTolerance=0 returns ClosestVisibleNode.</summary>
         public int RandomVisibleNode(Vector3 world, LayerMask wallMask, float radiusTolerance)
         {
             int n = NodeCount;
             if (n == 0) return -1;
             if (radiusTolerance <= 0f) return ClosestVisibleNode(world, wallMask);
 
-            // First pass: nearest visible node + cache visibility/distance per node.
             EnsureNodeScratch(n);
             float bestSqr = float.PositiveInfinity;
             for (int i = 0; i < n; i++)
@@ -145,7 +108,6 @@ namespace SlimeJumping.Mechanisms
             }
             if (float.IsPositiveInfinity(bestSqr)) return -1;
 
-            // Threshold: nodes with sqrDist <= ((1+tol) × nearestDist)^2 are eligible.
             float scale = 1f + radiusTolerance;
             float threshold = bestSqr * scale * scale;
 
@@ -173,42 +135,18 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        /// <summary>
-        /// Direct-shortcut LOS check. Returns true if a straight Linecast from a→b
-        /// on wallMask hits nothing — i.e. a direct fire is unobstructed and the
-        /// caller should skip graph routing entirely. wallMask=0 always returns
-        /// false (graph routing is forced when LOS gating is disabled).
-        /// </summary>
+        /// <summary>True if a straight a→b Linecast on wallMask is unobstructed (caller may skip graph routing). wallMask=0 always returns false.</summary>
         public bool IsDirectPathClear(Vector3 a, Vector3 b, LayerMask wallMask)
         {
             if (wallMask == 0) return false;
             return Physics2D.Linecast(a, b, wallMask).collider == null;
         }
 
-        /// <summary>
-        /// A* over the graph from the LOS-clear node nearest worldStart to the
-        /// LOS-clear node nearest worldEnd. Output is appended to outPath in
-        /// world-space order:
-        ///   worldStart, [intermediate nav nodes], worldEnd
-        /// — so the caller can feed this directly to a path-following projectile.
-        /// Returns true on success. Returns false if the graph is empty, no
-        /// LOS-clear entry/exit node exists on either end, or the start/end nodes
-        /// are disconnected; outPath is unmodified in those cases.
-        ///
-        /// Pass wallMask=0 to bypass LOS gating (legacy Euclidean nearest-node
-        /// behavior). Typical: pass GraniteBlastEmitter.NavWallMask.
-        /// </summary>
+        /// <summary>A* between the LOS-clear nodes nearest worldStart/worldEnd; appends worldStart, nav nodes, worldEnd. False (outPath untouched) if empty, no LOS node, or disconnected.</summary>
         public bool FindPath(Vector3 worldStart, Vector3 worldEnd, List<Vector3> outPath, LayerMask wallMask)
             => FindPath(worldStart, worldEnd, outPath, wallMask, 0f, 0f);
 
-        /// <summary>
-        /// Stochastic FindPath overload. costJitter randomizes per-edge cost by
-        /// ±costJitter (0..1, multiplicative) so A* picks different "shortest" paths
-        /// across calls when alternatives are within jitter range. entryRadiusJitter
-        /// (0..1) lets the start/end node be picked uniformly among visible nodes
-        /// within (1+jitter) × nearestDist, so tendrils enter/exit the graph at
-        /// different anchors. Both 0 = deterministic shortest-path (legacy behavior).
-        /// </summary>
+        /// <summary>Stochastic FindPath: costJitter (0..1) randomizes per-edge cost, entryRadiusJitter (0..1) randomizes the entry/exit node. Both 0 = deterministic.</summary>
         public bool FindPath(Vector3 worldStart, Vector3 worldEnd, List<Vector3> outPath,
                              LayerMask wallMask, float costJitter, float entryRadiusJitter)
         {
@@ -230,8 +168,7 @@ namespace SlimeJumping.Mechanisms
             if (startIdx < 0 || endIdx < 0) return false;
 
             int n = NodeCount;
-            // Scratch arrays — reused per call. Allocation cost dominates A* for
-            // small graphs; resize-on-grow keeps allocs amortized.
+            // Scratch reused per call — allocation dominates A* on small graphs.
             EnsureScratch(n);
 
             for (int i = 0; i < n; i++)
@@ -280,7 +217,6 @@ namespace SlimeJumping.Mechanisms
 
             if (!found) return false;
 
-            // Reconstruct: end → start. Push to scratch then reverse into outPath.
             scratchPath.Clear();
             int cur = endIdx;
             while (cur != -1)
@@ -289,9 +225,6 @@ namespace SlimeJumping.Mechanisms
                 cur = cameFrom[cur];
             }
 
-            // Final outPath: worldStart, reversed nav nodes, worldEnd.
-            // Skip the first nav node if it's effectively the same as worldStart, and
-            // the last if it's effectively worldEnd, so we don't get duplicate verts.
             outPath.Add(worldStart);
             for (int i = scratchPath.Count - 1; i >= 0; i--)
             {
@@ -308,8 +241,7 @@ namespace SlimeJumping.Mechanisms
         private bool[] closed;
         private readonly List<Vector3> scratchPath = new List<Vector3>(32);
 
-        // Binary min-heap of (nodeIndex, fScore). Open set lookup uses inOpen[];
-        // duplicate pushes are tolerated (the closed[] guard rejects stale entries).
+        // Binary min-heap; duplicate pushes are tolerated — the closed[] guard rejects stale entries.
         private int[] heapIdx;
         private float[] heapKey;
         private int openHeapCount;
@@ -322,7 +254,6 @@ namespace SlimeJumping.Mechanisms
                 cameFrom = new int[n];
                 inOpen = new bool[n];
                 closed = new bool[n];
-                // Heap can grow up to E entries (each push is potentially fresh) — cap at 4n.
                 heapIdx = new int[Mathf.Max(8, n * 4)];
                 heapKey = new float[Mathf.Max(8, n * 4)];
             }
@@ -385,12 +316,8 @@ namespace SlimeJumping.Mechanisms
         }
 
         // --- Edit-time edge validation cache ---
-        // Per-edge boolean: true if this edge passes through a wall (Linecast on
-        // edgeValidationMask hits something). Recomputed lazily in OnDrawGizmos
-        // when dirty, so the gizmo always reflects the current scene state without
-        // needing OnValidate→delayCall plumbing. Runtime A* doesn't read this —
-        // FindPath does its own LOS gating per call against the emitter's
-        // navWallMask. This is purely an authoring aid.
+        // Authoring aid only, recomputed lazily in OnDrawGizmos. Runtime A* ignores it and
+        // does its own per-call LOS gating against the emitter's navWallMask.
         [System.NonSerialized] private bool[] edgeBlocked;
         [System.NonSerialized] private bool edgeValidationDirty = true;
 

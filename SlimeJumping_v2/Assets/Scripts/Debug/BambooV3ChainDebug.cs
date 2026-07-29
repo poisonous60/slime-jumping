@@ -6,21 +6,9 @@ using SlimeJumping.Platforms;
 namespace SlimeJumping.Debugging
 {
     /// <summary>
-    /// Attach to the SLIME to trace the Bamboo V3 springboard chain. The component follows the
-    /// slime and resolves, each fixed step, WHICH V3 stalk the slime is interacting with (the
-    /// one its carrier is on, or the nearest one when airborne). It then names the first broken
-    /// link and — the point of this pass — shows every angular impulse the rider injects into
-    /// that stalk, so "does pressing jump kick the stalk" is measured, not guessed.
-    ///
-    ///   overlapping a segment collider
-    ///     -> SurfaceProbe picks that collider as the surface
-    ///       -> slime enters Attached / Charging
-    ///         -> carrier.CurrentPlatform is a V3 stalk
-    ///           -> RiderAttached (ApplyRiderInfluence has run)
-    ///             -> impulse (landing OR coupled) -> bend -> peak -> throw
-    ///
-    /// It only READS public state on the slime and the stalk; it never writes to either. The
-    /// impulse numbers come from BambooPlatformV3's own read-only diagnostic getters.
+    /// Attach to the SLIME to trace the Bamboo V3 chain: which stalk is engaged, where the
+    /// contact -> probe -> attach -> carrier -> impulse chain breaks, and every rider impulse
+    /// injected into the stalk. Read-only — never writes slime or stalk state.
     /// </summary>
     [DefaultExecutionOrder(3000)]
     [DisallowMultipleComponent]
@@ -136,8 +124,7 @@ namespace SlimeJumping.Debugging
                 if (found[i].transform != forStalk.transform) segments[k++] = found[i];
         }
 
-        // The stalk the slime is interacting with: its carrier's platform if that is a V3, else
-        // the nearest V3 by pivot distance so the approach readout still has a target.
+        // Carrier's platform if it is a V3, else the nearest V3 by pivot distance.
         BambooPlatformV3 ResolveStalk()
         {
             if (slime == null) return null;
@@ -272,9 +259,7 @@ namespace SlimeJumping.Debugging
             }
             prevRiderAttached = s.riderAttached;
 
-            // Smoking gun: a coupled per-frame impulse hitting the stalk. During Charging this is
-            // "pressing jump kicks the stalk"; during Attached/perch it is the else-branch feeding
-            // the slime's internal velocity bookkeeping back into the spring.
+            // Coupled per-frame impulse: during Charging this is "pressing jump kicks the stalk".
             if (logCoupledImpulseAbove > 0f && s.impulseKind == 2 && Mathf.Abs(s.impulseDeg) >= logCoupledImpulseAbove)
             {
                 Debug.Log(

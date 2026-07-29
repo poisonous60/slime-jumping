@@ -5,9 +5,7 @@ using SlimeJumping.Settings;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>
-    /// Debug helper: left mouse click teleports the slime to the clicked world position.
-    /// </summary>
+    /// <summary>Debug helper: mouse click teleports the slime to the clicked world position.</summary>
     public class MouseClickTeleportDebugger : MonoBehaviour
     {
         [SerializeField] private SlimeController slimeController;

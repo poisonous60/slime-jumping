@@ -43,10 +43,7 @@ namespace SlimeJumping.Mechanisms
             RecomputeCenter();
         }
 
-        /// <summary>
-        /// Outward normal per vertex = average of adjacent edge right-perpendiculars.
-        /// Auto-flipped to point outward regardless of user winding order (CW/CCW).
-        /// </summary>
+        /// <summary>Vertex normal = averaged edge perpendiculars, auto-flipped outward for either winding.</summary>
         void RecomputeNormals()
         {
             if (points == null || points.Length < 3) return;
@@ -154,8 +151,7 @@ namespace SlimeJumping.Mechanisms
         public void InsertOutlinePointLocal(int index, Vector2 v) => restPointsLocal.Insert(index, v);
         public void RemoveOutlinePointAt(int i) => restPointsLocal.RemoveAt(i);
 
-        /// Bulk-replace the outline. Caller is responsible for calling
-        /// RebuildRuntime() afterwards if Play-mode state needs refreshing.
+        /// Bulk-replace the outline; caller must call RebuildRuntime() to refresh Play-mode state.
         public void ReplaceOutlinePoints(IList<Vector2> pts)
         {
             if (restPointsLocal == null) restPointsLocal = new List<Vector2>();
@@ -164,12 +160,8 @@ namespace SlimeJumping.Mechanisms
             for (int i = 0; i < pts.Count; i++) restPointsLocal.Add(pts[i]);
         }
 
-        /// <summary>
-        /// Copies the rest outline into the attached PolygonCollider2D (if any).
-        /// The trigger zone follows the static rest shape, not the animated surface —
-        /// that keeps entry/exit detection stable even when waves are rippling.
-        /// Safe to call every frame; no-ops if no PolygonCollider2D is attached.
-        /// </summary>
+        /// <summary>Copies the rest outline into the PolygonCollider2D: the trigger follows the rest
+        /// shape, not the rippling surface, so entry/exit stays stable.</summary>
         [ContextMenu("Sync Collider To Rest Shape")]
         public void SyncColliderToRestShape()
         {

@@ -4,14 +4,8 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.Audio
 {
-    /// Observes SlimeController events (OnLanded, OnLaunch) and plays SFX.
-    /// Pure consumer — does not push into the controller. Mirrors the LandingDustSpawner
-    /// pattern so audio stays off the controller. Reads ActiveSurfaceMaterial directly:
-    /// the controller already gates snow on slope angle + heightRest > 0 in
-    /// RefreshSnowBlend(), and OnLanded fires AFTER UpdateSurfaceModifiers so the
-    /// resolved material is correct at this point. Avoids re-deriving snow audio via a
-    /// raw SnowFieldRegistry lookup, which would treat wall contacts on a snow host as
-    /// snow because it skips both gates.
+    /// Plays SFX from SlimeController events, pull-only. Uses ActiveSurfaceMaterial, resolved by the
+    /// time OnLanded fires; a raw SnowFieldRegistry lookup skips the heightRest footprint hit-test.
     [AddComponentMenu("SlimeJumping/Audio/Slime Locomotion Audio")]
     public class SlimeLocomotionAudio : MonoBehaviour
     {

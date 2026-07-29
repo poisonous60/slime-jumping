@@ -65,14 +65,12 @@ namespace SlimeJumping.Platforms
                 riderAttached = true;
             }
 
-            // (a) real torque on rope swing — world-horizontal arm from pivot, NOT board-local.
-            // Board-local would rotate with the board and cause a feedback loop that pumps
-            // energy into the swing when the rider sticks to the side face.
+            // rope torque arm is world-horizontal from the pivot, NOT board-local: board-local
+            // rotates with the board and pumps energy in when the rider sticks to the side face.
             float armX = riderWorldPos.x - worldPivot.x;
             pendingRiderAngAccel += -gravity * mass * armX * riderPosAngAccelScale;
 
-            // (b) cosmetic board tilt — board-local is correct here. It's about which end of
-            // the plank the rider is standing on, which is a board-frame question.
+            // cosmetic tilt is board-local: it asks which end of the plank the rider stands on.
             float localX = transform.InverseTransformPoint(riderWorldPos).x;
             float ratio = Mathf.Clamp(localX / halfWidth, -1f, 1f);
             targetTilt = Mathf.Clamp(-ratio * maxTiltAngle * mass, -maxTiltAngle, maxTiltAngle);

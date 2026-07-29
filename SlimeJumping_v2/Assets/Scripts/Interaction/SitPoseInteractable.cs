@@ -43,24 +43,20 @@ namespace SlimeJumping.Interaction
             if (boundAnimator == null) boundAnimator = slime.GetComponentInChildren<SitPoseAnimator>();
 
             slime.OverrideVelocity(Vector2.zero);
-            // CLAUDE.md: use rb.position (not transform.position). Rigidbody2D has FreezeRotation
-            // constraint on slime, so rotation is a no-op at physics level — skip it.
+            // FreezeRotation on the slime's Rigidbody2D makes a rotation write a no-op — position only.
             var rb = slime.GetComponent<Rigidbody2D>();
             if (rb != null) rb.position = sitAnchor.position;
 
             if (boundAnimator != null)
             {
-                // Gate must open BEFORE BeginSitPose so its immediate t=0 PushDeform lands.
-                // Order matters: set gate first (triggers ResetDeformationState which writes
-                // body3d.localPosition = rest), THEN ApplySitDepthShift so the Z write survives
-                // into the first SetExternalDeform call (which preserves body3d.localPosition.z).
+                // Order: gate ON before BeginSitPose (its t=0 PushDeform must land), and
+                // ApplySitDepthShift after the gate — the gate's reset would clobber the Z write.
                 if (boundVisual != null)
                 {
                     boundVisual.IsExternallyAnimated = true;
                     // Force world-up surface normal so the 3D shader dip faces into the seat.
                     boundVisual.SetExternalSurfaceNormal(Vector2.up);
-                    // Depth shift covers both SlimeVisual (face sprites) and body3d (sibling
-                    // mesh) so the 3D mesh and face stay Z-aligned during the sit.
+                    // Depth shift covers face sprites and body3d both, so they stay Z-aligned in the sit.
                     boundVisual.ApplySitDepthShift(sitAnchor.position.z);
                 }
                 boundAnimator.OnFullyReleased += HandleFullyReleased;

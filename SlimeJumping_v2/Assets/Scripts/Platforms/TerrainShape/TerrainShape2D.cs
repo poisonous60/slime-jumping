@@ -27,9 +27,8 @@ namespace SlimeJumping.TerrainShape
         public float z = 0f;
         public List<OutlineLoop> loops = new List<OutlineLoop>();
 
-        // Legacy field — pre-v2 single-loop assets stored their outline here.
-        // TerrainShape2D.MigrateLegacyOutlineIfNeeded() copies it into loops[0] on first access
-        // and then clears this. Do not read or write outside that helper.
+        // Pre-v2 single-loop assets stored their outline here. Only MigrateLegacyOutlineIfNeeded
+        // may read or write it.
         [Obsolete("Migrated into loops[0] by MigrateLegacyOutlineIfNeeded.")]
         public List<OutlinePoint> outline = null;
     }
@@ -73,8 +72,7 @@ namespace SlimeJumping.TerrainShape
         [Range(2, 128)]
         public int subdivisionsPerSegment = 24;
 
-        // Curved (smooth) segments are subdivided this many times more finely than straight ones.
-        // Curved bezier sections need much higher density to look smooth than flat edges.
+        // Smooth segments are subdivided this many times more finely than straight ones.
         [Range(1, 16)]
         public int curveSubdivisionMultiplier = 4;
 
@@ -167,8 +165,7 @@ namespace SlimeJumping.TerrainShape
         public OutlineLayer FrontLayer => layers.Count > 0 ? layers[0] : null;
         public OutlineLayer BackLayer => layers.Count > 0 ? layers[layers.Count - 1] : null;
 
-        // Sum of point counts across all loops in the front layer. Used as the canonical "do we
-        // have a valid outline" gate (mesh build requires >= 3 in any single loop AND >= 3 total).
+        // Total front-layer points. Valid-outline gate: mesh build needs >= 3 in one loop AND >= 3 total.
         public int OutlineCount
         {
             get
@@ -277,14 +274,12 @@ namespace SlimeJumping.TerrainShape
             layers.RemoveAt(index);
         }
 
-        // v2 invariant: every layer holds the same XY for the same id. So inserting on edge
-        // means inserting at the same XY in every layer (no per-layer interpolation as v1 did —
-        // since the user's accepted Q3 answer dropped that flexibility).
+        // v2 invariant: every layer holds the same XY for the same id, so the insert goes into
+        // every layer at the same XY (no per-layer interpolation).
         public int InsertOutlinePointInAllLayers(int loopIndex, int afterIdx, Vector2 pos)
         {
             if (layers.Count == 0) return 0;
-            // v2 invariant: every layer has the same loop count + per-loop vertex order. Validate
-            // this before inserting so we don't NRE on a corrupt asset.
+            // Layers must share loop count + vertex order; validate first or a corrupt asset NREs.
             for (int li = 0; li < layers.Count; li++)
             {
                 if (layers[li].loops == null || loopIndex < 0 || loopIndex >= layers[li].loops.Count)
@@ -300,17 +295,13 @@ namespace SlimeJumping.TerrainShape
             return newId;
         }
 
-        // Remove the point at (loopIndex, pointIdx) in EVERY layer's same-loop. If the loop drops
-        // below 3 points, the loop itself is removed from every layer. Returns true if anything
-        // changed; false if blocked by safety guards.
-        // Guard: refuse to remove if doing so would drop the front layer's TOTAL point count
-        // below 3 — at least one valid outer must remain.
+        // Removes the point from every layer's same-loop; a loop under 3 points is dropped entirely.
+        // Refuses (returns false) if the front layer's TOTAL would fall below 3.
         public bool RemoveOutlinePointInAllLayers(int loopIndex, int pointIdx)
         {
             if (layers.Count == 0) return false;
             if (loopIndex < 0 || loopIndex >= FrontLayer.loops.Count) return false;
-            // Validate every layer has the same loop count and per-loop vertex count before
-            // mutating so a corrupt asset can't NRE us mid-loop.
+            // Validate all layers before mutating, else a corrupt asset NREs mid-loop.
             for (int li = 0; li < layers.Count; li++)
             {
                 var L = layers[li];
@@ -320,8 +311,6 @@ namespace SlimeJumping.TerrainShape
             var loop0 = FrontLayer.loops[loopIndex];
             if (pointIdx < 0 || pointIdx >= loop0.points.Count) return false;
 
-            // If this removal would push the loop below 3 points, the loop will be removed
-            // entirely. Refuse if removing the whole loop drops total count below 3.
             bool wouldRemoveLoop = (loop0.points.Count - 1) < 3;
             int totalAfter = OutlineCount - 1;
             if (wouldRemoveLoop) totalAfter = OutlineCount - loop0.points.Count;
@@ -359,8 +348,7 @@ namespace SlimeJumping.TerrainShape
             layers[1].name = "Back";
         }
 
-        // Migrate any pre-v2 single-loop assets: copy the legacy `outline` field into loops[0]
-        // and clear the legacy field. Idempotent — safe to call repeatedly.
+        // Copies the legacy `outline` field into loops[0] and clears it. Idempotent.
         public void MigrateLegacyOutlineIfNeeded()
         {
             if (layers == null) return;

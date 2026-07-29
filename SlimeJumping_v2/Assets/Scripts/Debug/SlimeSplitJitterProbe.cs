@@ -7,26 +7,9 @@ using SlimeJumping.Effects;
 namespace SlimeJumping.Debugging
 {
     // Read-only diagnostic for the "camera shakes + slime floats while CUT (split)" bugs.
-    // Pulls everything from public getters on SlimeController / SurfaceProbe / SlimeVisual /
-    // SlimeSplitSequence — writes nothing back (CLAUDE.md: debug pulls, never pushes; no debug
-    // fields in SlimeController).
-    //
-    // Runs at order 3002 so it samples AFTER the Attached handler + SnapToSurface + platform
-    // writes, i.e. the slime's final RESTING state each FixedUpdate.
-    //
-    // Hypothesis to confirm:
-    //   While CUT + grounded, SlimeSplitSequence recomputes the COLLISION cut plane from the
-    //   VISUAL body transform every LateUpdate (bodyFilter.transform.TransformDirection, L231),
-    //   whose body.up slerps toward SurfaceNormal with lag. The reach the probe derives then
-    //   jitters → SnapToSurface Phase B re-anchors rb.position every FU (SurfaceProbe L628) →
-    //   the camera (follows rb.position) shakes. The same tilt makes reach(down) > off → float.
-    //
-    // Smoking guns to look for:
-    //   SHAKE: splitActive=True, grounded, ~stationary (|dTan| tiny), yet dHeight (center motion
-    //          ALONG the surface normal) is nonzero and SIGN-ALTERNATES frame-over-frame →
-    //          <<< SPLIT-JITTER fires. Correlates with bodyUpDev (body.up vs normal) being nonzero.
-    //   FLOAT: reachFrac (= center-to-surface dist / R) sits notably ABOVE the cut offset it
-    //          should rest at, and/or drifts, instead of pinning to a steady off/R.
+    // Pulls from public getters only, writes nothing back (CLAUDE.md: debug pulls, never pushes).
+    // Order 3002 so it samples AFTER the Attached handler + SnapToSurface + platform writes,
+    // i.e. the slime's final RESTING state each FixedUpdate.
     [DefaultExecutionOrder(3002)]
     [DisallowMultipleComponent]
     [AddComponentMenu("SlimeJumping/Debug/Slime Split Jitter Probe")]
@@ -56,9 +39,7 @@ namespace SlimeJumping.Debugging
         float lastReach;
         bool hasLast;
 
-        // Resolved in Awake: the rendered body mesh transform (its world origin is what the
-        // VISUAL cut is centered on) and whatever Transform the camera follows (to see if a
-        // shake lives in the camera target rather than rb.position).
+        // meshT world origin is what the VISUAL cut is centered on.
         Transform meshT;
         Transform camFollow;
 
@@ -72,9 +53,6 @@ namespace SlimeJumping.Debugging
             var mf = slime != null ? slime.GetComponentInChildren<MeshFilter>(true) : null;
             if (mf != null) meshT = mf.transform;
 
-            // Best-effort: find the Cinemachine follow target proxy (SlimeCameraTargetProxy) or
-            // the deprecated SlimeCameraFollow target. Logged so we know what actually drives the
-            // camera — if THAT jitters while rb is stable, the shake is downstream of physics.
             var proxy = FindFirstObjectByType<SlimeJumping.Camera.SlimeCameraTargetProxy>();
             if (proxy != null) camFollow = proxy.transform;
         }
@@ -97,15 +75,13 @@ namespace SlimeJumping.Debugging
             float dTan = Vector2.Dot(dPos, tan);       // tangential motion (sliding, not shake)
             lastPos = pos;
 
-            // VISUAL mesh origin: its per-FU motion along the normal (does the rendered body jitter
-            // even when rb doesn't?) and its static offset from rb (meshDY — if nonzero, the visual
-            // cut plane sits at a different height than the collision cut plane → "floating cloak").
+            // meshDY nonzero = visual cut plane sits at a different height than the collision one
+            // ("floating cloak"); dMesh = does the rendered body jitter even when rb doesn't.
             Vector2 meshPos = meshT != null ? (Vector2)meshT.position : pos;
             float dMesh = hasLast ? Vector2.Dot(meshPos - lastMeshPos, nrm) : 0f;
             float meshDY = meshT != null ? (meshPos.y - pos.y) : 0f;
             lastMeshPos = meshPos;
-            // Camera follow target motion along the normal — if this jitters while rb is steady,
-            // the shake is in the visual follow chain, not physics.
+            // Camera target motion along the normal — jitter here with rb steady = visual follow chain.
             float dCam = 0f;
             if (camFollow != null && hasLast)
                 dCam = Vector2.Dot((Vector2)camFollow.position - lastCamPos, nrm);
@@ -127,8 +103,7 @@ namespace SlimeJumping.Debugging
             int sel = probe != null ? probe.SelectedIndex : -1;
             int active = probe != null ? probe.ActiveContactCount : 0;
 
-            // Effective reach the slime is resting at = distance from center to the SELECTED
-            // surface after SnapToSurface anchored it. Cut → should pin to the cut offset; uncut → R.
+            // Resting reach: center → selected surface after SnapToSurface. Cut → cut offset, uncut → R.
             float reach = (probe != null && sel >= 0) ? probe.GetContactDistance(sel) : float.NaN;
             float R = slime.SlimeRadius;
             float reachFrac = R > 1e-5f ? reach / R : float.NaN;
@@ -137,8 +112,7 @@ namespace SlimeJumping.Debugging
 
             Vector2 selN = (probe != null && sel >= 0) ? probe.GetContactNormal(sel) : nrm;
 
-            // body.up (visual transform that the cut plane is pinned to) deviation from the true
-            // surface normal. Nonzero = the cut plane is tilted off the surface frame → reach error.
+            // body.up vs true normal: nonzero = cut plane tilted off the surface frame → reach error.
             float bodyUpDev = float.NaN;
             if (visual != null && visual.Body3d != null)
             {
@@ -148,8 +122,7 @@ namespace SlimeJumping.Debugging
             }
 
             bool stationary = Mathf.Abs(dTan) < stationaryTanMax;
-            // Jitter fingerprint: cut + ~stationary, yet the center moves along the normal AND
-            // the sign FLIPS vs last frame (oscillation, not a one-way settle).
+            // Fingerprint: cut + stationary + normal-axis motion whose sign flips (oscillation, not settle).
             bool jitter = splitActive && stationary
                        && Mathf.Abs(dHeight) > heightJitterMin
                        && hasLast && (dHeight * lastHeightDelta) < 0f;
@@ -179,11 +152,8 @@ namespace SlimeJumping.Debugging
                 Debug.Log(sb.ToString(), this);
         }
 
-        // Render-frame sampling of the VISUAL offset SlimeVisual authors. The FixedUpdate probe
-        // reads rb (physics) — stable. This reads body3d.localPosition.y (the bulk deform offset)
-        // and the mesh world Y every RENDER frame, where the jitter actually lives. If bodyLocalY
-        // oscillates per frame while rb is stone-still, the shake is in the SlimeVisual deform
-        // pipeline (breathing / ground-comp / clearance), not the cut geometry.
+        // Render-frame sample of the VISUAL offset: bodyLocalY oscillating while rb is stone-still
+        // means the shake is the SlimeVisual deform pipeline, not the cut geometry.
         float lastVisLocalY;
         bool hasVisLast;
         void LateUpdate()
@@ -201,10 +171,8 @@ namespace SlimeJumping.Debugging
             lastVisLocalY = localY;
             hasVisLast = true;
             float meshWY = meshT != null ? meshT.position.y : visual.Body3d.position.y;
-            // Discriminators: root transform (interpolated rb) vs rb (physics) — if rootTY
-            // oscillates while rbY is constant, the jitter is Rigidbody2D INTERPOLATION moving the
-            // whole visual tree, not the cut. body3dScaleY / body3dEulerZ — if these oscillate the
-            // jitter is the SlimeVisual deform (scale/rotation) sweeping the off-pivot mesh.
+            // Discriminators: rootTY oscillating with rbY constant = Rigidbody2D interpolation;
+            // scaleY/eulerZ oscillating = SlimeVisual deform sweeping the off-pivot mesh.
             float rootTY = slime.transform.position.y;
             float scaleY = visual.Body3d.localScale.y;
             float eulerZ = visual.Body3d.localEulerAngles.z;

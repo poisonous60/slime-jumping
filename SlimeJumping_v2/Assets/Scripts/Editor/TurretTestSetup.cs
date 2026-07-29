@@ -48,7 +48,6 @@ namespace SlimeJumping.Editor
             go.transform.parent = parent;
             go.transform.position = hostPos;
 
-            // Mount
             var mount = GameObject.CreatePrimitive(PrimitiveType.Cube);
             mount.name = "Mount";
             Object.DestroyImmediate(mount.GetComponent<BoxCollider>());
@@ -57,7 +56,7 @@ namespace SlimeJumping.Editor
             mount.transform.localScale = new Vector3(0.6f, 0.3f, 0.3f);
             mount.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.15f, 0.15f, 0.15f));
 
-            // Head (rotates). Barrel aligned with local +X, lens at +X tip.
+            // Barrel/lens convention: local +X, matching CCTVTracker.LensAxis.PositiveX.
             var head = new GameObject("Head");
             head.transform.parent = go.transform;
             head.transform.localPosition = new Vector3(0f, -0.3f, 0f);
@@ -71,7 +70,6 @@ namespace SlimeJumping.Editor
             headBody.transform.localScale = new Vector3(0.7f, 0.45f, 0.45f);
             headBody.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.35f, 0.1f, 0.1f));
 
-            // Barrel — longer thin cube along +X
             var barrel = GameObject.CreatePrimitive(PrimitiveType.Cube);
             barrel.name = "Barrel";
             Object.DestroyImmediate(barrel.GetComponent<BoxCollider>());
@@ -80,13 +78,11 @@ namespace SlimeJumping.Editor
             barrel.transform.localScale = new Vector3(0.7f, 0.15f, 0.15f);
             barrel.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.05f, 0.05f, 0.08f));
 
-            // Muzzle (empty, at +X tip of barrel)
             var muzzle = new GameObject("Muzzle");
             muzzle.transform.parent = head.transform;
             muzzle.transform.localPosition = new Vector3(1.25f, 0f, 0f);
             muzzle.transform.localRotation = Quaternion.identity;
 
-            // Detection indicator — small red sphere above the head
             var indicator = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             indicator.name = "DetectIndicator";
             Object.DestroyImmediate(indicator.GetComponent<SphereCollider>());
@@ -96,25 +92,19 @@ namespace SlimeJumping.Editor
             indicator.GetComponent<MeshRenderer>().sharedMaterial = MakeEmissiveMaterial(new Color(1f, 0.15f, 0.1f));
             indicator.SetActive(false);
 
-            // Laser sight + bullet tracer LineRenderers are auto-created by TurretHazard.Start()
-            // with widths tuned for orthographic size ~10. Tweak on the turret's child
-            // "LaserSight_Auto" / "BulletTracer_Auto" GameObjects at runtime if needed.
+            // Laser sight + bullet tracer LineRenderers are auto-created by TurretHazard.Start().
 
-            // Muzzle flash particle (child of muzzle)
             var muzzleFlash = CreateMuzzleFlash(muzzle.transform);
 
-            // Impact prefab — created but not assigned to the scene (we store it as a template child and assign via SerializedObject)
             var impactTemplate = CreateImpactTemplate(go.transform);
 
-            // CCTV tracker for head rotation
             var cctv = go.AddComponent<CCTVTracker>();
             {
                 var so = new SerializedObject(cctv);
                 so.FindProperty("headTransform").objectReferenceValue = head.transform;
                 so.FindProperty("lensAxis").enumValueIndex = (int)CCTVTracker.LensAxis.PositiveX;
                 so.FindProperty("trackingRange").floatValue = detectionRange;
-                // High angular speed — the lag comes from TurretHazard's trackingDelay
-                // (position-history buffer), not from CCTV's angular limit.
+                // Aim lag is owned by TurretHazard.trackingDelay, not by this angular limit.
                 so.FindProperty("angularSpeed").floatValue = 360f;
                 so.FindProperty("maxLeftDeg").floatValue = 90f;
                 so.FindProperty("maxRightDeg").floatValue = 90f;
@@ -123,7 +113,6 @@ namespace SlimeJumping.Editor
                 so.ApplyModifiedProperties();
             }
 
-            // TurretHazard on the same root
             var turret = go.AddComponent<TurretHazard>();
             {
                 var so = new SerializedObject(turret);
@@ -136,9 +125,8 @@ namespace SlimeJumping.Editor
                 so.FindProperty("loseSightGrace").floatValue = 0.5f;
                 so.FindProperty("trackingDelay").floatValue = 1.0f;
                 so.FindProperty("maxShotDistance").floatValue = 30f;
-                // Default (0) | SlimeNode (6) | Environment (7). Slime is often on Default;
-                // Environment is ground/walls. Excludes Interactable/InteractionSensor/Water triggers
-                // that could block the raycast at the muzzle.
+                // Default(0) | SlimeNode(6) | Environment(7); Interactable/Sensor/Water are
+                // excluded because those triggers would block the raycast at the muzzle.
                 so.FindProperty("bulletHitMask").intValue = (1 << 0) | (1 << 6) | (1 << 7);
                 so.FindProperty("knockbackForce").floatValue = 22f;
                 so.FindProperty("stunDuration").floatValue = 0.4f;
@@ -201,8 +189,7 @@ namespace SlimeJumping.Editor
 
         static ParticleSystem CreateImpactTemplate(Transform parent)
         {
-            // Disabled template stored under the turret. TurretHazard Instantiates from it,
-            // so the template itself never plays in-scene.
+            // Kept disabled: TurretHazard Instantiates from it, the template must never play.
             var go = new GameObject("ImpactTemplate");
             go.transform.parent = parent;
             go.transform.localPosition = Vector3.zero;
