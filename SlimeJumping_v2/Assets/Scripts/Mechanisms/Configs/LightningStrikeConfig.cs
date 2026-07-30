@@ -59,11 +59,37 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Impulse force multiplier for the camera shake on slime hit. The emitter itself is a scene ref on LightningStrikeField.")]
         public float hitShakeForce = 1f;
 
+        [Header("Telegraph")]
+        [Tooltip("Arcs crawling over the ground at the landing point. 0 = no telegraph.")]
+        public int telegraphFilamentCount = 8;
+        [Tooltip("Seconds the telegraph leads its strike. Shared here so every strike in a scene reads with the same timing.")]
+        public float telegraphLead = 0.5f;
+        [Tooltip("Half-width of the ground band the arcs are scattered along.")]
+        public float telegraphSpread = 0.55f;
+        [Tooltip("Span of one arc along the ground.")]
+        public float telegraphFilamentLength = 0.35f;
+        [Tooltip("How far an arc lifts off the ground, before its own +-40% variation. Independent of span, so arcs can be long and flat.")]
+        public float telegraphArcHeight = 0.12f;
+        [Tooltip("Width at the arc's midpoint; both ends taper to a fraction of it.")]
+        public float telegraphWidth = 0.018f;
+        [Tooltip("Seconds between redraws. Lower = busier crackle.")]
+        public float telegraphFlickerInterval = 0.05f;
+        [Tooltip("Z offset of the arcs, separate from lineZOffset: the bolt is long enough to hide its own offset, but this sits on the ground and reads as displaced once it drifts toward the camera. Raise the magnitude only if terrain hides it.")]
+        public float telegraphZOffset = -0.05f;
+        [Tooltip("Hot core of each filament.")]
+        public Color telegraphColor = new Color(0.85f, 0.95f, 1f, 1f);
+        [Tooltip("Blue halo drawn under the core. Bloom is off in this project, so the glow is a second wider line.")]
+        public Color telegraphGlowColor = new Color(0.25f, 0.5f, 1f, 0.5f);
+        [Tooltip("Halo width as a multiple of telegraphWidth.")]
+        public float telegraphGlowWidthScale = 3f;
+
         [Header("Impact")]
         [Tooltip("Small spark at the contact point.")]
         public ParticleSystem impactPrefab;
         [Tooltip("Big explosion at the contact point.")]
         public ParticleSystem groundExplosionPrefab;
+        [Tooltip("Scale of the spawned explosion. The prefab is shared with Granite Blast, so shrink it here, not on the asset.")]
+        public float groundExplosionScale = 0.5f;
         public AudioClip impactSound;
         [Range(0f, 1f)] public float impactVolume = 1f;
         [Range(0f, 0.5f)] public float impactPitchJitter = 0.1f;

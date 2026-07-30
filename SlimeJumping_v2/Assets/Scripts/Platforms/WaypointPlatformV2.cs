@@ -55,6 +55,8 @@ namespace SlimeJumping.Platforms
         [Tooltip("Layers the hold-range proximity check looks for the slime on. Set to the slime's layer.")]
         [SerializeField] LayerMask riderLayers = ~0;
         [SerializeField] float arriveEpsilon = 0.05f;
+        [Tooltip("Re-mounting this deck while it waits at the destination runs the trip back immediately (a sandwich pair re-crosses on the spot instead of needing a zone exit first). Off = only the zone / holdRange retracts it, so a deck meant to stay put once arrived does.")]
+        [SerializeField] bool remountAtDestinationReturns;
 
         [Header("Feature 2 — sandwich pair")]
         [Tooltip("The other half of the sandwich. Mounting EITHER half departs both. Wire it on one deck — the other side is linked back automatically. Leave null for a solo platform.")]
@@ -366,7 +368,7 @@ namespace SlimeJumping.Platforms
                 case Phase.Holding:
                     // Mounting a deck that already sits at its destination runs the trip in reverse —
                     // for a sandwich pair that re-crosses the two decks without leaving the zone first.
-                    if (mountRisingEdge)
+                    if (remountAtDestinationReturns && mountRisingEdge)
                     {
                         phase = Phase.Returning;
                         if (partner != null) partner.RequestReturn();

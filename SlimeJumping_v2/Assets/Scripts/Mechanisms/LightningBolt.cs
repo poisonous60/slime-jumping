@@ -132,6 +132,9 @@ namespace SlimeJumping.Mechanisms
             for (int i = 0; i < points.Length; i++) lr.SetPosition(i, points[0]);
         }
 
+        // Telegraph arcs draw with the same material so the scene keeps one instance.
+        internal static Material SharedMaterial => GetSharedMaterial();
+
         private static Material GetSharedMaterial()
         {
             if (sharedMat != null) return sharedMat;
@@ -223,8 +226,8 @@ namespace SlimeJumping.Mechanisms
                 HitStopService.Freeze(cfg.hitStopDuration, shakeEmitter, cfg.hitShakeForce, cfg.hitStopFrozenScale);
             }
 
-            SpawnImpact(cfg.impactPrefab, hit.point, hit.normal);
-            SpawnImpact(cfg.groundExplosionPrefab, hit.point, hit.normal);
+            SpawnImpact(cfg.impactPrefab, hit.point, hit.normal, 1f);
+            SpawnImpact(cfg.groundExplosionPrefab, hit.point, hit.normal, cfg.groundExplosionScale);
             if (isSlime) CarveSnowNearSlime(slime, hit.point);
             else CarveSnow(hit.collider, hit.point);
             PlayImpactSound(hit.point);
@@ -299,12 +302,14 @@ namespace SlimeJumping.Mechanisms
             lr.SetPosition(last, overrideTip ? tipOverride : points[last]);
         }
 
-        private void SpawnImpact(ParticleSystem prefab, Vector3 point, Vector3 normal)
+        private void SpawnImpact(ParticleSystem prefab, Vector3 point, Vector3 normal, float scale)
         {
             if (prefab == null) return;
             Vector3 n = normal.sqrMagnitude > 0.0001f ? normal : Vector3.up;
             Quaternion rot = Quaternion.LookRotation(Vector3.forward, n);
             var inst = Instantiate(prefab, new Vector3(point.x, point.y, point.z + cfg.lineZOffset), rot);
+            // Templates run in Local scaling mode, so the transform scales size, speed and shape together.
+            if (scale > 0f && scale != 1f) inst.transform.localScale *= scale;
             if (!inst.gameObject.activeSelf) inst.gameObject.SetActive(true);
             inst.Play(true);
             var main = inst.main;

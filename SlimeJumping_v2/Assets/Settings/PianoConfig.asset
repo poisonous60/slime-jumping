@@ -2092,7 +2092,7 @@ MonoBehaviour:
     minPresses: 3
     idleSeconds: 3
     cooldownSeconds: 8
-    volume: 0.7
+    volume: 0.95
     loop: 0
     fadeInSeconds: 0.6
     fadeOutSeconds: 0.35

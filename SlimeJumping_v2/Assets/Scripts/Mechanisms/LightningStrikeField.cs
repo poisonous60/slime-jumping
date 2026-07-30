@@ -41,6 +41,7 @@ namespace SlimeJumping.Mechanisms
             public Vector3 landing;
         }
         private readonly List<PendingBolt> pending = new List<PendingBolt>(8);
+        private bool telegraphed;
 
         void OnEnable()
         {
@@ -53,6 +54,7 @@ namespace SlimeJumping.Mechanisms
 
             clock = 0f;
             cursor = 0;
+            telegraphed = false;
             pending.Clear();
             nextTime = startDelay + GapAt(0);
         }
@@ -70,6 +72,8 @@ namespace SlimeJumping.Mechanisms
                 pending.RemoveAt(i);
             }
 
+            TryTelegraph();
+
             // Loop, not if — gap 0 rows must all go off on the same frame as their predecessor.
             while (cursor < strikes.Count && clock >= nextTime)
             {
@@ -79,12 +83,15 @@ namespace SlimeJumping.Mechanisms
                 if (cursor < strikes.Count)
                 {
                     nextTime += GapAt(cursor);
+                    // A gap-0 row was already telegraphed with its predecessor's group.
+                    if (GapAt(cursor) > 0f) telegraphed = false;
                 }
                 else if (repeat)
                 {
                     // Clamped so an all-zero pattern still advances the clock instead of spinning.
                     nextTime += Mathf.Max(0.02f, cycleGap) + GapAt(0);
                     cursor = 0;
+                    telegraphed = false;
                 }
                 else
                 {
@@ -94,6 +101,30 @@ namespace SlimeJumping.Mechanisms
         }
 
         private float GapAt(int i) => Mathf.Max(0f, strikes[i].gap);
+
+        // Marks where the next strike lands, `telegraphLead` ahead of it. A run of gap-0 rows
+        // shares one fire time, so they all light up together.
+        // ponytail: lead longer than the gap just spawns late; no borrowing from the previous strike's slot.
+        private void TryTelegraph()
+        {
+            if (telegraphed || cursor >= strikes.Count) return;
+            if (config.telegraphFilamentCount <= 0) return;
+            if (clock < nextTime - Mathf.Max(0f, config.telegraphLead)) return;
+
+            for (int i = cursor; i < strikes.Count; i++)
+            {
+                SpawnTelegraph(LandingPoint(OriginAt(i)));
+                if (i + 1 < strikes.Count && GapAt(i + 1) > 0f) break;
+            }
+            telegraphed = true;
+        }
+
+        private void SpawnTelegraph(Vector3 point)
+        {
+            var go = new GameObject("LightningTelegraph");
+            go.AddComponent<LightningTelegraphSpark>().Init(config,
+                new Vector3(point.x, point.y, point.z + config.telegraphZOffset), config.telegraphLead);
+        }
 
         // One strike = a short burst of bolts off the same anchor; only the first goes out now.
         private void Fire(int index)
