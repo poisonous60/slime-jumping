@@ -82,39 +82,84 @@ namespace SlimeJumping.Physics
         public void SetRadiusScale(float s) { radiusScale = Mathf.Max(0.05f, s); }
         protected float EffRadius => settings.slimeRadius * radiusScale;
 
-        // --- Cut SHAPE (directional reach) ---
-        // LEGACY cut-plane slice design: the cut-as-smaller-slime redesign left NO caller for
-        // SetCutShape, so cutPlaneCount stays 0 and Reach() is identically EffRadius. Kept because
-        // contactReach[] threads through SelectPrimary / EffectiveNormal / ProjectVelocityAgainstContacts.
-        protected readonly Vector3[] cutPlanes = new Vector3[3];  // xy = world unit normal (→ removed side), z = off (world, from center)
-        protected int cutPlaneCount;
-        public void SetCutShape(Vector3[] planes, int count)
+        // Mirror of the body's collider union (SlimeController.CutShape.cs) so the probe and Box2D
+        // agree instead of fighting. Centres relative to the body centre; pushed every FixedUpdate
+        // because Phase A walks a local pos the colliders don't know about.
+        protected readonly Vector2[] bodyCircleCentres = new Vector2[8];
+        protected readonly float[] bodyCircleRadii = new float[8];
+        protected int bodyCircleCount;
+        public void SetBodyCircles(Vector2[] centres, float[] radii, int count)
         {
-            cutPlaneCount = Mathf.Clamp(count, 0, cutPlanes.Length);
-            for (int i = 0; i < cutPlaneCount; i++) cutPlanes[i] = planes[i];
-        }
-        public void ClearCutShape() { cutPlaneCount = 0; }
-
-        // Support length of the cut shape toward a surface whose outward normal is contactNormal.
-        protected float Reach(Vector2 contactNormal)
-        {
-            float R = EffRadius;
-            if (cutPlaneCount == 0) return R;
-            Vector2 d = -contactNormal;
-            float h = R;
-            for (int i = 0; i < cutPlaneCount; i++)
+            bodyCircleCount = Mathf.Clamp(count, 0, bodyCircleCentres.Length);
+            for (int i = 0; i < bodyCircleCount; i++)
             {
-                Vector2 n = new Vector2(cutPlanes[i].x, cutPlanes[i].y);
-                float off = cutPlanes[i].z;
-                float dn = Vector2.Dot(d, n);
-                if (dn > 0f && R * dn > off)   // d points toward the removed side AND the cut limits it
-                {
-                    float planar = off * dn + Mathf.Sqrt(Mathf.Max(0f, R * R - off * off)) * Mathf.Sqrt(Mathf.Max(0f, 1f - dn * dn));
-                    if (planar < h) h = planar;
-                }
+                bodyCircleCentres[i] = centres[i];
+                bodyCircleRadii[i] = radii[i];
             }
-            return Mathf.Max(h, R * 0.1f);
         }
+        public void ClearBodyCircles() { bodyCircleCount = 0; }
+        /// <summary>False while the body is a plain circle — every measurement takes the old path verbatim.</summary>
+        protected bool BodyIsCut => bodyCircleCount > 1;
+
+        // Union gap re-based onto EffRadius, so `reach` stays constant and every downstream
+        // comparison works unchanged. gap == 0 is Box2D's own resting condition, so both solvers
+        // settle on the same spot. Each lobe needs its OWN closest point — reusing the centre's
+        // over-reports the gap by sqrt(d^2+s^2)-d for every off-centre lobe.
+        protected float MeasuredDistanceToSegment(Vector2 pos, Vector2 a, Vector2 b, float rawDist)
+        {
+            if (!BodyIsCut) return rawDist;
+            float gap = float.MaxValue;
+            for (int i = 0; i < bodyCircleCount; i++)
+            {
+                Vector2 c = pos + bodyCircleCentres[i];
+                float d = (ClosestOnSegment(c, a, b) - c).magnitude - bodyCircleRadii[i];
+                if (d < gap) gap = d;
+            }
+            return gap + EffRadius;
+        }
+
+        protected float MeasuredDistanceToCollider(Vector2 pos, Collider2D col, float rawDist)
+        {
+            if (!BodyIsCut || col == null) return rawDist;
+            float gap = float.MaxValue;
+            for (int i = 0; i < bodyCircleCount; i++)
+            {
+                Vector2 c = pos + bodyCircleCentres[i];
+                Vector2 cp = col.ClosestPoint(c);
+                float d = (cp - c).magnitude - bodyCircleRadii[i];
+                if (d < gap) gap = d;
+            }
+            return gap + EffRadius;
+        }
+
+        protected static Vector2 ClosestOnSegment(Vector2 p, Vector2 a, Vector2 b)
+        {
+            Vector2 ab = b - a;
+            float abSq = ab.sqrMagnitude;
+            if (abSq < 1e-8f) return a;
+            float t = Vector2.Dot(p - a, ab) / abSq;
+            if (t < 0f) t = 0f;
+            else if (t > 1f) t = 1f;
+            return a + ab * t;
+        }
+
+        // How far the flesh reaches from the centre along dir.
+        protected float BodyExtentAlong(Vector2 dir)
+        {
+            if (!BodyIsCut) return EffRadius;
+            float h = 0f;
+            for (int i = 0; i < bodyCircleCount; i++)
+            {
+                float v = Vector2.Dot(bodyCircleCentres[i], dir) + bodyCircleRadii[i];
+                if (v > h) h = v;
+            }
+            return h;
+        }
+
+        // Constant in every state; the cut shape enters through the measured distance instead. A
+        // direction-dependent reach is wrong for one of the two contact kinds whichever way it is
+        // defined, and the solvers then oscillate.
+        protected float Reach(Vector2 contactNormal) => EffRadius;
         // Per-contact reach, filled in CheckSurface (parallel to contactNormals).
         protected readonly float[] contactReach = new float[16];
 
@@ -124,8 +169,6 @@ namespace SlimeJumping.Physics
             this.settings = settings;
             this.ignoredColliders = ignoredColliders;
         }
-        // NOTE: probe-mode swap needs no cut-shape transfer — the controller re-applies
-        // splitCutPlanes right after DecideProbeMode() every FixedUpdate.
 
         // Called on runtime mode swap. Without it a new probe starts lastGoodNormal=up, so a
         // ceiling/wall-attached slime gets snapped off on the next deep-penetration frame.
@@ -135,6 +178,8 @@ namespace SlimeJumping.Physics
             this.lastGoodNormal = other.lastGoodNormal;
             this.lastGravityUp = other.lastGravityUp;
             this.radiusScale = other.radiusScale;
+            // Without this a mode swap mid-cut runs one frame as a full circle and shoves the slime out.
+            SetBodyCircles(other.bodyCircleCentres, other.bodyCircleRadii, other.bodyCircleCount);
         }
 
         public bool CheckSurface(out Vector2 normal, out Collider2D col,
@@ -512,16 +557,21 @@ namespace SlimeJumping.Physics
             {
                 Vector2 closest = surfaceCollider.ClosestPoint(pos);
                 Vector2 toSlime = pos - closest;
-                float dist = toSlime.magnitude;
-                // Anchor at the reach, not the full radius, so the cut face rests on the surface.
-                float reach = dist > 0.0001f ? Reach(toSlime / dist) : EffRadius;
+                float rawDist = toSlime.magnitude;
+                // Measured against the flesh: a cut body must not be yanked out to its full circle.
+                float dist = MeasuredDistanceToCollider(pos, surfaceCollider, rawDist);
+                float reach = EffRadius;
                 // Small-ledge climb: loosen the re-anchor tolerance by stepHeight while a passthrough
                 // is active, else the slime can only rise ~contactSkin before Phase B yanks it back.
                 float anchorTolerance = reach + contactSkin;
                 if (lowLedgePassthroughCount > 0)
                     anchorTolerance += settings.smallLedgeStepHeight;
-                if (dist > anchorTolerance && dist > 0.0001f)
-                    pos = closest + (toSlime / dist) * reach;
+                if (dist > anchorTolerance && rawDist > 0.0001f)
+                {
+                    Vector2 dir = toSlime / rawDist;
+                    // Plain circle keeps the original expression, bit for bit.
+                    pos = BodyIsCut ? pos - dir * (dist - reach) : closest + dir * reach;
+                }
             }
 
             rb.position = pos;

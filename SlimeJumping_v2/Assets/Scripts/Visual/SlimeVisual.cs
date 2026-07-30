@@ -290,8 +290,12 @@ public class SlimeVisual : MonoBehaviour
             Vector2 sagDir = worldOffset.normalized;
             float offsetMag = worldOffset.magnitude;
 
-            Vector3 colScale = slimeCollider.transform.lossyScale;
-            float colliderWorldRadius = slimeCollider.radius * Mathf.Max(colScale.x, colScale.y);
+            // Body size, not the base collider's radius — while cut that collider is one lobe of a
+            // union and reads far smaller than the slime actually is.
+            float colliderWorldRadius = slimeController != null
+                ? slimeController.SlimeRadius
+                : slimeCollider.radius * Mathf.Max(slimeCollider.transform.lossyScale.x,
+                                                   slimeCollider.transform.lossyScale.y);
 
             // appliedScale.x = tangent-direction scale (body.localX ≈ tangent on surfaces)
             float scaleExt = Mathf.Max(0f, (appliedScale.x - 1f) * colliderWorldRadius);

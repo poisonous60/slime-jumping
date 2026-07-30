@@ -131,11 +131,77 @@ melt/WorldTrail 얼룩 **삭제**. 라이프사이클:
 `IgnoredColliderList.RegisterOverlapping`이 Passthrough 항목을 보존하도록 함께 수정
 (KnifeHazard 통과 중 런치 시의 동일 잠재 버그도 해결).
 
+### 2.5 접지: 잘린 몸 = CircleCollider2D 여러 개 (2026-07-30 재설계)
+
+증상: 밑동이 잘리면 슬라임이 공중에 뜬다. 몸 반경 0.1776 인데 보이는 단면은 중심에서 0.0547 —
+**123 mm(몸 지름의 35 %) 가 공중**이다.
+
+원인은 두 층이 서로 다른 몸을 본다는 것: Box2D 는 `CircleCollider2D`(non-trigger, Dynamic) 로 밀어내고,
+`SurfaceProbe` 는 `rb.position` 중심 `EffRadius` 짜리 **수학 원**을 본다. 콜라이더만 바꾸면 프로브가
+다시 밀어올리고, 프로브만 바꾸면 솔버와 싸운다. **그래서 둘 다 같은 도형을 보게 한다.**
+
+- **도형**: `K = disc(EffRadius) ∩ wound_j`. wound 는 막이 부풀면 원판(`disc(x_m·n, Rc)`), 평평하거나
+  파였으면 반평면(`{p·n ≤ off+b}`). 셰이더가 그리는 값(`off`, `b`, `rho0`)을 그대로 물리 단위로 받아
+  쓰므로 콜라이더 = 그려진 것.
+- **채우기**: 각 원을 ∂K 위에 접하게 앵커하고 나머지 제약으로 반지름을 `min` 클립 →
+  **union ⊆ K 가 구성상 보장**. 슬라임은 조금 잠길 수는 있어도 **뜨는 건 구조적으로 불가능**.
+  앵커는 ∂K 를 **호 길이 균등**으로 나눠 잡고, 위상을 최신 상처 법선에 고정해 **한 원이 항상 단면에 접한다**
+  → 평평한 지면 위 안착 높이는 정확.
+- **내접 불변식**: 몸 제약에 앵커한 원은 `|c| + r = EffRadius` 가 항등적으로 성립 → 모든 lobe 가
+  `EffRadius` 원 안. 브로드페이즈·CCD·런치 클리어런스가 그대로 유효한 근거.
+- **프로브 연동**: `Reach()` 는 **상수 `EffRadius` 유지**. 대신 보고하는 거리를 바꾼다 —
+  `contactDistances = min_k(dist(C_k, feature) − r_k) + EffRadius`. **lobe 마다 자기 최근접점**을
+  뽑는다 — 중심 최근접점을 재사용하면 옆으로 치우친 lobe 의 간격을 `√(d²+s²) − d` 만큼 과대평가해서
+  이미 닿아 있는 lobe 가 떨어져 있다고 보고한다. 하위 소비처 7곳이 무수정으로 올바른 값을 얻고,
+  `gap = 0` 은 Box2D 의 원-대-도형 정지 조건 그 자체라 두 solver 가 같은 점으로 수렴한다.
+  (방향 의존 `Reach` 는 채택하지 않음 — support 는 vertex 접촉을, radial 은 face 접촉을 각각 최대
+  87 mm 틀린다.)
+- **여분 원은 상처와 함께 켜고 끈다**: 미컷 상태에서 살아 있으면 몸 안에 묻혀 있어도 존 트리거를
+  드나들어 효과의 시작·종료 시점이 달라진다. 끄는 대가는 하나 — `Physics2D.IgnoreCollision` 은 쌍
+  단위이고 비활성화하면 소실되므로, 활성 집합이 바뀔 때마다 `IgnoredColliderList.ReapplySuppression()`
+  으로 재무장한다(칼 통과는 컷 시작과 같은 프레임에 그 쌍을 만든다).
+- **재빌드 시점**: `FixedUpdate` 의 `UpdateSurfaceContact` 직전 + `ApplyBodyScale` 끝. 상처는 `Update()`
+  에서 진행하므로 렌더 프레임마다 쓰면 물리 스텝당 0~3 회로 흔들린다.
+- **콜라이더가 여러 개라서 같이 고친 것**: `IgnoredColliderList` 가 전체 배열을 ignore,
+  텔레포트 CCD 스윕을 lobe 별로(`QueriesStartInColliders`=1 이라 풀 원 스윕은 제거된 쐐기 안 지형에
+  거리 0 을 보고해 컷 내내 고착), 런치 클리어런스도 lobe 별, `IsSmallLedgeVertex` 의 발을
+  `BodyExtentAlong(-up)` 으로, `KnifeHazard` 통과 판정을 전체 콜라이더로, 존 트리거 핸들러들은
+  겹침 카운터로(Enter/Exit 가 콜라이더 수만큼 온다).
+- **노브**(`SlimeSettings`): `cutColliderCount`(기본 6, 1 = 기능 끔) · `cutColliderArcSamples`(64) ·
+  `cutColliderMinRadiusFrac`(0.05).
+- **검증**: `scratchpad/cut-union-builder.mjs`, `cut-union-rules.mjs`, `final-rule.mjs` (Unity 불필요).
+  반경 3종 × 봉합 21단계 × 컷각 8종 × 상처 1·2개에서 union ⊆ K, 내접, 단면 접촉, 아문 뒤 단일 원을 assert.
+  배치 규칙 비교 실측(안착 높이 오차, 몸 반경 0.1776 환산):
+
+  | 원 개수 | 1 상처 | 2 상처 |
+  |---|---|---|
+  | 3 | 48.9 mm | 62.5 mm |
+  | 4 | 27.0 mm | 61.9 mm |
+  | **6** | **13.1 mm** | **28.3 mm** |
+  | 8 | 21.6 mm | 18.6 mm |
+
+  기준선(현재 뜨는 양) 122.9 mm. 6개 = **9.4배 개선**.
+
+### 2.6 얼굴 절단 + 조각 얼굴 파편 (2026-07-30)
+
+얼굴은 마스크가 아니라 **실제로 잘려서 조각과 함께 날아간다**. 셰이더 수정 0 — `SlimeFaceSlice.shader`
+(월드 clip, `_SliceCountWS` / `_SlicePlaneWS[3]` / `_SliceBottomGuardWS`)와 `Mat_SlimeFaceSlice` 는 이미
+프리팹의 Eyes/Mouth 에 배선돼 있었고 C# 피더만 없었다.
+
+- **본체**: `SlimeSplitSequence.PushFaceSlices()` 가 rest-OS 상처 평면을 막 정점(`off + b`, 봉합 시계
+  그 자체)에서 월드로 밀어준다. 앵커는 `bodyFilter.transform` — 얼굴 스프라이트가 같은 렌더 체인에
+  달려 있어 보간 변위가 공통모드로 소거된다. `rb.position` 을 쓰면 이동 중 컷 라인이 얼굴 위를 헤엄친다.
+- **조각**: `Face` 를 통째로 복제해 chunk **루트**에 붙인다(Mesh 자식은 round-up/jiggle 로 비균등
+  스케일이라 스프라이트가 찌그러진다). `SlimeFaceShard` 가 컷 평면을 자기 프레임에 얼려두고 매 프레임
+  월드로 재구성 → 조각의 이동·회전을 따라간다. 평면 **부호를 뒤집어** 본체가 버린 쪽만 남긴다.
+- 파편은 `_SliceBottomGuardWS` 를 끈다(켜져 있으면 낙하 중 얼굴이 통째로 되살아난다). 조각이 둥글어지는
+  진행도로 알파 페이드 — 후퇴시키면 같은 눈이 화면에 두 번 남는다.
+
 ## 3. 폐기된 것 (이번 재설계에서 제거)
 
 | 제거 | 비고 |
 |---|---|
-| `SetSplitCutPlanes` / `ApplySplitCollisionShape` / cut-plane 충돌 | probe의 directional reach 기계(`SetCutShape`/`Reach`)는 호출자 0인 inert 상태로 잔존 (SelectPrimary에 엮여 있어 제거 리스크 > 이득) |
+| `SetSplitCutPlanes` / `ApplySplitCollisionShape` / cut-plane 충돌 | **2026-07-30 부활** — 단 콜라이더 기하는 그대로(폐기 목록 준수). §2.5 참조 |
 | 셰이더 클립 푸시 전체 (`_SlicePlaneOS`/`SliceCap`/`_SliceWobble`/heal tint/face WS clip) | 셰이더 파일(`SlimeSlice.hlsl` 등)은 잔존하나 `_SliceCount=0` 영구 no-op |
 | launch 방향 bias (`SetSplitLaunchBias`) | 작아진 슬라임은 lopsided가 아님 |
 | 설정 필드: cutOffsetFraction, sealRatio, cutRoundness, tear/lip, slice look 색상군, cut wobble군, maxWounds, pieceFinalScale | `SlimeSplitSettings` 정리. 기존 asset의 해당 직렬화 값은 무시됨 |
@@ -160,7 +226,7 @@ melt/WorldTrail 얼룩 **삭제**. 라이프사이클:
 [컷—메니스커스] meniscusSpringK/Damping, cutConcaveDepthFrac ·
 [컷—퀴버] quiverAmp/Freq/Decay/SpatialFreq ·
 [컷—과도기] cutHoldDuration/closeDuration + closeBodyCurve(봉합이 이 수축에 잠금), gather 군 ·
-[컷—상처 look] tear/lip/cap 색 군 ·
+[컷—상처 look] tear/림(`lipBand`+`filletMag`+`mergeBulgeMag`)/`meniscusSealMargin`/cap 색 군 ·
 [조각] 사출(pieceSizeScale)/round-up(piecePerpExpandMax)/jiggle/절단면(pieceCutFaceFrac)/잔존(restBreath)/흡수(absorbPull·Arm·Stretch) ·
 [흡수—합체] mergeDuration/absorbPopKick/mergeWobbleKick/mergeFaceFrac ·
 [회복] slowRecoveryDuration, woundedJumpMultiplierMin/woundedScaleRef (몸집 파생).
@@ -168,6 +234,25 @@ SlimeVisual은 `splitSettings` 참조 필요(Setup 메뉴가 자동 와이어링
 2026-06-11 제거: melt/얼룩 군, recoveryDuration/recoveryCurve/launchRecoveryCurve/regrowPopKick,
 cutRoundnessMax (멤브레인으로 대체), closeSealCurve(봉합=수축 잠금), sliceHeal 색/강도/폭
 (발광 띠 제거). 기존 asset의 해당 직렬화 값은 무시됨.
+
+### 5.1 림 변위 (2026-07-30 재작업)
+
+`_LipMag` 전역 스칼라 → **슬롯별 부호 배열 `_SliceLip[]`**. 음수 = 안쪽 필렛(컷 상처), 양수 = 바깥
+벌지(흡수 합체). 두 연출이 같은 프레임에 같은 스칼라를 공유해서 서로를 죽이던 것을 끊음.
+
+- 게이트가 `SliceSignedDist`(= `min(평면, 막)`)였던 것이 증상 2의 주범이었다. 막이 몸 구면에 접근하면
+  그 min 이 캡 **전체**에서 0 에 가까워져 링이 아니라 면 전체가 0.12R 밖으로 밀렸고, `_SliceSeal` 이
+  곱해져 **아물수록 커졌다.** → 막 항 없는 `SlicePlaneDist` 신설(영점집합 = 고정 림 원).
+- 필렛 프로파일은 **양끝에서 0인 험프**(`4t(1−t)`). rest-space clip 경계는 안 움직이므로 림 자체를
+  변위시키면 표면이 경계에서 떨어져 그 틈으로 뒷면 cap 이 보인다(빈 공간). 림은 제자리, 안쪽 살만 꺼짐.
+- 필렛은 `1 − seal` 게이트(갓 잘려 림이 날카로울 때 최대, 아물면서 소멸), 벌지는 `seal` 게이트.
+- 찢김 노이즈는 **단측**(`max(0, nz)`) — 찢김은 살이 떨어져 나가는 것이므로 안쪽으로만 파인다.
+  음수 lobe 는 살을 평면 밖으로 돌출시켰다.
+- `meniscusW` 는 1 로 클램프(K=90/D=9 는 임계 19 미달 → 1.18 까지 오버슛). 하드코딩 1.06 → `meniscusSealMargin`.
+  물리 쪽은 이 여유를 쓰지 않는다(막이 살을 넘으면 뜸이 된다).
+
+에셋 현재값(2026-07-30 유저 판정): `cutConcaveDepthFrac 0`(단면 중앙이 파여 보임 → 기각),
+`quiverAmp 0`, `tearAmp 0.05`(들쭉날쭉은 유지 확정), `filletMag 0`, `mergeBulgeMag 0.06`.
 
 ## 6. 알려진 트레이드오프 / 미해결
 

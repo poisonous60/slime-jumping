@@ -55,6 +55,7 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float sideFieldStrength = 0.3f;
 
         private SlimeController trackedSlime;
+        private int overlappingColliderCount;
 
         void Reset()
         {
@@ -229,15 +230,31 @@ namespace SlimeJumping.Mechanisms
         void OnTriggerEnter2D(Collider2D other)
         {
             var slime = other.GetComponentInParent<SlimeController>();
-            if (slime != null)
-                trackedSlime = slime;
+            if (slime == null) return;
+
+            overlappingColliderCount++;
+            if (trackedSlime == slime) return; // already tracked (multi-collider)
+
+            trackedSlime = slime;
         }
 
         void OnTriggerExit2D(Collider2D other)
         {
             var slime = other.GetComponentInParent<SlimeController>();
-            if (slime != null && slime == trackedSlime)
-                trackedSlime = null;
+            if (slime == null || slime != trackedSlime) return;
+
+            overlappingColliderCount--;
+            if (overlappingColliderCount > 0) return; // other colliders still inside
+
+            trackedSlime = null;
+        }
+
+        void OnDisable()
+        {
+            // Disabling mid-overlap fires no exit, so a re-enabled zone would keep pushing a slime
+            // that already left. Treat disable as exit.
+            trackedSlime = null;
+            overlappingColliderCount = 0;
         }
 
         void FixedUpdate()

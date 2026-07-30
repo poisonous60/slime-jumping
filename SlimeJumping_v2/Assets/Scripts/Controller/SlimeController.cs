@@ -353,7 +353,10 @@ namespace SlimeJumping.Controller
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
 
             SyncRadius();
-            ignoredColliderList = new IgnoredColliderList(settings.maxIgnoreTime, circleCollider);
+            // Lobes first: the ignore list captures the whole collider set, and a pair registered
+            // later would leave the extra lobes colliding with what the base one passes through.
+            CreateCutLobes();
+            ignoredColliderList = new IgnoredColliderList(settings.maxIgnoreTime, bodyColliders);
             surfaceProbe = CreateProbe(settings.surfaceProbeMode);
             currentProbeMode = settings.surfaceProbeMode;
             launchPosition = rb.position;
@@ -402,6 +405,9 @@ namespace SlimeJumping.Controller
             if (circleCollider == null) circleCollider = GetComponent<CircleCollider2D>();
             if (circleCollider != null)
             {
+                // Play mode owns the collider through RebuildCutShape — writing a plain radius here
+                // (OnValidate fires on any inspector click) would wipe a live cut shape.
+                if (Application.isPlaying) { RebuildCutShape(); return; }
                 float s = transform.localScale.x;
                 float r = settings.slimeRadius * bodyScaleRatio;
                 circleCollider.radius = s > 0.001f ? r / s : r;
@@ -483,6 +489,10 @@ namespace SlimeJumping.Controller
             if (currentBambooGrab != null
                 && (currentState == SlimeState.Attached || currentState == SlimeState.Charging))
                 LockBambooGrabPosition();
+
+            // Physics clock, not the render clock the wound animates on: the probe and Box2D must
+            // see one shape per step, not two or none.
+            RebuildCutShape();
 
             UpdateSurfaceContact(dt);
 
@@ -707,21 +717,29 @@ namespace SlimeJumping.Controller
                 float dist = delta.magnitude;
                 if (dist > 1e-5f)
                 {
-                    int hits = Physics2D.CircleCastNonAlloc(rb.position, SlimeRadius,
-                        delta / dist, ccdHitBuffer, dist, settings.groundLayer);
+                    Vector2 dir = delta / dist;
                     float clamped = dist;
-                    for (int i = 0; i < hits; i++)
+                    // Sweep each lobe, not the full circle. QueriesStartInColliders is on, so a full
+                    // circle sweeping from a cut body reports distance 0 against terrain sitting in
+                    // the removed wedge and freezes the slime for the whole heal.
+                    int lobes = CutLobeCount;
+                    for (int L = 0; L < lobes; L++)
                     {
-                        var h = ccdHitBuffer[i];
-                        if (h.collider == null) continue;
-                        if (ignoredColliderList.Colliders.Contains(h.collider)) continue;
-                        if (h.collider == surfaceCollider) continue;
-                        // Small-ledge lip: pinning here stalls the slime flush against the face with
-                        // net displacement ~0; the forward slide must carry it in so Phase A lifts it over.
-                        if (surfaceProbe.IsLowLedgeCollider(h.collider)) continue;
-                        if (h.distance < clamped) clamped = h.distance;
+                        int hits = Physics2D.CircleCastNonAlloc(rb.position + GetCutLobeCentre(L),
+                            GetCutLobeRadius(L), dir, ccdHitBuffer, dist, settings.groundLayer);
+                        for (int i = 0; i < hits; i++)
+                        {
+                            var h = ccdHitBuffer[i];
+                            if (h.collider == null) continue;
+                            if (ignoredColliderList.Colliders.Contains(h.collider)) continue;
+                            if (h.collider == surfaceCollider) continue;
+                            // Small-ledge lip: pinning here stalls the slime flush against the face with
+                            // net displacement ~0; the forward slide must carry it in so Phase A lifts it over.
+                            if (surfaceProbe.IsLowLedgeCollider(h.collider)) continue;
+                            if (h.distance < clamped) clamped = h.distance;
+                        }
                     }
-                    rb.position += (delta / dist) * Mathf.Max(0f, clamped - settings.contactSkin);
+                    rb.position += dir * Mathf.Max(0f, clamped - settings.contactSkin);
                 }
                 // Tip-grab owns rb.position via LockBambooGrabPosition — skip the probe's
                 // snap so it doesn't tug the slime onto a non-tip segment mid-bend.

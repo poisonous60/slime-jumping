@@ -36,6 +36,7 @@ namespace SlimeJumping.Mechanisms
         private float cooldownUntil;
         private SlimeController overlappingSlime;
         private SlimeInputReader overlappingReader;
+        private int overlappingColliderCount;
 
         public PipeEntrance PairedExit => pairedExit;
         public PipePath Path => path;
@@ -66,6 +67,10 @@ namespace SlimeJumping.Mechanisms
         {
             var slime = other.GetComponentInParent<SlimeController>();
             if (slime == null) return;
+
+            overlappingColliderCount++;
+            if (overlappingSlime == slime) return; // already tracked (multi-collider)
+
             overlappingSlime = slime;
             overlappingReader = slime.GetComponent<SlimeInputReader>();
         }
@@ -74,6 +79,10 @@ namespace SlimeJumping.Mechanisms
         {
             var slime = other.GetComponentInParent<SlimeController>();
             if (slime == null || slime != overlappingSlime) return;
+
+            overlappingColliderCount--;
+            if (overlappingColliderCount > 0) return; // other colliders still inside
+
             overlappingSlime = null;
             overlappingReader = null;
         }

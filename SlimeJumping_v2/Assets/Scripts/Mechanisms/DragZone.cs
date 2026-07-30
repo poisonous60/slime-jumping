@@ -29,6 +29,7 @@ namespace SlimeJumping.Mechanisms
         public bool allowCharging = false;
 
         SlimeController trackedSlime;
+        int overlappingColliderCount;
 
         void Reset()
         {
@@ -39,6 +40,10 @@ namespace SlimeJumping.Mechanisms
         {
             var slime = other.GetComponentInParent<SlimeController>();
             if (slime == null) return;
+
+            overlappingColliderCount++;
+            if (trackedSlime == slime) return; // already tracked (multi-collider)
+
             trackedSlime = slime;
             slime.OnDragZoneEnter(this);
         }
@@ -47,6 +52,10 @@ namespace SlimeJumping.Mechanisms
         {
             var slime = other.GetComponentInParent<SlimeController>();
             if (slime == null || slime != trackedSlime) return;
+
+            overlappingColliderCount--;
+            if (overlappingColliderCount > 0) return; // other colliders still inside
+
             trackedSlime = null;
             slime.OnDragZoneExit(this);
         }
@@ -54,6 +63,7 @@ namespace SlimeJumping.Mechanisms
         public void ForceExit()
         {
             trackedSlime = null;
+            overlappingColliderCount = 0;
         }
 
         void FixedUpdate()

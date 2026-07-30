@@ -121,8 +121,10 @@ namespace SlimeJumping.Mechanisms
             if (ownCol != null) bodyCols.Add(ownCol);
             if (bodyCols.Count == 0) yield break;
 
-            var slimeCol = slime.GetComponent<CircleCollider2D>();
-            if (slimeCol == null) yield break;
+            // Every lobe of the body, not just the base circle: a cut slime clears the blade only
+            // when its LAST collider has left, else the ignore lifts mid-transit and it re-hits.
+            var slimeCols = slime.BodyColliders;
+            if (slimeCols == null || slimeCols.Length == 0) yield break;
 
             passthroughActive = true;
 
@@ -132,7 +134,7 @@ namespace SlimeJumping.Mechanisms
             yield return new WaitForSeconds(duration);
 
             // Releasing while the slime still overlaps would re-hit it — refresh until it clears.
-            while (AnyOverlap(slimeCol, bodyCols))
+            while (AnyOverlap(slimeCols, bodyCols))
             {
                 for (int b = 0; b < bodyCols.Count; b++)
                     if (bodyCols[b] != null) slime.RegisterIgnoredCollider(bodyCols[b], 0.2f);
@@ -145,13 +147,16 @@ namespace SlimeJumping.Mechanisms
             passthroughActive = false;
         }
 
-        private static bool AnyOverlap(Collider2D a, System.Collections.Generic.List<Collider2D> b)
+        private static bool AnyOverlap(Collider2D[] a, System.Collections.Generic.List<Collider2D> b)
         {
-            if (a == null) return false;
-            for (int j = 0; j < b.Count; j++)
+            for (int i = 0; i < a.Length; i++)
             {
-                if (b[j] == null) continue;
-                if (a.Distance(b[j]).isOverlapped) return true;
+                if (a[i] == null) continue;
+                for (int j = 0; j < b.Count; j++)
+                {
+                    if (b[j] == null) continue;
+                    if (a[i].Distance(b[j]).isOverlapped) return true;
+                }
             }
             return false;
         }

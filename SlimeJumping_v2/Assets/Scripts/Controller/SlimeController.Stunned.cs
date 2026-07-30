@@ -15,7 +15,12 @@ namespace SlimeJumping.Controller
 
             // Cancel normal velocity only — tangent survives.
             if (isTouchingSurface)
+            {
                 surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
+                // Same depenetration Attached uses, minus the velocity kill that used to pin the
+                // slime. A body shrinking mid-stun stays seated instead of dropping when stun ends.
+                SnapToSurface();
+            }
 
             if (stunTimer <= 0f)
             {

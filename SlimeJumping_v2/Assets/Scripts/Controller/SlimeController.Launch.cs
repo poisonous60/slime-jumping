@@ -10,10 +10,17 @@ namespace SlimeJumping.Controller
         // glued to without instantly re-colliding.
         private void RegisterLaunchClearance()
         {
-            ignoredColliderList.RegisterOverlapping(
-                rb.position,
-                SlimeRadius + settings.launchClearanceThreshold,
-                settings.groundLayer);
+            // Per lobe: one circle around a cut body would also ignore ground it never touches,
+            // and the launch would then punch straight through a nearby wall.
+            int lobes = CutLobeCount;
+            for (int i = 0; i < lobes; i++)
+            {
+                ignoredColliderList.RegisterOverlapping(
+                    rb.position + GetCutLobeCentre(i),
+                    GetCutLobeRadius(i) + settings.launchClearanceThreshold,
+                    settings.groundLayer,
+                    keepExisting: i > 0);
+            }
         }
 
         /// <summary>Shared tail for all exit-to-airborne transitions; caller sets velocity and does state-specific cleanup first.</summary>

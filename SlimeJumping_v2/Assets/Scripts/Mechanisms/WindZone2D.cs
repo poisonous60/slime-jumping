@@ -29,6 +29,7 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float particleSpeed = 8f;
 
         private SlimeController trackedSlime;
+        private int overlappingColliderCount;
 
         void Reset()
         {
@@ -130,15 +131,25 @@ namespace SlimeJumping.Mechanisms
         void OnTriggerEnter2D(Collider2D other)
         {
             var slime = other.GetComponentInParent<SlimeController>();
-            if (slime != null)
+            if (slime == null) return;
+
+            if (trackedSlime != slime)
+            {
                 trackedSlime = slime;
+                overlappingColliderCount = 0;
+            }
+            overlappingColliderCount++;
         }
 
         void OnTriggerExit2D(Collider2D other)
         {
             var slime = other.GetComponentInParent<SlimeController>();
-            if (slime != null && slime == trackedSlime)
-                trackedSlime = null;
+            if (slime == null || slime != trackedSlime) return;
+
+            overlappingColliderCount--;
+            if (overlappingColliderCount > 0) return; // other colliders still inside
+
+            trackedSlime = null;
         }
 
         void FixedUpdate()

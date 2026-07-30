@@ -32,7 +32,7 @@ namespace SlimeJumping.Physics
 
                 contactColliders[contactCount] = overlapBuffer[i];
                 contactNormals[contactCount] = n;
-                contactDistances[contactCount] = dist;
+                contactDistances[contactCount] = MeasuredDistanceToCollider(pos, overlapBuffer[i], dist);
                 contactCount++;
 
                 if (contactCount >= contactColliders.Length) break;
@@ -62,12 +62,12 @@ namespace SlimeJumping.Physics
                 // Deep penetration: skip (no reliable push direction)
                 if (dist < 0.0001f) continue;
 
-                // Directional reach: the cut shape only pushes out to its cut face on the cut side,
-                // so the removed region never depenetrates the slime (no catch).
-                float reach = Reach(toSlime / dist);
-                if (dist < reach)
+                // Depth against the flesh, not the full circle: the removed wedge must not push back.
+                float measured = MeasuredDistanceToCollider(pos, depenetrationBuffer[i], dist);
+                float reach = EffRadius;
+                if (measured < reach)
                 {
-                    Vector2 push = (toSlime / dist) * (reach - dist);
+                    Vector2 push = (toSlime / dist) * (reach - measured);
                     pos += push;
                     totalPush += push;
                     anyPenetration = true;

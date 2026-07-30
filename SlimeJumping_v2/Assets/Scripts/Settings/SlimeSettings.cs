@@ -204,6 +204,17 @@ namespace SlimeJumping.Settings
                  "0.05~0.3 권장. 너무 크면 진짜 벽도 넘어가버림 (단 '위가 빈 공간' 조건이 키 큰 벽은 걸러줌).")]
         [Min(0f)] public float smallLedgeStepHeight = 0.15f;
 
+        [Header("Cut Body Shape (잘린 몸을 원 여러 개로)")]
+        [Tooltip("잘린 몸을 근사할 CircleCollider2D 개수. 1 = 기능 끔(항상 원 하나). " +
+                 "실측 최악 안착 오차: 4개 26mm, 6개 13mm, 8개 22mm (몸 반지름 0.178 기준, 현재 뜨는 양은 123mm). " +
+                 "올리면 정확해지지만 접촉 콜백과 물리 비용이 개수만큼 늘어난다.")]
+        [Range(1, 8)] public int cutColliderCount = 6;
+        [Tooltip("원 배치를 정할 때 잘린 형상 둘레를 몇 방향으로 샘플링할지. 64 이상은 개선이 거의 없다.")]
+        [Range(16, 128)] public int cutColliderArcSamples = 64;
+        [Tooltip("아물었을 때 여분 원이 몸 안으로 숨는 반지름 (몸 반지름 비율). " +
+                 "0 은 Box2D 가 거부하므로 불가. 몸 안에 완전히 묻힐 만큼 작아야 한다.")]
+        [Range(0.01f, 0.5f)] public float cutColliderMinRadiusFrac = 0.05f;
+
         [Header("Surface Normal Smoothing")]
         [Tooltip("surfaceNormal 저역통과 필터 컷오프(rad/s). 0 = OFF.\n" +
                  "예: 20 → 매 50Hz 프레임당 ~33% 갱신 (90° 튐이 한 프레임에 ~30°로 감쇠, 약 5프레임에 90% 수렴).\n" +

@@ -68,6 +68,8 @@ namespace SlimeJumping.Mechanisms
         // Separate from `trackedSlime != null`: trigger callback order (Enter → Disable → Exit a
         // tick later) desyncs the two, and the override would never get popped.
         bool overridePushed;
+        // The slime body carries several colliders, so Enter/Exit fire once per collider.
+        int overlappingColliderCount;
         PolygonCollider2D polyCollider;
         Transform meshChildTr;
         MeshFilter meshFilter;
@@ -97,6 +99,7 @@ namespace SlimeJumping.Mechanisms
                 trackedSlime.PopSurfaceMaterialOverride(waterSurfaceMaterial);
             overridePushed = false;
             trackedSlime = null;
+            overlappingColliderCount = 0;
         }
 
         void OnValidate()
@@ -136,6 +139,10 @@ namespace SlimeJumping.Mechanisms
         {
             var s = other.GetComponentInParent<SlimeController>();
             if (s == null) return;
+
+            overlappingColliderCount++;
+            if (trackedSlime == s) return; // already tracked (multi-collider)
+
             trackedSlime = s;
             if (Application.isPlaying)
             {
@@ -152,6 +159,10 @@ namespace SlimeJumping.Mechanisms
         {
             var s = other.GetComponentInParent<SlimeController>();
             if (s == null || s != trackedSlime) return;
+
+            overlappingColliderCount--;
+            if (overlappingColliderCount > 0) return; // other colliders still inside
+
             if (overridePushed && waterSurfaceMaterial != null)
             {
                 s.PopSurfaceMaterialOverride(waterSurfaceMaterial);

@@ -19,7 +19,7 @@ MonoBehaviour:
   bodyScaleSpringK: 60
   bodyScaleSpringDamping: 7
   cutHoldDuration: 0.2
-  closeDuration: 2
+  closeDuration: 3
   closeBodyCurve:
     serializedVersion: 2
     m_Curve:
@@ -80,8 +80,8 @@ MonoBehaviour:
     m_RotationOrder: 4
   meniscusSpringK: 90
   meniscusSpringDamping: 9
-  cutConcaveDepthFrac: 0.12
-  quiverAmp: 0.05
+  cutConcaveDepthFrac: 0
+  quiverAmp: 0
   quiverFreq: 16
   quiverDecay: 5
   quiverSpatialFreq: 7
@@ -89,6 +89,9 @@ MonoBehaviour:
   tearFreq: 2.5
   lipBand: 0.18
   lipMag: 0.06
+  filletMag: 0
+  mergeBulgeMag: 0.06
+  meniscusSealMargin: 1.02
   sliceCapColor: {r: 0.18, g: 0.32, b: 0.18, a: 1}
   sliceCapRimColor: {r: 0.45, g: 0.7, b: 0.42, a: 1}
   sliceCapDepth: 0.35
@@ -146,6 +149,7 @@ MonoBehaviour:
   absorbArmDelay: 0.35
   absorbStretchBoost: 0.5
   mergeDuration: 0.35
+  mergeDeferDelay: 0.3
   absorbPopKick: 0.6
   mergeWobbleKick: 0.8
   mergeFaceFrac: 0.85

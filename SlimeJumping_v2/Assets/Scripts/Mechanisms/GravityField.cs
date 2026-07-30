@@ -21,6 +21,7 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private bool invertDirection = false;
 
         private SlimeController trackedSlime;
+        private int overlappingColliderCount;
 
         void Reset()
         {
@@ -32,6 +33,10 @@ namespace SlimeJumping.Mechanisms
         {
             var slime = other.GetComponentInParent<SlimeController>();
             if (slime == null) return;
+
+            overlappingColliderCount++;
+            if (trackedSlime == slime) return; // already tracked (multi-collider)
+
             trackedSlime = slime;
             slime.PushGravityField(this);
         }
@@ -40,8 +45,24 @@ namespace SlimeJumping.Mechanisms
         {
             var slime = other.GetComponentInParent<SlimeController>();
             if (slime == null || slime != trackedSlime) return;
+
+            overlappingColliderCount--;
+            if (overlappingColliderCount > 0) return; // other colliders still inside
+
             trackedSlime = null;
             slime.PopGravityField(this);
+        }
+
+        // Disable/destroy mid-overlap fires no OnTriggerExit2D, stranding a dead field on top of
+        // the slime's gravity stack. Treat disable as exit.
+        void OnDisable()
+        {
+            if (trackedSlime != null)
+            {
+                trackedSlime.PopGravityField(this);
+                trackedSlime = null;
+            }
+            overlappingColliderCount = 0;
         }
 
         /// <summary>Normalized "down" at a world position: fixed direction, or toward/away from the radial pivot.</summary>

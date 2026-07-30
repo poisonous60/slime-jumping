@@ -449,6 +449,7 @@ MonoBehaviour:
   slimeController: {fileID: 175102409996259547}
   settings: {fileID: 11400000, guid: 70b655362c58b5f42a22cb5a7bd2613e, type: 2}
   slimeSettings: {fileID: 11400000, guid: 4b7a3b7018847154e984f9c08fe823ff, type: 2}
+  splitSettings: {fileID: 0}
   slimeCollider: {fileID: 5934579160698062196}
   body: {fileID: 4637232691298175605}
   body3d: {fileID: 7438763877515035234}

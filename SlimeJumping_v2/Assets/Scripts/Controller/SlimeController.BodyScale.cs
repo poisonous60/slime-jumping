@@ -28,14 +28,11 @@ namespace SlimeJumping.Controller
             // pinchColliderScale shrinks ONLY the collider + probe during a squeeze, decoupled from
             // the visual (which reads BodyScaleRatio). 1f outside a pinch.
             float effective = bodyScaleRatio * pinchColliderScale;
-            if (circleCollider != null)
-            {
-                float s = transform.localScale.x;
-                float r = settings.slimeRadius * effective;
-                circleCollider.radius = s > 0.001f ? r / s : r;
-            }
             if (surfaceProbe != null)
                 surfaceProbe.SetRadiusScale(effective);
+            // Collider geometry has ONE author. Writing a plain radius here would leave the base
+            // collider carrying a lobe offset with a full-circle radius.
+            RebuildCutShape();
         }
     }
 }

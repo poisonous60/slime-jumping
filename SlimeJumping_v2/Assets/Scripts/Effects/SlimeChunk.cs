@@ -39,6 +39,7 @@ namespace SlimeJumping.Effects
         private float breathPhase;
         private bool resolved;             // notified absorbed/lost — guards double-counting
         private float roundUpGate;         // 0 = sliver, 1 = round droplet — gates shader stretch
+        private SlimeFaceShard faceShard;  // the severed half of the face, riding along
 
         // Cut-face meniscus (mesh OS): the cut face looks back at the body = local -Y
         // (Init aligns local +Y with the fling direction).
@@ -61,7 +62,7 @@ namespace SlimeJumping.Effects
         private static readonly int TearAmpID = Shader.PropertyToID("_TearAmp");
         private static readonly int TearFreqID = Shader.PropertyToID("_TearFreq");
         private static readonly int LipBandID = Shader.PropertyToID("_LipBand");
-        private static readonly int LipMagID = Shader.PropertyToID("_LipMag");
+        private static readonly int SliceLipID = Shader.PropertyToID("_SliceLip");
         private static readonly int SliceCapColorID = Shader.PropertyToID("_SliceCapColor");
         private static readonly int SliceCapRimColorID = Shader.PropertyToID("_SliceCapRimColor");
         private static readonly int SliceCapDepthID = Shader.PropertyToID("_SliceCapDepth");
@@ -71,6 +72,7 @@ namespace SlimeJumping.Effects
         private static readonly float[] sealScratch = new float[3];
         private static readonly float[] healScratch = new float[3];
         private static readonly Vector4[] meniscusScratch = new Vector4[3];
+        private static readonly float[] lipScratch = new float[3];
 
         private void Awake()
         {
@@ -79,8 +81,10 @@ namespace SlimeJumping.Effects
 
         /// <param name="severDir">Cut-plane normal (world); the droplet spawns flattened along it.</param>
         public void Init(SlimeSplitSettings settings, SlimeSplitSequence seq, SlimeController slimeRef,
-                         Vector2 inheritVel, Vector2 severDir, Vector2 gravityVec, float volume)
+                         Vector2 inheritVel, Vector2 severDir, Vector2 gravityVec, float volume,
+                         SlimeFaceShard shard = null)
         {
+            faceShard = shard;
             s = settings;
             sequence = seq;
             slime = slimeRef;
@@ -140,7 +144,8 @@ namespace SlimeJumping.Effects
             mpb.SetFloat(TearAmpID, s.tearAmp);
             mpb.SetFloat(TearFreqID, s.tearFreq);
             mpb.SetFloat(LipBandID, s.lipBand);
-            mpb.SetFloat(LipMagID, s.lipMag);
+            lipScratch[0] = -s.filletMag;                        // inward, same as the body wound
+            mpb.SetFloatArray(SliceLipID, lipScratch);
             mpb.SetColor(SliceCapColorID, s.sliceCapColor);
             mpb.SetColor(SliceCapRimColorID, s.sliceCapRimColor);
             mpb.SetFloat(SliceCapDepthID, s.sliceCapDepth);
@@ -153,9 +158,13 @@ namespace SlimeJumping.Effects
             float dt = Time.fixedDeltaTime;
             airTime += dt;
 
+            // A stunned slime can't feed: no new pull starts and an in-flight one lets go, so the
+            // piece drops and waits instead of being swallowed while the player is helpless.
+            bool canAbsorb = slime != null && !slime.IsStunned;
+            if (state == ChunkState.Attracting && !canAbsorb) state = ChunkState.Flying;
+
             if (state == ChunkState.Attracting)
             {
-                if (slime == null) { state = ChunkState.Flying; return; }
                 Vector2 toSlime = slime.Position - rb.position;
                 float dist = toSlime.magnitude;
                 float reach = slime.SlimeRadius + ChunkWorldRadius() * 0.25f;
@@ -200,7 +209,7 @@ namespace SlimeJumping.Effects
                 {
                     armed = true;
                 }
-                if (armed && dist <= s.absorbPullRadius)
+                if (armed && canAbsorb && dist <= s.absorbPullRadius)
                     state = ChunkState.Attracting;
             }
         }
@@ -237,6 +246,8 @@ namespace SlimeJumping.Effects
             meshTf.localScale = sc;
 
             UpdateCutFace(dt, rc);
+            // Dissolves as the droplet rounds up, so the same eye is never on screen twice.
+            if (faceShard != null) faceShard.SetFade(rc);
             PushVelocityStretch();
         }
 
@@ -249,7 +260,7 @@ namespace SlimeJumping.Effects
             float target = Mathf.Clamp01(roundUpProgress);
             faceWVel += (s.meniscusSpringK * (target - faceW)
                          - s.meniscusSpringDamping * faceWVel) * sdt;
-            faceW += faceWVel * sdt;
+            faceW = Mathf.Min(1f, faceW + faceWVel * sdt);   // never past the droplet surface
 
             meshRenderer.GetPropertyBlock(mpb);
             if (faceW >= 0.997f)
@@ -260,7 +271,7 @@ namespace SlimeJumping.Effects
             else
             {
                 planeScratch[0] = new Vector4(0f, -1f, 0f, faceOff);
-                meniscusScratch[0] = new Vector4(faceW * faceCapH * 1.06f, faceRho2, 0f, 0f);
+                meniscusScratch[0] = new Vector4(faceW * faceCapH * s.meniscusSealMargin, faceRho2, 0f, 0f);
                 sealScratch[0] = Mathf.Clamp01(faceW);
                 healScratch[0] = 0f;
                 mpb.SetFloat(SliceCountID, 1f);

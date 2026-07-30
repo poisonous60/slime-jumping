@@ -96,6 +96,9 @@ MonoBehaviour:
   surfaceProbeBuriedTestBias: 0.01
   surfaceProbeSmoothSmallLedges: 1
   smallLedgeStepHeight: 0.15
+  cutColliderCount: 6
+  cutColliderArcSamples: 64
+  cutColliderMinRadiusFrac: 0.05
   surfaceNormalSmoothRate: 40
   surfaceNormalSmoothRotatingMultiplier: 2
   surfaceNormalSmoothAngularThreshold: 20

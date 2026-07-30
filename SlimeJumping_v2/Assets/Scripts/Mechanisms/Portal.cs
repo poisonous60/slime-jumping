@@ -49,6 +49,8 @@ namespace SlimeJumping.Mechanisms
             Vector2 exitPos = (Vector2)exit.transform.position + exit.OutNormal * exitOffset - exit.Tangent * tangentOff;
             slime.TeleportTo(exitPos, newV);
 
+            // Both ends go on cooldown: the slime's body colliders each fire Enter
+            cooldownUntil = Time.time + reentryCooldown;
             exit.cooldownUntil = Time.time + reentryCooldown;
         }
 

@@ -137,6 +137,9 @@ namespace SlimeJumping.Platforms
 
         bool inPassthroughBelow;
 
+        // Slime body is several colliders, so Enter/Exit fire once per collider. Act on 0↔1 edges only.
+        int overlappingColliderCount;
+
         // Broad-phase reject for UpdateFromBelowPassthrough, before the O(sampleCount) projection.
         Vector2 ropeBoundsCenter;
         float ropeBoundsRadiusSq;
@@ -162,6 +165,8 @@ namespace SlimeJumping.Platforms
             if (overridePushed && slime != null && ropeSurfaceMaterial != null)
                 slime.PopSurfaceMaterialOverride(ropeSurfaceMaterial);
             overridePushed = false;
+            // Disable mid-overlap fires no Exit; a stale count would swallow the next Enter edge.
+            overlappingColliderCount = 0;
         }
 
         void OnValidate()
@@ -548,6 +553,9 @@ namespace SlimeJumping.Platforms
             if (slime == null || polygon == null) return;
             var hitSlime = other.GetComponentInParent<SlimeController>();
             if (hitSlime != slime) return;
+
+            overlappingColliderCount++;
+            if (overlappingColliderCount > 1) return; // other colliders already inside
             if (baselinePoints == null) return;
 
             float u = ProjectToBaselineParam(slime.Position);
@@ -583,10 +591,15 @@ namespace SlimeJumping.Platforms
 
         void OnTriggerExit2D(Collider2D other)
         {
-            if (!inPassthroughBelow) return;
             if (slime == null || polygon == null) return;
             var hitSlime = other.GetComponentInParent<SlimeController>();
             if (hitSlime != slime) return;
+
+            overlappingColliderCount--;
+            if (overlappingColliderCount > 0) return; // other colliders still inside
+            overlappingColliderCount = 0; // floor against a stray Exit past OnDisable's reset
+            if (!inPassthroughBelow) return;
+
             slime.UnregisterIgnoredCollider(polygon);
             inPassthroughBelow = false;
         }

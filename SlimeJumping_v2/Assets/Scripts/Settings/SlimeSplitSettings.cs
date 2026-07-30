@@ -87,11 +87,17 @@ namespace SlimeJumping.Settings
         [Tooltip("찢김 노이즈 주파수. 낮게 — 부드러운 굴곡 몇 개, 좁쌀 노이즈 아님.")]
         public float tearFreq = 2.5f;
         [Range(0.02f, 0.6f)]
-        [Tooltip("아무는 가장자리의 표면장력 입술(lip) 폭 (OS, 반경 비율). 봉합될수록 도드라짐.")]
+        [Tooltip("단면 테두리(림) 밴드 폭 (OS, 반경 비율). 이 폭 안의 살이 아래 두 값만큼 움직인다.")]
         public float lipBand = 0.18f;
         [Range(0f, 0.3f)]
-        [Tooltip("입술이 바깥으로 부푸는 크기 (OS). 0 = 입술 없음.")]
-        public float lipMag = 0.06f;
+        [Tooltip("림 필렛: 절단 코너 바로 안쪽 살이 꺼져 코너가 둥글게 읽히는 깊이 (OS). 림 자체는 제자리 — 림을 움직이면 clip 경계와 벌어져 틈이 보인다. 갓 잘렸을 때 최대, 아물면서 사라짐. 0 = 각진 코너 유지.")]
+        public float filletMag = 0.02f;
+        [Range(0f, 0.3f)]
+        [Tooltip("흡수 합체 벌지: 조각이 파고드는 지점이 바깥으로 불룩해지는 크기 (OS). 상처 필렛과 독립.")]
+        public float mergeBulgeMag = 0.06f;
+        [Range(1f, 1.15f)]
+        [Tooltip("봉합 막이 몸 구면을 넘어 밀리는 여유 (1 = 정확히 일치). 블롭 메쉬가 완전한 구가 아니라 남는 클립 조각을 덮는 용도 — 물리 판정에는 이 여유를 쓰지 않는다.")]
+        public float meniscusSealMargin = 1.02f;
         [ColorUsage(false, false)]
         [Tooltip("단면 속(깊은 쪽) 색. 몸색보다 어둡게 — 열린 단면이 깊은 점액으로 읽힘. transition 동안만 보임.")]
         public Color sliceCapColor = new Color(0.18f, 0.32f, 0.18f, 1f);
@@ -179,6 +185,9 @@ namespace SlimeJumping.Settings
         [Header("흡수 — 합체 연출")]
         [Tooltip("조각이 닿은 뒤 부피가 차오르는 시간 (초). 이 동안 닿은 지점이 국소적으로 불룩(립+워블)했다가 가라앉음.")]
         public float mergeDuration = 0.35f;
+        [Min(0f)]
+        [Tooltip("상처 봉합이 끝난 뒤 몸이 차오르기까지 쉬는 박자 (초). 봉합 중에 삼킨 조각은 이 박자를 기다렸다가 합체 — 상처 차오름과 몸 차오름이 겹쳐 보이지 않게.")]
+        public float mergeDeferDelay = 0.3f;
         [Min(0f)]
         [Tooltip("합체 순간 전신 스케일 스프링에 주는 바깥쪽 속도 킥 — 꿀꺽 삼키는 출렁임.")]
         public float absorbPopKick = 0.6f;

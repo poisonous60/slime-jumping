@@ -224,12 +224,13 @@ namespace SlimeJumping.Physics
                 if (distSq > maxDistSq) return;
                 float dist = Mathf.Sqrt(distSq);
                 Vector2 normal = toSlime / dist;
+                // IsContactBuried biases by dist*0.4 into the owner — it needs the raw centre distance.
                 if (IsContactBuried(col, closest, normal, dist, otherBuffer, otherCount))
                 {
-                    StashRejected(col, normal, dist);
+                    StashRejected(col, normal, MeasuredDistanceToCollider(pos, col, dist));
                     return;
                 }
-                MergeOrAddContact(col, normal, dist, false, false, dedupeDot, firstNewIdx);
+                MergeOrAddContact(col, normal, MeasuredDistanceToCollider(pos, col, dist), false, false, dedupeDot, firstNewIdx);
             }
         }
 
@@ -261,9 +262,10 @@ namespace SlimeJumping.Physics
             float dist = Mathf.Sqrt(distSq);
 
             // Stash with outward (not bisector) so a promoted contact carries a real edge perpendicular.
+            // Buried test takes the raw centre distance — its bias is dist*0.4 into the owner collider.
             if (IsContactBuried(col, closest, outward, dist, otherBuffer, otherCount))
             {
-                StashRejected(col, outward, dist);
+                StashRejected(col, outward, MeasuredDistanceToSegment(pos, a, b, dist));
                 return;
             }
 
@@ -273,16 +275,19 @@ namespace SlimeJumping.Physics
             // Low, open-above lip: ProjectVelocityAgainstContacts skips its clip and the controller exempts
             // this collider from the teleport CCD. closest == the clamped vertex.
             bool lowLedge = clamped && settings.surfaceProbeSmoothSmallLedges
-                && IsSmallLedgeVertex(col, closest, EffRadius);
-            MergeOrAddContact(col, normal, dist, clamped, lowLedge, dedupeDot, firstNewIdx);
+                && IsSmallLedgeVertex(col, closest);
+            MergeOrAddContact(col, normal, MeasuredDistanceToSegment(pos, a, b, dist), clamped, lowLedge,
+                              dedupeDot, firstNewIdx);
         }
 
         // Climbable "small ledge" = vertex within stepHeight above the foot AND open space just above it.
         // The open-above test is OverlapPoint, not a raycast, so QueriesStartInColliders can't flip it; it is
         // what rules out tessellated walls whose lowest segment's top vertex is within stepHeight.
-        private bool IsSmallLedgeVertex(Collider2D ownerCol, Vector2 vertex, float radius)
+        private bool IsSmallLedgeVertex(Collider2D ownerCol, Vector2 vertex)
         {
-            Vector2 foot = rb.position - lastGravityUp * radius;
+            // Foot = where the flesh actually ends downward. Using the full radius on a cut body puts
+            // it up to a radius below the slime and every ground vertex reads as a climbable ledge.
+            Vector2 foot = rb.position - lastGravityUp * BodyExtentAlong(-lastGravityUp);
             float heightAboveFoot = Vector2.Dot(vertex - foot, lastGravityUp);
             if (heightAboveFoot < -settings.contactSkin || heightAboveFoot > settings.smallLedgeStepHeight)
                 return false;
@@ -309,10 +314,11 @@ namespace SlimeJumping.Physics
                 normal = toSlime / dist;
             if (IsContactBuried(col, closest, normal, dist, otherBuffer, otherCount))
             {
-                StashRejected(col, normal, dist);
+                StashRejected(col, normal, MeasuredDistanceToSegment(pos, a, b, dist));
                 return;
             }
-            MergeOrAddContact(col, normal, dist, false, false, dedupeDot, firstNewIdx);
+            MergeOrAddContact(col, normal, MeasuredDistanceToSegment(pos, a, b, dist), false, false,
+                              dedupeDot, firstNewIdx);
         }
 
         private void MergeOrAddContact(Collider2D col, Vector2 n, float dist, bool clamped, bool lowLedge,
@@ -428,10 +434,10 @@ namespace SlimeJumping.Physics
                 Vector2 normal = toSlime / dist;
                 if (IsContactBuried(col, closest, normal, dist, otherBuffer, otherCount))
                     return 0;
-                float reach = Reach(normal) - dist;
-                if (reach <= 0f) return 0;
+                float depth = EffRadius - MeasuredDistanceToCollider(pos, col, dist);
+                if (depth <= 0f) return 0;
                 pushNormals[0] = normal;
-                pushDepths[0] = reach;
+                pushDepths[0] = depth;
                 pushCount = 1;
             }
 
@@ -468,8 +474,8 @@ namespace SlimeJumping.Physics
             // No promotion fallback here — a buried collider must not push; the outermost surface does.
             if (IsContactBuried(col, closest, outward, dist, otherBuffer, otherCount)) return;
 
-            // Directional reach: push only to the cut shape's extent, so a removed region never pushes back.
-            float depth = Reach(toSlime / dist) - dist;
+            // Depth against the flesh: the removed wedge never pushes back.
+            float depth = EffRadius - MeasuredDistanceToSegment(pos, a, b, dist);
             if (depth <= 0f) return;
 
             // Clamped vertices push along the bisector so a slime caught on a convex corner is depenetrated
@@ -480,7 +486,7 @@ namespace SlimeJumping.Physics
             // the forward slide → slime stalls at the lip. Strip the tangent component so the push is purely
             // up lastGoodNormal and the preserved forward slide carries it over.
             if (clamped && settings.surfaceProbeSmoothSmallLedges
-                && IsSmallLedgeVertex(col, closest, radius)) // closest == the vertex
+                && IsSmallLedgeVertex(col, closest)) // closest == the vertex
             {
                 float along = Vector2.Dot(normal * depth, lastGoodNormal);
                 if (along > 1e-5f)
@@ -528,8 +534,9 @@ namespace SlimeJumping.Physics
             float distForBuried;
             if (lastGoodNormal.sqrMagnitude > 0.5f && Vector2.Dot(toSlime, lastGoodNormal) < 0f)
             {
+                // Wrong-side restore is deliberately over-strong; it stays on the full circle.
                 n = lastGoodNormal;
-                depth = Reach(lastGoodNormal) - Vector2.Dot(toSlime, lastGoodNormal);
+                depth = EffRadius - Vector2.Dot(toSlime, lastGoodNormal);
                 distForBuried = Mathf.Max(0.0001f, distSq > 0.0001f ? Mathf.Sqrt(distSq) : 0.0001f);
             }
             else
@@ -537,7 +544,7 @@ namespace SlimeJumping.Physics
                 if (distSq < 0.0001f) return;
                 float dist = Mathf.Sqrt(distSq);
                 n = toSlime / dist;
-                depth = Reach(toSlime / dist) - dist;
+                depth = EffRadius - MeasuredDistanceToSegment(pos, a, b, dist);
                 if (depth <= 0f) return;
                 distForBuried = dist;
             }

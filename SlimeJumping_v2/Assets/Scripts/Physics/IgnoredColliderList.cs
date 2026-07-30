@@ -23,12 +23,14 @@ namespace SlimeJumping.Physics
         private readonly List<float> timers = new();
         private readonly List<IgnoreMode> modes = new();
         private readonly float maxIgnoreTime;
-        private readonly Collider2D slimeCollider;
+        // Every collider the slime body is made of. A cut slime is several circles, and ignoring
+        // only one of them leaves the rest catching on the blade it is supposed to pass through.
+        private readonly Collider2D[] slimeColliders;
 
-        public IgnoredColliderList(float maxIgnoreTime, Collider2D slimeCollider)
+        public IgnoredColliderList(float maxIgnoreTime, Collider2D[] slimeColliders)
         {
             this.maxIgnoreTime = maxIgnoreTime;
-            this.slimeCollider = slimeCollider;
+            this.slimeColliders = slimeColliders;
         }
 
         // Exposed so SurfaceProbe can share the backing store without a copy per frame.
@@ -64,8 +66,10 @@ namespace SlimeJumping.Physics
 
         // Launch/Hop clearance: guards overlapping colliders without suppressing physics.
         // Sweeps ReattachGuard entries only — wiping Passthrough re-enables collision mid-blade.
-        public void RegisterOverlapping(Vector2 position, float radius, LayerMask mask)
+        public void RegisterOverlapping(Vector2 position, float radius, LayerMask mask, bool keepExisting = false)
         {
+            // keepExisting: a cut body sweeps this once per lobe, and only the first pass may clear.
+            if (!keepExisting)
             for (int i = colliders.Count - 1; i >= 0; i--)
             {
                 if (modes[i] != IgnoreMode.ReattachGuard) continue;
@@ -86,6 +90,15 @@ namespace SlimeJumping.Physics
         public bool Contains(Collider2D col)
         {
             return colliders.Contains(col);
+        }
+
+        /// <summary>Re-arms every Passthrough pair. The body's collider set changes while a wound
+        /// opens and closes, and IgnoreCollision is per pair — a lobe enabled afterwards would not
+        /// carry the ignore and would catch on the blade the slime is transiting.</summary>
+        public void ReapplySuppression()
+        {
+            for (int i = 0; i < colliders.Count; i++)
+                SuppressCollision(colliders[i], modes[i]);
         }
 
         // Explicit mode — no default. Picking the wrong mode silently changes whether
@@ -141,24 +154,23 @@ namespace SlimeJumping.Physics
             modes.RemoveAt(i);
         }
 
-        private void SuppressCollision(Collider2D col, IgnoreMode mode)
+        private void SuppressCollision(Collider2D col, IgnoreMode mode) => SetIgnore(col, mode, true);
+        private void RestoreCollision(Collider2D col, IgnoreMode mode) => SetIgnore(col, mode, false);
+
+        private void SetIgnore(Collider2D col, IgnoreMode mode, bool ignore)
         {
             if (mode != IgnoreMode.Passthrough) return;
-            if (col == null || slimeCollider == null) return;
+            // Unity fake-null: destroyed collider != null in CLR but == null via overloaded ==.
+            if (col == null || slimeColliders == null) return;
             // Triggers don't physically block; IgnoreCollision on them would suppress
             // OnTriggerEnter/Stay events (breaks hazard re-hit loops). Probe filtering still
             // takes effect via Contains() check, which is what we want for triggers.
             if (col.isTrigger) return;
-            Physics2D.IgnoreCollision(slimeCollider, col, true);
-        }
-
-        private void RestoreCollision(Collider2D col, IgnoreMode mode)
-        {
-            if (mode != IgnoreMode.Passthrough) return;
-            // Unity fake-null: destroyed collider != null in CLR but == null via overloaded ==.
-            if (col == null || slimeCollider == null) return;
-            if (col.isTrigger) return;
-            Physics2D.IgnoreCollision(slimeCollider, col, false);
+            for (int i = 0; i < slimeColliders.Length; i++)
+            {
+                if (slimeColliders[i] == null) continue;
+                Physics2D.IgnoreCollision(slimeColliders[i], col, ignore);
+            }
         }
     }
 }

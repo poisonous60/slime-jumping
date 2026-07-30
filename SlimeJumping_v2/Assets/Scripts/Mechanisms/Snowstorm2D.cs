@@ -161,6 +161,7 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float slimePresenceWeight;
 
         private SlimeController trackedSlime;
+        private int overlappingColliderCount;
         private SoundHandle ambientHandle;
         private Vector2 windTransitionStart;
         private Vector2 windTransitionTarget;
@@ -270,6 +271,12 @@ namespace SlimeJumping.Mechanisms
 
         void OnDisable()
         {
+            // No OnTriggerExit2D arrives while disabled — treat disable as exit, else a stale
+            // count keeps slimeInside true forever.
+            trackedSlime = null;
+            slimeInside = false;
+            overlappingColliderCount = 0;
+
             StopAmbient();
             if (postVolume != null) postVolume.weight = 0f;
             // Restore, else a disabled storm leaves the stage snowfall stuck suppressed.
@@ -507,6 +514,7 @@ namespace SlimeJumping.Mechanisms
             if (slime != null)
             {
                 bool wasInside = slimeInside;
+                overlappingColliderCount++;
                 trackedSlime = slime;
                 slimeInside = true;
                 // Reset only on true outside→inside transitions so child colliders
@@ -520,6 +528,9 @@ namespace SlimeJumping.Mechanisms
             var slime = other.GetComponentInParent<SlimeController>();
             if (slime != null && slime == trackedSlime)
             {
+                overlappingColliderCount--;
+                if (overlappingColliderCount > 0) return; // other colliders still inside
+
                 trackedSlime = null;
                 slimeInside = false;
             }
