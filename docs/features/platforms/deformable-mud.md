@@ -27,8 +27,13 @@ slime.SurfaceCollider == myPoly AND slime.CurrentState == Attached
 
 `maxPerHitDisplacement`는 슬라임의 `SurfaceProbe` 감지 범위보다 작게 유지 — 한 프레임에 벽이 너무 멀리 움직이면 슬라임이 detach됨.
 
-## 낙하 → 복원
-슬라임의 local-Y가 플랫폼 최하단 level.y − `fallBelowMargin` 아래로 내려가면 `BeginReset()` → `resetDuration` 동안 모든 level의 `leftCurX`/`rightCurX`를 rest로 smoothstep lerp. Reset 중 재부착해도 변형은 계속 진행 (hit은 reset 위에 누적).
+## Zone 이탈 → 복원
+`DeformableRespawnZone` (ThinIce의 `ThinIceRespawnZone`과 동일 패턴) 이 복원을 몰아서 트리거한다.
+- Zone GO = trigger `PolygonCollider2D` 하나. Rigidbody2D 없음 — 슬라임의 dynamic body가 trigger 콜백을 일으키고, zone에 body를 달면 자식 플랫폼 콜라이더가 그 body에 흡수되기 때문.
+- 멤버 = 자식의 `DeformablePlatform` 자동 수집 (`autoCollectChildren`) + `explicitMembers`.
+- 슬라임 collider가 zone에서 전부 빠져나간 순간(overlap count 0) 모든 멤버에 `RequestRegen()` → `resetDuration` 동안 `leftCurX`/`rightCurX`를 rest로 smoothstep lerp.
+- Reset 중 재부착해도 변형은 계속 진행 (hit은 reset을 덮어씀).
+- Zone에 속하지 않은 플랫폼은 복원되지 않는다.
 
 ## EmitPiece 파이프라인
 연속된 non-pinched level 구간을 piece로 emit:
@@ -77,8 +82,7 @@ URP Lit + Cull Off (양면) + Smoothness 0.08 + BaseColor(0.62, 0.42, 0.28). 양
 | attachedCreepPerSec | 0 | 부착 중 초당 추가 (기본 0) |
 | depth | 0.8 | Z 축 두께 |
 | rearDeformFactor | 0.1 | 뒷면 변형 비율 (0=고정, 1=앞과 동일) |
-| fallBelowMargin | 1.5 | 이 거리만큼 내려가면 reset 트리거 |
-| resetDuration | 0.6 | reset lerp 시간 |
+| resetDuration | 0.6 | reset lerp 시간 (트리거는 zone 이탈) |
 | frontInteriorCols | 6 | level row 당 내부 column |
 | frontInteriorJitter | 0.4 | 내부 포인트 X/Y 랜덤 (0~1, 1=반 셀폭) |
 | frontNoiseAmount | 0.15 | 내부 포인트 Z 돌출 |
@@ -92,4 +96,6 @@ URP Lit + Cull Off (양면) + Smoothness 0.08 + BaseColor(0.62, 0.42, 0.28). 양
 
 ## 관련 파일
 - [DeformablePlatform.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/DeformablePlatform.cs)
+- [DeformableRespawnZone.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/DeformableRespawnZone.cs)
+- [DeformablePlatformActivator.cs](../../../SlimeJumping_v2/Assets/Scripts/Platforms/DeformablePlatformActivator.cs) — 충돌 VFX 목록만 전 플랫폼에 broadcast
 - [DeformablePlatformEditor.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/DeformablePlatformEditor.cs)

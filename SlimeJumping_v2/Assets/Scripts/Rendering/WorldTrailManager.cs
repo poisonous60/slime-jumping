@@ -265,7 +265,10 @@ namespace SlimeJumping.Rendering
             }
 
             if (slime == null) slime = FindFirstObjectByType<SlimeController>();
-            activeIndex = slime != null ? Mathf.Max(0, IndexContaining(slime.Position)) : 0;
+            // Region 0 for now — SlimeController assigns its Rigidbody2D in its own Awake and this
+            // manager runs at -100, so reading slime.Position here throws and skips the publish below.
+            // Start picks the real region.
+            activeIndex = 0;
 
             PublishGlobals();
         }
@@ -311,6 +314,9 @@ namespace SlimeJumping.Rendering
 
         private void Start()
         {
+            // Every Awake has run by now, so the slime's Rigidbody2D exists and Position is safe.
+            UpdateActiveRegion();
+
             if (regions.Count == 0)
                 Debug.LogWarning("[Trail] No regions configured — nothing will receive a world trail.", this);
 

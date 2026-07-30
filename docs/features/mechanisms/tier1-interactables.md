@@ -49,6 +49,16 @@
 ### FireworkInteractable_V2
 오브젝트 자체가 폭죽 로켓. E 입력 시 `rocketVisual` 자식이 `flightDirection × flightDistance` 만큼 `flightDuration` 동안 `flightCurve` 로 비행 → 정점에서 `explosionVFX` 를 현재 위치로 이동 후 재생, `ForceAirborneWithVelocity` 로 슬라임 발사, `impulseEmitter` 카메라 쉐이크, `explosionSfx` 재생 → `rocketVisual` SetActive(false) → `respawnDelay` 초 대기 → 원위치 복귀 + `respawnScaleCurve` 팝인 (+선택적 `respawnAnimatorTrigger`). 비행/폭발/리스폰 전 구간 `ExtraCanInteract` 로 재입력 차단. 콜라이더/프롬프트는 루트에, 비주얼만 rocketVisual 에 두어 분리 원칙 준수.
 
+### FireworkInteractable_V3
+Stage 3 용 다발 폭죽. E 한 번에 `shells` 배열의 모든 셸이 각자 `igniteDelay` 에 점화 → 각자 `targetAnchor` 에서 `flightDuration` 후 폭발 (그림의 시간차 3방향). 셸마다 독립 코루틴이라 배열 순서 = 발사 순서가 아니며 정렬도 하지 않는다.
+- **슬라임은 폭발 지점에서 방사형으로 밀린다** (도착 지점 지정 아님): `pushSpeed` 가 폭발 지점 정중앙 값이고 `pushRadius` 에서 0 으로 선형 감쇠. 폭발마다 독립으로 적용되므로 시간차 3발 = 밀림 3회. 공중/스턴 상태면 `AddExternalVelocity` 로 현재 궤적에 더하고(`ApplyHazardPush` 는 `OnHazardPushed` 로 화상 비주얼까지 물려 있어 안 씀), Attached/Charging 이면 외부 채널이 접선 성분만 먹으므로 `ForceAirborneWithVelocity` 로 떼어내야 실제로 날아간다.
+- **비행 = V2 VFX-sync 계약 그대로**: `shellVfxPrefab`(SF_1) 인스턴스에서 `startLifetime = flightDuration`, `velocity = Δ/flightDuration` 으로 1발만 Emit 하고, **그 파티클이 권위**다 — 매 프레임 `GetParticles` 로 읽어 로켓 메시를 `파티클 − visualPivotOffset` 위치로 옮기고, 파티클이 죽는 순간이 폭발(Death 서브에미터)이자 밀림·SFX 시점. 메시를 따로 lerp 하면 시계가 둘이 되어 이펙트와 어긋난다(실제로 어긋났음). 인스턴스에서 `gravityModifier`·`limitVelocityOverLifetime`(dampen) 을 끄고(경로가 휘어 앵커 앞에서 죽음) 루트 렌더러도 끈다(로켓이 둘로 보임). 파티클이 안 나오면 폭발·밀림 없이 리스폰만 한다.
+- 셸 겉모습·라이프사이클 = **stage 1 그대로 ×3**: 로켓(`firework_rocket.glb` + SparkleTrail)은 **씬에 미리 땅에 서 있는 오브젝트**(`shells[i].visual`)다. 런타임 Instantiate 아님 — 점화 순간 허공에서 생겨나면 안 된다. 폭발 시 트레일 `StopEmittingAndClear` + `SetActive(false)`, `respawnDelay` 후 rest pose 복귀 + `respawnScaleCurve` 팝인.
+- **트레일 포즈는 MainScene 실측값을 복제**: SparkleTrail 은 로켓 루트가 아니라 glb 안쪽 `root` 노드의 자식이고 `localPos (-0.58,0,0)` / `localRot 90°X` / `scale 1.667` 이다(유저가 씬에서 손튜닝한 값 — V2 *셋업 스크립트* 의 local 0 과 다르다). 루트에 local 0 으로 붙이면 스파크가 꼬리가 아니라 피벗에서 나와 로켓과 떨어져 보인다.
+- 기울기는 **런타임 계산, 하드코딩 아님**: 대기 중엔 똑바로 서 있고, 점화 순간 `FromToRotation(up, anchor − visual.position) × rest회전` 으로 경로 방향으로 눕는다. 앵커를 어디로 옮기든 자세와 궤적이 따라간다. 전제는 rest 자세가 "똑바로 선" 상태 — glb 축이 Y-up 이 아니라 셋업이 -90°X 보정(`RocketUpright`)을 rest 회전으로 넣어 둔다. `visualPivotOffset`(stage1 -0.3/0.29)도 같은 회전으로 기울여 적용한다.
+- 재입력 차단은 타이머가 아니라 **살아 있는 셸 카운트**: 마지막 셸 코루틴의 `finally` 에서 `busy` 를 푼다(타임아웃·중단으로 시간이 늘어도 두 번째 볼리가 같은 셸을 덮치지 않게). `OnDisable` 에서는 숨은 로켓을 rest pose 로 되돌린다 — 코루틴이 죽으면 로켓이 영영 안 돌아온다(OffscreenSleeper 등으로 비활성화될 수 있음). 호스트 선택 시 기즈모로 셸 라인 + 앵커별 `pushRadius` 원 표시.
+- 셋업: `SlimeJumping/Interaction/Setup Firework V3 Test` (앵커 마커 구체 + 로켓 템플릿 + stage1 SFX/임펄스 배선). 검증 기준: 폭발이 앵커 마커에 얹히는지, 발판 위에서 첫 폭발에 떨어져 나가고 이후 2발이 공중에서 밀어주는지.
+
 ### ShrineInteractable (IExternalController)
 일본 신사 앞에서 E로 데모 엔딩 진입.
 - `wispAnchor`에 픽업 프리팹 (기본 `Assets/Prebs/VFX/StrawberryPickup.prefab` — 딸기 스프라이트) 인스턴스화 (스폰 시 `wispScale` 필드로 루트 스케일 적용).

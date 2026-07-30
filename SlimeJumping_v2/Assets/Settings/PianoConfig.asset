@@ -2089,7 +2089,7 @@ MonoBehaviour:
         glissStepSeconds: 0.035
         glissVolume: 0.4
     shuffle: 1
-    minPresses: 3
+    minPresses: 2
     idleSeconds: 3
     cooldownSeconds: 8
     volume: 0.95

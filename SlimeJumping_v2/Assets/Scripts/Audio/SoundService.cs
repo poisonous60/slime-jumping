@@ -47,6 +47,8 @@ namespace SlimeJumping.Audio
                 return;
             }
             Instance = this;
+            // DontDestroyOnLoad is root-only; the scene keeps this under a manager object.
+            if (transform.parent != null) transform.SetParent(null, true);
             DontDestroyOnLoad(gameObject);
 
             if (settings == null)

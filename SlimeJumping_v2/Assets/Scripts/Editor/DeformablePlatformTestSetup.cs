@@ -113,15 +113,7 @@ namespace SlimeJumping.Editor
 
             var go = new GameObject("DeformableActivator");
             go.transform.parent = parent;
-            var rb  = go.AddComponent<Rigidbody2D>();
-            var col = go.AddComponent<CircleCollider2D>();
             go.AddComponent<DeformablePlatformActivator>();
-            // AddComponent doesn't fire Reset — configure explicitly or the Inspector shows defaults.
-            rb.bodyType = RigidbodyType2D.Kinematic;
-            rb.useFullKinematicContacts = true;
-            rb.gravityScale = 0f;
-            col.isTrigger = true;
-            col.radius = 15f;
         }
 
         static void EnsureDirectionalLight(Transform parent)

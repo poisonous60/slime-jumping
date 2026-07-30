@@ -63,8 +63,8 @@ namespace SlimeJumping.Platforms
 
         [Header("Reset")]
         [Tooltip("Seconds for all levels to lerp back to rest when a reset fires. " +
-                 "Reset is triggered by the scene's DeformablePlatformActivator when the " +
-                 "slime leaves its range — no per-platform fall-below check runs here anymore.")]
+                 "Reset is triggered by the DeformableRespawnZone this platform belongs to, " +
+                 "when the slime exits that zone's trigger.")]
         [Min(0.01f)] [SerializeField] float resetDuration = 0.6f;
 
         [Header("Sand VFX — Impact (per-platform)")]
@@ -185,8 +185,8 @@ namespace SlimeJumping.Platforms
 
             wasAttachedToMe = attachedToMe;
 
-            // Reset is driven only by DeformablePlatformActivator.SetActiveByManager; local
-            // fall-below polling would revert a platform whose slime is below but still in range.
+            // Reset is driven only by DeformableRespawnZone.RequestRegen; local fall-below
+            // polling would revert a platform whose slime is below but still inside the zone.
             if (resetting) TickReset(Time.fixedDeltaTime);
         }
 
@@ -444,12 +444,11 @@ namespace SlimeJumping.Platforms
             DestroyAmbientInstance();
         }
 
-        // --- Activation (driven by DeformablePlatformActivator) -------------
+        // --- Activation (driven by DeformableRespawnZone) -------------------
 
-        /// <summary>Activator hook: exit (slime left range) starts the reset; enter is a no-op.</summary>
-        public void SetActiveByManager(bool active)
+        /// <summary>Zone hook: the slime left the zone, so restore this platform to rest.</summary>
+        public void RequestRegen()
         {
-            if (active) return;
             if (resetting) return;
             if (!HasAnyDeformation()) return;
             BeginReset();

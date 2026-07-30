@@ -119,7 +119,7 @@ disableRadius = enableRadius × hysteresisFactor        // 기본 1.5
 
 | 이유 | 컴포넌트 |
 |---|---|
-| 별도 매니저 (DPlatform 시맨틱: 물리 근접) | `DeformablePlatform` (`DeformablePlatformActivator` 사용) |
+| 별도 매니저 (zone 이탈이 복원 트리거) | `DeformablePlatform` (`DeformableRespawnZone` 사용) |
 | 게임플레이 timing 영향 (화면 밖에서도 진행 필요) | `PendulumPlatform`, `SnakeSpine`, `WeightDescendPlatform` |
 | 이미 self-gating (trackedSlime==null 즉시 return) | `ThinIcePlatformV2`, `CrumblingPlatform`, `IcicleHazard`, EnvironmentalZone 베이스 (ColdZone, DragZone, WindZone2D 등) |
 | 투사체 — 화면 밖 비행 필요 | `Snowball`, `JumpBall` |

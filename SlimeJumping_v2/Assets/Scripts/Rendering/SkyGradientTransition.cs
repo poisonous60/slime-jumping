@@ -60,7 +60,9 @@ namespace SlimeJumping.Rendering
                 enabled = false;
                 return;
             }
-            target = blend = (slime != null && slime.Position.y >= triggerY) ? 1f : 0f;
+            // slime.Position reads its Rigidbody2D, which is null until SlimeController.Awake runs —
+            // OnEnable can land before it, so take the spawn height off the transform.
+            target = blend = (slime != null && slime.transform.position.y >= triggerY) ? 1f : 0f;
             ApplyBlend();
             DynamicGI.UpdateEnvironment();
         }

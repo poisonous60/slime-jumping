@@ -60,15 +60,7 @@ namespace SlimeJumping.Editor
                 if (sv != null) go.transform.position = sv.pivot;
             }
 
-            var rb  = go.AddComponent<Rigidbody2D>();
-            var col = go.AddComponent<CircleCollider2D>();
             go.AddComponent<DeformablePlatformActivator>();
-            // AddComponent from script skips Reset(), so apply the config explicitly.
-            rb.bodyType = RigidbodyType2D.Kinematic;
-            rb.useFullKinematicContacts = true;
-            rb.gravityScale = 0f;
-            col.isTrigger = true;
-            col.radius = 15f;
 
             Selection.activeGameObject = go;
         }
