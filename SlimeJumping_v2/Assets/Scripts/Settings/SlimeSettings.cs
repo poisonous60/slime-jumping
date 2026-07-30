@@ -237,6 +237,10 @@ namespace SlimeJumping.Settings
         public float defaultStunDuration = 0.5f;
         [Tooltip("Default knockback force if hazard doesn't specify.")]
         public float defaultKnockbackForce = 8f;
+        [Tooltip("Stun progress (0..1) where ground friction starts ramping in. 0 = braking from the first frame, 1 = never brakes (frictionless for the whole stun).")]
+        [Range(0f, 1f)] public float stunFrictionRampStart = 0.5f;
+        [Tooltip("Tangent damping rate (1/s) at full ramp, scaled by the surface's slideResistance multiplier. 0 = no braking. 15 kills ~80% of slide speed over a 0.5s stun's back half; raise for a harder settle.")]
+        [Min(0f)] public float stunFrictionDampRate = 15f;
 
         [Header("Friction-Based Detachment")]
         [Tooltip("Master toggle. true: 원심/관성 기반 detach 활성. false: 기존 ceiling-각도 분기만.")]

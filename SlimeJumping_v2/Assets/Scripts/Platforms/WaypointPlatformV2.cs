@@ -364,9 +364,16 @@ namespace SlimeJumping.Platforms
                     break;
 
                 case Phase.Holding:
+                    // Mounting a deck that already sits at its destination runs the trip in reverse —
+                    // for a sandwich pair that re-crosses the two decks without leaving the zone first.
+                    if (mountRisingEdge)
+                    {
+                        phase = Phase.Returning;
+                        if (partner != null) partner.RequestReturn();
+                    }
                     // With a zone owner the return is commanded by RequestReturn; only the zone-less
                     // legacy platform may self-return on holdRange proximity.
-                    if (parentZone == null && !SlimeInHoldRange())
+                    else if (parentZone == null && !SlimeInHoldRange())
                         phase = Phase.Returning;
                     break;
 

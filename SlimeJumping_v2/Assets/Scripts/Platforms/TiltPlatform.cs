@@ -19,17 +19,19 @@ namespace SlimeJumping.Platforms
         {
             base.Awake();
 
-            var box = GetComponentInChildren<BoxCollider2D>();
-            if (box == null)
+            // Any Collider2D: mesh-baked platforms carry a PolygonCollider2D, not a box.
+            // World AABB x-extent — platforms are authored flat, so it is the half width.
+            var col = GetComponentInChildren<Collider2D>();
+            halfWidth = col != null ? col.bounds.extents.x : 0f;
+            if (halfWidth < 0.001f)
             {
-                Debug.LogError($"[TiltPlatform] No BoxCollider2D found in children of {name}. Disabling.", this);
+                Debug.LogError($"[TiltPlatform] No Collider2D with nonzero width in children of {name}. Disabling.", this);
                 enabled = false;
                 return;
             }
 
             basePosition = rb.position;
             baseRotation = rb.rotation;
-            halfWidth = box.size.x * box.transform.lossyScale.x * 0.5f;
         }
 
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity, bool isCharging)

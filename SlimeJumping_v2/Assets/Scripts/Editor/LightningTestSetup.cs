@@ -35,7 +35,7 @@ namespace SlimeJumping.Editor
 
             // Four columns spanning the slime, each a beat behind the previous one.
             float[] localX = { -6f, -2f, 2f, 6f };
-            float[] delays = { 0f, 0.3f, 0.6f, 0.9f };
+            float[] gaps = { 0f, 0.3f, 0.3f, 0.3f };
 
             var anchors = new Transform[localX.Length];
             for (int i = 0; i < localX.Length; i++)
@@ -50,6 +50,8 @@ namespace SlimeJumping.Editor
             var so = new SerializedObject(field);
             so.FindProperty("config").objectReferenceValue = config;
             so.FindProperty("startDelay").floatValue = 0.5f;
+            so.FindProperty("repeat").boolValue = true;
+            so.FindProperty("cycleGap").floatValue = 1.1f;
             // Reuse the slime's own impulse source so the hit shake matches other hazards.
             so.FindProperty("hitShakeEmitter").objectReferenceValue =
                 slime.GetComponentInChildren<SlimeJumping.Effects.ImpulseEmitter>(true);
@@ -59,7 +61,7 @@ namespace SlimeJumping.Editor
             {
                 var e = list.GetArrayElementAtIndex(i);
                 e.FindPropertyRelative("anchor").objectReferenceValue = anchors[i];
-                e.FindPropertyRelative("delay").floatValue = delays[i];
+                e.FindPropertyRelative("gap").floatValue = gaps[i];
             }
             so.ApplyModifiedProperties();
 
@@ -68,7 +70,7 @@ namespace SlimeJumping.Editor
 
             Selection.activeGameObject = root;
             Debug.Log("[LightningTestSetup] Built.\n" +
-                "- Four anchors 10 units above the slime, delays 0 / 0.3 / 0.6 / 0.9, looping every config.period (2s).\n" +
+                "- Four anchors 10 units above the slime, gaps 0 / 0.3 / 0.3 / 0.3 + cycleGap 1.1 = 2s cycle.\n" +
                 "- Landing points come from a downward probe on config.groundMask (Environment) — move the root if the columns miss the floor.\n" +
                 "- Standing under a column halts the bolt on the slime and flings it sideways.\n" +
                 $"- Tuning lives in {ConfigPath} — impact spark / explosion / SFX / hit-stop are GraniteBlast's own assets and values.");

@@ -12,8 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 01a4c786c30eca841836c390f7568ca7, type: 3}
   m_Name: LightningStrikeConfig_Default
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Mechanisms.LightningStrikeConfig
-  period: 2
-  repeat: 1
+  boltsPerStrike: 4
+  boltStagger: 0.07
+  boltStaggerJitter: 0.4
+  boltSpread: 0.5
   maxLength: 20
   groundMask:
     serializedVersion: 2
@@ -42,6 +44,9 @@ MonoBehaviour:
   impactSound: {fileID: 8300000, guid: 02ab1a997909af440928681a5e21362c, type: 3}
   impactVolume: 0.7
   impactPitchJitter: 0.1
+  impactAudioFullDistance: 4
+  impactAudioCutoffDistance: 8
+  impactAudioFalloffExponent: 2.5
   snowCarveOnImpact: 1
   snowCarveDepth: 0.18
   snowCarveRadius: 0.6

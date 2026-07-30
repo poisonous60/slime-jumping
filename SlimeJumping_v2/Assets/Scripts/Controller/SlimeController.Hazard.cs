@@ -86,6 +86,7 @@ namespace SlimeJumping.Controller
             hasOverrideMods = false;
 
             stunTimer = effect.stunDuration;
+            stunDuration = effect.stunDuration;
             lastDamageType = effect.damageType;
             launchSpeed = 0f;
             launchPosition = rb.position;

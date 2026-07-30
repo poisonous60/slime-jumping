@@ -237,6 +237,8 @@ namespace SlimeJumping.Controller
 
         // --- Stunned state ---
         private float stunTimer;
+        // Total of the active stun, so the friction ramp can read progress from stunTimer.
+        private float stunDuration;
         private DamageType lastDamageType;
         public bool IsStunned => currentState == SlimeState.Stunned;
         public bool IsCharging => currentState == SlimeState.Charging;

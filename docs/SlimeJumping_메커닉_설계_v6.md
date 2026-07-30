@@ -79,7 +79,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Falling Train](features/mechanisms/falling-train.md) — 1회 한정 낙하 기차 (텔레그래프 → 연결부 분리 → 곡선 낙하 → 숏컷)
 - [Snowball](features/mechanisms/snowball.md) — Stage 2 굴러가는 / 날아오는 눈덩이 (Rolling/Flying mode + Falling 서브상태 + ObjectPool 스포너 + [SnowField 상호작용](features/mechanisms/snowball.md#snowfield-상호작용-phase-9): 연속 carve, 거리 비례 반경 성장, 착지 splash 분화구+둔덕)
 - [Granite Blast Attackable](features/mechanisms/granite-blast.md#12-attackable-슬라임이-닿으면-파괴되는-카운터) — 슬라임이 닿으면 BulbShatter warp + WorldTimeFreezeService 협력형 freeze 후 emitter 파괴되는 카운터
-- Lightning Strike — 하늘에서 수직 낙하하는 반복 낙뢰. anchor 별 `delay` 위상차 + `period` 반복, 명중 시 기둥 좌/우 판정 수평 튕김. Granite Blast Branching 텐드릴의 베지어 지그재그 + 팁 스윕만 떼낸 독립 구현 (`LightningStrikeField` / `LightningBolt` / `LightningStrikeConfig`)
+- Lightning Strike — 하늘에서 수직 낙하하는 반복 낙뢰. 리스트 순서대로 `gap` 간격 낙하 + `cycleGap` 후 반복, 1회 낙하는 `boltsPerStrike` 발 연속 버스트, 명중 시 기둥 좌/우 판정 수평 튕김 + Granite Blast 동일 임팩트(스파크/폭발/SFX/HitStop/쉐이크/눈 carve). Granite Blast Branching 텐드릴의 베지어 지그재그 + 팁 스윕만 떼낸 독립 구현 (`LightningStrikeField` / `LightningBolt` / `LightningStrikeConfig`)
 - [Tier 1 Interactables](features/mechanisms/tier1-interactables.md) — E키 (Sit, TV, Shrine 등)
 - [Tier 1 Fullscreen Hazards](features/mechanisms/tier1-fullscreen-hazards.md) — Jumpscare, CameraFlash
 - [Memo](features/mechanisms/memo.md) — 월드 스페이스 내레이션

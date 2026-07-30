@@ -11,6 +11,7 @@ namespace SlimeJumping.Mechanisms
     {
         // One material for every bolt in the scene — same setup as GraniteBlast's line core.
         private static Material sharedMat;
+        private static AudioListener listener;
 
         private LightningStrikeConfig cfg;
         private ImpulseEmitter shakeEmitter;
@@ -20,6 +21,9 @@ namespace SlimeJumping.Mechanisms
         private float drawTime, holdTime, fadeTime;
         private float age, prevDrawT;
         private bool hitResolved;
+        // Extra bolts of a burst are visual only — they still halt on contact, but one strike
+        // must read as one impact, not N stacked explosions.
+        private bool canHit;
 
         // Tip's prev→curr chord is CircleCast each frame; the bolt freezes at the hit point.
         private bool tipHalted;
@@ -27,10 +31,11 @@ namespace SlimeJumping.Mechanisms
         private Vector3 haltedTipWorld;
         private float haltedAge = -1f;
 
-        public void Init(LightningStrikeConfig config, ImpulseEmitter shake, Vector3 from, Vector3 to)
+        public void Init(LightningStrikeConfig config, ImpulseEmitter shake, Vector3 from, Vector3 to, bool canHit = true)
         {
             cfg = config;
             shakeEmitter = shake;
+            this.canHit = canHit;
             baseWidth = Mathf.Max(0.001f, cfg.coreWidth);
             holdTime = Mathf.Max(0f, cfg.holdTime);
             fadeTime = Mathf.Max(0.001f, cfg.fadeTime);
@@ -192,7 +197,7 @@ namespace SlimeJumping.Mechanisms
             float dist = delta.magnitude;
             if (dist < 0.0001f) return;
 
-            var hit = Physics2D.CircleCast(a, Mathf.Max(0.01f, cfg.hitRadius), delta / dist, dist, mask);
+            var hit = Cast(a, delta / dist, dist, mask);
             if (hit.collider == null) return;
 
             tipHalted = true;
@@ -202,15 +207,19 @@ namespace SlimeJumping.Mechanisms
             int segs = points.Length - 1;
             haltedLastFullIdx = Mathf.Clamp(Mathf.FloorToInt(Mathf.Clamp01(currT) * segs), 0, points.Length - 1);
 
+            if (!canHit) return;
+
             var slime = hit.collider.GetComponentInParent<SlimeController>();
             bool isSlime = slime != null;
             if (isSlime && !hitResolved)
             {
                 hitResolved = true;
                 // Flung sideways, away from the strike column — a downward push would only
-                // pin a grounded slime into the floor.
+                // pin a grounded slime into the floor. Overwrite-slide, not the plain push channel:
+                // a grounded slime rebuilds velocity from crawlVelocity every frame, so a one-shot
+                // deltaV survives a single FixedUpdate and barely moves it.
                 float side = slime.Position.x >= points[0].x ? 1f : -1f;
-                slime.ApplyHazardPush(new Vector2(side * cfg.knockbackImpulse, 0f), hit.point);
+                slime.ApplyHazardPushOverwriteSlide(new Vector2(side * cfg.knockbackImpulse, 0f), hit.point);
                 HitStopService.Freeze(cfg.hitStopDuration, shakeEmitter, cfg.hitShakeForce, cfg.hitStopFrozenScale);
             }
 
@@ -219,6 +228,28 @@ namespace SlimeJumping.Mechanisms
             if (isSlime) CarveSnowNearSlime(slime, hit.point);
             else CarveSnow(hit.collider, hit.point);
             PlayImpactSound(hit.point);
+        }
+
+        // Zone triggers (ColdZone, snow areas) enclose the sky anchors; a start-overlap hit reports
+        // distance 0 with the zone's own edge as the point, which would bend the bolt onto it.
+        private RaycastHit2D Cast(Vector2 origin, Vector2 dir, float maxDist, LayerMask mask)
+        {
+            var hits = Physics2D.CircleCastAll(origin, Mathf.Max(0.01f, cfg.hitRadius), dir, maxDist, mask);
+            RaycastHit2D best = default;
+            float bestDist = float.PositiveInfinity;
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var h = hits[i];
+                if (h.collider == null) continue;
+                if (h.distance <= 0f) continue;
+                if (h.collider.isTrigger && h.collider.GetComponentInParent<SlimeController>() == null) continue;
+                if (h.distance < bestDist)
+                {
+                    bestDist = h.distance;
+                    best = h;
+                }
+            }
+            return best;
         }
 
         private Vector3 TipAt(float t)
@@ -320,10 +351,29 @@ namespace SlimeJumping.Mechanisms
         private void PlayImpactSound(Vector3 worldPos)
         {
             if (cfg.impactSound == null) return;
+
+            float volume = cfg.impactVolume * DistanceFalloff(worldPos);
+            if (volume <= 0.001f) return;
+
             float pitch = 1f;
             if (cfg.impactPitchJitter > 0f)
                 pitch = 1f + Random.Range(-cfg.impactPitchJitter, cfg.impactPitchJitter);
-            SoundService.PlayAt(cfg.impactSound, worldPos, SoundCategory.SFX_Object, cfg.impactVolume, pitch);
+            SoundService.PlayAt(cfg.impactSound, worldPos, SoundCategory.SFX_Object, volume, pitch);
+        }
+
+        // The listener rides the camera, a fixed ~12 units off the play plane, and that constant
+        // flattens any rolloff — measure XY only so the knobs read as on-screen distance.
+        private float DistanceFalloff(Vector3 worldPos)
+        {
+            if (listener == null) listener = UnityEngine.Object.FindFirstObjectByType<AudioListener>();
+            if (listener == null) return 1f;
+
+            Vector3 lp = listener.transform.position;
+            float d = Vector2.Distance(new Vector2(worldPos.x, worldPos.y), new Vector2(lp.x, lp.y));
+
+            float full = Mathf.Max(0f, cfg.impactAudioFullDistance);
+            float cut = Mathf.Max(full + 0.01f, cfg.impactAudioCutoffDistance);
+            return Mathf.Pow(Mathf.InverseLerp(cut, full, d), cfg.impactAudioFalloffExponent);
         }
     }
 }

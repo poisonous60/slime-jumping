@@ -22,7 +22,7 @@
 `Phase { Parked, Departing, Holding, Returning }`, `mountTriggered` 토글.
 - **Parked**(target=wp0): 탑승 rising-edge(또는 `TriggerFromPartner()`) → Departing.
 - **Departing**: wp[last]까지 진행, 도착(`pathParam≈last` && smoothPos 근접) → Holding.
-- **Holding**(target=wp[last]): 매 프레임 `Physics2D.OverlapCircle(wp[last], holdRange, riderLayers)`. 범위 내 슬라임 없으면 → Returning. (부착이 아닌 **근접** — 슬라임이 공중이어도 근처면 유지. `ThinIceRespawnZone` exit 패턴과 동일.)
+- **Holding**(target=wp[last]): 탑승 rising-edge → 즉시 Returning + `partner.RequestReturn()` (도착지에 서 있는 데크를 다시 밟으면 왕복이 역방향으로 재시작 — 샌드위치 페어면 zone 밖으로 나갔다 올 필요 없이 **그 자리에서 재교차**). rising-edge 없으면 매 프레임 `Physics2D.OverlapCircle(wp[last], holdRange, riderLayers)`, 범위 내 슬라임 없으면 → Returning. (부착이 아닌 **근접** — 슬라임이 공중이어도 근처면 유지. `ThinIceRespawnZone` exit 패턴과 동일.)
 - **Returning**: wp0 복귀 → Parked(재무장).
 
 ## Feature 2 — 샌드위치 페어 + Pinch (명시적 platform↔slime 커플링)

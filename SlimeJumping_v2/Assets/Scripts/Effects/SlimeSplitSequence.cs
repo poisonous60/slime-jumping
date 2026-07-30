@@ -198,6 +198,7 @@ namespace SlimeJumping.Effects
             }
             cutNormalWorld[cutCount] = outDir;
             cutDepthFrac[cutCount] = planeFrac;
+            CaptureFaceCut(cutCount, outDir, planeFrac * fullR);
             cutCount++;
 
             phase = settings.cutHoldDuration > 0f ? CutPhase.Hold : CutPhase.Close;
@@ -606,6 +607,12 @@ namespace SlimeJumping.Effects
         }
 
         private int cutSliceCount;
+        // The severed face region, frozen in the FACE's own local space at the moment of the cut.
+        // A world plane rebuilt from the body each frame slides across the face as the slime moves
+        // and its own drift offset shifts, which reads as the cut line crawling over the eyes.
+        private readonly Vector2[] faceCutNormal = new Vector2[CutMax];
+        private readonly float[] faceCutOffset = new float[CutMax];
+        private readonly float[] faceCutSpan = new float[CutMax];
         private SpriteRenderer[] faceRenderers;
         private MaterialPropertyBlock faceMpb;
         private static readonly int SliceCountWSID = Shader.PropertyToID("_SliceCountWS");
@@ -614,29 +621,74 @@ namespace SlimeJumping.Effects
         private readonly Vector4[] facePlaneWS = new Vector4[SliceMax];
         private bool faceShown;
 
-        // Face sprites don't ride the mesh deform, so the wound reaches them as a world plane.
-        // Anchored on bodyFilter.transform, not rb.position — same render chain, so interpolation
-        // cancels; the physics position would make the cut line swim across the face.
+        // Freezes which part of the face the blade took, in face-local space, plus how far the plane
+        // has to travel to clear the face again — that distance is the heal sweep.
+        private void CaptureFaceCut(int i, Vector2 normalWorld, float planeOffsetWorld)
+        {
+            faceCutNormal[i] = Vector2.up;
+            faceCutOffset[i] = 1e9f;
+            faceCutSpan[i] = 0f;
+            Transform ft = slimeVisual != null ? slimeVisual.FaceTransform : null;
+            if (ft == null || bodyFilter == null || faceRenderers == null) return;
+
+            Vector3 nWorld = new Vector3(normalWorld.x, normalWorld.y, 0f);
+            Vector3 nLocal = ft.InverseTransformDirection(nWorld);
+            nLocal.z = 0f;
+            float l = nLocal.magnitude;
+            if (l < 1e-6f) return;
+            nLocal /= l;
+
+            Vector3 planeWorld = bodyFilter.transform.position + nWorld * planeOffsetWorld;
+            float off = Vector3.Dot(nLocal, ft.InverseTransformPoint(planeWorld));
+
+            // Far edge of the face along the cut normal: once the plane reaches it nothing is clipped.
+            float far = off;
+            for (int r = 0; r < faceRenderers.Length; r++)
+            {
+                var sr = faceRenderers[r];
+                if (sr == null) continue;
+                Bounds b = sr.bounds;
+                for (int c = 0; c < 4; c++)
+                {
+                    Vector3 corner = new Vector3(
+                        (c & 1) == 0 ? b.min.x : b.max.x,
+                        (c & 2) == 0 ? b.min.y : b.max.y,
+                        b.center.z);
+                    float p = Vector3.Dot(nLocal, ft.InverseTransformPoint(corner));
+                    if (p > far) far = p;
+                }
+            }
+            faceCutNormal[i] = new Vector2(nLocal.x, nLocal.y);
+            faceCutOffset[i] = off;
+            faceCutSpan[i] = Mathf.Max(0f, far - off);
+        }
+
+        // The frozen face region, pushed back out through the face's CURRENT transform so the cut
+        // line stays glued to the eyes however the slime moves. Healing sweeps the plane off the
+        // face over its own span, so the missing part grows back instead of popping into existence.
         private void PushFaceSlices(int n)
         {
             if (faceRenderers == null) return;
+            Transform ft = slimeVisual != null ? slimeVisual.FaceTransform : null;
+            if (ft == null) return;
+
+            float w = Mathf.Clamp01(meniscusW);
+            if (w >= 0.999f) n = 0;
             if (n <= 0 && !faceShown) return;
             faceShown = n > 0;
 
             if (faceMpb == null) faceMpb = new MaterialPropertyBlock();
-            Transform bt = bodyFilter != null ? bodyFilter.transform : null;
-            if (bt == null) return;
 
             for (int i = 0; i < n; i++)
             {
-                Vector3 nOS = new Vector3(slicePlaneOS[i].x, slicePlaneOS[i].y, slicePlaneOS[i].z);
-                float apex = slicePlaneOS[i].w + sliceMeniscus[i].x;   // membrane crown = the seal clock
-                Vector3 pWS = bt.localToWorldMatrix.MultiplyPoint3x4(nOS * apex);
-                Vector3 nWS = bt.worldToLocalMatrix.transpose.MultiplyVector(nOS);
+                Vector3 nLocal = new Vector3(faceCutNormal[i].x, faceCutNormal[i].y, 0f);
+                float off = faceCutOffset[i] + w * faceCutSpan[i];
+                Vector3 nWS = ft.TransformDirection(nLocal);
                 nWS.z = 0f;
                 float l = nWS.magnitude;
                 if (l < 1e-6f) { facePlaneWS[i] = new Vector4(0f, 1f, 0f, 1e9f); continue; }
                 nWS /= l;
+                Vector3 pWS = ft.TransformPoint(nLocal * off);
                 facePlaneWS[i] = new Vector4(nWS.x, nWS.y, 0f, Vector3.Dot(nWS, pWS));
             }
             for (int i = n; i < SliceMax; i++) facePlaneWS[i] = new Vector4(0f, 1f, 0f, 1e9f);

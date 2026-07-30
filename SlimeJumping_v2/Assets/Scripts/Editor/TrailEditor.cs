@@ -210,23 +210,16 @@ namespace SlimeJumping.EditorTools
         {
             var mgr = (WorldTrailManager)target;
 
-            var res = mgr.PlannedResolution;
-            long bytes = mgr.PlannedMemoryBytes;
-            string mem = FormatBytes(bytes);
-            EditorGUILayout.HelpBox($"RT: {res.x} × {res.y}  ·  {mem}  (R8)", MessageType.None);
+            DrawRegionSummary(mgr);
 
-            if (res.x >= WorldTrailManager.MaxResolutionPerSide || res.y >= WorldTrailManager.MaxResolutionPerSide)
+            using (new EditorGUI.DisabledScope(mgr.Regions.Count == 0))
             {
-                EditorGUILayout.HelpBox("RT size clamped — reduce worldSize or pixelsPerUnit.", MessageType.Warning);
-            }
-
-            if (Application.isPlaying == false) DrawSaveMismatchWarning(mgr);
-
-            if (GUILayout.Button("Fit Bounds to Scene Ground"))
-            {
-                Undo.RecordObject(mgr, "Trail: fit bounds");
-                FitBoundsToSceneGround(mgr);
-                EditorUtility.SetDirty(mgr);
+                if (GUILayout.Button("Fit Region 0 Bounds to Scene Ground"))
+                {
+                    Undo.RecordObject(mgr, "Trail: fit bounds");
+                    FitBoundsToSceneGround(mgr);
+                    EditorUtility.SetDirty(mgr);
+                }
             }
 
             EditorGUILayout.Space();
@@ -236,20 +229,13 @@ namespace SlimeJumping.EditorTools
                 {
                     if (GUILayout.Button("Clear World Trail (Play)"))
                     {
-                        if (mgr.Rt != null) Graphics.Blit(Texture2D.blackTexture, mgr.Rt);
-                        mgr.MarkDirty();
+                        mgr.ClearWorldTrail();
                     }
                 }
                 string clearAllLabel = Application.isPlaying ? "Clear All (World + Locals)" : "Delete All Scene Saves";
                 if (GUILayout.Button(clearAllLabel))
                 {
-                    if (Application.isPlaying)
-                    {
-                        if (mgr.Rt != null) Graphics.Blit(Texture2D.blackTexture, mgr.Rt);
-                        mgr.MarkDirty();
-                        foreach (var rc in Object.FindObjectsByType<LocalTrailReceiver>(FindObjectsSortMode.None))
-                            rc.ClearTrail();
-                    }
+                    if (Application.isPlaying) mgr.ClearAllTrails();
                     // Always also delete save files so the next load is clean.
                     DeleteAllSceneSaves(mgr);
                 }
@@ -259,71 +245,51 @@ namespace SlimeJumping.EditorTools
             DrawDefaultInspector();
         }
 
-        // Meta read is cached: the inspector repaints continuously in some editor states
-        // (scene view hover, curve preview), and File.ReadAllText per repaint is a real cost.
-        private WorldTrailManager cachedMgr;
-        private string cachedSaveKey;
-        private double cachedAtTime;
-        private bool cachedMismatch;
-        private TrailTargetMeta cachedSaved;
-        private const double cacheTtlSec = 0.5;  // re-read meta at most twice per second
-
-        private void DrawSaveMismatchWarning(WorldTrailManager mgr)
+        private static void DrawRegionSummary(WorldTrailManager mgr)
         {
-            string basePath = Path.Combine(Application.persistentDataPath, "trail", Sanitize(mgr.SaveKey));
-            bool stale = cachedMgr != mgr
-                      || cachedSaveKey != mgr.SaveKey
-                      || (UnityEditor.EditorApplication.timeSinceStartup - cachedAtTime) > cacheTtlSec;
-
-            if (stale)
+            var regions = mgr.Regions;
+            if (regions.Count == 0)
             {
-                cachedMgr = mgr;
-                cachedSaveKey = mgr.SaveKey;
-                cachedAtTime = UnityEditor.EditorApplication.timeSinceStartup;
-                cachedMismatch = false;
-
-                if (File.Exists(basePath + ".meta"))
-                {
-                    try
-                    {
-                        cachedSaved = JsonUtility.FromJson<TrailTargetMeta>(File.ReadAllText(basePath + ".meta"));
-                        var expectedProbe = mgr.BuildMeta();
-                        cachedMismatch = !MetaMatches(cachedSaved, expectedProbe);
-                    }
-                    catch { cachedMismatch = false; }
-                }
+                EditorGUILayout.HelpBox("No regions — add at least one below, or the world trail does nothing.", MessageType.Warning);
+                return;
             }
 
-            if (!cachedMismatch) return;
-
-            try
+            long total = 0;
+            var text = new System.Text.StringBuilder();
+            for (int i = 0; i < regions.Count; i++)
             {
-                var saved = cachedSaved;
-                var expected = mgr.BuildMeta();
-
-                EditorGUILayout.HelpBox(
-                    "An existing save for this scene will be ignored on next Play Mode due to bounds/resolution mismatch.\n" +
-                    $"Saved:    {saved.resolutionX}x{saved.resolutionY} @ ({saved.originX},{saved.originY}) size ({saved.sizeX},{saved.sizeY})\n" +
-                    $"Current:  {expected.resolutionX}x{expected.resolutionY} @ ({expected.originX},{expected.originY}) size ({expected.sizeX},{expected.sizeY})",
-                    MessageType.Warning);
-
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    if (GUILayout.Button("Clear Save"))
-                    {
-                        if (File.Exists(basePath + ".dat")) File.Delete(basePath + ".dat");
-                        if (File.Exists(basePath + ".meta")) File.Delete(basePath + ".meta");
-                    }
-                    if (GUILayout.Button("Revert Bounds to Saved"))
-                    {
-                        var so = new SerializedObject(mgr);
-                        so.FindProperty("worldMin").vector2Value = new Vector2(saved.originX, saved.originY);
-                        so.FindProperty("worldSize").vector2Value = new Vector2(saved.sizeX, saved.sizeY);
-                        so.ApplyModifiedProperties();
-                    }
-                }
+                var r = regions[i];
+                var res = r.PlannedResolution;
+                total += r.PlannedMemoryBytes;
+                if (i > 0) text.Append('\n');
+                text.Append($"[{i}] {r.Label}: {res.x} × {res.y}  ·  {FormatBytes(r.PlannedMemoryBytes)}  (R8)");
+                if (Application.isPlaying && i == mgr.ActiveRegionIndex) text.Append("   ← bound");
             }
-            catch { /* unreadable meta — ignore, next Play rewrites it */ }
+            // Each region allocates warm + cold, so VRAM is twice the figures above.
+            text.Append($"\nVRAM total (warm+cold): {FormatBytes(total * 2)}");
+            EditorGUILayout.HelpBox(text.ToString(), MessageType.None);
+
+            for (int i = 0; i < regions.Count; i++)
+            {
+                var res = regions[i].PlannedResolution;
+                if (res.x >= WorldTrailManager.MaxResolutionPerSide || res.y >= WorldTrailManager.MaxResolutionPerSide)
+                    EditorGUILayout.HelpBox($"Region [{i}] RT clamped at {WorldTrailManager.MaxResolutionPerSide} px — shrink its size or pixelsPerUnit, or split it into another region.", MessageType.Warning);
+            }
+
+            // Duplicate ids clobber each other's save files; overlaps hide one rect's trail entirely.
+            for (int i = 0; i < regions.Count; i++)
+                for (int j = i + 1; j < regions.Count; j++)
+                {
+                    if (regions[i].id == regions[j].id)
+                        EditorGUILayout.HelpBox($"Regions [{i}] and [{j}] share the id '{regions[i].Label}' — their save files overwrite each other.", MessageType.Error);
+                    else if (Overlaps(regions[i], regions[j]))
+                        EditorGUILayout.HelpBox($"Regions [{i}] and [{j}] overlap. Only one rect is bound at a time, so the overlap shows just one of them.", MessageType.Warning);
+                }
+        }
+
+        private static bool Overlaps(WorldTrailManager.Region a, WorldTrailManager.Region b)
+        {
+            return new Rect(a.worldMin, a.worldSize).Overlaps(new Rect(b.worldMin, b.worldSize));
         }
 
         private static void DeleteAllSceneSaves(WorldTrailManager mgr)
@@ -331,12 +297,15 @@ namespace SlimeJumping.EditorTools
             string root = Path.Combine(Application.persistentDataPath, "trail");
             if (!Directory.Exists(root)) { Debug.Log("[Trail] No save folder to clean."); return; }
 
-            string worldBase = Path.Combine(root, Sanitize(mgr.SaveKey));
             int deleted = 0;
-            foreach (var suffix in new[] { ".dat", ".meta" })
+            foreach (var key in mgr.AllSaveKeys())
             {
-                string p = worldBase + suffix;
-                if (File.Exists(p)) { File.Delete(p); deleted++; }
+                string worldBase = Path.Combine(root, Sanitize(key));
+                foreach (var suffix in new[] { ".dat", ".meta" })
+                {
+                    string p = worldBase + suffix;
+                    if (File.Exists(p)) { File.Delete(p); deleted++; }
+                }
             }
 
             // Local SaveKeys come from the live components; pattern-matching filenames on disk is unreliable.
@@ -350,7 +319,7 @@ namespace SlimeJumping.EditorTools
                 }
             }
 
-            Debug.Log($"[Trail] Deleted {deleted} save file(s) for scene key '{mgr.SaveKey}'.");
+            Debug.Log($"[Trail] Deleted {deleted} save file(s) for this scene's trail regions and local receivers.");
         }
 
         private static void FitBoundsToSceneGround(WorldTrailManager mgr)
@@ -380,8 +349,9 @@ namespace SlimeJumping.EditorTools
             Vector2 newSize = new Vector2(b2.size.x + pad * 2f, b2.size.y + pad * 2f);
 
             var so = new SerializedObject(mgr);
-            so.FindProperty("worldMin").vector2Value = newMin;
-            so.FindProperty("worldSize").vector2Value = newSize;
+            var region0 = so.FindProperty("regions").GetArrayElementAtIndex(0);
+            region0.FindPropertyRelative("worldMin").vector2Value = newMin;
+            region0.FindPropertyRelative("worldSize").vector2Value = newSize;
             so.ApplyModifiedProperties();
         }
 

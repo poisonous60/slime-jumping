@@ -12,15 +12,28 @@
 두 가지 RT를 동일한 브러시/페인트 로직으로 공유하되 샘플링 좌표계만 다름.
 | 대상 | RT | 좌표계 | 바인딩 |
 |------|----|-------|--------|
-| 정적 지면 | **월드 RT** (씬당 1개) | `positionWS.xy` | 전역 `Shader.SetGlobalTexture("_TrailMask", ...)` |
+| 정적 지면 | **월드 RT** (씬당 최대 2 구간) | `positionWS.xy` | 전역 `Shader.SetGlobalTexture("_TrailMask" / "_TrailMaskB", ...)` |
 | 움직이는/회전 플랫폼 | **로컬 RT** (플랫폼당 1개) | `mul(_LocalTrailW2L, positionWS).xy` | per-renderer MPB |
 
 **라우팅**: 슬라임이 닿은 `SurfaceCollider`를 키로 `TrailColliderRegistry` 조회. 없으면 월드 RT fallback.
 
+### 월드 RT 구간 (Region 리스트)
+높은 스테이지를 한 rect로 덮으면 `MaxResolutionPerSide` 8192px 상한에 걸리거나 메모리가 폭발한다 (216×268 @ PPU 20 = 4329×5354 = warm+cold 44MB). 그래서 월드 트레일은 **겹치지 않는 rect 리스트** (`List<Region>`) 로 구성한다. 각 `Region` = `id` + `worldMin` + `worldSize` + `pixelsPerUnit` + 자기 RT 쌍(warm/cold) + 자기 save 파일 2개.
+
+- **활성 구간 1개만 바인딩**: `WorldTrailManager` 가 매 `Update` 에 `slime.Position` 을 폴링해 그 좌표를 포함하는 rect 를 찾고, 그 rect 의 RT/바운즈만 전역 (`_TrailMask` / `_TrailMaskCold` / `_TrailWorldMin` / `_TrailWorldSize`) 에 publish. 전환 비용 = `SetGlobal` 4번. 지면 셰이더는 항상 1 텍스처 샘플.
+- **RT 는 전부 상주**: 구간 전환에 alloc/디스크 I/O 없음. VRAM = 구간 합계지만, rect 를 플레이 영역에만 타이트하게 깔면 빈 공간을 안 덮어서 한 장 큰 RT보다 절약.
+- **rect 겹침 금지**: 한 번에 하나만 바인딩되므로 겹친 영역은 둘 중 하나만 보인다. 인스펙터가 겹침을 경고.
+- **경계 팝**: 활성 구간이 바뀌는 순간 이전 구간의 자국은 화면에서 사라진다. rect 경계는 **지면이 끊기는 빈 공간**에 두면 안 보인다.
+- **스탬프**: `Stamp()` 는 좌표를 포함하는 rect 로 라우팅 (활성 구간과 무관). 어느 rect 에도 안 들어가면 no-op.
+- **셰이더는 바운즈 밖 하드 리젝트** (`SampleTrailRegion`). 예전 `saturate(uv)` clamp 는 rect 밖 지면에 테두리 픽셀을 무한히 번지게 했고, 구간이 여러 개면 인접 구간 지면을 통째로 오염시킨다.
+- **영속성**: `dirty` 플래그가 구간별 — 안 밟은 구간은 readback 자체가 안 돈다. 키: `world_{scene}[_{id}]`, `world_cold_{scene}[_{id}]`. **`id` 가 빈 문자열이면 접미사 없는 구버전 키** 라서 분할 이전 저장 파일이 그대로 로드된다 (그래서 기존 rect 의 id 는 비워 둔다). id 중복은 save clobber → Awake/인스펙터에서 에러.
+- **씬 기즈모**: 구간별 색 (0 초록 / 1 앰버 / 2 하늘 / …), Play 중 비활성 구간은 흐리게.
+- **레거시 마이그레이션**: 구버전 `worldMin`/`worldSize`/`pixelsPerUnit` 는 `[HideInInspector]` 로 남아 `regions` 가 비었을 때 `regions[0]` 을 시드한다. **프리팹 인스턴스 주의**: 프리팹이 먼저 시드되면 인스턴스는 프리팹의 rect 를 상속하므로(인스턴스 override 는 레거시 필드에만 있음) 인스턴스 rect 를 직접 다시 넣어야 한다.
+
 ## 컴포넌트
 | 컴포넌트 | 역할 |
 |---------|------|
-| `WorldTrailManager.cs` | 월드 RT 소유 + 글로벌 바운즈/컬러/Z-fade publish. 씬당 하나. `[RuntimeInitializeOnLoadMethod]`로 `Instance` 리셋. Awake에서 TrailBrush.mat을 Material 인스턴스 복제 사용 |
+| `WorldTrailManager.cs` | 구간별 월드 RT 소유 + 슬라임이 속한 구간의 RT/바운즈/컬러/Z-fade publish. 씬당 하나. `[RuntimeInitializeOnLoadMethod]`로 `Instance` 리셋. Awake에서 TrailBrush.mat을 Material 인스턴스 복제 사용. 중첩 `Region` 클래스가 authored rect + 런타임 RT/dirty 를 함께 보유 |
 | `LocalTrailReceiver.cs` | 로컬 RT 생성 + MPB 주입. `targetRenderer` 필드로 Renderer와 디커플 — 3D 기울어진 mesh는 회전 없는 부모/형제 GO에 receiver 두면 페인트 프레임이 world XY 정렬. `LateUpdate`에서 `transform.hasChanged` 감지 시 `_LocalTrailW2L` 재푸시. OnDestroy dirty면 final sync save |
 | `TrailStamper.cs` | 슬라임에 부착. `OnLanded` 구독 → `ImpactNormalSpeed` → `AnimationCurve` (radius/strength) → `RouteStamp`. 연속 크롤은 `stampOnCrawl` 토글 (기본 off) |
 | `TrailColliderRegistry.cs` | `Dictionary<Collider2D, LocalTrailReceiver>` static. SubsystemRegistration에 map.Clear |
@@ -57,14 +70,15 @@ Quibli `StylizedLit`을 복제하고 **ForwardLit pass의 fragment만 래핑**. 
 
 ## 에디터 지원 (TrailEditor.cs)
 - **Tools > Trail 메뉴**: Migrate Selected Materials → World / Local / Revert (Undo 지원). Validate Current Scene (stock StylizedLit 남은 Environment 렌더러, 로컬 셰이더인데 receiver 없는 렌더러, overrideId 충돌 진단). Open Save Folder, Clear Saves for Active Scene.
-- **WorldTrailManagerEditor**: RT 크기/메모리 라이브 라벨, bounds/save 불일치 경고 + Clear Save / Revert Bounds (0.5s TTL 캐시). Fit Bounds to Scene Ground, Clear World / Clear All / Delete Save File.
+- **WorldTrailManagerEditor**: 구간별 RT 크기 + warm/cold 합산 VRAM 라이브 라벨, Play 중 바인딩된 구간 표시, 해상도 clamp / id 중복 / rect 겹침 경고. Fit Region 0 Bounds to Scene Ground, Clear World / Clear All / Delete Save File (모든 구간 키). (구버전의 save-불일치 패널 + Revert Bounds 는 제거 — Play 시 콘솔 경고로 대체)
 - **LocalTrailReceiverEditor**: 머터리얼 변종 검증, Clear Trail / Delete Saved File.
 - **Scene Gizmo**: 바운즈 직사각형 (월드=녹색, 로컬=시안) + RT 크기/메모리 라벨. 캐시로 per-repaint 할당 0.
 
 ## 핵심 파라미터
 
 ### WorldTrailManager
-- **Bounds**: `worldMin` (-50, -50), `worldSize` (100, 200), `pixelsPerUnit` 20.
+- **Regions**: `regions` 리스트 — 항목별 `id` / `worldMin` / `worldSize` / `pixelsPerUnit` (4~80, 기본 20). MainScene region 0 = min(-99.32, -23.38) size(216.42, 267.69) PPU 20, id 빈 문자열.
+- **Wiring**: `slime` (비우면 Awake 에 `FindFirstObjectByType<SlimeController>`).
 - **Appearance**:
   - **(A) Trail Gradient**: `trailGradient` (HDR, mask 0→1 매핑), `trailMaxMask` 0.95 (saturation cap).
   - **(B) Position Gradient** (optional): `positionGradient`, `positionGradientCenter`, `positionGradientSize` 20, `positionGradientAngle` 0° (세로).
