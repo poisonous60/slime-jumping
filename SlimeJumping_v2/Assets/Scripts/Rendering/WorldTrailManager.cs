@@ -30,7 +30,10 @@ namespace SlimeJumping.Rendering
             [NonSerialized] public RenderTexture rt;
             [NonSerialized] public RenderTexture rtCold;
             [NonSerialized] public Vector2Int resolution;
+            // Per route: a shared flag lets whichever target saves first clear the other's, and the
+            // round-robin then skips it — the cold file would go stale.
             [NonSerialized] public bool dirty;
+            [NonSerialized] public bool dirtyCold;
 
             public Vector2Int PlannedResolution
             {
@@ -78,10 +81,12 @@ namespace SlimeJumping.Rendering
         [SerializeField] private SlimeController slime;
 
         // Legacy single-rect fields. Seed regions[0] once so existing scene/prefab bounds and their
-        // save files survive; unused afterwards.
+        // save files survive; unused afterwards. The sentinel makes it strictly one-shot — otherwise
+        // deleting every region in the inspector is undone by the next OnValidate.
         [HideInInspector] [SerializeField] private Vector2 worldMin = Vector2.zero;
         [HideInInspector] [SerializeField] private Vector2 worldSize = Vector2.zero;
         [HideInInspector] [SerializeField] private int pixelsPerUnit = 20;
+        [HideInInspector] [SerializeField] private bool legacyBoundsMigrated = false;
 
         [Header("Appearance — Trail Color (A: by intensity)")]
         [Tooltip("Color sampled by trail intensity. Mask=0 → leftmost stop (light/new), mask=1 → rightmost stop " +
@@ -155,6 +160,8 @@ namespace SlimeJumping.Rendering
         private TrailPersistence persistence;
         private float currentFreezeT;
         private int activeIndex;
+        private float slimeSearchTimer;
+        private const float SlimeSearchInterval = 0.5f;
         private readonly List<RegionTarget> warmTargets = new List<RegionTarget>();
         // Runtime clone: SetFloat/SetPass on the shared asset marks it dirty and makes Unity
         // re-serialize the .mat on every Play-exit.
@@ -267,16 +274,21 @@ namespace SlimeJumping.Rendering
         private void SeedRegionsFromLegacy()
         {
             if (regions == null) regions = new List<Region>();
+            if (legacyBoundsMigrated) return;
+            legacyBoundsMigrated = true;
             if (regions.Count > 0 || worldSize.x <= 0f || worldSize.y <= 0f) return;
             regions.Add(new Region { id = "", worldMin = worldMin, worldSize = worldSize, pixelsPerUnit = pixelsPerUnit });
         }
 
+        /// Compares the final on-disk names, not the raw ids: TrailPersistence sanitizes and truncates,
+        /// so ids differing only in punctuation or past 120 chars would silently share one save file.
         private void WarnOnDuplicateIds()
         {
             for (int i = 0; i < regions.Count; i++)
                 for (int j = i + 1; j < regions.Count; j++)
-                    if (regions[i].id == regions[j].id)
-                        Debug.LogError($"[Trail] Regions {i} and {j} share the id '{regions[i].Label}' — their save files clobber each other. Give each region a unique id.", this);
+                    if (TrailPersistence.Sanitize(SaveKeyFor(regions[i], false)) ==
+                        TrailPersistence.Sanitize(SaveKeyFor(regions[j], false)))
+                        Debug.LogError($"[Trail] Regions {i} ('{regions[i].Label}') and {j} ('{regions[j].Label}') resolve to the same save file — they clobber each other. Give each region a distinct id.", this);
         }
 
         // Linear readWrite: R8 defaults to sRGB, which isn't a supported GPU format and silently
@@ -336,7 +348,17 @@ namespace SlimeJumping.Rendering
         /// in the gap between rects keeps the previous binding instead of flickering to nothing.
         private void UpdateActiveRegion()
         {
-            if (slime == null || regions.Count < 2) return;
+            if (regions.Count < 2) return;
+            if (slime == null)
+            {
+                // Respawn destroys the resolved controller; re-find it or the binding freezes on the
+                // region the old slime died in. Throttled — FindFirstObjectByType walks the scene.
+                slimeSearchTimer -= Time.unscaledDeltaTime;
+                if (slimeSearchTimer > 0f) return;
+                slimeSearchTimer = SlimeSearchInterval;
+                slime = FindFirstObjectByType<SlimeController>();
+                if (slime == null) return;
+            }
             int idx = IndexContaining(slime.Position);
             if (idx < 0 || idx == activeIndex) return;
             activeIndex = idx;
@@ -542,9 +564,8 @@ namespace SlimeJumping.Rendering
             float warmS = strength * (1f - currentFreezeT);
             float coldS = strength * currentFreezeT;
             // Skip near-zero contributions so a fully-frozen slime doesn't waste a GL draw on warm.
-            if (warmS > 0.001f) BlitToTarget(r.rt, uv, radiusUV, warmS);
-            if (coldS > 0.001f && r.rtCold != null) BlitToTarget(r.rtCold, uv, radiusUV, coldS);
-            r.dirty = true;
+            if (warmS > 0.001f) { BlitToTarget(r.rt, uv, radiusUV, warmS); r.dirty = true; }
+            if (coldS > 0.001f && r.rtCold != null) { BlitToTarget(r.rtCold, uv, radiusUV, coldS); r.dirtyCold = true; }
         }
 
         /// Updates the freezeT used for stamp split-routing. Single-slime stage: last writer wins.
@@ -590,9 +611,8 @@ namespace SlimeJumping.Rendering
             for (int i = 0; i < regions.Count; i++)
             {
                 var r = regions[i];
-                if (r.rt != null) Graphics.Blit(Texture2D.blackTexture, r.rt);
-                if (r.rtCold != null) Graphics.Blit(Texture2D.blackTexture, r.rtCold);
-                r.dirty = true;
+                if (r.rt != null) { Graphics.Blit(Texture2D.blackTexture, r.rt); r.dirty = true; }
+                if (r.rtCold != null) { Graphics.Blit(Texture2D.blackTexture, r.rtCold); r.dirtyCold = true; }
             }
         }
 
@@ -740,10 +760,9 @@ namespace SlimeJumping.Rendering
 
             public Vector2Int Resolution => region.resolution;
 
-            // Warm clears for both — round-robin visits them in turn and they always save together.
-            public bool Dirty => region.dirty;
-            public void MarkDirty() => region.dirty = true;
-            public void ClearDirty() { if (!cold) region.dirty = false; }
+            public bool Dirty => cold ? region.dirtyCold : region.dirty;
+            public void MarkDirty() { if (cold) region.dirtyCold = true; else region.dirty = true; }
+            public void ClearDirty() { if (cold) region.dirtyCold = false; else region.dirty = false; }
 
             public TrailTargetMeta BuildMeta() => BuildMetaFor(region);
 

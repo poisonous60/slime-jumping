@@ -37,7 +37,10 @@ namespace SlimeJumping.Rendering
         private LocalColdTarget coldTarget;
         private MaterialPropertyBlock mpb;
         private Vector2Int resolution;
+        // Per route: a shared flag lets whichever target saves first clear the other's, and the
+        // persistence round-robin then skips it — the cold file would go stale.
         private bool dirty;
+        private bool dirtyCold;
         private static readonly int IdLocalTrailMask     = Shader.PropertyToID("_LocalTrailMask");
         private static readonly int IdLocalTrailMaskCold = Shader.PropertyToID("_LocalTrailMaskCold");
         private static readonly int IdLocalTrailMin      = Shader.PropertyToID("_LocalTrailMin");
@@ -198,10 +201,10 @@ namespace SlimeJumping.Rendering
                 if (dirty)
                 {
                     try { mgr.Persistence.SaveSync(this); } catch { /* best-effort */ }
-                    if (coldTarget != null)
-                    {
-                        try { mgr.Persistence.SaveSync(coldTarget); } catch { /* best-effort */ }
-                    }
+                }
+                if (dirtyCold && coldTarget != null)
+                {
+                    try { mgr.Persistence.SaveSync(coldTarget); } catch { /* best-effort */ }
                 }
                 mgr.Persistence.Unregister(this);
                 if (coldTarget != null) mgr.Persistence.Unregister(coldTarget);
@@ -262,16 +265,14 @@ namespace SlimeJumping.Rendering
             float t = mgr.CurrentFreezeT;
             float warmS = strength * (1f - t);
             float coldS = strength * t;
-            if (warmS > 0.001f) mgr.BlitToTarget(rt,     uv, radiusUV, warmS);
-            if (coldS > 0.001f && rtCold != null) mgr.BlitToTarget(rtCold, uv, radiusUV, coldS);
-            dirty = true;
+            if (warmS > 0.001f) { mgr.BlitToTarget(rt, uv, radiusUV, warmS); dirty = true; }
+            if (coldS > 0.001f && rtCold != null) { mgr.BlitToTarget(rtCold, uv, radiusUV, coldS); dirtyCold = true; }
         }
 
         public void ClearTrail()
         {
-            if (rt != null) Graphics.Blit(Texture2D.blackTexture, rt);
-            if (rtCold != null) Graphics.Blit(Texture2D.blackTexture, rtCold);
-            dirty = true;
+            if (rt != null) { Graphics.Blit(Texture2D.blackTexture, rt); dirty = true; }
+            if (rtCold != null) { Graphics.Blit(Texture2D.blackTexture, rtCold); dirtyCold = true; }
         }
 
         // -------------------- Editor helpers --------------------
@@ -471,10 +472,9 @@ namespace SlimeJumping.Rendering
             public string SaveKey => owner.SaveKey + "_cold";
             public Vector2Int Resolution => owner.resolution;
 
-            // Shares the warm dirty flag so both halves save on the same tick.
-            public bool Dirty => owner.dirty;
-            public void MarkDirty() => owner.dirty = true;
-            public void ClearDirty() { /* warm clears for both */ }
+            public bool Dirty => owner.dirtyCold;
+            public void MarkDirty() => owner.dirtyCold = true;
+            public void ClearDirty() => owner.dirtyCold = false;
 
             public TrailTargetMeta BuildMeta() => owner.BuildMeta();
             public void OnLoadedInto() { }

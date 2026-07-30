@@ -179,7 +179,9 @@ namespace SlimeJumping.EditorTools
             if (!Directory.Exists(root)) { Debug.Log("[Trail] No save folder yet."); return; }
 
             int sceneIdx = UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex;
-            string worldPrefix = "world_" + sceneIdx;
+            // Region ids append a suffix and the cold route has its own prefix, so both bases need the
+            // trailing "_"/"." forms — otherwise scene 3 also matches scene 30's files.
+            string[] worldBases = { "world_" + sceneIdx, "world_cold_" + sceneIdx };
             string localPrefix = "local_" + sceneIdx + "_";
 
             if (!EditorUtility.DisplayDialog(
@@ -191,7 +193,10 @@ namespace SlimeJumping.EditorTools
             foreach (var file in Directory.GetFiles(root))
             {
                 string name = Path.GetFileName(file);
-                if (name.StartsWith(worldPrefix) || name.StartsWith(localPrefix))
+                bool match = name.StartsWith(localPrefix);
+                foreach (var b in worldBases)
+                    match |= name.StartsWith(b + ".") || name.StartsWith(b + "_");
+                if (match)
                 {
                     File.Delete(file);
                     deleted++;
@@ -276,12 +281,14 @@ namespace SlimeJumping.EditorTools
                     EditorGUILayout.HelpBox($"Region [{i}] RT clamped at {WorldTrailManager.MaxResolutionPerSide} px — shrink its size or pixelsPerUnit, or split it into another region.", MessageType.Warning);
             }
 
-            // Duplicate ids clobber each other's save files; overlaps hide one rect's trail entirely.
+            // Colliding save names clobber each other; overlaps hide one rect's trail entirely.
+            // Compare sanitized keys, since punctuation and the 120-char cap can merge distinct ids.
+            var keys = mgr.AllSaveKeys();
             for (int i = 0; i < regions.Count; i++)
                 for (int j = i + 1; j < regions.Count; j++)
                 {
-                    if (regions[i].id == regions[j].id)
-                        EditorGUILayout.HelpBox($"Regions [{i}] and [{j}] share the id '{regions[i].Label}' — their save files overwrite each other.", MessageType.Error);
+                    if (TrailPersistence.Sanitize(keys[i * 2]) == TrailPersistence.Sanitize(keys[j * 2]))
+                        EditorGUILayout.HelpBox($"Regions [{i}] ('{regions[i].Label}') and [{j}] ('{regions[j].Label}') resolve to the same save file — they overwrite each other.", MessageType.Error);
                     else if (Overlaps(regions[i], regions[j]))
                         EditorGUILayout.HelpBox($"Regions [{i}] and [{j}] overlap. Only one rect is bound at a time, so the overlap shows just one of them.", MessageType.Warning);
                 }

@@ -23,6 +23,7 @@ namespace SlimeJumping.Rendering
         private volatile bool saveInFlight;
         private bool cancelled;
         private int rrIndex;
+        private bool draining;
 
         public TrailPersistence(float autoSaveInterval)
         {
@@ -51,14 +52,30 @@ namespace SlimeJumping.Rendering
         {
             if (cancelled || saveInFlight) return;
             timer += Time.unscaledDeltaTime;
-            if (timer < autoSaveInterval) return;
+            // draining: the previous save left other dirty targets behind. One save per interval would
+            // make each of them wait targets.Count × interval, so finish the batch back-to-back instead
+            // (still single-flight — the saveInFlight gate above serializes the readbacks).
+            if (timer < autoSaveInterval && !draining) return;
 
             for (int i = 0; i < targets.Count; i++)
             {
                 int idx = (rrIndex + i) % targets.Count;
-                if (targets[idx].Dirty) { StartSave(targets[idx]); rrIndex = (idx + 1) % targets.Count; timer = 0f; return; }
+                if (!targets[idx].Dirty) continue;
+
+                StartSave(targets[idx]);
+                rrIndex = (idx + 1) % targets.Count;
+                timer = 0f;
+                draining = AnyDirty();
+                return;
             }
+            draining = false;
             timer = 0f;
+        }
+
+        private bool AnyDirty()
+        {
+            for (int i = 0; i < targets.Count; i++) if (targets[i].Dirty) return true;
+            return false;
         }
 
         // ------------------------------------------------------------------ load
@@ -285,7 +302,8 @@ namespace SlimeJumping.Rendering
 
         private string PathFor(string saveKey) => Path.Combine(root, Sanitize(saveKey));
 
-        private static string Sanitize(string s)
+        /// Public so callers can detect two keys that collapse to the same file name.
+        public static string Sanitize(string s)
         {
             if (string.IsNullOrEmpty(s)) return "unnamed";
             var buf = new System.Text.StringBuilder(s.Length);

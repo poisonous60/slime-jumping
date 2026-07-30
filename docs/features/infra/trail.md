@@ -26,9 +26,11 @@
 - **경계 팝**: 활성 구간이 바뀌는 순간 이전 구간의 자국은 화면에서 사라진다. rect 경계는 **지면이 끊기는 빈 공간**에 두면 안 보인다.
 - **스탬프**: `Stamp()` 는 좌표를 포함하는 rect 로 라우팅 (활성 구간과 무관). 어느 rect 에도 안 들어가면 no-op.
 - **셰이더는 바운즈 밖 하드 리젝트** (`SampleTrailRegion`). 예전 `saturate(uv)` clamp 는 rect 밖 지면에 테두리 픽셀을 무한히 번지게 했고, 구간이 여러 개면 인접 구간 지면을 통째로 오염시킨다.
-- **영속성**: `dirty` 플래그가 구간별 — 안 밟은 구간은 readback 자체가 안 돈다. 키: `world_{scene}[_{id}]`, `world_cold_{scene}[_{id}]`. **`id` 가 빈 문자열이면 접미사 없는 구버전 키** 라서 분할 이전 저장 파일이 그대로 로드된다 (그래서 기존 rect 의 id 는 비워 둔다). id 중복은 save clobber → Awake/인스펙터에서 에러.
+- **영속성**: `dirty` 플래그가 **구간 × 루트(warm/cold) 별** — 안 밟은 구간은 readback 자체가 안 돌고, warm 저장이 cold 플래그를 지워 cold 파일이 stale 되는 일도 없다. 키: `world_{scene}[_{id}]`, `world_cold_{scene}[_{id}]`. **`id` 가 빈 문자열이면 접미사 없는 구버전 키** 라서 분할 이전 저장 파일이 그대로 로드된다 (그래서 기존 rect 의 id 는 비워 둔다). 중복 검사는 `TrailPersistence.Sanitize` 를 통과한 최종 파일명 기준 (문장부호·120자 절단으로 다른 id 가 같은 파일이 될 수 있음) → Awake/인스펙터 에러.
+- **셰이더 cold 얼리아웃**: warm 마스크만 보고 early-return 하면 완전 동결(cold 전용) 자국이 안 보인다 → warm/cold 둘 다 0 일 때만 return.
+- **슬라임 재획득**: `slime` 이 리스폰으로 파괴되면 0.5s 간격으로 `FindFirstObjectByType` 재시도. 안 하면 바인딩이 죽은 슬라임의 구간에 고정된다.
 - **씬 기즈모**: 구간별 색 (0 초록 / 1 앰버 / 2 하늘 / …), Play 중 비활성 구간은 흐리게.
-- **레거시 마이그레이션**: 구버전 `worldMin`/`worldSize`/`pixelsPerUnit` 는 `[HideInInspector]` 로 남아 `regions` 가 비었을 때 `regions[0]` 을 시드한다. **프리팹 인스턴스 주의**: 프리팹이 먼저 시드되면 인스턴스는 프리팹의 rect 를 상속하므로(인스턴스 override 는 레거시 필드에만 있음) 인스턴스 rect 를 직접 다시 넣어야 한다.
+- **레거시 마이그레이션**: 구버전 `worldMin`/`worldSize`/`pixelsPerUnit` 는 `[HideInInspector]` 로 남아 `regions` 가 비었을 때 `regions[0]` 을 시드한다. `legacyBoundsMigrated` 센티넬로 **정확히 1회** — 없으면 인스펙터에서 구간을 전부 지운 순간 `OnValidate` 가 되살린다. **프리팹 인스턴스 주의**: 프리팹이 먼저 시드되면 인스턴스는 프리팹의 rect 를 상속하므로(인스턴스 override 는 레거시 필드에만 있음) 인스턴스 rect 를 직접 다시 넣어야 한다.
 
 ## 컴포넌트
 | 컴포넌트 | 역할 |
@@ -64,7 +66,8 @@ Quibli `StylizedLit`을 복제하고 **ForwardLit pass의 fragment만 래핑**. 
 - **파일**: `Application.persistentDataPath/trail/{saveKey}.dat` (raw R8) + `.meta` (JSON: version/resolutionX,Y/originX,Y/sizeX,Y/format).
 - **SaveKey**: `world_{sceneBuildIndex or sceneKeyOverride}` / `local_{sceneBuildIndex}_{hierarchyPath or overrideId}`.
 - **메타 불일치**: bounds/resolution 변경 시 로드 **거부** + 새로 시작 (침묵 재스케일링 금지). Clear Save / Revert Bounds 버튼 제공.
-- **Tick 비용**: idle (dirty 없음) 시 디스크 I/O 0. Dirty면 `autoSaveInterval` (15s) 마다 `AsyncGPUReadback` → `Task.Run`으로 atomic rename. `readbackBuffers` byte[] 풀링.
+- **Tick 비용**: idle (dirty 없음) 시 디스크 I/O 0. Dirty면 `autoSaveInterval` (15s) 마다 `AsyncGPUReadback` → `Task.Run`으로 atomic rename. `readbackBuffers` byte[] 풀링. **dirty 가 여럿이면 draining** — 한 번 저장 후 남은 dirty 타깃을 인터벌 없이 이어서 처리(여전히 single-flight). 안 그러면 타깃 하나가 `타깃수 × 15s` 를 기다린다.
+- **warm/cold dirty 분리**: 월드(`Region.dirty`/`dirtyCold`)와 로컬(`dirty`/`dirtyCold`) 모두 루트별. 공유 플래그면 warm 저장이 cold 플래그를 지우고 round-robin/FlushSync 가 cold 를 건너뛴다.
 - **Flush**: `OnApplicationPause(true)`/`OnApplicationQuit()` 에서 `WaitAllRequests` + 동기 `ReadPixels` + write. 종료 시 1회 hitch 허용.
 - **Cancel**: `OnDestroy` → `persistence.Cancel()`. 이후 콜백은 no-op.
 
