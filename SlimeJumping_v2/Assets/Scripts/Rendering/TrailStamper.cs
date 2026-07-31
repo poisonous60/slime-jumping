@@ -78,7 +78,11 @@ namespace SlimeJumping.Rendering
 
             if (logLandings)
             {
-                Debug.Log($"[Trail] Land: normalSpeed={impactSpeed:0.00} t={t:0.00} → radius={radius:0.00} strength={strength:0.00}");
+                Collider2D surf = slimeController != null ? slimeController.SurfaceCollider : null;
+                bool routedLocal = surf != null && TrailColliderRegistry.TryGet(surf, out var lr) && lr != null;
+                Debug.Log($"[Trail] Land: pos={position} n={surfaceNormal} up={surfaceNormal.y:0.00}"
+                    + $" surf={(surf != null ? surf.name : "null")} route={(routedLocal ? "local" : "world")}"
+                    + $" normalSpeed={impactSpeed:0.00} t={t:0.00} → radius={radius:0.00} strength={strength:0.00}");
             }
 
             if (radius < 0.001f || strength < 0.001f) return;     // nothing visible to draw

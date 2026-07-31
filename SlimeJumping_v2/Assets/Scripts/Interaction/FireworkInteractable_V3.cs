@@ -34,14 +34,15 @@ namespace SlimeJumping.Interaction
         [Tooltip("Seconds after burst before the spawned instance is destroyed. Must exceed the sub-emitter burst duration.")]
         [SerializeField] private float shellVfxCleanupDelay = 5f;
 
-        [Header("Slime Push (every burst)")]
-        [Tooltip("Speed (m/s) imparted to a slime sitting right on the burst point, falling off linearly to zero at Push Radius.")]
-        [SerializeField] private float pushSpeed = 18f;
-        [Tooltip("Blast reach. Past this the burst does nothing to the slime.")]
-        [SerializeField] private float pushRadius = 6f;
+        [Header("Slime Launch (every burst)")]
+        [SerializeField] private Vector2 launchVelocity = new Vector2(0f, 22f);
+        [Tooltip("If true, direction is (slime - burstPoint).normalized * launchVelocity.magnitude.")]
+        [SerializeField] private bool launchAwayFromExplosion = true;
+        [Tooltip("How far a burst can throw the slime, in world units — the gizmo circle at each anchor. Outside it the burst does nothing; inside, the push is full strength (no falloff).")]
+        [SerializeField, Min(0.1f)] private float launchRadius = 10f;
 
         [Header("Respawn")]
-        [Tooltip("Seconds after its burst until a rocket reappears on the launcher.")]
+        [Tooltip("Seconds after the LAST shell bursts until every rocket reappears together.")]
         [SerializeField] private float respawnDelay = 3f;
         [Tooltip("Seconds for the pop-in scale animation. 0 skips it.")]
         [SerializeField] private float respawnDuration = 0.35f;
@@ -136,11 +137,26 @@ namespace SlimeJumping.Interaction
                 return;
             }
 
-            // Counted up front: a shell finishing early must not clear busy while others still fly.
+            // Counted up front: a shell finishing early must not end the volley while others still fly.
             busy = true;
             liveShells = ready;
+            StartCoroutine(Volley(slime));
+        }
+
+        private IEnumerator Volley(SlimeController slime)
+        {
             for (int i = 0; i < shells.Length; i++)
                 if (IsShellReady(i)) StartCoroutine(FireShell(shells[i], states[i], slime));
+
+            while (liveShells > 0) yield return null;
+
+            // Whole rack reloads together once the last shell has burst.
+            yield return new WaitForSeconds(respawnDelay);
+            for (int i = 0; i < shells.Length; i++)
+                if (shells[i] != null && states[i] != null) StartCoroutine(RespawnShell(shells[i], states[i]));
+            if (respawnDuration > 0f) yield return new WaitForSeconds(respawnDuration);
+
+            busy = false;
         }
 
         private bool IsShellReady(int i)
@@ -189,16 +205,13 @@ namespace SlimeJumping.Interaction
                 {
                     SoundService.PlayAt(burstSfx, flight.point, SoundCategory.SFX_Object, sfxVolume);
                     if (impulseEmitter != null && impulseForce > 0f) impulseEmitter.Emit(impulseForce);
-                    PushSlime(slime, flight.point);
+                    LaunchSlime(slime, flight.point);
                 }
-
-                yield return new WaitForSeconds(respawnDelay);
-                yield return RespawnShell(shell, state);
             }
             finally
             {
+                // Volley owns the reload; it waits for this count to hit zero.
                 liveShells--;
-                if (liveShells <= 0) busy = false;
             }
         }
 
@@ -333,24 +346,21 @@ namespace SlimeJumping.Interaction
             return ps;
         }
 
-        private void PushSlime(SlimeController slime, Vector3 burstPoint)
+        // V2.LaunchSlime verbatim, run once per burst, gated by launchRadius.
+        private void LaunchSlime(SlimeController slime, Vector3 explosionWorld)
         {
-            if (slime == null || pushSpeed <= 0f || pushRadius <= 0.0001f) return;
+            if (slime == null) return;
+            if ((slime.Position - (Vector2)explosionWorld).magnitude > launchRadius) return;
 
-            Vector2 away = slime.Position - (Vector2)burstPoint;
-            float dist = away.magnitude;
-            if (dist > pushRadius) return;
-
-            Vector2 dir = dist > 0.0001f ? away / dist : slime.GravityUp;
-            Vector2 deltaV = dir * (pushSpeed * (1f - dist / pushRadius));
-
-            // Attached/Charging only takes the tangent of the external channel, so a glued slime needs
-            // the forced exit to actually be blown off; mid-flight the shove stacks onto the arc.
-            if (slime.CurrentState == SlimeController.SlimeState.Airborne
-                || slime.CurrentState == SlimeController.SlimeState.Stunned)
-                slime.AddExternalVelocity(deltaV);
-            else
-                slime.ForceAirborneWithVelocity(deltaV);
+            Vector2 v = launchVelocity;
+            if (launchAwayFromExplosion)
+            {
+                Vector2 dir = slime.Position - (Vector2)explosionWorld;
+                v = dir.sqrMagnitude > 0.0001f
+                    ? dir.normalized * launchVelocity.magnitude
+                    : launchVelocity;
+            }
+            slime.ForceAirborneWithVelocity(v);
         }
 
         private void OnDrawGizmosSelected()
@@ -366,8 +376,8 @@ namespace SlimeJumping.Interaction
                 Gizmos.DrawLine(from, to);
                 Gizmos.DrawWireSphere(from, 0.12f);
                 Gizmos.DrawWireSphere(to, 0.3f);
-                Gizmos.color = new Color(1f, 0.45f, 0.15f, 0.35f);
-                Gizmos.DrawWireSphere(to, pushRadius);
+                Gizmos.color = new Color(1f, 0.45f, 0.15f, 0.9f);
+                Gizmos.DrawWireSphere(to, launchRadius);
             }
         }
     }

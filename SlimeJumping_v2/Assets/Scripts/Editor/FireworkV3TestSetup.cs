@@ -78,8 +78,9 @@ namespace SlimeJumping.Editor
             so.FindProperty("shellVfxPrefab").objectReferenceValue = sf1;
             so.FindProperty("visualPivotOffset").vector2Value = RocketPivotOffset;
             so.FindProperty("shellVfxCleanupDelay").floatValue = 5f;
-            so.FindProperty("pushSpeed").floatValue = 18f;
-            so.FindProperty("pushRadius").floatValue = 6f;
+            so.FindProperty("launchVelocity").vector2Value = new Vector2(0f, 22f);
+            so.FindProperty("launchAwayFromExplosion").boolValue = true;
+            so.FindProperty("launchRadius").floatValue = 10f;
             so.FindProperty("respawnDelay").floatValue = 3f;
             so.FindProperty("respawnDuration").floatValue = 0.35f;
             so.FindProperty("igniteSfx").objectReferenceValue =

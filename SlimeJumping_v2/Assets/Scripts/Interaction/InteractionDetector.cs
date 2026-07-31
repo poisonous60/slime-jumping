@@ -20,6 +20,8 @@ namespace SlimeJumping.Interaction
         // Narrow phase: the detector's large trigger is broad-phase only, the body must really overlap.
         private CircleCollider2D slimeBody;
 
+        private bool rescanPending;
+
         public bool HasInteractable => currentTarget != null;
         public IInteractable CurrentTarget => currentTarget;
 
@@ -40,6 +42,14 @@ namespace SlimeJumping.Interaction
         {
             candidates.Clear();
             SetCurrentTarget(null);
+        }
+
+        // Teleport moves the body with no trigger callbacks at all, and this detector's collider only
+        // reaches the new position after the next transform sync, so drop stale entries now and rescan later.
+        public void ClearAndRescanDeferred()
+        {
+            ClearCandidates();
+            rescanPending = true;
         }
 
         // Unity fires no OnTriggerEnter2D for colliders already overlapping when detection re-enables
@@ -79,6 +89,13 @@ namespace SlimeJumping.Interaction
 
         private void Update()
         {
+            if (rescanPending)
+            {
+                rescanPending = false;
+                Physics2D.SyncTransforms();
+                Rescan();
+            }
+
             IInteractable best = null;
 
             if (candidates.Count > 0)
