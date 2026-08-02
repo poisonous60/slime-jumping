@@ -78,6 +78,7 @@ namespace SlimeJumping.Visual
 
         private float lastHitTime = -999f;
         private float flashEndTime = -999f;
+        private float pendingBurnScale = 1f;
 
         // Sliding-window position samples for stuck detection.
         private const int RingCapacity = 32;
@@ -127,11 +128,21 @@ namespace SlimeJumping.Visual
             ClearAndPushBurns();
         }
 
+        /// Radius scale for the next OnHazardPushed burn only, then resets to 1. Call right
+        /// before the hazard push — the event is synchronous, so the same hit consumes it.
+        public void SetNextBurnScale(float scale)
+        {
+            pendingBurnScale = Mathf.Max(0f, scale);
+        }
+
         private void HandleHazardPushed(Vector2 deltaV, Vector2 hitPoint)
         {
+            float scale = pendingBurnScale;
+            pendingBurnScale = 1f;
             lastHitTime = Time.time;
             if (enableHitFlash) flashEndTime = Time.time + hitFlashDuration;
 
+            if (scale <= 0f) return;
             if (meshTransform == null) ResolveBodyMeshRenderer();
             if (meshTransform == null) return;
 
@@ -141,6 +152,7 @@ namespace SlimeJumping.Visual
             Vector3 hitOS = meshTransform.InverseTransformPoint(hitWS);
 
             // Same-spot hits widen a capped radius instead of eating extra slots.
+            float scaledRadius = burnRadius * scale;
             float merge2 = mergeDistance * mergeDistance;
             for (int i = 0; i < burns.Count; i++)
             {
@@ -148,7 +160,7 @@ namespace SlimeJumping.Visual
                 if ((b.osPos - hitOS).sqrMagnitude < merge2)
                 {
                     b.bornTime = Time.time;
-                    b.radius = Mathf.Min(burnRadius * 1.4f, b.radius + burnRadius * 0.25f);
+                    b.radius = Mathf.Min(scaledRadius * 1.4f, b.radius + scaledRadius * 0.25f);
                     burns[i] = b;
                     return;
                 }
@@ -161,7 +173,7 @@ namespace SlimeJumping.Visual
             burns.Add(new Burn
             {
                 osPos = hitOS,
-                radius = burnRadius,
+                radius = scaledRadius,
                 bornTime = Time.time,
             });
         }

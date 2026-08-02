@@ -1,7 +1,6 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
 using System.Text;
-using g3;
 using SlimeJumping.MeshTools;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -42,47 +41,18 @@ namespace SlimeJumping.EditorTools
                 return null;
             }
 
-            // Bake to world space before cutting, else the slice plane follows the mesh's local rotation/scale.
-            var dmesh = ToDMesh3(mesh, meshTr.localToWorldMatrix);
+            // Per-triangle segment slicing in baked world space: no watertight/manifold requirement,
+            // so open-shell meshes cut too; gaps where the plane crosses shell openings get bridged.
+            var worldLoops = SliceMeshAtZ0(mesh, meshTr.localToWorldMatrix, out int bridgedGaps);
 
-            var cut = new MeshPlaneCut(dmesh,
-                new Vector3d(0, 0, 0),
-                new Vector3d(0, 0, 1))
-            {
-                CollapseDegenerateEdgesOnCut = true
-            };
-            bool cutOk = cut.Cut();
-
-            if (!cutOk || cut.CutLoopsFailed)
-                Debug.LogWarning("[MeshToCollider2D] MeshPlaneCut failed to extract cut loops. Result may be incomplete.");
-            if (cut.FoundOpenSpans)
-                Debug.LogWarning("[MeshToCollider2D] Mesh is not watertight at world Z=0 — found open spans. Check mesh in Blender (Select → All by Trait → Non Manifold Edges).");
-
-            if (cut.CutLoops == null || cut.CutLoops.Count == 0)
+            if (worldLoops.Count == 0)
             {
                 Debug.LogWarning("[MeshToCollider2D] No cross-section loops found at world Z=0.");
                 return null;
             }
 
-            var worldLoops = new List<List<Vector2>>(cut.CutLoops.Count);
-            foreach (var edgeLoop in cut.CutLoops)
-            {
-                int n = edgeLoop.Vertices.Length;
-                if (n < 3) continue;
-                var poly = new List<Vector2>(n);
-                for (int i = 0; i < n; i++)
-                {
-                    Vector3d v = edgeLoop.GetVertex(i);
-                    poly.Add(new Vector2((float)v.x, (float)v.y));
-                }
-                worldLoops.Add(poly);
-            }
-
-            if (worldLoops.Count == 0)
-            {
-                Debug.LogWarning("[MeshToCollider2D] All cut loops were degenerate (< 3 vertices).");
-                return null;
-            }
+            if (bridgedGaps > 0)
+                Debug.Log($"[MeshToCollider2D] Open shell at the cut plane — bridged {bridgedGaps} gap(s).");
 
             // Nesting depth, not area rank: even depth = outer, odd = hole, so disjoint outer contours survive.
             worldLoops.Sort((x, y) => Mathf.Abs(SignedArea(y)).CompareTo(Mathf.Abs(SignedArea(x))));
@@ -233,58 +203,177 @@ namespace SlimeJumping.EditorTools
             return new Bounds(center, worldExtents * 2f);
         }
 
-        // Welds coincident world-space verts: Unity primitives and FBX exports split verts per face,
-        // so geometry3Sharp otherwise sees disconnected quads and reports open spans.
-        private static DMesh3 ToDMesh3(UnityEngine.Mesh src, Matrix4x4 toWorld)
+        // Slices every triangle crossing world z=0 into a 2D segment, chains segments into loops,
+        // and bridges gaps left where the plane crosses open-shell boundaries.
+        private static List<List<Vector2>> SliceMeshAtZ0(UnityEngine.Mesh src, Matrix4x4 toWorld, out int bridgedGaps)
         {
-            const float quant = 1e5f;
-
-            var dm = new DMesh3();
             var verts = src.vertices;
-            var remap = new int[verts.Length];
-            var posMap = new Dictionary<(int, int, int), int>(verts.Length);
-
+            var world = new Vector3[verts.Length];
             for (int i = 0; i < verts.Length; i++)
             {
                 Vector3 w = toWorld.MultiplyPoint3x4(verts[i]);
-                var key = (
-                    Mathf.RoundToInt(w.x * quant),
-                    Mathf.RoundToInt(w.y * quant),
-                    Mathf.RoundToInt(w.z * quant));
-
-                if (posMap.TryGetValue(key, out int existing))
-                {
-                    remap[i] = existing;
-                }
-                else
-                {
-                    int newId = dm.AppendVertex(new Vector3d(w.x, w.y, w.z));
-                    posMap[key] = newId;
-                    remap[i] = newId;
-                }
+                if (w.z == 0f) w.z = 1e-7f;
+                world[i] = w;
             }
 
             var tris = src.triangles;
-            int degenerateSkipped = 0;
-            int appendRejected = 0;
+            var segs = new List<(Vector2 a, Vector2 b)>();
+            var pts = new List<Vector2>(2);
             for (int i = 0; i < tris.Length; i += 3)
             {
-                int a = remap[tris[i]];
-                int b = remap[tris[i + 1]];
-                int c = remap[tris[i + 2]];
-                if (a == b || b == c || a == c) { degenerateSkipped++; continue; }
-                int tid = dm.AppendTriangle(a, b, c);
-                if (tid < 0) appendRejected++;
+                Vector3 p0 = world[tris[i]], p1 = world[tris[i + 1]], p2 = world[tris[i + 2]];
+                bool s0 = p0.z > 0f, s1 = p1.z > 0f, s2 = p2.z > 0f;
+                if (s0 == s1 && s1 == s2) continue;
+                pts.Clear();
+                AddEdgeCut(p0, p1, pts);
+                AddEdgeCut(p1, p2, pts);
+                AddEdgeCut(p2, p0, pts);
+                if (pts.Count == 2 && (pts[0] - pts[1]).sqrMagnitude > 1e-12f)
+                    segs.Add((pts[0], pts[1]));
             }
 
-            if (degenerateSkipped > 0 || appendRejected > 0)
-                Debug.LogWarning(
-                    $"[MeshToCollider2D] Welded {verts.Length} → {dm.VertexCount} verts; " +
-                    $"skipped {degenerateSkipped} degenerate tri(s), " +
-                    $"{appendRejected} non-manifold tri(s) rejected by DMesh3. " +
-                    "Non-zero rejects usually mean the mesh has non-manifold edges.");
+            bridgedGaps = 0;
+            var loops = new List<List<Vector2>>();
+            if (segs.Count == 0) return loops;
 
-            return dm;
+            var chains = ChainSegments(segs, out var closed);
+            bridgedGaps = BridgeOpenChains(chains, closed);
+
+            foreach (var chain in chains)
+            {
+                if (chain.Count < 3) continue;
+                if (System.Math.Abs(LoopArea(chain)) < 1e-4) continue;
+                loops.Add(chain);
+            }
+            return loops;
+        }
+
+        private static void AddEdgeCut(Vector3 a, Vector3 b, List<Vector2> pts)
+        {
+            if ((a.z > 0f) == (b.z > 0f)) return;
+            float t = a.z / (a.z - b.z);
+            pts.Add(new Vector2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
+        }
+
+        // Double before rounding: float*1e4 loses integer precision past ~1.6km coordinates.
+        private static (int, int) SnapKey(Vector2 v)
+            => ((int)System.Math.Round(v.x * 10000.0), (int)System.Math.Round(v.y * 10000.0));
+
+        // Walks segments end-to-end via snapped-endpoint adjacency into closed loops / open chains.
+        private static List<List<Vector2>> ChainSegments(List<(Vector2 a, Vector2 b)> segs, out List<bool> closed)
+        {
+            var adj = new Dictionary<(int, int), List<int>>(segs.Count * 2);
+            for (int i = 0; i < segs.Count; i++)
+            {
+                RegisterEndpoint(adj, SnapKey(segs[i].a), i);
+                RegisterEndpoint(adj, SnapKey(segs[i].b), i);
+            }
+
+            var used = new bool[segs.Count];
+            var chains = new List<List<Vector2>>();
+            closed = new List<bool>();
+
+            for (int i = 0; i < segs.Count; i++)
+            {
+                if (used[i]) continue;
+                used[i] = true;
+                var chain = new List<Vector2> { segs[i].a, segs[i].b };
+                bool isClosed = ExtendChain(chain, segs, adj, used, atEnd: true)
+                             || ExtendChain(chain, segs, adj, used, atEnd: false);
+                chains.Add(chain);
+                closed.Add(isClosed);
+            }
+            return chains;
+        }
+
+        private static void RegisterEndpoint(Dictionary<(int, int), List<int>> adj, (int, int) key, int segIndex)
+        {
+            if (!adj.TryGetValue(key, out var list)) { list = new List<int>(2); adj[key] = list; }
+            list.Add(segIndex);
+        }
+
+        // Appends unused segments at one chain end until stuck; true if the chain met its own other end.
+        private static bool ExtendChain(List<Vector2> chain, List<(Vector2 a, Vector2 b)> segs,
+            Dictionary<(int, int), List<int>> adj, bool[] used, bool atEnd)
+        {
+            for (int guard = 0; guard < segs.Count; guard++)
+            {
+                var tipKey = SnapKey(atEnd ? chain[chain.Count - 1] : chain[0]);
+                int next = -1;
+                if (adj.TryGetValue(tipKey, out var cands))
+                    foreach (var si in cands)
+                        if (!used[si]) { next = si; break; }
+                if (next < 0) return false;
+                used[next] = true;
+                var s = segs[next];
+                Vector2 tail = SnapKey(s.a) == tipKey ? s.b : s.a;
+                var otherTipKey = SnapKey(atEnd ? chain[0] : chain[chain.Count - 1]);
+                if (SnapKey(tail) == otherTipKey) return true;
+                if (atEnd) chain.Add(tail); else chain.Insert(0, tail);
+            }
+            return false;
+        }
+
+        private static readonly bool[] EndSides = { false, true };
+
+        // Repeatedly joins the closest pair of open endpoints; a chain whose own start-end pair is
+        // closest closes onto itself, so distant disjoint parts are not force-merged. Returns the
+        // number of cross-chain joins.
+        private static int BridgeOpenChains(List<List<Vector2>> chains, List<bool> closed)
+        {
+            int bridges = 0;
+            while (true)
+            {
+                int openIdx = -1;
+                for (int i = 0; i < chains.Count; i++)
+                    if (!closed[i]) { openIdx = i; break; }
+                if (openIdx < 0) break;
+
+                var ci = chains[openIdx];
+                float best = (ci[0] - ci[ci.Count - 1]).sqrMagnitude;
+                int bestJ = -1;
+                bool fromEnd = false, toEnd = false;
+                foreach (bool ie in EndSides)
+                {
+                    Vector2 pi = ie ? ci[ci.Count - 1] : ci[0];
+                    for (int j = 0; j < chains.Count; j++)
+                    {
+                        if (closed[j] || j == openIdx) continue;
+                        var cj = chains[j];
+                        foreach (bool je in EndSides)
+                        {
+                            Vector2 pj = je ? cj[cj.Count - 1] : cj[0];
+                            float d = (pi - pj).sqrMagnitude;
+                            if (d < best) { best = d; bestJ = j; fromEnd = ie; toEnd = je; }
+                        }
+                    }
+                }
+
+                if (bestJ < 0) { closed[openIdx] = true; continue; }
+
+                var a = chains[openIdx];
+                var b = chains[bestJ];
+                if (!fromEnd) a.Reverse();
+                if (toEnd) b.Reverse();
+                a.AddRange(b);
+                chains.RemoveAt(bestJ);
+                closed.RemoveAt(bestJ);
+                bridges++;
+            }
+            return bridges;
+        }
+
+        // Double-precision shoelace: float cancellation at large world coords swamps tiny areas.
+        private static double LoopArea(List<Vector2> poly)
+        {
+            double area = 0;
+            int n = poly.Count;
+            for (int i = 0; i < n; i++)
+            {
+                Vector2 p = poly[i], q = poly[(i + 1) % n];
+                area += (double)p.x * q.y - (double)q.x * p.y;
+            }
+            return area * 0.5;
         }
 
         private static float SignedArea(List<Vector2> poly)

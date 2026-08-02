@@ -77,6 +77,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Saw/Knife Hazard](features/mechanisms/saw-knife-hazard.md) — SliceEffect + [Slime Split](features/mechanisms/slime-split.md)(잘림=작아진 둥근 슬라임 + 자크식 회수: collider.radius 실제 축소(BodyScale) · 상처=메니스커스 막이 림→중심 동심 봉합(스프링 차오름+타격 퀴버, 평면 후퇴 없음) · 손실 부피만큼 조각 사출(sliver→droplet→바닥 잔존, melt/얼룩 폐기) · 조각은 근접 시 자석 흡인→합체 벌지로 흡수 · heal=흡수 게이트(분실 시 느린 자연 회복) · 점프력=몸집 파생 · 지속 단면/클립 없음)
 - [Turret Hazard](features/mechanisms/turret-hazard.md) — CCTV 확장 사격
 - [Icicle Hazard](features/mechanisms/icicle-hazard.md) — 낙하 고드름 (진동 → 낙하 → 파괴)
+- Laser Hazard — 등속 왕복 패트롤 레이저 빔 (LineRenderer 코어+글로우 2겹, 끝단 딜레이, 접촉 시 고정 각도 가산 넉백 `ApplyHazardPush` + 화상, 스턴 없음; 공유 튜닝 = `LaserHazardConfig` SO, 배치값만 컴포넌트)
 - [Falling Train](features/mechanisms/falling-train.md) — 1회 한정 낙하 기차 (텔레그래프 → 연결부 분리 → 곡선 낙하 → 숏컷)
 - [Snowball](features/mechanisms/snowball.md) — Stage 2 굴러가는 / 날아오는 눈덩이 (Rolling/Flying mode + Falling 서브상태 + ObjectPool 스포너 + [SnowField 상호작용](features/mechanisms/snowball.md#snowfield-상호작용-phase-9): 연속 carve, 거리 비례 반경 성장, 착지 splash 분화구+둔덕)
 - [Granite Blast Attackable](features/mechanisms/granite-blast.md#12-attackable-슬라임이-닿으면-파괴되는-카운터) — 슬라임이 닿으면 BulbShatter warp + WorldTimeFreezeService 협력형 freeze 후 emitter 파괴되는 카운터

@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2603269c646f5454e9cc5d7a637d0924, type: 3}
+  m_Name: LaserHazardConfig
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Mechanisms.LaserHazardConfig
+  beamWidth: 0.25
+  knockbackAngle: 160
+  knockbackSpeed: 8
+  hitCooldown: 0.35
+  burnMarkScale: 1
+  hitClip: {fileID: 8300000, guid: 567ea169cf83cd34db2a2c8baf972f83, type: 3}
+  hitVolume: 1
+  coreColor: {r: 1, g: 0.9, b: 0.9, a: 1}
+  glowColor: {r: 1, g: 0.12, b: 0.05, a: 0.55}
+  coreWidth: 0.09
+  glowWidth: 0.4
+  pulseAmount: 0.18
+  pulseSpeed: 22
+  visualZOffset: 0
