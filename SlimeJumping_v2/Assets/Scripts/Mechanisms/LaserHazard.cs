@@ -88,6 +88,7 @@ namespace SlimeJumping.Mechanisms
             patrolDir = startReversed ? -1f : 1f;
             if (patrolOffset > 0f) rb.position = startPos + (Vector2)transform.up * patrolOffset;
             BuildBeamVisual();
+            SpawnEndCaps();
         }
 
         void OnValidate()
@@ -126,6 +127,75 @@ namespace SlimeJumping.Mechanisms
                         new Vector3(beamLength, width, 0f));
                 }
             }
+
+            // Animated preview: solid box ping-pongs along the patrol in edit mode
+            // (LaserHazardScenePreview keeps the SceneView repainting); play mode shows the
+            // real offset. Caps ride it, so knob changes read live without entering play.
+            float previewOff;
+            if (Application.isPlaying)
+            {
+                previewOff = patrolOffset;
+            }
+            else
+            {
+#if UNITY_EDITOR
+                previewOff = PreviewOffsetAt((float)UnityEditor.EditorApplication.timeSinceStartup);
+#else
+                previewOff = Mathf.Clamp(startOffset, 0f, Mathf.Max(0f, patrolDistance));
+#endif
+            }
+            Gizmos.color = new Color(1f, 0.25f, 0.1f, 0.45f);
+            Gizmos.DrawCube(new Vector3(0f, previewOff, 0f), new Vector3(beamLength, width, 0f));
+
+            // End caps only exist at runtime (Awake spawn) — draw their meshes here so
+            // placement is visible in edit mode.
+            var cfg = Cfg;
+            if (cfg != null)
+            {
+                Gizmos.color = new Color(0.9f, 0.9f, 0.9f, 0.95f);
+                DrawCapGizmo(cfg.endCapA, -1f, previewOff);
+                DrawCapGizmo(cfg.endCapB, 1f, previewOff);
+            }
+        }
+
+        // Deterministic patrol phase for the edit-mode preview: up → endDelay → down → endDelay,
+        // phase-shifted so startOffset/startReversed show their real starting point.
+        private float PreviewOffsetAt(float t)
+        {
+            float dist = patrolDistance;
+            if (dist <= 0.0001f || moveSpeed <= 0f)
+                return Mathf.Clamp(startOffset, 0f, Mathf.Max(0f, dist));
+            float travel = dist / moveSpeed;
+            float cycle = 2f * (travel + endDelay);
+            float s0 = Mathf.Clamp(startOffset, 0f, dist);
+            float phase0 = startReversed
+                ? travel + endDelay + (dist - s0) / moveSpeed
+                : s0 / moveSpeed;
+            float p = Mathf.Repeat(t + phase0, cycle);
+            if (p < travel) return p * moveSpeed;
+            p -= travel;
+            if (p < endDelay) return dist;
+            p -= endDelay;
+            if (p < travel) return dist - p * moveSpeed;
+            return 0f;
+        }
+
+        private void DrawCapGizmo(LaserHazardConfig.EndCapSide side, float sign, float yOffset)
+        {
+            if (side == null || side.prefab == null) return;
+            Matrix4x4 baseM = Gizmos.matrix;
+            Transform root = side.prefab.transform;
+            Matrix4x4 capM = baseM * Matrix4x4.TRS(
+                CapLocalPosition(side, sign, yOffset),
+                SideRotation(sign) * Quaternion.Euler(side.rotation),
+                side.scale);
+            foreach (var mf in side.prefab.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (mf.sharedMesh == null) continue;
+                Gizmos.matrix = capM * (root.worldToLocalMatrix * mf.transform.localToWorldMatrix);
+                Gizmos.DrawMesh(mf.sharedMesh);
+            }
+            Gizmos.matrix = baseM;
         }
 
         private void ConfigureCollider()
@@ -284,6 +354,35 @@ namespace SlimeJumping.Mechanisms
             return d;
         }
 
+        // Visual-only emitter models riding the beam tips. Prefab +X faces into the beam;
+        // the +X-side cap gets a Y-mirror so both point inward.
+        private void SpawnEndCaps()
+        {
+            SpawnCap("EndCapA", Cfg.endCapA, -1f);
+            SpawnCap("EndCapB", Cfg.endCapB, 1f);
+        }
+
+        // sign: -1 = local -X end (identity), +1 = local +X end (Y-mirrored). positionOffset is
+        // rotated by the side mirror so +X always means "into the beam" on both sides.
+        private Quaternion SideRotation(float sign)
+            => sign < 0f ? Quaternion.identity : Quaternion.Euler(0f, 180f, 0f);
+
+        private Vector3 CapLocalPosition(LaserHazardConfig.EndCapSide side, float sign, float yOffset)
+        {
+            return new Vector3(sign * beamLength * 0.5f, yOffset, Cfg.visualZOffset)
+                   + SideRotation(sign) * side.positionOffset;
+        }
+
+        private void SpawnCap(string name, LaserHazardConfig.EndCapSide side, float sign)
+        {
+            if (side == null || side.prefab == null) return;
+            var cap = Instantiate(side.prefab, transform);
+            cap.name = name;
+            cap.transform.localPosition = CapLocalPosition(side, sign, 0f);
+            cap.transform.localRotation = SideRotation(sign) * Quaternion.Euler(side.rotation);
+            cap.transform.localScale = side.scale;
+        }
+
         // White-core + red-glow look from two stacked LineRenderers sharing a soft
         // vertical-falloff texture (per the reference: center-white, edges-dark gradient).
         private void BuildBeamVisual()
@@ -296,8 +395,10 @@ namespace SlimeJumping.Mechanisms
         private void ApplyBeamShape()
         {
             float z = Cfg != null ? Cfg.visualZOffset : 0f;
-            var p0 = new Vector3(-beamLength * 0.5f, 0f, z);
-            var p1 = new Vector3(beamLength * 0.5f, 0f, z);
+            float trim = Cfg != null ? Cfg.beamVisualTrim : 0f;
+            float half = Mathf.Max(0.005f, beamLength * 0.5f - trim);
+            var p0 = new Vector3(-half, 0f, z);
+            var p1 = new Vector3(half, 0f, z);
             coreLine.SetPosition(0, p0);
             coreLine.SetPosition(1, p1);
             glowLine.SetPosition(0, p0);

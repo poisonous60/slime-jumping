@@ -19,6 +19,16 @@ MonoBehaviour:
   burnMarkScale: 1
   hitClip: {fileID: 8300000, guid: 567ea169cf83cd34db2a2c8baf972f83, type: 3}
   hitVolume: 1
+  endCapA:
+    prefab: {fileID: 100000, guid: 04a51bed6a6e0a6449e42887ad3b69e7, type: 3}
+    positionOffset: {x: 0, y: 0, z: 1}
+    rotation: {x: 0, y: 90, z: -90}
+    scale: {x: 0.4, y: 0.3, z: 0.4}
+  endCapB:
+    prefab: {fileID: 100000, guid: 04a51bed6a6e0a6449e42887ad3b69e7, type: 3}
+    positionOffset: {x: 0, y: 0, z: -1}
+    rotation: {x: 0, y: 90, z: 90}
+    scale: {x: 0.4, y: 0.3, z: 0.4}
   coreColor: {r: 1, g: 0.9, b: 0.9, a: 1}
   glowColor: {r: 1, g: 0.12, b: 0.05, a: 0.55}
   coreWidth: 0.09
@@ -26,3 +36,4 @@ MonoBehaviour:
   pulseAmount: 0.18
   pulseSpeed: 22
   visualZOffset: 0
+  beamVisualTrim: 0.35
