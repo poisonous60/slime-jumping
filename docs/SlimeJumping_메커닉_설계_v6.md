@@ -82,6 +82,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Snowball](features/mechanisms/snowball.md) — Stage 2 굴러가는 / 날아오는 눈덩이 (Rolling/Flying mode + Falling 서브상태 + ObjectPool 스포너 + [SnowField 상호작용](features/mechanisms/snowball.md#snowfield-상호작용-phase-9): 연속 carve, 거리 비례 반경 성장, 착지 splash 분화구+둔덕)
 - [Granite Blast Attackable](features/mechanisms/granite-blast.md#12-attackable-슬라임이-닿으면-파괴되는-카운터) — 슬라임이 닿으면 BulbShatter warp + WorldTimeFreezeService 협력형 freeze 후 emitter 파괴되는 카운터
 - Lightning Strike — 하늘에서 수직 낙하하는 반복 낙뢰. 리스트 순서대로 `gap` 간격 낙하 + `cycleGap` 후 반복, 1회 낙하는 `boltsPerStrike` 발 연속 버스트, 명중 시 기둥 좌/우 판정 수평 튕김 + Granite Blast 동일 임팩트(스파크/폭발/SFX/HitStop/쉐이크/눈 carve). 전조는 착지점 지면을 감싸는 작은 푸른 정전기 (`telegraphLead` 초 선행, `LightningTelegraphSpark`) — 지면 밴드를 따라 흩어진 아크들이 떴다 내려앉으며 지직거리고, 낙하 경로 선은 그리지 않는다. Granite Blast Branching 텐드릴의 베지어 지그재그 + 팁 스윕만 떼낸 독립 구현 (`LightningStrikeField` / `LightningBolt` / `LightningStrikeConfig`)
+- Crane Hook Sway — 크레인 매달림 컨테이너 X축 횡요동 (`CraneHookSwayPlatform : PlatformMotor` — 컨테이너 콜라이더 = kinematic 바디로 실제 이동 + 라이더 운반. PlatformCarrier 경로로 무게 목표 연속 추종 + 착지 운동량 킥 + 이탈 시 자연 스윙백, 감쇠 스프링 1채널. 와이어 상단 피벗 회전 = 좌우 이동, 비주얼은 보간 바디 추종(월드 Z축 회전), 진폭/주파수/감쇠/무게비 전부 인스펙터 노브)
 - [Tier 1 Interactables](features/mechanisms/tier1-interactables.md) — E키 (Sit, TV, Shrine 등)
 - [Tier 1 Fullscreen Hazards](features/mechanisms/tier1-fullscreen-hazards.md) — Jumpscare, CameraFlash
 - [Memo](features/mechanisms/memo.md) — 월드 스페이스 내레이션
