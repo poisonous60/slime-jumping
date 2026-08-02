@@ -66,6 +66,7 @@ namespace SlimeJumping.Mechanisms
         {
             var body = GetComponent<Rigidbody2D>();
             body.bodyType = RigidbodyType2D.Kinematic;
+            body.interpolation = RigidbodyInterpolation2D.Interpolate;
             var box = GetComponent<BoxCollider2D>();
             box.isTrigger = true;
             box.size = new Vector2(beamLength, Cfg != null ? Cfg.beamWidth : 0.25f);
@@ -82,6 +83,7 @@ namespace SlimeJumping.Mechanisms
                 return;
             }
             rb.bodyType = RigidbodyType2D.Kinematic;
+            rb.interpolation = RigidbodyInterpolation2D.Interpolate;
             ConfigureCollider();
             startPos = rb.position;
             patrolOffset = Mathf.Clamp(startOffset, 0f, patrolDistance);
