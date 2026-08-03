@@ -126,7 +126,8 @@ namespace SlimeJumping.Mechanisms
                 new Vector3(point.x, point.y, point.z + config.telegraphZOffset), config.telegraphLead);
         }
 
-        // One strike = a short burst of bolts off the same anchor; only the first goes out now.
+        // One strike = a short burst of bolts off the same anchor; only the first goes out now,
+        // the rest wait out their stagger. Every bolt carries its own impact.
         private void Fire(int index)
         {
             Vector3 origin = OriginAt(index);
@@ -137,7 +138,7 @@ namespace SlimeJumping.Mechanisms
             for (int k = 0; k < bolts; k++)
             {
                 Vector3 landing = LandingPoint(origin + Vector3.right * Random.Range(-config.boltSpread, config.boltSpread));
-                // Only the leading bolt carries impact VFX/SFX/push; the rest are visual.
+                // Every bolt hits, but only the leading one shows the impact VFX/SFX/carve.
                 if (k == 0)
                 {
                     SpawnBolt(origin, landing, true);
@@ -150,11 +151,11 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        private void SpawnBolt(Vector3 origin, Vector3 landing, bool canHit)
+        private void SpawnBolt(Vector3 origin, Vector3 landing, bool carriesImpact)
         {
             var go = new GameObject("LightningBolt");
             go.transform.position = origin;
-            go.AddComponent<LightningBolt>().Init(config, hitShakeEmitter, origin, landing, canHit);
+            go.AddComponent<LightningBolt>().Init(config, hitShakeEmitter, origin, landing, carriesImpact);
         }
 
         // Landing point only shapes the path; the bolt's own tip sweep decides what it hits,

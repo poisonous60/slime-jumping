@@ -81,7 +81,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Falling Train](features/mechanisms/falling-train.md) — 1회 한정 낙하 기차 (텔레그래프 → 연결부 분리 → 곡선 낙하 → 숏컷)
 - [Snowball](features/mechanisms/snowball.md) — Stage 2 굴러가는 / 날아오는 눈덩이 (Rolling/Flying mode + Falling 서브상태 + ObjectPool 스포너 + [SnowField 상호작용](features/mechanisms/snowball.md#snowfield-상호작용-phase-9): 연속 carve, 거리 비례 반경 성장, 착지 splash 분화구+둔덕)
 - [Granite Blast Attackable](features/mechanisms/granite-blast.md#12-attackable-슬라임이-닿으면-파괴되는-카운터) — 슬라임이 닿으면 BulbShatter warp + WorldTimeFreezeService 협력형 freeze 후 emitter 파괴되는 카운터
-- Lightning Strike — 하늘에서 수직 낙하하는 반복 낙뢰. 리스트 순서대로 `gap` 간격 낙하 + `cycleGap` 후 반복, 1회 낙하는 `boltsPerStrike` 발 연속 버스트, 명중 시 기둥 좌/우 판정 수평 튕김 + Granite Blast 동일 임팩트(스파크/폭발/SFX/HitStop/쉐이크/눈 carve). 전조는 착지점 지면을 감싸는 작은 푸른 정전기 (`telegraphLead` 초 선행, `LightningTelegraphSpark`) — 지면 밴드를 따라 흩어진 아크들이 떴다 내려앉으며 지직거리고, 낙하 경로 선은 그리지 않는다. Granite Blast Branching 텐드릴의 베지어 지그재그 + 팁 스윕만 떼낸 독립 구현 (`LightningStrikeField` / `LightningBolt` / `LightningStrikeConfig`)
+- Lightning Strike — 하늘에서 수직 낙하하는 반복 낙뢰. 리스트 순서대로 `gap` 간격 낙하 + `cycleGap` 후 반복, 1회 낙하는 `boltsPerStrike` 발 연속 버스트(발마다 명중 판정 + `slimeHitCooldown` 0.3초 무적 창, 임팩트 연출/SFX 는 선두 발만), 명중 시 기둥 좌/우 판정 수평 튕김 + Granite Blast 동일 임팩트(스파크/폭발/SFX/HitStop/쉐이크/눈 carve). 전조는 착지점 지면을 감싸는 작은 푸른 정전기 (`telegraphLead` 초 선행, `LightningTelegraphSpark`) — 지면 밴드를 따라 흩어진 아크들이 떴다 내려앉으며 지직거리고, 낙하 경로 선은 그리지 않는다. Granite Blast Branching 텐드릴의 베지어 지그재그 + 팁 스윕만 떼낸 독립 구현 (`LightningStrikeField` / `LightningBolt` / `LightningStrikeConfig`)
 - Crane Hook Sway — 크레인 매달림 컨테이너 X축 횡요동 (`CraneHookSwayPlatform : PlatformMotor` — 컨테이너 콜라이더 = kinematic 바디로 실제 이동 + 라이더 운반. PlatformCarrier 경로로 무게 목표 연속 추종 + 착지 운동량 킥 + 이탈 시 자연 스윙백, 감쇠 스프링 1채널. 와이어 상단 피벗 회전 = 좌우 이동, 비주얼은 보간 바디 추종(월드 Z축 회전), 진폭/주파수/감쇠/무게비 전부 인스펙터 노브)
 - [Tier 1 Interactables](features/mechanisms/tier1-interactables.md) — E키 (Sit, TV, Shrine 등)
 - [Tier 1 Fullscreen Hazards](features/mechanisms/tier1-fullscreen-hazards.md) — Jumpscare, CameraFlash
@@ -100,6 +100,8 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Input Summary](features/infra/input-summary.md)
 - [Trail (진행 트레일)](features/infra/trail.md) — 항아리 게임 스타일 영속 자국
 - [VFX Infrastructure](features/infra/vfx-infra.md) — ImpulseEmitter, SliceEffect, Blur, Two-Ramp Y Blend, 옵션패널(Background Camera On/Off 포함)
+- Ambient Snow (`SnowCameraEmitter`) — 카메라 추종 스폰 박스 + `emitterArea` PolygonCollider2D 밖 입자 수동 cull. **고도 페이드**: `fadeStartY`~`fadeEndY` 사이에서 입자를 확률적으로 죽여 위로 갈수록 눈발이 성겨지다 그친다. 판정 난수는 `Particle.randomSeed` 해시 — `Random` 을 쓰면 프레임마다 결과가 바뀌어 전체가 깜빡인다. 알파를 낮추는 게 아니라 개수를 줄이는 방식(투명한 눈은 안개로 읽힘). 두 값 모두 Infinity(기본)면 페이드 경로를 안 탄다
+- Snowfall Volume (`SnowfallVolume`) — 원하는 위치에 붙이는 국소 눈기둥. 박스 윗변에서 스폰 → 낙하 → 아랫변에서 소멸(기즈모 사각형 = 눈 보이는 범위). `lifetime = height/fallSpeed`, `rate = density×width` 자동 산출이라 박스를 키워도 밀도 유지. World sim + World velocity 라 호스트가 움직이거나 회전해도 눈은 월드 아래로. 룩(머티리얼/알파 램프/크기/회전)은 GO 에 authored 이고 스크립트는 기하·밀도만 — 생성은 `GameObject > SlimeJumping > Snowfall Volume` 메뉴
 - [Tuning Parameters](features/infra/tuning-parameters.md) — SlimeSettings 전체 목록
 - [Script Structure](features/infra/script-structure.md) — 전체 스크립트 인벤토리
 

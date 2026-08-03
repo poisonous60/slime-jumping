@@ -20,6 +20,13 @@ namespace SlimeJumping.VFX
         [Tooltip("Polygon defining where snow is allowed to be visible. Particles outside this polygon are killed every frame via manual OverlapPoint test (the ParticleSystem Trigger module's polygon test was unreliable, hence the manual cull). Use multi-path PolygonCollider2D to carve out roof holes.")]
         [SerializeField] private PolygonCollider2D emitterArea;
 
+        [Header("Altitude Fade")]
+        [Tooltip("Full snow at or below this world Y. Leave at Infinity to disable the fade.")]
+        [SerializeField] private float fadeStartY = float.PositiveInfinity;
+
+        [Tooltip("No snow at or above this world Y. Between the two lines the snowfall thins out.")]
+        [SerializeField] private float fadeEndY = float.PositiveInfinity;
+
         private ParticleSystem _ps;
         private ParticleSystem.Particle[] _particleBuffer;
 
@@ -45,8 +52,13 @@ namespace SlimeJumping.VFX
             ResolveCamera();
             UpdateTransform();
             UpdateShapeSize();
-            CullOutsidePolygon();
+            CullParticles();
         }
+
+        // Both lines must be finite: a half-filled pair would run the per-particle pass every frame
+        // and kill nothing.
+        private bool FadeActive => fadeEndY > fadeStartY
+            && !float.IsPositiveInfinity(fadeStartY) && !float.IsPositiveInfinity(fadeEndY);
 
         private void ResolveCamera()
         {
@@ -96,9 +108,12 @@ namespace SlimeJumping.VFX
 
         // Manual cull, not the Trigger module: that failed to kill particles spawned outside the polygon
         // and snow filled the whole viewport. OverlapPoint handles multi-path polygons exactly.
-        private void CullOutsidePolygon()
+        // Also thins the snowfall out with altitude so it stops without a visible horizontal seam.
+        private void CullParticles()
         {
-            if (emitterArea == null) return;
+            bool hasPolygon = emitterArea != null;
+            bool hasFade = FadeActive;
+            if (!hasPolygon && !hasFade) return;
             if (_ps == null) return;
             int alive = _ps.particleCount;
             if (alive <= 0) return;
@@ -111,13 +126,25 @@ namespace SlimeJumping.VFX
             for (int i = 0; i < n; i++)
             {
                 Vector3 pos = _particleBuffer[i].position;
-                if (!emitterArea.OverlapPoint(new Vector2(pos.x, pos.y)))
-                {
-                    _particleBuffer[i].remainingLifetime = -1f;
-                    changed = true;
-                }
+                bool kill = hasPolygon && !emitterArea.OverlapPoint(new Vector2(pos.x, pos.y));
+                if (!kill && hasFade) kill = FailsAltitudeFade(pos.y, _particleBuffer[i].randomSeed);
+                if (!kill) continue;
+                _particleBuffer[i].remainingLifetime = -1f;
+                changed = true;
             }
             if (changed) _ps.SetParticles(_particleBuffer, n);
+        }
+
+        // Thins by killing whole flakes, not by fading them out: snow that goes translucent reads as fog.
+        // The draw comes from the particle's own seed instead of Random so the verdict never changes
+        // between frames — rolling per frame would make survivors blink out and the whole field flicker.
+        // Particles only ever fall, so keep only rises with age and a survivor stays alive for good.
+        private bool FailsAltitudeFade(float worldY, uint seed)
+        {
+            float keep = 1f - Mathf.InverseLerp(fadeStartY, fadeEndY, worldY);
+            // Hash spans [0, 1) and the test is >=, so keep 0 kills every flake and keep 1 spares
+            // every flake. Either endpoint slipping leaks snow above fadeEndY or thins it below fadeStartY.
+            return (seed & 0xFFFFu) * (1f / 65536f) >= keep;
         }
 
         private void OnDrawGizmosSelected()
@@ -137,6 +164,30 @@ namespace SlimeJumping.VFX
             }
 
             DrawPoly(emitterArea, new Color(0.4f, 1f, 0.6f, 0.9f));
+            DrawFadeLines();
+        }
+
+        private void DrawFadeLines()
+        {
+            if (!FadeActive) return;
+
+            float centerX, halfWidth;
+            if (emitterArea != null)
+            {
+                var b = emitterArea.bounds;
+                centerX = b.center.x;
+                halfWidth = b.extents.x;
+            }
+            else
+            {
+                centerX = targetCamera != null ? targetCamera.transform.position.x : transform.position.x;
+                halfWidth = GetViewportHalfHeight() * (targetCamera != null ? targetCamera.aspect : 1.78f) * widthMultiplier;
+            }
+
+            Gizmos.color = new Color(0.5f, 0.8f, 1f, 0.9f);
+            Gizmos.DrawLine(new Vector3(centerX - halfWidth, fadeStartY, 0f), new Vector3(centerX + halfWidth, fadeStartY, 0f));
+            Gizmos.color = new Color(1f, 0.4f, 0.35f, 0.9f);
+            Gizmos.DrawLine(new Vector3(centerX - halfWidth, fadeEndY, 0f), new Vector3(centerX + halfWidth, fadeEndY, 0f));
         }
 
         private static void DrawRect(Vector3 center, float w, float h)

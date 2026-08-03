@@ -12,6 +12,8 @@ namespace SlimeJumping.Mechanisms
         // One material for every bolt in the scene — same setup as GraniteBlast's line core.
         private static Material sharedMat;
         private static AudioListener listener;
+        // Bolts are one-shot objects, so the slime's immunity window has to live outside them.
+        private static float lastSlimeHitTime = float.NegativeInfinity;
 
         private LightningStrikeConfig cfg;
         private ImpulseEmitter shakeEmitter;
@@ -21,9 +23,9 @@ namespace SlimeJumping.Mechanisms
         private float drawTime, holdTime, fadeTime;
         private float age, prevDrawT;
         private bool hitResolved;
-        // Extra bolts of a burst are visual only — they still halt on contact, but one strike
-        // must read as one impact, not N stacked explosions.
-        private bool canHit;
+        // Every bolt of a burst hits, but only the leading one shows the impact — one strike
+        // must read as one explosion with one sound, not N stacked.
+        private bool carriesImpact;
 
         // Tip's prev→curr chord is CircleCast each frame; the bolt freezes at the hit point.
         private bool tipHalted;
@@ -31,11 +33,11 @@ namespace SlimeJumping.Mechanisms
         private Vector3 haltedTipWorld;
         private float haltedAge = -1f;
 
-        public void Init(LightningStrikeConfig config, ImpulseEmitter shake, Vector3 from, Vector3 to, bool canHit = true)
+        public void Init(LightningStrikeConfig config, ImpulseEmitter shake, Vector3 from, Vector3 to, bool carriesImpact = true)
         {
             cfg = config;
             shakeEmitter = shake;
-            this.canHit = canHit;
+            this.carriesImpact = carriesImpact;
             baseWidth = Mathf.Max(0.001f, cfg.coreWidth);
             holdTime = Mathf.Max(0f, cfg.holdTime);
             fadeTime = Mathf.Max(0.001f, cfg.fadeTime);
@@ -210,13 +212,13 @@ namespace SlimeJumping.Mechanisms
             int segs = points.Length - 1;
             haltedLastFullIdx = Mathf.Clamp(Mathf.FloorToInt(Mathf.Clamp01(currT) * segs), 0, points.Length - 1);
 
-            if (!canHit) return;
-
             var slime = hit.collider.GetComponentInParent<SlimeController>();
             bool isSlime = slime != null;
-            if (isSlime && !hitResolved)
+            // The bolt still halts on a slime inside the window; only the punt is withheld.
+            if (isSlime && !hitResolved && Time.time - lastSlimeHitTime >= Mathf.Max(0f, cfg.slimeHitCooldown))
             {
                 hitResolved = true;
+                lastSlimeHitTime = Time.time;
                 // Flung sideways, away from the strike column — a downward push would only
                 // pin a grounded slime into the floor. Overwrite-slide, not the plain push channel:
                 // a grounded slime rebuilds velocity from crawlVelocity every frame, so a one-shot
@@ -225,6 +227,8 @@ namespace SlimeJumping.Mechanisms
                 slime.ApplyHazardPushOverwriteSlide(new Vector2(side * cfg.knockbackImpulse, 0f), hit.point);
                 HitStopService.Freeze(cfg.hitStopDuration, shakeEmitter, cfg.hitShakeForce, cfg.hitStopFrozenScale);
             }
+
+            if (!carriesImpact) return;
 
             SpawnImpact(cfg.impactPrefab, hit.point, hit.normal, 1f);
             SpawnImpact(cfg.groundExplosionPrefab, hit.point, hit.normal, cfg.groundExplosionScale);

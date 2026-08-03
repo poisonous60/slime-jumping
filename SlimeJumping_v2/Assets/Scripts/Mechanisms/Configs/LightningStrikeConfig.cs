@@ -50,6 +50,8 @@ namespace SlimeJumping.Mechanisms
         public float hitRadius = 0.4f;
         [Tooltip("Sideways deltaV (m/s) applied to the slime, away from the bolt.")]
         public float knockbackImpulse = 12f;
+        [Tooltip("Seconds the slime is immune after a bolt hits it, shared by every bolt in the scene. Keeps a burst from chain-punting it. 0 = every bolt hits.")]
+        public float slimeHitCooldown = 0.3f;
 
         [Header("Hit Feedback")]
         [Tooltip("Time.timeScale freeze duration (realtime sec) on slime hit. 0 = disabled.")]
