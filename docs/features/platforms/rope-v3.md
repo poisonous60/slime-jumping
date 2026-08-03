@@ -1,6 +1,6 @@
 # 로프 V3 (RopeV3 — Trampoline-coupled)
 
-> **⚠️ 사용 안 함 (2026-05-05 기준).** Verlet polyline 의 contact-node 가 한 FU 안에 `slimeRadius` 보다 더 움직이는 케이스가 있어 슬라임이 다른 표면을 거쳐 다시 로프에 닿으면 Attached/Airborne 진동이 발생함 — 5번의 수정 시도 모두 실패 ([RopeV3_attach_bug_log.md](../../RopeV3_attach_bug_log.md)). 대체로 [TautLine](taut-line.md) (정적 baseline + 국소 dip) 사용 권장. RopeV3 코드는 fallback 으로 보존, 신규 씬에서는 TautLine 을 쓸 것.
+> **⚠️ 사용 안 함 (2026-05-05 기준).** Verlet polyline 의 contact-node 가 한 FU 안에 `slimeRadius` 보다 더 움직이는 케이스가 있어 슬라임이 다른 표면을 거쳐 다시 로프에 닿으면 Attached/Airborne 진동이 발생함 — 5번의 수정 시도 모두 실패 ([RopeV3 attach 버그 기록](../../bug/ropev3-attach.md)). 대체로 [TautLine](taut-line.md) (정적 baseline + 국소 dip) 사용 권장. RopeV3 코드는 fallback 으로 보존, 신규 씬에서는 TautLine 을 쓸 것.
 
 [v1 Rope](rope.md) / [v2 RopeV2](rope-v2.md) 와 동일한 Verlet 시뮬레이션 코어 + EdgeCollider/LineRenderer 파이프라인. **차이는 라이더 결합 모델**:
 

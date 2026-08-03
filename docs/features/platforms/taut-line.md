@@ -1,6 +1,6 @@
 # TautLine (전깃줄 — taut elastic wire)
 
-[Rope V3](rope-v3.md) 가 5번의 수정 시도에도 attach 진동 버그 ([RopeV3_attach_bug_log.md](../../RopeV3_attach_bug_log.md)) 를 못 잡아서, 처음부터 다시 짠 로프. RopeV3 와 병존, `IRopePlatform` 인터페이스 동일 → SlimeController 변경 0.
+[Rope V3](rope-v3.md) 가 5번의 수정 시도에도 attach 진동 버그 ([RopeV3 attach 버그 기록](../../bug/ropev3-attach.md)) 를 못 잡아서, 처음부터 다시 짠 로프. RopeV3 와 병존, `IRopePlatform` 인터페이스 동일 → SlimeController 변경 0.
 
 ## 디자인 의도
 

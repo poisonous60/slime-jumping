@@ -126,7 +126,13 @@ namespace SlimeJumping.Controller
             }
             Vector2 w = q - conP[i];
             float d = conR[i] - Vector2.Dot(w, nu);
-            return d < 1e-6f ? float.MaxValue : (conR[i] * conR[i] - w.sqrMagnitude) / (2f * d);
+            float num = conR[i] * conR[i] - w.sqrMagnitude;
+            // d <= 0 forces |w| >= conR[i], so q sits on or past the rim: the squared form degenerates
+            // to 0 <= 0 and drops the r <= conR[i] premise it was derived under.
+            if (d <= 0f) return num > 0f ? conR[i] : 0f;
+            float r = num / (2f * d);
+            // conR[i] - r = |w - conR[i]*nu|^2 / 2d >= 0, so the clamp only absorbs float blow-up.
+            return r < conR[i] ? r : conR[i];
         }
 
         // Inscribed circle anchored where the ray along dir leaves K.

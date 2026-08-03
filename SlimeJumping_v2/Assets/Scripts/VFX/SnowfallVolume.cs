@@ -80,9 +80,15 @@ namespace SlimeJumping.VFX
             emission.enabled = true;
             emission.rateOverTime = rate;
 
+            var main = _ps.main;
+
+            // The map-wide snow rides the camera so it is never offscreen. A volume sits on a cloud
+            // the player may be nowhere near, and World simulation plus External Forces makes the
+            // system non-procedural, which drops Automatic culling back to always simulating.
+            main.cullingMode = ParticleSystemCullingMode.Pause;
+
             // A wide or dense column outruns the prefab's 3000 budget, and the overflow is dropped
             // silently — it looks like the emission rate simply stopped working.
-            var main = _ps.main;
             int needed = Mathf.CeilToInt(rate * main.startLifetime.constantMax * 1.2f);
             if (main.maxParticles < needed) main.maxParticles = needed;
         }

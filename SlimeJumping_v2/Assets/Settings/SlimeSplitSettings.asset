@@ -148,7 +148,7 @@ MonoBehaviour:
   pieceCutFaceFrac: 0.3
   restBreathAmp: 0.05
   restBreathFreq: 1.1
-  absorbPullRadius: 0.6
+  absorbPullRadius: 1
   absorbPullAccel: 60
   absorbPullMaxSpeed: 14
   absorbArmDelay: 0.35
