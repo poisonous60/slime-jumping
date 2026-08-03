@@ -6,8 +6,9 @@ namespace SlimeJumping.Effects
 {
     /// <summary>
     /// Severed slime piece, a real pickup: Flying → Resting → Attracting → absorbed
-    /// (SlimeSplitSequence.NotifyChunkAbsorbed). Continuous fall > severedMaxAirTime = pit →
-    /// NotifyChunkLost converts the volume to ambient regen, never a soft-lock.
+    /// (SlimeSplitSequence.NotifyChunkAbsorbed). Continuous fall > severedMaxAirTime = pit, and
+    /// slime farther than severedMaxDistance = left behind; both hand the volume to
+    /// NotifyChunkLost, which converts it to ambient regen — never a soft-lock.
     /// The collider excludes the slime's layer (spawner-set) so it never blocks the player;
     /// shader pushes go through a per-renderer MPB, never the shared material.
     /// </summary>
@@ -204,6 +205,15 @@ namespace SlimeJumping.Effects
             if (slime != null)
             {
                 float dist = (slime.Position - rb.position).magnitude;
+
+                // Left behind — a screen away, so it will never be walked back to. Same exit as a
+                // pit: the volume becomes slow regen and the piece stops ticking.
+                if (dist > s.severedMaxDistance)
+                {
+                    Resolve(absorbed: false, contactDir: Vector2.zero);
+                    return;
+                }
+
                 if (!armed && airTime >= s.absorbArmDelay
                     && dist > slime.SlimeRadius + ChunkWorldRadius())
                 {

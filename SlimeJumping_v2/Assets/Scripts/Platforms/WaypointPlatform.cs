@@ -16,6 +16,7 @@ namespace SlimeJumping.Platforms
         [SerializeField] float defaultSegmentDuration = 1f;
         [SerializeField] float waitTime = 0.5f;
         [SerializeField] bool loop = true;      // false = ping-pong
+        [SerializeField] int startIndex;        // 출발 경유점 인덱스
         [SerializeField] AnimationCurve easeCurve = AnimationCurve.Linear(0, 0, 1, 1);
 
         public System.Func<bool> CanAdvance;
@@ -42,6 +43,10 @@ namespace SlimeJumping.Platforms
             worldWaypoints = new Vector2[localWaypoints.Length];
             for (int i = 0; i < localWaypoints.Length; i++)
                 worldWaypoints[i] = rb.position + localWaypoints[i];
+
+            // loop 은 마지막 경유점에서 0번으로 순간이동하므로 거기서 출발할 수 없다.
+            currentIndex = Mathf.Clamp(startIndex, 0, worldWaypoints.Length - (loop ? 2 : 1));
+            if (currentIndex == worldWaypoints.Length - 1) direction = -1;
         }
 
         protected override (Vector2, float) ComputeMotion(float dt)

@@ -81,6 +81,11 @@ MonoBehaviour:
   meniscusSpringK: 90
   meniscusSpringDamping: 9
   cutConcaveDepthFrac: 0
+  sealRelaxDecay: 5
+  sealRelaxFreq: 2.5
+  sealRelaxBounce: 0.35
+  sealRelaxSpread: 1.5
+  sealRelaxWobbleKick: 0.9
   quiverAmp: 0
   quiverFreq: 16
   quiverDecay: 5
@@ -88,7 +93,6 @@ MonoBehaviour:
   tearAmp: 0.05
   tearFreq: 2.5
   lipBand: 0.18
-  lipMag: 0.06
   filletMag: 0
   mergeBulgeMag: 0.06
   meniscusSealMargin: 1.02
@@ -106,6 +110,7 @@ MonoBehaviour:
   spinMinDeg: 0
   spinMaxDeg: 0
   severedMaxAirTime: 4
+  severedMaxDistance: 14
   pieceFlatten: 1
   piecePerpExpandMax: 1.2
   pieceSharpBeat: 0.15
@@ -153,6 +158,6 @@ MonoBehaviour:
   absorbPopKick: 0.6
   mergeWobbleKick: 0.8
   mergeFaceFrac: 0.85
-  slowRecoveryDuration: 45
+  slowRecoveryDuration: 6
   woundedJumpMultiplierMin: 0.9
   woundedScaleRef: 0.6

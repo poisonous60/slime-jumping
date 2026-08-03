@@ -132,6 +132,8 @@ namespace SlimeJumping.Settings
         public float spinMaxDeg = 0f;
         [Tooltip("안전장치: 연속 공중 시간(흡인 중 제외)이 이를 넘으면 구덩이 추락으로 보고 조각 소멸 → 느린 자연 회복으로 전환.")]
         public float severedMaxAirTime = 4f;
+        [Tooltip("안전장치: 슬라임이 이보다 멀어지면 조각을 두고 왔다고 보고 소멸 → 느린 자연 회복으로 전환 (월드 m). 화면 대각 반경(≈12.5)보다 크게 잡아야 소멸이 화면 안에서 안 보임.")]
+        public float severedMaxDistance = 14f;
 
         [Header("조각 — 표면장력 round-up (납작 sliver → 둥근 droplet)")]
         [Tooltip("스폰 시 사출축 방향 납작 정도. 0.1 = 아주 납작.")]
@@ -201,8 +203,8 @@ namespace SlimeJumping.Settings
         // ───────────────────────── 회복 ─────────────────────────
 
         [Header("회복 — 흡수가 곧 회복")]
-        [Tooltip("조각을 영영 잃었을 때(낙사 등)의 느린 자연 회복: 풀 부피 기준 이 시간에 걸쳐 재생. 흡수는 mergeDuration 만에 그 조각 몫을 즉시 회복.")]
-        public float slowRecoveryDuration = 45f;
+        [Tooltip("조각을 영영 잃었을 때(낙사·두고 떠남)의 느린 자연 회복: 잃은 몫이 전부 돌아오기까지 걸리는 시간 (초). 손실량과 무관하게 항상 이 시간 — 상처 봉합이 끝난 시점부터 카운트. 흡수는 mergeDuration 만에 그 조각 몫을 즉시 회복.")]
+        [Min(0.05f)] public float slowRecoveryDuration = 15f;
 
         [Header("회복 — 점프력 (몸집 파생, 독립 타이머 없음)")]
         [Range(0f, 1f)]

@@ -40,6 +40,8 @@ Because exec compiles and runs real C#, it can do anything a custom tool can —
 
 unity-cli 확인은 `console` 컴파일 에러 뿐. 예상 못 한 출력 나와도 조사 금지, 한 줄 보고 후 정지. Play 모드 금지.
 
+Unity 자산(`.unity`/`.prefab`/`.asset`) 조회는 무조건 `unity-cli exec`. Read·Grep 으로 직접 뒤지지 마.
+
 
 
 ### Coding Convention

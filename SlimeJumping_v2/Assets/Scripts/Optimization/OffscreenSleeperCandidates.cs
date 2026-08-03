@@ -43,10 +43,13 @@ namespace SlimeJumping.Optimization
         };
 
         /// <summary>True when <paramref name="go"/> hosts a candidate but must not sleep: a SnowField
-        /// anywhere in its hierarchy clears activeStrips on disable and costs ~287ms to rebuild.</summary>
+        /// anywhere in its hierarchy clears activeStrips on disable and costs ~287ms to rebuild, and a
+        /// WaypointPlatform's journeyProgress is a FixedUpdate accumulator — sleeping freezes its phase
+        /// while platforms that stayed awake keep advancing, so authored choreography drifts apart.</summary>
         public static bool ShouldSkipAttach(GameObject go)
         {
-            return go.GetComponentInChildren<SnowField>(true) != null;
+            return go.GetComponentInChildren<SnowField>(true) != null
+                || go.GetComponentInChildren<WaypointPlatform>(true) != null;
         }
     }
 }

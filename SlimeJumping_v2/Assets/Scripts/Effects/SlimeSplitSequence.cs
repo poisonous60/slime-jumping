@@ -71,6 +71,7 @@ namespace SlimeJumping.Effects
                                || phase == CutPhase.Settle;
         private Vector2 mergeDirWorld;     // body center → contact point (world)
         private float slowPool;            // volume owed by LOST chunks, regenerated slowly
+        private float slowRate;            // volume/s that drains slowPool in slowRecoveryDuration
 
         private struct PendingMerge
         {
@@ -141,6 +142,9 @@ namespace SlimeJumping.Effects
         {
             if (volume <= 0f) return;
             slowPool += volume;
+            // Rate is fixed at loss time so the pool always drains in slowRecoveryDuration flat,
+            // however much was lost. A second loss re-spreads the leftover over a fresh duration.
+            slowRate = slowPool / Mathf.Max(0.05f, settings.slowRecoveryDuration);
             IsActive = true;
         }
 
@@ -376,12 +380,12 @@ namespace SlimeJumping.Effects
 
         private void UpdateSlowRecovery(float dt)
         {
-            // Lost-chunk fallback: ambient regen, full body volume per slowRecoveryDuration.
+            // Lost-chunk fallback: ambient regen, the lost volume back over slowRecoveryDuration.
             if (slowPool <= 0f || merging || phase != CutPhase.None) return;
             float ratio = slime.BodyScaleRatio;
             if (ratio >= 0.999f) { slowPool = 0f; return; }
 
-            float dv = Mathf.Min(slowPool, dt / Mathf.Max(1f, settings.slowRecoveryDuration));
+            float dv = Mathf.Min(slowPool, slowRate * dt);
             slowPool -= dv;
             float vol = Mathf.Min(1f, ratio * ratio * ratio + dv);
             slime.SetBodyScale(Mathf.Pow(vol, 1f / 3f));

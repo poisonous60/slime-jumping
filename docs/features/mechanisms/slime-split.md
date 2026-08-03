@@ -8,7 +8,8 @@
 블레이드(Saw/Knife)에 베이거나 공중에서 스스로 분열하면 슬라임은 **부피를 잃고
 출렁이며 다시 둥글어진 작은 슬라임**이 된다. 잘린 단면이라는 지속 상태가 없다 —
 지속 상태는 "작고 동그란 슬라임 + 바닥 어딘가의 내 조각"이고, heal은 **조각을 주워
-담는 것**(흡수)이다. 조각을 영영 잃으면(낙사) 느린 자연 회복으로 전환된다.
+담는 것**(흡수)이다. 조각을 영영 잃으면(낙사, 또는 두고 멀리 떠남) 느린 자연 회복으로
+전환된다.
 
 - 상위: [saw-knife-hazard.md](saw-knife-hazard.md) (해저드 본체 + SliceEffect)
 - 관련: [../slime/stunned.md](../slime/stunned.md)
@@ -100,8 +101,9 @@ semi-implicit Euler, dt 클램프)으로 추적:
     `mergeWobbleKick` 국소 잔물결. **컷 과도기 중 도착하면 그 부피를 CLOSE 램프의 목적지
     (postScale)에 합산** — 수축이 회복으로 한 동작으로 블렌드, "다 줄어든 뒤 다시 커짐"
     2단계 없음 (2026-06-11 2차 피드백). 새 컷이 머지를 끊으면 잔여 부피 먼저 정산.
-  - `NotifyChunkLost(vol)` — 조각 영구 분실(낙사): 그 부피가 `slowPool`로 전환,
-    `slowRecoveryDuration`(풀 부피 기준) 속도의 **느린 자연 회복** — 소프트락 불가.
+  - `NotifyChunkLost(vol)` — 조각 영구 분실(낙사 / 두고 떠남): 그 부피가 `slowPool`로 전환,
+    잃은 몫이 전부 돌아오는 데 `slowRecoveryDuration` 초 — 손실량과 무관한 고정 시간
+    (손실 시점에 rate 를 박아둠). **느린 자연 회복** — 소프트락 불가.
 - **점프력 = 몸집 파생**: `SplitLaunchMultiplier`는 매 프레임 현재 `BodyScaleRatio`에서
   계산(`woundedScaleRef`→`woundedJumpMultiplierMin` 선형 매핑). 독립 회복 타이머 없음 —
   흡수로 몸이 돌아오면 점프력도 같이 돌아온다.
@@ -121,8 +123,11 @@ melt/WorldTrail 얼룩 **삭제**. 라이프사이클:
    (`absorbPullAccel/MaxSpeed`), 셰이더 velocity-stretch에 `absorbStretchBoost`를 얹어
    본체 쪽으로 길쭉하게 늘어나며 끌려옴. 스폰 직후엔 `absorbArmDelay` + "몸 밖으로 한 번
    나갔는가" 체크로 무장 — 같은 프레임 재흡수 방지.
-4. **소멸** — 흡수(`NotifyChunkAbsorbed`) 또는 연속 공중 `severedMaxAirTime` 초과 = 낙사
-   (`NotifyChunkLost`). 부피는 정확히 한 번만 정산(`resolved` 가드).
+4. **소멸** — 흡수(`NotifyChunkAbsorbed`), 또는 `NotifyChunkLost` 두 갈래:
+   연속 공중 `severedMaxAirTime` 초과 = 낙사, 슬라임과의 거리 `severedMaxDistance` 초과 =
+   두고 떠남. 후자는 화면 대각 반경 밖에서만 일어나도록 잡아 소멸이 눈에 띄지 않는다 —
+   조각을 남긴 채 진행하면 회수 대신 `slowPool` 느린 회복.
+   부피는 정확히 한 번만 정산(`resolved` 가드).
 
 **플레이어와 절대 충돌하지 않음**: 스포너가 조각 콜라이더에 `excludeLayers = 슬라임 레이어`
 (엔진 레벨, 수명 무관). 과거의 "조각이 밑에 깔리면 무한 airborne" 버그는
@@ -227,7 +232,7 @@ melt/WorldTrail 얼룩 **삭제**. 라이프사이클:
 [컷—퀴버] quiverAmp/Freq/Decay/SpatialFreq ·
 [컷—과도기] cutHoldDuration/closeDuration + closeBodyCurve(봉합이 이 수축에 잠금), gather 군 ·
 [컷—상처 look] tear/림(`lipBand`+`filletMag`+`mergeBulgeMag`)/`meniscusSealMargin`/cap 색 군 ·
-[조각] 사출(pieceSizeScale)/round-up(piecePerpExpandMax)/jiggle/절단면(pieceCutFaceFrac)/잔존(restBreath)/흡수(absorbPull·Arm·Stretch) ·
+[조각] 사출(pieceSizeScale)/round-up(piecePerpExpandMax)/jiggle/절단면(pieceCutFaceFrac)/잔존(restBreath)/흡수(absorbPull·Arm·Stretch)/분실(severedMaxAirTime·severedMaxDistance) ·
 [흡수—합체] mergeDuration/absorbPopKick/mergeWobbleKick/mergeFaceFrac ·
 [회복] slowRecoveryDuration, woundedJumpMultiplierMin/woundedScaleRef (몸집 파생).
 SlimeVisual은 `splitSettings` 참조 필요(Setup 메뉴가 자동 와이어링).
