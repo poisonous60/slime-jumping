@@ -13,16 +13,21 @@ MonoBehaviour:
   m_Name: CloudPlatformConfig
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.CloudPlatformConfig
   sinkDepth: 0.3
-  sinkTime: 0.14
-  launchDelay: 0.05
-  baseHopSpeed: 4.5
-  maxLaunchSpeed: 14
-  timingWindow: 0.16
-  jumpKey: 32
+  sinkTime: 0.2
+  reboundTime: 0.15
+  idleFuseTime: 0.35
+  holdFuseTime: 0.35
+  idlePopSpeed: 4.5
+  releaseFloorSpeed: 14
+  holdPopSpeed: 12
   riseVisualHeight: 1.1
   riseVisualTime: 0.9
   respawn: 1
   respawnDelay: 1.5
+  regenTime: 0.4
+  regenBlockLayers:
+    serializedVersion: 2
+    m_Bits: 1
   spread: 1
   rise: 0.9
   life: 0.42

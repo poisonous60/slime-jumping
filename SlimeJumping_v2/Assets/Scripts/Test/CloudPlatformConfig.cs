@@ -10,14 +10,19 @@ namespace SlimeJumping.Platforms
     {
         [Header("눌림 / 리바운드")]
         public float sinkDepth = 0.3f;     // 눌리는 깊이.
-        public float sinkTime = 0.14f;     // 바닥까지 시간. 퍼펙트 점프 타이밍 = 이 순간.
-        public float launchDelay = 0.05f;  // 바닥 후 발사까지(리바운드).
+        public float sinkTime = 0.14f;     // 바닥까지 시간.
+        public float reboundTime = 0.05f;  // 바닥에서 rest 로 돌아오는 시간. 순수 비주얼, 퓨즈와 무관.
 
-        [Header("발사 (타이밍)")]
-        public float baseHopSpeed = 4.5f;      // 점프 안 누르면.
-        public float maxLaunchSpeed = 14f;     // 완벽 타이밍.
-        public float timingWindow = 0.16f;     // 이상 시점 ± 관대함(초).
-        public KeyCode jumpKey = KeyCode.Space;
+        [Header("퓨즈")]
+        public float idleFuseTime = 0.35f;   // Space 안 누른 채 버티는 시간.
+        public float holdFuseTime = 0.25f;   // Space 누른 뒤 버티는 시간.
+                                             // 슬라임 자체 오토런치(chargeRadius/autoDriftSpeed + chargeFullAimTime)보다
+                                             // 짧아야 "계속 누름" 단계가 성립. 길면 슬라임이 먼저 발사돼 "뗌" 으로 붕괴.
+
+        [Header("점프력 3단계")]
+        public float idlePopSpeed = 4.5f;       // 안 누름 — 조준이 없으니 수직, 작게.
+        public float releaseFloorSpeed = 9f;    // 뗌 — 내 차지와 max, 조준 방향 유지.
+        public float holdPopSpeed = 14f;        // 계속 누름 — 조준 방향, 최대.
 
         [Header("발사 후 구름 상승/소멸")]
         public float riseVisualHeight = 1.1f;
@@ -25,7 +30,9 @@ namespace SlimeJumping.Platforms
 
         [Header("Respawn")]
         public bool respawn = true;
-        public float respawnDelay = 1.5f;
+        public float respawnDelay = 1.5f;   // 소멸 후 다시 모이기 시작까지.
+        public float regenTime = 0.7f;      // 구름이 중심에서 부풀어 오르는 시간. 이 동안 콜라이더 off.
+        public LayerMask regenBlockLayers = 1;   // 겹쳐 있으면 재생성 보류(Default = 슬라임).
 
         [Header("조각 팝 (disperse)")]
         public float spread = 1.0f;       // 바깥으로 튀는 거리.
