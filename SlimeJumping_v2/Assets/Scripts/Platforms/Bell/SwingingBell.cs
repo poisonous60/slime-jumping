@@ -1,0 +1,497 @@
+using UnityEngine;
+using SlimeJumping.Audio;
+using SlimeJumping.Controller;
+
+namespace SlimeJumping.Platforms.Bell
+{
+    // Hanging bell: the body swings about a fixed pivot, the clapper inside lags behind, and the sound
+    // fires when the clapper reaches the wall — never on the slime's own impact.
+    // Yoke-bell-clapper double physical pendulum, eq. 2.1-2.6 of arXiv:1505.04389.
+    // phi1 = bell angle from straight down, phi2 = clapper angle from straight down (rad, CCW+).
+    // No joint: a Box2D hinge cannot express the impact law, and this repo rejected dynamic hinges twice.
+    [DisallowMultipleComponent]
+    public class SwingingBell : PlatformMotor
+    {
+        [SerializeField] BellConfig configOverride;
+        [Tooltip("The bell mesh transform. All geometry in the config is measured in ITS local space.")]
+        [SerializeField] Transform bellVisual;
+        [Tooltip("The clapper mesh transform, a child of the bell visual.")]
+        [SerializeField] Transform clapperVisual;
+
+        BellConfig cfg;
+
+        // Captured once at Awake. Reading the pivot live would let it ride the body it is meant to anchor.
+        Vector2 pivotWorld;
+        Vector2 restPos;
+        float restRot;
+        float visualScale;
+        Vector3 clapperRestLocalPos;
+        Quaternion clapperRestLocalRot;
+
+        float phi1, phi1Dot;
+        float phi2, phi2Dot;
+        float riderTorque;
+        float impactCooldown, soundCooldown;
+        bool onWall;
+
+        readonly ContactPoint2D[] contactScratch = new ContactPoint2D[8];
+        float offSlimeSeconds = float.MaxValue;
+        SlimeController trackedSlime;
+        Vector2 prevSlimeVel;
+
+        // Pulled by SwingingBellDebug; nothing here feeds the simulation.
+        float lastImpactSpeed, lastImpactKick, lastImpactLever;
+        Vector2 lastImpactDir;
+        bool lastImpactBounced;
+        int strikeCount, silentStrikeCount;
+        float lastStrikeSpeed;
+        string lastRingResult = "-";
+
+        public float BellAngularSpeed => phi1Dot;
+        public float LastImpactSpeed => lastImpactSpeed;
+        public float LastImpactKick => lastImpactKick;
+        /// <summary>Travel direction the bell actually used, read a tick before the slime's own landing spends it.</summary>
+        public Vector2 LastImpactDir => lastImpactDir;
+        public float LastImpactLever => lastImpactLever;
+        public bool LastImpactBounced => lastImpactBounced;
+        public int StrikeCount => strikeCount;
+        public int SilentStrikeCount => silentStrikeCount;
+        public float LastStrikeSpeed => lastStrikeSpeed;
+        /// <summary>What the last strike actually did on the way to the speaker: the clip it played, or
+        /// the gate that swallowed it. Recorded inside Ring, so it is the played fact and not a guess.</summary>
+        public string LastRingResult => lastRingResult;
+        public int StrikeClipCount => cfg != null && cfg.strikeClips != null ? cfg.strikeClips.Length : 0;
+        /// <summary>The config actually in use after override/Resources resolution.</summary>
+        public BellConfig Config => cfg;
+
+        /// <summary>Bell tilt in degrees, + = counter-clockwise. Read-only view for debug tooling.</summary>
+        public float BellAngle => phi1 * Mathf.Rad2Deg;
+        /// <summary>Clapper tilt relative to the bell in degrees; ±StrikeAngle means it is on the wall.</summary>
+        public float ClapperRelativeAngle => (phi2 - phi1) * Mathf.Rad2Deg;
+        /// <summary>True while the clapper is resting against the wall rather than swinging free.</summary>
+        public bool ClapperOnWall => onWall;
+        /// <summary>Raised on every clapper-to-wall hit, with its closing speed in rad/s. Fires whether or
+        /// not the hit was loud enough to be heard, so listeners can react to soft taps too.</summary>
+        public event System.Action<float> Struck;
+
+        protected override void Awake()
+        {
+            base.Awake();   // kinematic + interpolated Rigidbody2D
+
+            cfg = BellConfig.Resolve(configOverride);
+            restPos = rb.position;
+            restRot = rb.rotation;
+
+            if (bellVisual == null) bellVisual = transform.childCount > 0 ? transform.GetChild(0) : transform;
+            visualScale = Mathf.Abs(bellVisual.lossyScale.y);
+            if (visualScale < 0.0001f) visualScale = 1f;
+
+            pivotWorld = bellVisual.TransformPoint(new Vector3(0f, cfg.pivotLocalY, 0f));
+            WarnOnInvertedGeometry();
+
+            if (clapperVisual != null)
+            {
+                clapperRestLocalPos = clapperVisual.localPosition;
+                clapperRestLocalRot = clapperVisual.localRotation;
+            }
+        }
+
+        // ---- Derived physical quantities (config is authored in feel, not in kg m^2) ----
+
+        // World-space lever arms. The config measures them on the mesh; the visual's scale makes them world.
+        float ArmBellCom => Mathf.Max(0.0001f, (cfg.pivotLocalY - cfg.bellComLocalY) * visualScale);
+        float ArmClapperAxis => (cfg.pivotLocalY - cfg.clapperAxisLocalY) * visualScale;
+        float ArmClapperCom => Mathf.Max(0.0001f, (cfg.clapperAxisLocalY - cfg.clapperComLocalY) * visualScale);
+
+        // An arm that is zero or upside down means the heights were authored out of order, which the
+        // Max() above would otherwise turn into a plausible-looking bell that behaves like nothing.
+        void WarnOnInvertedGeometry()
+        {
+            if (cfg.bellComLocalY < cfg.pivotLocalY && cfg.clapperComLocalY < cfg.clapperAxisLocalY) return;
+            Debug.LogWarning($"[SwingingBell] '{name}': geometry heights are out of order. Expected " +
+                             "Pivot Local Y > Bell Com Local Y and Clapper Axis Local Y > Clapper Com " +
+                             $"Local Y, got pivot={cfg.pivotLocalY} bellCom={cfg.bellComLocalY} " +
+                             $"clapperAxis={cfg.clapperAxisLocalY} clapperCom={cfg.clapperComLocalY}.", this);
+        }
+
+        static float Gravity => Mathf.Max(0.0001f, -Physics2D.gravity.y);
+
+        // Bb from the authored swing period. Small-angle form of eq. 2.2 with the clapper riding along:
+        //   T = 2*pi*sqrt((Bb + m*lc^2) / ((M*L + m*lc)*g))
+        // Floored at the parallel-axis minimum M*L^2 — a rigid body cannot have less inertia than that.
+        float BellInertia()
+        {
+            float m = cfg.clapperMass, lc = ArmClapperAxis, L = ArmBellCom;
+            float w = 2f * Mathf.PI / Mathf.Max(0.05f, cfg.bellSwingPeriod);
+            float bb = (cfg.bellMass * L + m * lc) * Gravity / (w * w) - m * lc * lc;
+            float floor = cfg.bellMass * L * L;
+            if (bb < floor && !warnedPeriodFloor)
+            {
+                warnedPeriodFloor = true;
+                float minPeriod = 2f * Mathf.PI * Mathf.Sqrt((floor + m * lc * lc) /
+                                                             ((cfg.bellMass * L + m * lc) * Gravity));
+                Debug.LogWarning($"[SwingingBell] '{name}': Bell Swing Period {cfg.bellSwingPeriod:F2}s is " +
+                                 $"below the {minPeriod:F2}s this geometry can reach, so it swings at " +
+                                 $"{minPeriod:F2}s instead. Raise the period, or move Bell Com Local Y " +
+                                 "closer to the pivot to shorten the arm.", this);
+            }
+            return Mathf.Max(bb, floor);
+        }
+
+        bool warnedPeriodFloor;
+
+        // Bc measured out from the point-mass minimum m*l^2, which is the least a rigid clapper can have.
+        // Its period follows: T = 2*pi*sqrt(Bc / (m*g*l)), so spread 1 is the eagerest possible clapper.
+        float ClapperInertia()
+        {
+            float l = ArmClapperCom;
+            return cfg.clapperMass * l * l * Mathf.Max(1f, cfg.clapperInertiaSpread);
+        }
+
+        // ---- Motion ----
+
+        protected override (Vector2 position, float rotation) ComputeMotion(float dt)
+        {
+            if (cfg == null) cfg = BellConfig.Resolve(configOverride);
+
+            ScanSlimeContact(dt);
+            // After the scan, so the scan sees the tick before this one — the one still holding flight speed.
+            if (trackedSlime != null) prevSlimeVel = trackedSlime.Velocity;
+
+            int n = Mathf.Max(1, cfg.substeps);
+            float h = dt / n;
+            for (int i = 0; i < n; i++)
+            {
+                Integrate(h);
+                ResolveWallContact();
+            }
+
+            // Consumed, not held: PlatformCarrier re-supplies it every tick the slime is still attached,
+            // so zeroing here makes a detach fade the load out on its own.
+            riderTorque = 0f;
+            impactCooldown = Mathf.Max(0f, impactCooldown - dt);
+            soundCooldown = Mathf.Max(0f, soundCooldown - dt);
+
+            float maxRad = cfg.maxBellAngle * Mathf.Deg2Rad;
+            if (phi1 > maxRad) { phi1 = maxRad; if (phi1Dot > 0f) phi1Dot = 0f; }
+            else if (phi1 < -maxRad) { phi1 = -maxRad; if (phi1Dot < 0f) phi1Dot = 0f; }
+
+            // Rigid rotation about the hang point, which is above the body origin.
+            float deg = phi1 * Mathf.Rad2Deg;
+            Vector2 arm = restPos - pivotWorld;
+            float rad = phi1;
+            float c = Mathf.Cos(rad), s = Mathf.Sin(rad);
+            Vector2 rotated = new Vector2(arm.x * c - arm.y * s, arm.x * s + arm.y * c);
+            return (pivotWorld + rotated, restRot + deg);
+        }
+
+        // Semi-implicit Euler on the 2x2 system in (phi1'', phi2''), solved by Cramer's rule.
+        void Integrate(float h)
+        {
+            float M = cfg.bellMass, m = cfg.clapperMass;
+            float L = ArmBellCom, l = ArmClapperCom, lc = ArmClapperAxis;
+            float g = Gravity;
+            float Bb = BellInertia(), Bc = ClapperInertia();
+            float dc = cfg.clapperDamping;
+
+            float d = phi2 - phi1;
+            float cos = Mathf.Cos(d), sin = Mathf.Sin(d);
+            float k = m * lc * l;
+
+            float a11 = Bb + m * lc * lc;
+            float a12 = k * cos;
+            float a21 = k * cos;
+            float a22 = Bc;
+
+            float b1 = k * sin * phi2Dot * phi2Dot
+                     - (M * L + m * lc) * g * Mathf.Sin(phi1)
+                     - cfg.bellDamping * phi1Dot
+                     + dc * (phi2Dot - phi1Dot)
+                     + riderTorque;
+            float b2 = -k * sin * phi1Dot * phi1Dot
+                     - m * g * l * Mathf.Sin(phi2)
+                     - dc * (phi2Dot - phi1Dot);
+
+            float det = a11 * a22 - a12 * a21;
+            if (Mathf.Abs(det) < 1e-8f) return;
+
+            float acc1 = (b1 * a22 - a12 * b2) / det;
+            float acc2 = (a11 * b2 - b1 * a21) / det;
+
+            phi1Dot += acc1 * h;
+            phi2Dot += acc2 * h;
+            phi1 += phi1Dot * h;
+            phi2 += phi2Dot * h;
+        }
+
+        // eq. 2.1: contact when |phi1 - phi2| reaches the strike angle. eq. 2.5/2.6 resolve it by keeping
+        // the system's angular momentum and returning only sqrt(k) of the relative speed.
+        void ResolveWallContact()
+        {
+            float alpha = cfg.strikeAngle * Mathf.Deg2Rad;
+            float rel = phi2 - phi1;
+
+            if (Mathf.Abs(rel) < alpha)
+            {
+                // Only count it as off the wall once it has visibly come clear, so the next contact is a
+                // fresh strike rather than the tail of this one.
+                if (Mathf.Abs(rel) < alpha - cfg.clapperSeparationAngle * Mathf.Deg2Rad) onWall = false;
+                return;
+            }
+
+            float w = phi2Dot - phi1Dot;
+            if (w * rel > 0f)   // still travelling into the wall, not already leaving it
+            {
+                float m = cfg.clapperMass, lc = ArmClapperAxis, l = ArmClapperCom;
+                float cos = Mathf.Cos(rel);
+                float A = BellInertia() + m * lc * lc + m * lc * l * cos;
+                float B = ClapperInertia() + m * lc * l * cos;
+                float sum = A + B;
+                if (Mathf.Abs(sum) > 1e-8f)
+                {
+                    // Bouncing only on the fresh hit. A clapper already leaning on the wall is resting
+                    // contact, so it just loses its inward speed instead of being flung off every substep.
+                    float restitution = onWall ? 0f : cfg.strikeRestitution;
+                    float momentum = A * phi1Dot + B * phi2Dot;
+                    float wAfter = -Mathf.Sqrt(restitution) * w;
+                    phi1Dot = (momentum - B * wAfter) / sum;
+                    phi2Dot = phi1Dot + wAfter;
+                }
+
+                // The bounce series after a hit is the same hit still ringing out, not new strikes.
+                if (!onWall)
+                {
+                    onWall = true;
+                    Ring(Mathf.Abs(w), rel);
+                    // After Ring, so a listener reads this hit's own LastRingResult.
+                    if (Struck != null) Struck(Mathf.Abs(w));
+                }
+            }
+
+            // Park it exactly on the wall so a fast clapper cannot pass through in one substep.
+            phi2 = phi1 + Mathf.Sign(rel) * alpha;
+        }
+
+        void Ring(float closingSpeed, float side)
+        {
+            strikeCount++;
+            lastStrikeSpeed = closingSpeed;
+
+            if (soundCooldown > 0f)
+            {
+                silentStrikeCount++;
+                lastRingResult = $"GATED — sound cooldown, {soundCooldown:F2}s of {cfg.strikeSoundCooldown:F2} left";
+                return;
+            }
+            if (closingSpeed < cfg.minStrikeSpeed)
+            {
+                silentStrikeCount++;
+                lastRingResult = $"GATED — closing {closingSpeed:F2} < minStrikeSpeed {cfg.minStrikeSpeed:F2}";
+                return;
+            }
+
+            var clips = cfg.strikeClips;
+            if (clips == null || clips.Length == 0)
+            {
+                silentStrikeCount++;
+                lastRingResult = "GATED — no strikeClips on the config";
+                return;
+            }
+
+            float strength = Mathf.Clamp01(closingSpeed / cfg.soundRefSpeed);
+            int index = Mathf.Clamp(Mathf.FloorToInt(strength * clips.Length), 0, clips.Length - 1);
+            var clip = clips[index];
+            if (clip == null)
+            {
+                silentStrikeCount++;
+                lastRingResult = $"GATED — strikeClips[{index}] is empty";
+                return;
+            }
+
+            float volume = cfg.volumeCurve.Evaluate(strength) * cfg.volumeScale;
+            float pitch = cfg.pitchCurve.Evaluate(strength) + Random.Range(-cfg.pitchJitter, cfg.pitchJitter);
+            SoundService.PlayAt(clip, StrikeWorldPoint(side), SoundCategory.SFX_Object,
+                                volume, Mathf.Max(0.01f, pitch));
+
+            lastRingResult = SoundService.Instance == null
+                ? "DROPPED — PlayAt called but no SoundService instance"
+                : $"PLAYED clip[{index}] '{clip.name}' vol={volume:F2} pitch={pitch:F2}";
+            soundCooldown = cfg.strikeSoundCooldown;
+        }
+
+        // Where the ball met the wall, so the sound comes from the struck side rather than the pivot.
+        Vector3 StrikeWorldPoint(float side)
+        {
+            float armAxis = ArmClapperAxis, armBall = ArmClapperCom;
+            float a = Mathf.Sign(side) * cfg.strikeAngle * Mathf.Deg2Rad + phi1;
+            Vector2 axis = pivotWorld + new Vector2(Mathf.Sin(phi1), -Mathf.Cos(phi1)) * armAxis;
+            return axis + new Vector2(Mathf.Sin(a), -Mathf.Cos(a)) * armBall;
+        }
+
+        protected override void OnAfterMotion(float dt)
+        {
+            if (clapperVisual == null) return;
+
+            // Local to the bell visual, so it composes with the body rotation instead of replacing it.
+            var q = Quaternion.Euler(0f, 0f, (phi2 - phi1) * Mathf.Rad2Deg);
+            var axis = new Vector3(0f, cfg.clapperAxisLocalY, 0f);
+            clapperVisual.localRotation = q * clapperRestLocalRot;
+            clapperVisual.localPosition = axis + q * (clapperRestLocalPos - axis);
+        }
+
+        // ---- Slime -> bell ----
+
+        // Polled here rather than in OnCollisionEnter2D. At order -100 the slime still holds the velocity
+        // it arrived with; by the time a collision callback runs it can already be spent or reversed,
+        // which read as "no reaction" and "the bell swings the wrong way".
+        void ScanSlimeContact(float dt)
+        {
+            int n = rb.GetContacts(contactScratch);
+            SlimeController slime = null;
+            Vector2 point = Vector2.zero;
+
+            for (int i = 0; i < n; i++)
+            {
+                var col = contactScratch[i].collider;
+                if (col == null) continue;
+                var s = col.GetComponentInParent<SlimeController>();
+                if (s == null) continue;
+                slime = s;
+                point = contactScratch[i].point;
+                break;
+            }
+
+            if (slime != null) trackedSlime = slime;
+            if (slime == null) { offSlimeSeconds += dt; return; }
+
+            bool fresh = offSlimeSeconds >= cfg.impactCooldown;
+            offSlimeSeconds = 0f;
+            if (!fresh) return;
+
+            Vector2 v = ArrivalVelocity(slime);
+            float speed = v.magnitude;
+            lastImpactSpeed = speed;
+            lastImpactBounced = false;
+            lastImpactKick = 0f;
+            if (speed < cfg.minImpactSpeed) return;
+
+            Vector2 dir = v / speed;
+            lastImpactDir = dir;
+            Vector2 r = point - pivotWorld;
+
+            // Anchored to the swing it should produce, not to a mass number: the arm and the direction
+            // still shape it, but retuning the bell's heaviness cannot silently mute slams.
+            float lever = r.x * dir.y - r.y * dir.x;
+
+            // A slam aimed at the pivot has no arm and rigidly produces nothing, which plays as the bell
+            // ignoring the hit. Floor the arm and point it the way the slime was travelling.
+            float minLever = cfg.minLeverFraction * r.magnitude;
+            if (Mathf.Abs(lever) < minLever)
+            {
+                float side = Mathf.Abs(dir.x) > 1e-4f ? Mathf.Sign(dir.x)
+                           : (Mathf.Abs(lever) > 1e-6f ? Mathf.Sign(lever) : 1f);
+                lever = side * minLever;
+            }
+            lastImpactLever = lever;
+
+            // Held inside a band, not just capped. The cadence a slam produces is sharply band-limited:
+            // under it the bell rings once minutes later instead of now, over it the first two strikes
+            // collide and the rest arrive after a long silence.
+            float raw = ReferenceKick() * (speed / cfg.slamReferenceSpeed) * (lever / ArmBellCom);
+            float span = Mathf.Clamp(Mathf.Abs(raw), Mathf.Min(cfg.minImpactKick, cfg.maxImpactKick),
+                                     cfg.maxImpactKick);
+            float kick = Mathf.Sign(raw) * span;
+            phi1Dot += kick;
+            lastImpactKick = kick;
+
+            if (speed >= cfg.bounceSpeedThreshold) lastImpactBounced = ThrowSlimeOff(slime, r);
+        }
+
+        // Angular speed that swings the bell to Slam Swing Degrees from rest, from energy:
+        //   1/2*I*w^2 = (M*L + m*lc)*g*(1 - cos(theta))
+        float ReferenceKick()
+        {
+            float m = cfg.clapperMass, lc = ArmClapperAxis;
+            float inertia = Mathf.Max(0.0001f, BellInertia() + m * lc * lc);
+            float restore = (cfg.bellMass * ArmBellCom + m * lc) * Gravity;
+            float rise = 1f - Mathf.Cos(cfg.slamSwingDegrees * Mathf.Deg2Rad);
+            return Mathf.Sqrt(2f * restore * rise / inertia);
+        }
+
+        // Fast arrivals slam and are thrown clear; slow ones fall through and cling like any surface.
+        // ForceAirborneWithVelocity is the same entry point JumpPad and the bamboo throw use — it drops
+        // the carrier, registers the launch-clearance ignore so the slime cannot re-stick, and goes Airborne.
+        // The tick a slime lands, SlimeController has already zeroed its live velocity, so reading that
+        // alone reports a dead-still slam and the bell ignores the very first hit. Its captured landing
+        // impact survives that, and the previous tick's velocity covers a slam that never attaches.
+        Vector2 ArrivalVelocity(SlimeController slime)
+        {
+            Vector2 best = slime.Velocity;
+            if (prevSlimeVel.sqrMagnitude > best.sqrMagnitude) best = prevSlimeVel;
+
+            Vector2 captured = -slime.SurfaceNormal * slime.ImpactNormalSpeed
+                             + slime.SurfaceTangent * slime.ImpactTangentSpeed;
+            if (captured.sqrMagnitude > best.sqrMagnitude) best = captured;
+
+            return best;
+        }
+
+        bool ThrowSlimeOff(SlimeController slime, Vector2 r)
+        {
+            if (cfg.bounceSpeed <= 0f) return false;
+            if (slime.IsCharging) return false;   // a charge always ends in its own launch
+
+            // Outward from the bell's axis, so the throw leaves the flank it was struck on. Taken from
+            // the geometry rather than the contact normal, whose sign depends on which collider reports.
+            Vector2 down = new Vector2(Mathf.Sin(phi1), -Mathf.Cos(phi1));
+            Vector2 outward = r - down * Vector2.Dot(r, down);
+            if (outward.sqrMagnitude < 1e-6f) return false;
+            outward.Normalize();
+
+            // Flat, not scaled by how hard it arrived: this only has to break the slime's grip, and a
+            // speed-scaled version launched it across the room.
+            Vector2 throwVel = outward * cfg.bounceSpeed
+                             + new Vector2(-r.y, r.x) * (phi1Dot * cfg.bounceCarriesSwing);
+
+            slime.ForceAirborneWithVelocity(throwVel);
+            return true;
+        }
+
+        // A slime hanging off one side is real weight on that side, so it tilts the bell.
+        public override void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity, bool isCharging)
+        {
+            if (cfg == null) return;
+            float arm = riderWorldPos.x - pivotWorld.x;
+            riderTorque = -riderMass * Gravity * arm * cfg.riderWeightScale;
+        }
+
+        public override void RemoveRider() => riderTorque = 0f;
+
+        void OnDrawGizmosSelected()
+        {
+            var c = BellConfig.Resolve(configOverride);
+            var vis = bellVisual != null ? bellVisual : transform;
+            Vector3 pivot = Application.isPlaying ? (Vector3)pivotWorld
+                                                  : vis.TransformPoint(new Vector3(0f, c.pivotLocalY, 0f));
+            float s = Mathf.Abs(vis.lossyScale.y);
+            float armAxis = (c.pivotLocalY - c.clapperAxisLocalY) * s;
+            float armBall = (c.clapperAxisLocalY - c.clapperComLocalY) * s;
+
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawWireSphere(pivot, 0.15f * s);
+
+            Vector3 axis = pivot + Vector3.down * armAxis;
+            Gizmos.color = new Color(1f, 0.6f, 0.1f);
+            Gizmos.DrawLine(pivot, axis);
+            Gizmos.DrawWireSphere(axis, 0.08f * s);
+
+            float a = c.strikeAngle * Mathf.Deg2Rad;
+            Gizmos.color = new Color(1f, 0.3f, 0.3f, 0.8f);
+            Gizmos.DrawLine(axis, axis + new Vector3(Mathf.Sin(a), -Mathf.Cos(a)) * armBall);
+            Gizmos.DrawLine(axis, axis + new Vector3(-Mathf.Sin(a), -Mathf.Cos(a)) * armBall);
+            Gizmos.color = new Color(0.4f, 0.9f, 1f);
+            Gizmos.DrawLine(axis, axis + Vector3.down * armBall);
+            Gizmos.DrawWireSphere(pivot + Vector3.down * ((c.pivotLocalY - c.bellComLocalY) * s), 0.1f * s);
+        }
+    }
+}

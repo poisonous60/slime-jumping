@@ -15,14 +15,13 @@ namespace SlimeJumping.Platforms
 
         [Header("퓨즈")]
         public float idleFuseTime = 0.35f;   // Space 안 누른 채 버티는 시간.
-        public float holdFuseTime = 0.25f;   // Space 누른 뒤 버티는 시간.
-                                             // 슬라임 자체 오토런치(chargeRadius/autoDriftSpeed + chargeFullAimTime)보다
-                                             // 짧아야 "계속 누름" 단계가 성립. 길면 슬라임이 먼저 발사돼 "뗌" 으로 붕괴.
+        public float holdFuseTime = 0.35f;   // Space 누른 뒤 버티는 시간. 오토런치(0.30s+)보다 길게 두면
+                                             // 보통 슬라임이 먼저 발사하고, 만료는 안전망 팝으로만 쓰인다.
 
-        [Header("점프력 3단계")]
-        public float idlePopSpeed = 4.5f;       // 안 누름 — 조준이 없으니 수직, 작게.
-        public float releaseFloorSpeed = 9f;    // 뗌 — 내 차지와 max, 조준 방향 유지.
-        public float holdPopSpeed = 14f;        // 계속 누름 — 조준 방향, 최대.
+        [Header("점프력")]
+        public float idlePopSpeed = 4.5f;        // 안 누름 — 조준이 없으니 수직, 작게.
+        public float chargeMinPopSpeed = 9f;     // 차징 0 발사 하한.
+        public float chargeMaxPopSpeed = 15f;    // 만충 발사 하한. min 대비 1.5~2배가 레퍼런스 대역.
 
         [Header("발사 후 구름 상승/소멸")]
         public float riseVisualHeight = 1.1f;

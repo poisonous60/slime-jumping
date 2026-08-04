@@ -18,8 +18,8 @@ MonoBehaviour:
   idleFuseTime: 0.35
   holdFuseTime: 0.35
   idlePopSpeed: 4.5
-  releaseFloorSpeed: 14
-  holdPopSpeed: 12
+  chargeMinPopSpeed: 9
+  chargeMaxPopSpeed: 15
   riseVisualHeight: 1.1
   riseVisualTime: 0.9
   respawn: 1

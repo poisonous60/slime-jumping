@@ -19,7 +19,7 @@ SlimeJumping_v2 is a **2.5D platformer** built in **Unity 6** (6000.3.11f1) wher
 ## Development Commands
 
 Use `unity-cli` command to interact with the Unity Editor.
-Available commands: `list`, `exec`, `run_tests`, `console`, `screenshot`, `refresh_unity`, `manage_editor`, `execute_menu_item`, `reserialize_assets`.
+명령어·플래그는 `unity-cli --help` / `unity-cli <command> --help` 쳐서 확인해. 여기 목록 박아두면 낡는다.
 
 exec : Execute C# Code
 Run arbitrary C# code inside the Unity Editor at runtime. This is the most powerful command — it gives you full access to UnityEngine, UnityEditor, ECS, and every loaded assembly. No need to write a custom tool for one-off queries or mutations.
@@ -41,6 +41,12 @@ Because exec compiles and runs real C#, it can do anything a custom tool can —
 unity-cli 확인은 `console` 컴파일 에러 뿐. 예상 못 한 출력 나와도 조사 금지, 한 줄 보고 후 정지. Play 모드 금지.
 
 Unity 자산(`.unity`/`.prefab`/`.asset`) 조회는 무조건 `unity-cli exec`. Read·Grep 으로 직접 뒤지지 마.
+
+`exec` 에서 전수 순회 금지. 에디터 멈춤. 에셋이든 씬이든 항상 경로/이름으로 좁혀 조회해.
+- 에셋: `GetAllAssetPaths` 루프, `GetDependencies` 반복 호출 금지
+- 씬: `FindObjectsByType`, `FindObjectsOfType`, `Resources.FindObjectsOfTypeAll` 금지. `GameObject.Find` / `transform.Find` / 루트에서 자식 타고 내려가기로 대체
+
+플래그 지어내지 마. 확실치 않으면 `--help` 먼저. 코드는 인자로 넘기거나 stdin 파이프.
 
 
 

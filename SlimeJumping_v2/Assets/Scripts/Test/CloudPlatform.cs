@@ -4,10 +4,12 @@ using SlimeJumping.Interfaces;
 
 namespace SlimeJumping.Platforms
 {
-    // 구름 발판: 올라타면 sink 시작 → 아래 3가지 중 하나로 발사되며 puff 로 흩어지고 소멸.
-    //   안 누름     : idleFuseTime 만료 → idlePopSpeed 로 수직 팝.
-    //   눌렀다 뗌   : 슬라임이 스스로 차지 발사 → releaseFloorSpeed 를 하한으로 (조준 방향 유지).
-    //   계속 누름   : 누른 시점 + holdFuseTime 만료 → 그때까지 차지한 조준 방향으로 holdPopSpeed.
+    // 구름 발판: 올라타면 sink 시작 → 차징한 정도가 점프 높이를 정하고, 발사되면 puff 로 흩어져 소멸.
+    //   안 누름   : idleFuseTime 만료 → idlePopSpeed 로 수직 팝.
+    //   차징      : 슬라임 자신의 발사(뗌 또는 만충 오토런치)에 chargeMin~MaxPopSpeed 를
+    //               차징 비율로 Lerp 한 값을 **하한**으로 적용. 뗀 타이밍 = 점프 높이.
+    //               하한이라 에너지 전환·하이퍼대시로 더 빠른 발사는 안 깎는다(기존 releaseFloor 와 동일 구조).
+    //   누른 채 holdFuseTime 만료 : 그 시점 차징 비율로 조준 방향 팝(오토런치가 보통 먼저라 안전망).
     // Space 감지는 slime.IsCharging 으로 한다. legacy Input 폴링은 공중 버퍼 입력을 놓치고,
     // 슬라임 자신의 차지 발사와 같은 키를 두고 경쟁해 서로 취소시켰다.
     // 비주얼 = 자식 씬 메시(CloudDisperser.sceneCloud), 콜라이더 = 실루엣 PolygonCollider2D wrapper 자식. 둘 분리.
@@ -30,6 +32,7 @@ namespace SlimeJumping.Platforms
         float regenT;
         float seqT;
         float pressT = -1f;   // IsCharging 을 처음 본 seqT. 음수 = 아직 안 누름.
+        float chargeRadiusRef = 1f;   // 이번 차징의 판정원 반경. Launch() 가 리셋하기 전 값.
         bool riderLaunched;   // 이번 탑승이 실제 차지 발사로 끝났는지.
         SlimeController rider;
         float goneT;
@@ -62,6 +65,9 @@ namespace SlimeJumping.Platforms
             state = St.Sinking;
             seqT = 0f;
             pressT = -1f;
+            // 버퍼 입력 착지는 EnterChargingFromLanding 이 반경을 늘린 뒤 여길 부르고,
+            // stick 지연 동안엔 OnSlimeStay 가 안 도니 여기서 먼저 잡는다.
+            chargeRadiusRef = slime.ActiveChargeRadius;
             riderLaunched = false;
             rider = slime;
             slime.OnLaunch += OnRiderLaunch;
@@ -83,14 +89,17 @@ namespace SlimeJumping.Platforms
             rb.MovePosition(restPos + Vector2.up * SinkOffset(seqT));   // 붙은 슬라임도 같이.
 
             bool charging = slime.IsCharging;   // 공중 버퍼 입력으로 착지 즉시 Charging 인 경우도 포함.
-            if (charging && pressT < 0f) pressT = seqT;
+            if (charging)
+            {
+                if (pressT < 0f) pressT = seqT;
+                chargeRadiusRef = slime.ActiveChargeRadius;   // 이번 차징의 실제 판정원.
+            }
 
             float fuse = charging ? pressT + cfg.holdFuseTime : cfg.idleFuseTime;
             if (seqT < fuse) return;
 
-            // 누르고 있었으면 그때까지 차지한 조준 방향으로. AimDirection 은 Launch() 와 같은 식이라
-            // 뗐을 때(②)와 방향이 일치한다. 안 눌렀으면 조준이 없으니 수직.
-            if (charging) DoPop(slime.AimDirection, cfg.holdPopSpeed);
+            // 퓨즈 만료. 누르고 있었으면 그때까지 차진 정도로, 안 눌렀으면 조준이 없으니 수직 최소.
+            if (charging) DoPop(slime.AimDirection, ChargeSpeed(slime));
             else DoPop(Vector2.up, cfg.idlePopSpeed);
         }
 
@@ -99,14 +108,30 @@ namespace SlimeJumping.Platforms
             if (state != St.Sinking) return;
 
             // 차지 발사로 이탈. Launch() 는 velocity 확정 → OnLaunch → ClearPlatformEffect → launchSpeed 기록
-            // 순서라 여기서 올린 속도가 그대로 반영된다. 크기만 하한으로 올리고 조준 방향은 보존.
-            if (riderLaunched)
+            // 순서라 여기서 올린 속도가 그대로 반영된다. 하한으로만 올리고 조준 방향은 보존 —
+            // 에너지 전환(고낙하) 발사는 15 를 넘을 수 있는데 덮어쓰면 그걸 깎는다.
+            // 발사면이 이 구름일 때만 — 기어 넘어간 뒤 옆 지형에서 쏜 발사에 구름 값을 씌우면 안 된다.
+            // 가장자리 코요테 발사는 SurfaceCollider 가 null 로 덮인 뒤라 캐시로 판별한다.
+            var surf = slime.SurfaceCollider;
+            if (surf == null) surf = slime.CachedSurfaceCollider;
+            if (riderLaunched && surf != null && surf.transform.IsChildOf(transform))
             {
+                float target = ChargeSpeed(slime);
                 float speed = slime.Velocity.magnitude;
-                if (speed > 0.0001f && speed < cfg.releaseFloorSpeed)
-                    slime.MultiplyVelocity(cfg.releaseFloorSpeed / speed);
+                if (speed > 0.0001f && speed < target)
+                    slime.MultiplyVelocity(target / speed);
             }
             Consume();   // 밟은 구름은 어떤 경로로 나가든 소모.
+        }
+
+        // 차진 정도 → 하한 속도. 분모는 이번 차징의 판정원 반경(chargeRadiusRef) — 플레이어가 보는
+        // 조준원의 어디까지 채웠나. ActiveChargeRadius 를 직접 읽으면 detach 에선 Launch() 가 이미
+        // 기본값으로 리셋한 뒤고(에너지 전환 차징이 전부 만충으로 뭉개짐), hold-팝에선 확장값이라
+        // 두 경로의 의미가 갈라진다. 캐시 하나로 양쪽을 같은 식으로 만든다.
+        float ChargeSpeed(SlimeController slime)
+        {
+            float ratio = Mathf.Clamp01(slime.AimOffset.magnitude / Mathf.Max(0.0001f, chargeRadiusRef));
+            return Mathf.Lerp(cfg.chargeMinPopSpeed, cfg.chargeMaxPopSpeed, ratio);
         }
 
         void FixedUpdate()
