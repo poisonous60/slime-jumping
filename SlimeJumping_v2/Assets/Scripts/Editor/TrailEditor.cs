@@ -14,8 +14,8 @@ namespace SlimeJumping.EditorTools
         private const string StockShaderName    = "Quibli/Stylized Lit";
         private const string WorldShaderName    = "Quibli/Stylized Lit (Trail Receiver)";
         private const string LocalShaderName    = "Quibli/Stylized Lit (Trail Receiver Local)";
-        // Reveal variant samples the local trail RT the same way — a valid local receiver shader.
-        internal const string LocalRevealShaderName = "Quibli/Stylized Lit (Trail Receiver Local Reveal)";
+        // Goo overlay samples the local trail RT the same way — a valid local receiver shader.
+        internal const string LocalRevealShaderName = "SlimeJumping/TrailGooOverlay";
 
         [MenuItem(MenuRoot + "Migrate Selected Materials → World Variant")]
         private static void MigrateWorld() => MigrateSelected(StockShaderName, WorldShaderName);

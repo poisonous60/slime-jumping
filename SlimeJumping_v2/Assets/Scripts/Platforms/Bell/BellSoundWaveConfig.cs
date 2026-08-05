@@ -22,10 +22,13 @@ namespace SlimeJumping.Platforms.Bell
         [Tooltip("Seconds a pixel takes to fade back to invisible after the hold.")]
         [Min(0.01f)] public float fadeSeconds = 1f;
 
-        [Header("Trail on hidden platforms")]
-        [Tooltip("Stamp strength multiplier for goo landing on the hidden platforms — their trail is " +
-                 "the only always-visible hint, so it can be stronger than on normal ground. 1 = same.")]
+        [Header("Trail on hidden platforms — live, pushed to the receivers every frame")]
+        [Tooltip("Multiplies the slime's normal stamp strength on the hidden platforms. 1 = exactly " +
+                 "like ordinary ground; raise it so the goo hint builds faster.")]
         [Min(0f)] public float hiddenPlatformTrailStrength = 1f;
+        [Tooltip("Multiplies the stamp radius on the hidden platforms. 1 = ordinary ground; the global " +
+                 "landing radius is terrain-scaled, so <1 keeps marks as distinct blobs on small platforms.")]
+        [Min(0f)] public float hiddenPlatformTrailRadiusScale = 1f;
 
         [Header("Distortion ring")]
         [Tooltip("Peak screen-UV offset inside the ring band. Small values read best — 0.15 shifts " +

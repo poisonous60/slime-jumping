@@ -26,7 +26,7 @@ MonoBehaviour:
   strikeAngle: 20
   strikeRestitution: 0.4
   clapperSeparationAngle: 1.5
-  hardHitSpeed: 3
+  hardHitSpeed: 2
   hardHitSwingDegrees: 47.5
   lightTouchScale: 0.15
   impactCooldown: 0.12

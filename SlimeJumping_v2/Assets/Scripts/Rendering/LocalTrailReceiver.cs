@@ -19,6 +19,11 @@ namespace SlimeJumping.Rendering
                  "(e.g. hidden platforms where the trail is the only always-visible hint).")]
         [Min(0f)]
         [SerializeField] private float stampStrengthMultiplier = 1f;
+        [Tooltip("Multiplies every stamp's radius on this platform. The global landing radius is " +
+                 "tuned for terrain — on a platform a few units wide it covers a third per landing; " +
+                 "<1 shrinks marks back to distinct blobs.")]
+        [Min(0f)]
+        [SerializeField] private float stampRadiusMultiplier = 1f;
 
         [Header("Routing")]
         [Tooltip("The platform's physics collider — the one SlimeController detects on contact. " +
@@ -53,6 +58,16 @@ namespace SlimeJumping.Rendering
 
         public Collider2D ContactCollider => contactCollider;
         public Renderer TargetRenderer => targetRenderer;
+        public float StampStrengthMultiplier
+        {
+            get => stampStrengthMultiplier;
+            set => stampStrengthMultiplier = Mathf.Max(0f, value);
+        }
+        public float StampRadiusMultiplier
+        {
+            get => stampRadiusMultiplier;
+            set => stampRadiusMultiplier = Mathf.Max(0f, value);
+        }
         public Vector2 LocalMin => localMin;
         public Vector2 LocalSize => localSize;
         public int PixelsPerUnit => pixelsPerUnit;
@@ -243,6 +258,7 @@ namespace SlimeJumping.Rendering
         public void StampAt(Vector2 worldPos, float worldRadius, float strength)
         {
             strength *= stampStrengthMultiplier;
+            worldRadius *= stampRadiusMultiplier;
             var mgr = WorldTrailManager.Instance;
             if (mgr == null || rt == null) return;
 
@@ -287,6 +303,7 @@ namespace SlimeJumping.Rendering
         {
             pixelsPerUnit = Mathf.Clamp(pixelsPerUnit, 4, 80);
             stampStrengthMultiplier = Mathf.Max(0f, stampStrengthMultiplier);
+            stampRadiusMultiplier = Mathf.Max(0f, stampRadiusMultiplier);
             if (contactCollider == null)
             {
                 contactCollider = GetComponentInParent<Collider2D>();

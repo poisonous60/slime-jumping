@@ -13,10 +13,13 @@ namespace SlimeJumping.Editor
     public static class BellSoundWaveTestSetup
     {
         const string ConfigAssetPath        = "Assets/Resources/BellSoundWaveConfig.asset";
-        const string RevealShaderName       = "Quibli/Stylized Lit (Trail Receiver Local Reveal)";
+        const string RevealShaderName       = "Quibli/Stylized Lit (Bell Reveal)";
+        const string GooShaderName          = "SlimeJumping/TrailGooOverlay";
         const string DistortionShaderName   = "SlimeJumping/BellWave_Distortion";
         const string RevealMatPath          = "Assets/Art/Shader/Mat_BellReveal_Platform.mat";
+        const string GooMatPath             = "Assets/Art/Shader/Mat_TrailGooOverlay.mat";
         const string DistortionMatPath      = "Assets/Art/Shader/Mat_BellWave_Distortion.mat";
+        const string GooOverlayName         = "TrailGooOverlay";
         const string SourceAtlasMatPath     = "Assets/ThirdParty/Platformer_9_Heaven/Materials/Color.mat";
         const string BellRootName           = "bell_Collider2D";
         static readonly string[] PlatformWrapperNames =
@@ -58,8 +61,9 @@ namespace SlimeJumping.Editor
 
             var cfg = EnsureConfig();
             var revealMat = EnsureRevealMaterial();
+            var gooMat = EnsureGooMaterial();
             var distortionMat = EnsureDistortionMaterial(cfg);
-            if (revealMat == null || distortionMat == null) return;
+            if (revealMat == null || gooMat == null || distortionMat == null) return;
 
             var root = new GameObject("BellSoundWave_TestSet");
             Undo.RegisterCreatedObjectUndo(root, "Spawn Bell Sound Wave Test Set");
@@ -82,11 +86,12 @@ namespace SlimeJumping.Editor
 
                 var renderer = copy.GetComponentInChildren<MeshRenderer>();
                 renderer.sharedMaterial = revealMat;
-                receivers[i] = AddReceiver(copy, renderer, cfg);
+                var goo = EnsureGooOverlay(copy, renderer, gooMat);
+                receivers[i] = AddReceiver(copy, goo, cfg);
             }
 
             var bell = bellCopy.GetComponent<SwingingBell>();
-            var broadcaster = CreateBroadcaster(root.transform, bellPos, bell, cfg, distortionMat);
+            var broadcaster = CreateBroadcaster(root.transform, bellPos, bell, cfg, distortionMat, receivers);
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
                 UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
@@ -98,6 +103,31 @@ namespace SlimeJumping.Editor
         }
 
         // -------- platform clone wiring --------
+
+        // Goo lives on its own renderer (same mesh, nudged toward camera) so trail display is
+        // decoupled from the reveal shader on the body. Idempotent — reuses an existing overlay.
+        static MeshRenderer EnsureGooOverlay(GameObject wrapper, MeshRenderer bodyRenderer, Material gooMat)
+        {
+            var existing = wrapper.transform.Find(GooOverlayName);
+            GameObject go = existing != null ? existing.gameObject : new GameObject(GooOverlayName);
+            go.transform.SetParent(wrapper.transform, worldPositionStays: false);
+
+            var bodyT = bodyRenderer.transform;
+            go.transform.localPosition = bodyT.localPosition + new Vector3(0f, 0f, -0.02f);
+            go.transform.localRotation = bodyT.localRotation;
+            go.transform.localScale    = bodyT.localScale;
+
+            var mf = go.GetComponent<MeshFilter>();
+            if (mf == null) mf = go.AddComponent<MeshFilter>();
+            mf.sharedMesh = bodyRenderer.GetComponent<MeshFilter>().sharedMesh;
+
+            var mr = go.GetComponent<MeshRenderer>();
+            if (mr == null) mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = gooMat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            return mr;
+        }
 
         static LocalTrailReceiver AddReceiver(GameObject wrapper, MeshRenderer renderer, BellSoundWaveConfig cfg)
         {
@@ -134,8 +164,9 @@ namespace SlimeJumping.Editor
             so.FindProperty("pixelsPerUnit").intValue = 20;
             so.FindProperty("contactCollider").objectReferenceValue = col;
             so.FindProperty("targetRenderer").objectReferenceValue  = renderer;
+            // Trail strength/radius multipliers stay at the receiver's own defaults —
+            // tune them per platform in its inspector, there is no config copy.
             so.FindProperty("overrideId").stringValue = System.Guid.NewGuid().ToString("N");
-            so.FindProperty("stampStrengthMultiplier").floatValue = cfg.hiddenPlatformTrailStrength;
             so.ApplyModifiedProperties();
             return receiver;
         }
@@ -143,7 +174,8 @@ namespace SlimeJumping.Editor
         // -------- broadcaster + distortion quads --------
 
         static BellSoundWave CreateBroadcaster(Transform parent, Vector3 bellPos, SwingingBell bell,
-                                               BellSoundWaveConfig cfg, Material distortionMat)
+                                               BellSoundWaveConfig cfg, Material distortionMat,
+                                               LocalTrailReceiver[] receivers)
         {
             var go = new GameObject("BellSoundWave");
             go.transform.SetParent(parent, worldPositionStays: false);
@@ -182,23 +214,62 @@ namespace SlimeJumping.Editor
             quadsProp.arraySize = quads.Length;
             for (int i = 0; i < quads.Length; i++)
                 quadsProp.GetArrayElementAtIndex(i).objectReferenceValue = quads[i];
+            var recvProp = so.FindProperty("hiddenPlatformReceivers");
+            recvProp.arraySize = receivers.Length;
+            for (int i = 0; i < receivers.Length; i++)
+                recvProp.GetArrayElementAtIndex(i).objectReferenceValue = receivers[i];
             so.ApplyModifiedProperties();
             return wave;
         }
 
         // -------- shared assets --------
 
+        static Material EnsureGooMaterial()
+        {
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(GooMatPath);
+            var shader = Shader.Find(GooShaderName);
+            if (shader == null)
+            {
+                EditorUtility.DisplayDialog("Bell Sound Wave Test",
+                    $"Shader '{GooShaderName}' not found (compile errors?).", "OK");
+                return null;
+            }
+            if (mat == null)
+            {
+                mat = new Material(shader);
+                AssetDatabase.CreateAsset(mat, GooMatPath);
+                AssetDatabase.SaveAssets();
+            }
+            else if (mat.shader != shader)
+            {
+                Undo.RecordObject(mat, "Goo overlay shader");
+                mat.shader = shader;
+                EditorUtility.SetDirty(mat);
+            }
+            return mat;
+        }
+
         static Material EnsureRevealMaterial()
         {
-            var mat = AssetDatabase.LoadAssetAtPath<Material>(RevealMatPath);
-            if (mat != null) return mat;
-
             var shader = Shader.Find(RevealShaderName);
             if (shader == null)
             {
                 EditorUtility.DisplayDialog("Bell Sound Wave Test",
                     $"Shader '{RevealShaderName}' not found (compile errors?).", "OK");
                 return null;
+            }
+
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(RevealMatPath);
+            if (mat != null)
+            {
+                if (mat.shader != shader)
+                {
+                    Undo.RecordObject(mat, "Reveal shader swap");
+                    mat.shader = shader;
+                    EditorUtility.SetDirty(mat);
+                    AssetDatabase.SaveAssets();
+                }
+                return mat;
             }
 
             mat = new Material(shader);

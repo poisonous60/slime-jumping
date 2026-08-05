@@ -19,6 +19,9 @@ namespace SlimeJumping.Platforms.Bell
         [SerializeField] private SpaceWarpEffect[] distortionQuads;
         [Tooltip("The ring material — band width/blur are pushed into it from config every frame.")]
         [SerializeField] private Material distortionMaterial;
+        [Tooltip("Hidden-platform trail receivers — stamp strength/radius multipliers are pushed " +
+                 "into them from config every frame.")]
+        [SerializeField] private Rendering.LocalTrailReceiver[] hiddenPlatformReceivers;
 
         // Baked into the reveal shader's global array (BELL_WAVE_COUNT) — not a tuning knob.
         public const int MaxWaves = 8;
@@ -133,6 +136,16 @@ namespace SlimeJumping.Platforms.Bell
                 distortionMaterial.SetFloat(IdRippleWidth,
                     Mathf.Clamp(cfg.distortionRingWidthWorld / Mathf.Max(0.1f, cfg.maxRadius), 0.01f, 0.6f));
                 distortionMaterial.SetFloat(IdBlurSize, cfg.distortionBlurSize);
+            }
+            if (hiddenPlatformReceivers != null)
+            {
+                for (int i = 0; i < hiddenPlatformReceivers.Length; i++)
+                {
+                    var r = hiddenPlatformReceivers[i];
+                    if (r == null) continue;
+                    r.StampStrengthMultiplier = cfg.hiddenPlatformTrailStrength;
+                    r.StampRadiusMultiplier   = cfg.hiddenPlatformTrailRadiusScale;
+                }
             }
         }
 
