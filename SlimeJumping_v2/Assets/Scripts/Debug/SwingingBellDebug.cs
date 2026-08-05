@@ -60,6 +60,7 @@ namespace SlimeJumping.Debugging
         bool wasTouching;
         SlimeController.SlimeState lastState;
         int seenStrikes, seenSilent;
+        SwingingBell.ContactVerdict seenVerdict = SwingingBell.ContactVerdict.Clear;
         float lastReportedImpactSpeed = float.NaN;
         Vector2 velAtContact;
         string verdict = "-";
@@ -135,6 +136,13 @@ namespace SlimeJumping.Debugging
                     Debug.Log($"{Tag} SLAM speed={s:F2} kick={bell.LastImpactKick:+0.000;-0.000} rad/s " +
                               $"dir=({d.x:+0.00;-0.00},{d.y:+0.00;-0.00}) lever={bell.LastImpactLever:+0.00;-0.00} " +
                               $"-> {verdict}", this);
+                }
+
+                if (logContacts && bell.LastContact != seenVerdict)
+                {
+                    seenVerdict = bell.LastContact;
+                    Debug.Log($"{Tag} CONTACT verdict={seenVerdict} approach={bell.LastImpactSpeed:F2} " +
+                              $"kick={bell.LastImpactKick:+0.000;-0.000} slime={slime.CurrentState}", this);
                 }
 
                 if (bell.StrikeCount != seenStrikes || bell.SilentStrikeCount != seenSilent)
@@ -237,8 +245,8 @@ namespace SlimeJumping.Debugging
                 sb.AppendLine($"bell {bell.BellAngle:F1}deg  w={bell.BellAngularSpeed:F2}");
                 sb.AppendLine($"clapper rel={bell.ClapperRelativeAngle:F1}deg onWall={bell.ClapperOnWall}" +
                               (cfg != null ? $"  (wall at {cfg.strikeAngle:F1})" : ""));
-                sb.AppendLine($"lastSlam speed={bell.LastImpactSpeed:F2} kick={bell.LastImpactKick:+0.000;-0.000} " +
-                              $"bounced={bell.LastImpactBounced}");
+                sb.AppendLine($"lastSlam approach={bell.LastImpactSpeed:F2} kick={bell.LastImpactKick:+0.000;-0.000} " +
+                              $"bounced={bell.LastImpactBounced} contact={bell.LastContact}");
                 sb.AppendLine($"verdict: {verdict}");
                 sb.AppendLine($"strikes={bell.StrikeCount} silent={bell.SilentStrikeCount} " +
                               $"lastClosing={bell.LastStrikeSpeed:F2} clips={bell.StrikeClipCount}");

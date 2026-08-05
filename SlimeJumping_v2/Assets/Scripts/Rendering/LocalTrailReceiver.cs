@@ -15,6 +15,10 @@ namespace SlimeJumping.Rendering
         [SerializeField] private Vector2 localSize = new Vector2(3.0f, 1.0f);
         [Range(4, 80)]
         [SerializeField] private int pixelsPerUnit = 20;
+        [Tooltip("Multiplies every stamp landing on this platform. >1 = goo reads stronger here " +
+                 "(e.g. hidden platforms where the trail is the only always-visible hint).")]
+        [Min(0f)]
+        [SerializeField] private float stampStrengthMultiplier = 1f;
 
         [Header("Routing")]
         [Tooltip("The platform's physics collider — the one SlimeController detects on contact. " +
@@ -238,6 +242,7 @@ namespace SlimeJumping.Rendering
 
         public void StampAt(Vector2 worldPos, float worldRadius, float strength)
         {
+            strength *= stampStrengthMultiplier;
             var mgr = WorldTrailManager.Instance;
             if (mgr == null || rt == null) return;
 
@@ -281,6 +286,7 @@ namespace SlimeJumping.Rendering
         private void OnValidate()
         {
             pixelsPerUnit = Mathf.Clamp(pixelsPerUnit, 4, 80);
+            stampStrengthMultiplier = Mathf.Max(0f, stampStrengthMultiplier);
             if (contactCollider == null)
             {
                 contactCollider = GetComponentInParent<Collider2D>();

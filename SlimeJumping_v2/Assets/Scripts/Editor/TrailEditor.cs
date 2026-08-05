@@ -14,6 +14,8 @@ namespace SlimeJumping.EditorTools
         private const string StockShaderName    = "Quibli/Stylized Lit";
         private const string WorldShaderName    = "Quibli/Stylized Lit (Trail Receiver)";
         private const string LocalShaderName    = "Quibli/Stylized Lit (Trail Receiver Local)";
+        // Reveal variant samples the local trail RT the same way — a valid local receiver shader.
+        internal const string LocalRevealShaderName = "Quibli/Stylized Lit (Trail Receiver Local Reveal)";
 
         [MenuItem(MenuRoot + "Migrate Selected Materials → World Variant")]
         private static void MigrateWorld() => MigrateSelected(StockShaderName, WorldShaderName);
@@ -89,6 +91,7 @@ namespace SlimeJumping.EditorTools
             }
 
             var localShader = Shader.Find(LocalShaderName);
+            var localRevealShader = Shader.Find(LocalRevealShaderName);
             var worldShader = Shader.Find(WorldShaderName);
             var stockShader = Shader.Find(StockShaderName);
 
@@ -101,7 +104,7 @@ namespace SlimeJumping.EditorTools
                 var mat = r.sharedMaterial;
                 if (mat == null || mat.shader == null) continue;
 
-                bool isLocal = mat.shader == localShader;
+                bool isLocal = mat.shader == localShader || mat.shader == localRevealShader;
                 var receiver = r.GetComponent<LocalTrailReceiver>();
                 if (receiver == null) receiver = r.GetComponentInParent<LocalTrailReceiver>();
                 if (receiver == null) receiver = r.GetComponentInChildren<LocalTrailReceiver>();
@@ -119,7 +122,7 @@ namespace SlimeJumping.EditorTools
                 var rc = receivers[i];
                 var r = rc.TargetRenderer;
                 if (r == null || r.sharedMaterial == null) continue;
-                if (r.sharedMaterial.shader != localShader)
+                if (r.sharedMaterial.shader != localShader && r.sharedMaterial.shader != localRevealShader)
                 {
                     Debug.LogWarning($"[Trail Validate] LocalTrailReceiver on '{rc.name}' but its target renderer material '{r.sharedMaterial.name}' is not on the local variant shader.", rc);
                     issues++;
@@ -411,7 +414,9 @@ namespace SlimeJumping.EditorTools
             var rend = rc.TargetRenderer;
             if (rend != null && rend.sharedMaterial != null && rend.sharedMaterial.shader != null)
             {
-                if (rend.sharedMaterial.shader.name != "Quibli/Stylized Lit (Trail Receiver Local)")
+                string shaderName = rend.sharedMaterial.shader.name;
+                if (shaderName != "Quibli/Stylized Lit (Trail Receiver Local)" &&
+                    shaderName != TrailEditorMenu.LocalRevealShaderName)
                 {
                     EditorGUILayout.HelpBox(
                         "The target renderer's material is NOT on the local-variant shader.\n" +

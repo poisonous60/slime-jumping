@@ -9,7 +9,9 @@ namespace SlimeJumping.Platforms
     public sealed class CloudPlatformConfig : ScriptableObject
     {
         [Header("눌림 / 리바운드")]
-        public float sinkDepth = 0.3f;     // 눌리는 깊이.
+        public float sinkDepth = 0.3f;          // 기본 눌림 깊이(살짝 얹힌 착지).
+        public float sinkDepthPerImpact = 0f;   // 착지 충격 속도 1당 추가 깊이. 0 = 항상 sinkDepth.
+        public float sinkDepthMax = 0.6f;       // 충격 비례 깊이 상한.
         public float sinkTime = 0.14f;     // 바닥까지 시간.
         public float reboundTime = 0.05f;  // 바닥에서 rest 로 돌아오는 시간. 순수 비주얼, 퓨즈와 무관.
 

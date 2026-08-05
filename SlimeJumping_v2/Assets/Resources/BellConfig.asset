@@ -34,7 +34,7 @@ MonoBehaviour:
   minLeverFraction: 0.6
   impactCooldown: 0.12
   riderWeightScale: 1
-  bounceSpeedThreshold: 6
+  bounceSpeedThreshold: 3
   bounceSpeed: 2.5
   bounceCarriesSwing: 0
   strikeClips:

@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: CloudPlatformConfig
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.CloudPlatformConfig
   sinkDepth: 0.3
+  sinkDepthPerImpact: 0.025
+  sinkDepthMax: 0.7
   sinkTime: 0.2
   reboundTime: 0.15
   idleFuseTime: 0.35

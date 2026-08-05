@@ -35,9 +35,16 @@ namespace SlimeJumping.Platforms.Bell
         bool onWall;
 
         readonly ContactPoint2D[] contactScratch = new ContactPoint2D[8];
+        readonly Vector2[] velScratch = new Vector2[3];
         float offSlimeSeconds = float.MaxValue;
         SlimeController trackedSlime;
         Vector2 prevSlimeVel;
+        bool riding;
+        Vector2 lastRiderPos;
+
+        /// <summary>What the bell did with the slime's last touch, so a hit that produced nothing says why.</summary>
+        public enum ContactVerdict { Clear, Riding, Debounced, OnAxis, Grazing, Slam, JumpOff, JumpTooSlow }
+        ContactVerdict lastContact = ContactVerdict.Clear;
 
         // Pulled by SwingingBellDebug; nothing here feeds the simulation.
         float lastImpactSpeed, lastImpactKick, lastImpactLever;
@@ -57,6 +64,8 @@ namespace SlimeJumping.Platforms.Bell
         public int StrikeCount => strikeCount;
         public int SilentStrikeCount => silentStrikeCount;
         public float LastStrikeSpeed => lastStrikeSpeed;
+        /// <summary>Why the last touch did or did not swing the bell.</summary>
+        public ContactVerdict LastContact => lastContact;
         /// <summary>What the last strike actually did on the way to the speaker: the clip it played, or
         /// the gate that swallowed it. Recorded inside Ring, so it is the played fact and not a guess.</summary>
         public string LastRingResult => lastRingResult;
@@ -362,22 +371,71 @@ namespace SlimeJumping.Platforms.Bell
             }
 
             if (slime != null) trackedSlime = slime;
-            if (slime == null) { offSlimeSeconds += dt; return; }
+            if (slime == null) { offSlimeSeconds += dt; lastContact = ContactVerdict.Clear; return; }
+
+            // A slime already riding this bell is crawling on it, not hitting it. Its weight tilts the
+            // bell through ApplyRiderInfluence; a slide has no business ringing anything.
+            if (riding) { offSlimeSeconds = 0f; lastContact = ContactVerdict.Riding; return; }
 
             bool fresh = offSlimeSeconds >= cfg.impactCooldown;
             offSlimeSeconds = 0f;
-            if (!fresh) return;
+            if (!fresh) { lastContact = ContactVerdict.Debounced; return; }
 
-            Vector2 v = ArrivalVelocity(slime);
-            float speed = v.magnitude;
-            lastImpactSpeed = speed;
             lastImpactBounced = false;
             lastImpactKick = 0f;
-            if (speed < cfg.minImpactSpeed) return;
 
-            Vector2 dir = v / speed;
-            lastImpactDir = dir;
             Vector2 r = point - pivotWorld;
+            Vector2 outward = OutwardAt(r);
+            if (outward == Vector2.zero) { lastImpactSpeed = 0f; lastContact = ContactVerdict.OnAxis; return; }
+
+            float approach = ApproachSpeed(slime, r, outward, out Vector2 dir);
+            lastImpactSpeed = approach;
+            if (approach < cfg.minImpactSpeed) { lastContact = ContactVerdict.Grazing; return; }
+
+            ApplyKick(r, dir, approach);
+            lastContact = ContactVerdict.Slam;
+
+            if (approach >= cfg.bounceSpeedThreshold) lastImpactBounced = ThrowSlimeOff(slime, r);
+        }
+
+        // Speed the slime is closing on the flank at, relative to the flank's own motion. Only the part
+        // of the travel that goes INTO the bell is a hit — sliding along it is perpendicular, so it reads
+        // as zero however fast the slime is going.
+        // Scored over all three velocity estimates rather than taking the longest vector: the longest one
+        // can be a stale landing impact pointing away, which would veto the real hit next to it.
+        float ApproachSpeed(SlimeController slime, Vector2 r, Vector2 outward, out Vector2 dir)
+        {
+            Vector2 surfaceVel = new Vector2(-r.y, r.x) * phi1Dot;
+            velScratch[0] = slime.Velocity;
+            velScratch[1] = prevSlimeVel;
+            velScratch[2] = -slime.SurfaceNormal * slime.ImpactNormalSpeed
+                          + slime.SurfaceTangent * slime.ImpactTangentSpeed;
+
+            Vector2 best = Vector2.zero;
+            float bestApproach = float.NegativeInfinity;
+            for (int i = 0; i < velScratch.Length; i++)
+            {
+                float a = -Vector2.Dot(velScratch[i] - surfaceVel, outward);
+                if (a > bestApproach) { bestApproach = a; best = velScratch[i]; }
+            }
+
+            dir = best.sqrMagnitude > 1e-8f ? best.normalized : -outward;
+            return bestApproach;
+        }
+
+        // Away from the bell's axis at a point on it, which is the direction a hit has to oppose.
+        Vector2 OutwardAt(Vector2 r)
+        {
+            Vector2 down = new Vector2(Mathf.Sin(phi1), -Mathf.Cos(phi1));
+            Vector2 outward = r - down * Vector2.Dot(r, down);
+            return outward.sqrMagnitude < 1e-6f ? Vector2.zero : outward.normalized;
+        }
+
+        // One swing law for both directions of contact: a slam from outside and a rider pushing off both
+        // shove the bell at the contact point, and only the sign of dir differs.
+        void ApplyKick(Vector2 r, Vector2 dir, float speed)
+        {
+            lastImpactDir = dir;
 
             // Anchored to the swing it should produce, not to a mass number: the arm and the direction
             // still shape it, but retuning the bell's heaviness cannot silently mute slams.
@@ -403,8 +461,6 @@ namespace SlimeJumping.Platforms.Bell
             float kick = Mathf.Sign(raw) * span;
             phi1Dot += kick;
             lastImpactKick = kick;
-
-            if (speed >= cfg.bounceSpeedThreshold) lastImpactBounced = ThrowSlimeOff(slime, r);
         }
 
         // Angular speed that swings the bell to Slam Swing Degrees from rest, from energy:
@@ -421,21 +477,6 @@ namespace SlimeJumping.Platforms.Bell
         // Fast arrivals slam and are thrown clear; slow ones fall through and cling like any surface.
         // ForceAirborneWithVelocity is the same entry point JumpPad and the bamboo throw use — it drops
         // the carrier, registers the launch-clearance ignore so the slime cannot re-stick, and goes Airborne.
-        // The tick a slime lands, SlimeController has already zeroed its live velocity, so reading that
-        // alone reports a dead-still slam and the bell ignores the very first hit. Its captured landing
-        // impact survives that, and the previous tick's velocity covers a slam that never attaches.
-        Vector2 ArrivalVelocity(SlimeController slime)
-        {
-            Vector2 best = slime.Velocity;
-            if (prevSlimeVel.sqrMagnitude > best.sqrMagnitude) best = prevSlimeVel;
-
-            Vector2 captured = -slime.SurfaceNormal * slime.ImpactNormalSpeed
-                             + slime.SurfaceTangent * slime.ImpactTangentSpeed;
-            if (captured.sqrMagnitude > best.sqrMagnitude) best = captured;
-
-            return best;
-        }
-
         bool ThrowSlimeOff(SlimeController slime, Vector2 r)
         {
             if (cfg.bounceSpeed <= 0f) return false;
@@ -443,10 +484,8 @@ namespace SlimeJumping.Platforms.Bell
 
             // Outward from the bell's axis, so the throw leaves the flank it was struck on. Taken from
             // the geometry rather than the contact normal, whose sign depends on which collider reports.
-            Vector2 down = new Vector2(Mathf.Sin(phi1), -Mathf.Cos(phi1));
-            Vector2 outward = r - down * Vector2.Dot(r, down);
-            if (outward.sqrMagnitude < 1e-6f) return false;
-            outward.Normalize();
+            Vector2 outward = OutwardAt(r);
+            if (outward == Vector2.zero) return false;
 
             // Flat, not scaled by how hard it arrived: this only has to break the slime's grip, and a
             // speed-scaled version launched it across the room.
@@ -460,12 +499,41 @@ namespace SlimeJumping.Platforms.Bell
         // A slime hanging off one side is real weight on that side, so it tilts the bell.
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity, bool isCharging)
         {
+            riding = true;
+            lastRiderPos = riderWorldPos;
             if (cfg == null) return;
             float arm = riderWorldPos.x - pivotWorld.x;
             riderTorque = -riderMass * Gravity * arm * cfg.riderWeightScale;
         }
 
-        public override void RemoveRider() => riderTorque = 0f;
+        public override void RemoveRider()
+        {
+            riderTorque = 0f;
+            if (riding) KickFromJumpOff();
+            riding = false;
+        }
+
+        // Jumping off the bell shoves it the way the slime did not — the same law as a slam, with the
+        // contact direction reversed. A slime that merely crawls onto the next surface is still Attached
+        // and leaves nothing behind.
+        void KickFromJumpOff()
+        {
+            if (cfg == null || trackedSlime == null) return;
+            if (trackedSlime.CurrentState != SlimeController.SlimeState.Airborne) return;
+
+            Vector2 r = lastRiderPos - pivotWorld;
+            Vector2 outward = OutwardAt(r);
+            if (outward == Vector2.zero) return;
+
+            float away = Vector2.Dot(trackedSlime.Velocity, outward);
+            lastImpactSpeed = away;
+            lastImpactBounced = false;
+            lastImpactKick = 0f;
+            if (away < cfg.minImpactSpeed) { lastContact = ContactVerdict.JumpTooSlow; return; }
+
+            ApplyKick(r, -outward, away);
+            lastContact = ContactVerdict.JumpOff;
+        }
 
         void OnDrawGizmosSelected()
         {

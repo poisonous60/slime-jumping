@@ -109,6 +109,8 @@ namespace SlimeJumping.Mechanisms
         // -------- public API --------
 
         public float PopDuration => popDuration;
+        public float PulseDuration { get => pulseDuration; set => pulseDuration = Mathf.Max(0.05f, value); }
+        public float PulseStrength { get => pulseStrength; set => pulseStrength = Mathf.Clamp(value, 0f, 0.4f); }
 
         public void Trigger()
         {

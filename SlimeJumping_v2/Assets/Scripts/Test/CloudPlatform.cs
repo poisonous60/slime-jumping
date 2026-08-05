@@ -13,8 +13,10 @@ namespace SlimeJumping.Platforms
     // Space 감지는 slime.IsCharging 으로 한다. legacy Input 폴링은 공중 버퍼 입력을 놓치고,
     // 슬라임 자신의 차지 발사와 같은 키를 두고 경쟁해 서로 취소시켰다.
     // 비주얼 = 자식 씬 메시(CloudDisperser.sceneCloud), 콜라이더 = 실루엣 PolygonCollider2D wrapper 자식. 둘 분리.
-    [RequireComponent(typeof(Rigidbody2D))]
-    public class CloudPlatform : MonoBehaviour, IPlatformEffect
+    // PlatformMotor 인 이유: 자체 MovePosition 으로 움직이면 슬라임은 하강에선 snap(계단 렌더),
+    // 리바운드에선 물리 솔버 밀림(보간 렌더)으로 국면마다 렌더 모드가 갈라져 50Hz 톱니 떨림이
+    // 생긴다(디버거 실측 ~70mm). 모터+캐리어는 라이더를 같은 tick 에 같은 델타로 옮겨 이걸 없앤다.
+    public class CloudPlatform : PlatformMotor, IPlatformEffect
     {
         [Header("Config")]
         public CloudPlatformConfig configOverride;   // 비우면 Assets/Resources/CloudPlatformConfig.asset 공유 튜닝.
@@ -23,14 +25,15 @@ namespace SlimeJumping.Platforms
         public CloudDisperser disperser;   // 구름 비주얼(씬 메시 기반). 없으면 자동 탐색.
 
         CloudPlatformConfig cfg;
-        Rigidbody2D rb;
         Collider2D col;
         Vector2 restPos;
+        float riseStartOffset;   // Consume 순간의 눌림 오프셋. 상승을 여기서 시작해야 스냅이 없다.
 
         enum St { Idle, Sinking, Gone, Regen }
         St state = St.Idle;
         float regenT;
         float seqT;
+        float sinkDepthNow;   // 이번 착지의 눌림 깊이. 충격 속도 비례, attach 에서 확정.
         float pressT = -1f;   // IsCharging 을 처음 본 seqT. 음수 = 아직 안 누름.
         float chargeRadiusRef = 1f;   // 이번 차징의 판정원 반경. Launch() 가 리셋하기 전 값.
         bool riderLaunched;   // 이번 탑승이 실제 차지 발사로 끝났는지.
@@ -38,8 +41,9 @@ namespace SlimeJumping.Platforms
         float goneT;
         readonly Collider2D[] overlapResults = new Collider2D[4];
 
-        void Awake()
+        protected override void Awake()
         {
+            base.Awake();   // rb 확보 + Kinematic/Interpolate — 모터 표준.
             EnsureRefs();
             restPos = transform.position;   // rb.position 는 body sync 전 (0,0) 이라 transform 사용.
             if (disperser == null) disperser = GetComponentInChildren<CloudDisperser>();
@@ -48,13 +52,7 @@ namespace SlimeJumping.Platforms
         void EnsureRefs()
         {
             if (cfg == null) cfg = CloudPlatformConfig.Resolve(configOverride);
-            if (rb == null) rb = GetComponent<Rigidbody2D>();
             if (col == null) col = GetComponentInChildren<Collider2D>();   // 실루엣 콜라이더는 wrapper 자식에 붙음.
-            if (rb != null && rb.bodyType != RigidbodyType2D.Kinematic)
-            {
-                rb.bodyType = RigidbodyType2D.Kinematic;
-                rb.interpolation = RigidbodyInterpolation2D.Interpolate;
-            }
         }
 
         // ---- IPlatformEffect ----
@@ -64,6 +62,9 @@ namespace SlimeJumping.Platforms
             if (state != St.Idle) return;
             state = St.Sinking;
             seqT = 0f;
+            // CaptureLandingImpact 가 CheckPlatformEffect(→여기)보다 먼저라 이번 착지 값이다.
+            sinkDepthNow = Mathf.Min(cfg.sinkDepth + slime.ImpactNormalSpeed * cfg.sinkDepthPerImpact,
+                                     cfg.sinkDepthMax);
             pressT = -1f;
             // 버퍼 입력 착지는 EnterChargingFromLanding 이 반경을 늘린 뒤 여길 부르고,
             // stick 지연 동안엔 OnSlimeStay 가 안 도니 여기서 먼저 잡는다.
@@ -84,9 +85,6 @@ namespace SlimeJumping.Platforms
             // CheckPlatformEffect 를 하므로, 옆 지형으로 기어 넘어가도 참조가 남아 있다.
             var surf = slime.SurfaceCollider;
             if (surf == null || !surf.transform.IsChildOf(transform)) return;
-
-            seqT += dt;
-            rb.MovePosition(restPos + Vector2.up * SinkOffset(seqT));   // 붙은 슬라임도 같이.
 
             bool charging = slime.IsCharging;   // 공중 버퍼 입력으로 착지 즉시 Charging 인 경우도 포함.
             if (charging)
@@ -134,25 +132,40 @@ namespace SlimeJumping.Platforms
             return Mathf.Lerp(cfg.chargeMinPopSpeed, cfg.chargeMaxPopSpeed, ratio);
         }
 
-        void FixedUpdate()
+        // 모든 이동은 모터 경로로만 — 캐리어가 이 델타로 라이더를 같은 tick 에 운반한다.
+        protected override (Vector2 position, float rotation) ComputeMotion(float dt)
         {
-            float dt = Time.fixedDeltaTime;
-            if (state == St.Regen)
+            EnsureRefs();
+            switch (state)
             {
-                // ThinIce 와 동일: 애니메이션 내내 콜라이더 off, 끝에서만 커밋.
-                regenT += dt;
-                if (regenT >= cfg.regenTime) Commit();
-                return;
+                case St.Sinking:
+                    // 눌림/리바운드는 여기서 완주한다. OnSlimeStay 에서 돌리면 슬라임이 미끄러져
+                    // 벗어나거나 발사되는 순간 seqT 가 얼어 구름이 눌린 채 멈춘다(고낙하에서 빈발).
+                    seqT += dt;
+                    return (restPos + Vector2.up * SinkOffset(seqT), rb.rotation);
+
+                case St.Gone:
+                {
+                    goneT += dt;
+                    float u = Mathf.Clamp01(goneT / cfg.riseVisualTime);
+                    // 발사 순간의 눌림 위치에서 이어서 상승 — restPos 에서 시작하면 한 tick 에
+                    // +0.4u 를 점프해 조각 puff 가 위로 홱 끌린다(디버거 실측 +460mm).
+                    float y = Mathf.Lerp(riseStartOffset, cfg.riseVisualHeight, 1f - (1f - u) * (1f - u));
+
+                    if (cfg.respawn && goneT >= cfg.respawnDelay && !IsRegenBlocked())
+                        BeginRegen();   // 슬라임이 자리에 겹쳐 있으면 대기.
+                    return (restPos + Vector2.up * y, rb.rotation);
+                }
+
+                case St.Regen:
+                    // ThinIce 와 동일: 애니메이션 내내 콜라이더 off, 끝에서만 커밋.
+                    regenT += dt;
+                    if (regenT >= cfg.regenTime) Commit();
+                    return (restPos, rb.rotation);
+
+                default:
+                    return (restPos, rb.rotation);
             }
-            if (state != St.Gone) return;
-
-            goneT += dt;
-            float u = Mathf.Clamp01(goneT / cfg.riseVisualTime);
-            rb.MovePosition(restPos + Vector2.up * (cfg.riseVisualHeight * (1f - (1f - u) * (1f - u))));
-
-            if (!cfg.respawn || goneT < cfg.respawnDelay) return;
-            if (IsRegenBlocked()) return;   // 슬라임이 자리에 겹쳐 있으면 대기.
-            BeginRegen();
         }
 
         // 콜라이더를 잠깐 켜서 겹침만 보고 즉시 끈다(ThinIcePlatform.IsRegenBlocked 와 동일 이유 —
@@ -169,9 +182,8 @@ namespace SlimeJumping.Platforms
 
         void BeginRegen()
         {
-            rb.MovePosition(restPos);
             if (disperser != null) disperser.Reform();
-            state = St.Regen;
+            state = St.Regen;   // 위치는 Regen 의 ComputeMotion 이 restPos 로 되돌린다.
             regenT = 0f;
         }
 
@@ -187,10 +199,10 @@ namespace SlimeJumping.Platforms
             if (t <= cfg.sinkTime)
             {
                 float u = Mathf.Clamp01(t / cfg.sinkTime);
-                return -cfg.sinkDepth * (1f - (1f - u) * (1f - u));   // easeOut 하강.
+                return -sinkDepthNow * (1f - (1f - u) * (1f - u));   // easeOut 하강.
             }
             float r = Mathf.Clamp01((t - cfg.sinkTime) / Mathf.Max(0.01f, cfg.reboundTime));
-            return -cfg.sinkDepth * (1f - r);                          // 리바운드 상승.
+            return -sinkDepthNow * (1f - r);                          // 리바운드 상승.
         }
 
         // dir 은 호출부에서 미리 읽는다 — ForceAirborneWithVelocity 가 Charging 이면 aimOffset 을 지운다.
@@ -207,6 +219,7 @@ namespace SlimeJumping.Platforms
             if (disperser != null) disperser.Disperse();
             if (col != null) col.enabled = false;
 
+            riseStartOffset = rb.position.y - restPos.y;   // 눌린 위치에서 이어 상승.
             state = St.Gone;
             goneT = 0f;
             rider = null;
