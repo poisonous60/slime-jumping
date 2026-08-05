@@ -9,7 +9,8 @@ namespace SlimeJumping.Platforms.Bell
     [AddComponentMenu("SlimeJumping/Bell/Bell Sound Wave")]
     public class BellSoundWave : MonoBehaviour
     {
-        [Tooltip("The bell whose audible strikes spawn waves.")]
+        [Tooltip("The bell whose audible strikes spawn waves. Empty = the SwingingBell on this " +
+                 "GameObject or a parent — put this component on the bell and copies just work.")]
         [SerializeField] private SwingingBell bell;
         [Tooltip("Wave origin relative to the bell body's rigidbody position (world units).")]
         [SerializeField] private Vector2 centerOffset;
@@ -34,33 +35,44 @@ namespace SlimeJumping.Platforms.Bell
 
         BellSoundWaveConfig cfg;
         Rigidbody2D bellRb;
+        // The wave uniforms are shader globals, so every bell in the scene shares one slot pool
+        // and one push per frame — otherwise two broadcasters overwrite each other's waves.
         // Same array instance every push — Unity locks a global array's length on first set.
-        readonly Vector4[] waveData = new Vector4[MaxWaves];
-        readonly Vector2[] centers  = new Vector2[MaxWaves];
-        readonly float[]   starts   = new float[MaxWaves];
-        readonly bool[]    active   = new bool[MaxWaves];
-        int nextSlot;
-        int nextQuad;
-        // The wave uniforms are shader globals — two enabled broadcasters would overwrite
-        // each other's waves every frame, so this component assumes one active instance.
+        static readonly Vector4[] waveData = new Vector4[MaxWaves];
+        static readonly Vector2[] centers  = new Vector2[MaxWaves];
+        static readonly float[]   starts   = new float[MaxWaves];
+        static readonly bool[]    active   = new bool[MaxWaves];
+        static int nextSlot;
         static int enabledCount;
+        static int lastPushFrame = -1;
+        int nextQuad;
+        int lastWaveImpact = -1;
 
         public BellSoundWaveConfig Config => cfg;
 
         void Awake()
         {
             cfg = BellSoundWaveConfig.Resolve(configOverride);
+            if (bell == null) bell = GetComponentInParent<SwingingBell>();
             if (bell != null) bellRb = bell.GetComponent<Rigidbody2D>();
+
+            // The quads are placed in world space per strike; riding a swinging bell would drag
+            // the live ring along with it, so they leave the hierarchy at startup.
+            if (distortionQuads != null)
+                for (int i = 0; i < distortionQuads.Length; i++)
+                    if (distortionQuads[i] != null) distortionQuads[i].transform.SetParent(null, true);
         }
 
         void OnEnable()
         {
             enabledCount++;
-            if (enabledCount > 1)
-                Debug.LogWarning("BellSoundWave: multiple enabled instances push the same shader globals — only one bell's waves will show.", this);
             if (bell != null) bell.Struck += OnStruck;
-            for (int i = 0; i < MaxWaves; i++) active[i] = false;
-            PushGlobals();
+            // Only the first broadcaster clears — a later one enabling must not wipe live waves.
+            if (enabledCount == 1)
+            {
+                for (int i = 0; i < MaxWaves; i++) active[i] = false;
+                PushGlobals();
+            }
         }
 
         void OnDisable()
@@ -68,8 +80,11 @@ namespace SlimeJumping.Platforms.Bell
             enabledCount--;
             if (bell != null) bell.Struck -= OnStruck;
             // Stale globals would freeze every reveal platform mid-wave.
-            for (int i = 0; i < MaxWaves; i++) active[i] = false;
-            PushGlobals();
+            if (enabledCount <= 0)
+            {
+                for (int i = 0; i < MaxWaves; i++) active[i] = false;
+                PushGlobals();
+            }
         }
 
         void OnStruck(float closingSpeed)
@@ -77,6 +92,10 @@ namespace SlimeJumping.Platforms.Bell
             // Struck is raised after Ring(), so LastRingResult is this strike's own outcome.
             // Only strikes that actually made a sound send a wave.
             if (!bell.LastRingResult.StartsWith("PLAYED")) return;
+
+            // One wave per slime hit, not per ring.
+            if (bell.ImpactCount == lastWaveImpact) return;
+            lastWaveImpact = bell.ImpactCount;
 
             // PlatformMotor requires a Rigidbody2D, so bellRb is guaranteed once bell is assigned.
             Vector2 center = bellRb.position + centerOffset;
@@ -101,14 +120,20 @@ namespace SlimeJumping.Platforms.Bell
 
         void Update()
         {
-            float speed    = Mathf.Max(cfg.waveSpeed, 0.0001f);
-            float lifetime = cfg.maxRadius / speed + cfg.frontWidth / speed + cfg.holdSeconds + cfg.fadeSeconds;
-            for (int i = 0; i < MaxWaves; i++)
+            // Shared slot pool: the first bell to tick each frame ages and pushes it for everyone,
+            // so the wave params come from that bell's config — keep every bell on one config.
+            if (lastPushFrame != Time.frameCount)
             {
-                if (!active[i]) continue;
-                if (Time.time - starts[i] > lifetime) active[i] = false;
+                lastPushFrame = Time.frameCount;
+                float speed    = Mathf.Max(cfg.waveSpeed, 0.0001f);
+                float lifetime = cfg.maxRadius / speed + cfg.frontWidth / speed + cfg.holdSeconds + cfg.fadeSeconds;
+                for (int i = 0; i < MaxWaves; i++)
+                {
+                    if (!active[i]) continue;
+                    if (Time.time - starts[i] > lifetime) active[i] = false;
+                }
+                PushGlobals();
             }
-            PushGlobals();
             PushDistortion();
         }
 

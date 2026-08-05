@@ -50,7 +50,7 @@ namespace SlimeJumping.Platforms.Bell
         float lastImpactSpeed, lastImpactKick, lastImpactLever;
         Vector2 lastImpactDir;
         bool lastImpactBounced;
-        int strikeCount, silentStrikeCount;
+        int strikeCount, silentStrikeCount, impactCount;
         float lastStrikeSpeed;
         string lastRingResult = "-";
 
@@ -63,6 +63,8 @@ namespace SlimeJumping.Platforms.Bell
         public bool LastImpactBounced => lastImpactBounced;
         public int StrikeCount => strikeCount;
         public int SilentStrikeCount => silentStrikeCount;
+        /// <summary>Slime touches that swung the bell — one per hit, not per clapper ring.</summary>
+        public int ImpactCount => impactCount;
         public float LastStrikeSpeed => lastStrikeSpeed;
         /// <summary>Why the last touch did or did not swing the bell.</summary>
         public ContactVerdict LastContact => lastContact;
@@ -436,6 +438,7 @@ namespace SlimeJumping.Platforms.Bell
         // shove the bell at the contact point, and only the sign of dir differs.
         void ApplyKick(Vector2 r, Vector2 dir, float approach)
         {
+            impactCount++;
             lastImpactDir = dir;
 
             // The bell goes the way the slime was travelling. The moment arm only breaks the tie for a

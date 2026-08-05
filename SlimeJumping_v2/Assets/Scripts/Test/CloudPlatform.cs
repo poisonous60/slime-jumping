@@ -31,6 +31,11 @@ namespace SlimeJumping.Platforms
 
         enum St { Idle, Sinking, Gone, Regen }
         St state = St.Idle;
+
+        // Idle 이 아니면 비주얼 scale 과 콜라이더는 이 클래스가 몬다(Consume/Reform/Commit).
+        // 서브클래스가 그 두 채널을 건드려도 되는지 판별하는 창구. Sinking 진입 = 라이더 있음.
+        public bool IsIdle => state == St.Idle;
+        public bool HasRider => rider != null;
         float regenT;
         float seqT;
         float sinkDepthNow;   // 이번 착지의 눌림 깊이. 충격 속도 비례, attach 에서 확정.
@@ -187,7 +192,7 @@ namespace SlimeJumping.Platforms
             regenT = 0f;
         }
 
-        void Commit()
+        protected void Commit()
         {
             if (disperser != null) disperser.ResetToRest();
             if (col != null) col.enabled = true;
