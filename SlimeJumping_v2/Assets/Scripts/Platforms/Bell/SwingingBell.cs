@@ -43,7 +43,7 @@ namespace SlimeJumping.Platforms.Bell
         Vector2 lastRiderPos;
 
         /// <summary>What the bell did with the slime's last touch, so a hit that produced nothing says why.</summary>
-        public enum ContactVerdict { Clear, Riding, Debounced, OnAxis, Grazing, Slam, JumpOff, JumpTooSlow }
+        public enum ContactVerdict { Clear, Riding, Debounced, OnAxis, Grazing, LightTouch, Slam, JumpOff, JumpTooSlow }
         ContactVerdict lastContact = ContactVerdict.Clear;
 
         // Pulled by SwingingBellDebug; nothing here feeds the simulation.
@@ -390,12 +390,13 @@ namespace SlimeJumping.Platforms.Bell
 
             float approach = ApproachSpeed(slime, r, outward, out Vector2 dir);
             lastImpactSpeed = approach;
-            if (approach < cfg.minImpactSpeed) { lastContact = ContactVerdict.Grazing; return; }
+            if (approach <= 0f) { lastContact = ContactVerdict.Grazing; return; }
 
             ApplyKick(r, dir, approach);
-            lastContact = ContactVerdict.Slam;
 
-            if (approach >= cfg.bounceSpeedThreshold) lastImpactBounced = ThrowSlimeOff(slime, r);
+            bool hard = approach >= cfg.hardHitSpeed;
+            lastContact = hard ? ContactVerdict.Slam : ContactVerdict.LightTouch;
+            if (hard) lastImpactBounced = ThrowSlimeOff(slime, r);
         }
 
         // Speed the slime is closing on the flank at, relative to the flank's own motion. Only the part
@@ -433,32 +434,25 @@ namespace SlimeJumping.Platforms.Bell
 
         // One swing law for both directions of contact: a slam from outside and a rider pushing off both
         // shove the bell at the contact point, and only the sign of dir differs.
-        void ApplyKick(Vector2 r, Vector2 dir, float speed)
+        void ApplyKick(Vector2 r, Vector2 dir, float approach)
         {
             lastImpactDir = dir;
 
-            // Anchored to the swing it should produce, not to a mass number: the arm and the direction
-            // still shape it, but retuning the bell's heaviness cannot silently mute slams.
+            // The bell goes the way the slime was travelling. The moment arm only breaks the tie for a
+            // hit straight down the axis, where the travel direction says nothing about which way to go.
             float lever = r.x * dir.y - r.y * dir.x;
-
-            // A slam aimed at the pivot has no arm and rigidly produces nothing, which plays as the bell
-            // ignoring the hit. Floor the arm and point it the way the slime was travelling.
-            float minLever = cfg.minLeverFraction * r.magnitude;
-            if (Mathf.Abs(lever) < minLever)
-            {
-                float side = Mathf.Abs(dir.x) > 1e-4f ? Mathf.Sign(dir.x)
-                           : (Mathf.Abs(lever) > 1e-6f ? Mathf.Sign(lever) : 1f);
-                lever = side * minLever;
-            }
             lastImpactLever = lever;
+            float side = Mathf.Abs(dir.x) > 1e-4f ? Mathf.Sign(dir.x)
+                       : (Mathf.Abs(lever) > 1e-6f ? Mathf.Sign(lever) : 1f);
 
-            // Held inside a band, not just capped. The cadence a slam produces is sharply band-limited:
-            // under it the bell rings once minutes later instead of now, over it the first two strikes
-            // collide and the rest arrive after a long silence.
-            float raw = ReferenceKick() * (speed / cfg.slamReferenceSpeed) * (lever / ArmBellCom);
-            float span = Mathf.Clamp(Mathf.Abs(raw), Mathf.Min(cfg.minImpactKick, cfg.maxImpactKick),
-                                     cfg.maxImpactKick);
-            float kick = Mathf.Sign(raw) * span;
+            // Two regimes, not a ramp. At or over Hard Hit Speed the bell always takes the same full
+            // swing, which is what makes the ringing pattern repeatable; under it, a fraction that fades
+            // out with speed, so brushing past moves the bell without ringing it.
+            float strength = approach >= cfg.hardHitSpeed
+                ? 1f
+                : cfg.lightTouchScale * (approach / cfg.hardHitSpeed);
+
+            float kick = side * ReferenceKick() * strength;
             phi1Dot += kick;
             lastImpactKick = kick;
         }
@@ -470,7 +464,7 @@ namespace SlimeJumping.Platforms.Bell
             float m = cfg.clapperMass, lc = ArmClapperAxis;
             float inertia = Mathf.Max(0.0001f, BellInertia() + m * lc * lc);
             float restore = (cfg.bellMass * ArmBellCom + m * lc) * Gravity;
-            float rise = 1f - Mathf.Cos(cfg.slamSwingDegrees * Mathf.Deg2Rad);
+            float rise = 1f - Mathf.Cos(cfg.hardHitSwingDegrees * Mathf.Deg2Rad);
             return Mathf.Sqrt(2f * restore * rise / inertia);
         }
 
@@ -529,7 +523,7 @@ namespace SlimeJumping.Platforms.Bell
             lastImpactSpeed = away;
             lastImpactBounced = false;
             lastImpactKick = 0f;
-            if (away < cfg.minImpactSpeed) { lastContact = ContactVerdict.JumpTooSlow; return; }
+            if (away <= 0f) { lastContact = ContactVerdict.JumpTooSlow; return; }
 
             ApplyKick(r, -outward, away);
             lastContact = ContactVerdict.JumpOff;

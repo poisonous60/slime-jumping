@@ -61,9 +61,7 @@ namespace SlimeJumping.Debugging
         SlimeController.SlimeState lastState;
         int seenStrikes, seenSilent;
         SwingingBell.ContactVerdict seenVerdict = SwingingBell.ContactVerdict.Clear;
-        float lastReportedImpactSpeed = float.NaN;
         Vector2 velAtContact;
-        string verdict = "-";
 
         void Awake()
         {
@@ -90,7 +88,7 @@ namespace SlimeJumping.Debugging
             b.Struck += OnStruck;
             var cfg = b.Config;
             Debug.Log($"{Tag} watching '{b.name}'. clips={b.StrikeClipCount}" +
-                      (cfg != null ? $" minImpactSpeed={cfg.minImpactSpeed} bounceThreshold={cfg.bounceSpeedThreshold} " +
+                      (cfg != null ? $" hardHitSpeed={cfg.hardHitSpeed} lightTouchScale={cfg.lightTouchScale} " +
                                      $"bounceSpeed={cfg.bounceSpeed} minStrikeSpeed={cfg.minStrikeSpeed} " +
                                      $"strikeAngle={cfg.strikeAngle}" : ""), this);
         }
@@ -120,29 +118,17 @@ namespace SlimeJumping.Debugging
 
             if (bell != null)
             {
-                float s = bell.LastImpactSpeed;
-                if (logContacts && !Mathf.Approximately(s, lastReportedImpactSpeed))
-                {
-                    lastReportedImpactSpeed = s;
-                    var cfg = bell.Config;
-                    verdict = cfg == null ? "?"
-                        : s < cfg.minImpactSpeed ? $"IGNORED — {s:F2} < minImpactSpeed {cfg.minImpactSpeed}"
-                        : bell.LastImpactBounced ? "kicked + thrown off"
-                        : s >= cfg.bounceSpeedThreshold ? "kicked, throw REFUSED (charging, or bounceSpeed 0)"
-                        : "kicked, left clinging";
-                    // The bell's own dir, not the debug's post-landing read — those disagree by design.
-                    // A horizontal slam must give kick with the SAME sign as dirX, else the swing is inverted.
-                    var d = bell.LastImpactDir;
-                    Debug.Log($"{Tag} SLAM speed={s:F2} kick={bell.LastImpactKick:+0.000;-0.000} rad/s " +
-                              $"dir=({d.x:+0.00;-0.00},{d.y:+0.00;-0.00}) lever={bell.LastImpactLever:+0.00;-0.00} " +
-                              $"-> {verdict}", this);
-                }
-
+                // The bell's own verdict, not a re-derivation of its gates. Its dir is read a tick before
+                // the slime's own landing spends it, so it disagrees with the debug's read by design —
+                // a horizontal slam must give kick with the SAME sign as dirX, else the swing is inverted.
                 if (logContacts && bell.LastContact != seenVerdict)
                 {
                     seenVerdict = bell.LastContact;
-                    Debug.Log($"{Tag} CONTACT verdict={seenVerdict} approach={bell.LastImpactSpeed:F2} " +
-                              $"kick={bell.LastImpactKick:+0.000;-0.000} slime={slime.CurrentState}", this);
+                    var d = bell.LastImpactDir;
+                    Debug.Log($"{Tag} CONTACT {seenVerdict} approach={bell.LastImpactSpeed:F2} " +
+                              $"kick={bell.LastImpactKick:+0.000;-0.000} dir=({d.x:+0.00;-0.00},{d.y:+0.00;-0.00}) " +
+                              $"lever={bell.LastImpactLever:+0.00;-0.00} thrown={bell.LastImpactBounced} " +
+                              $"slime={slime.CurrentState}", this);
                 }
 
                 if (bell.StrikeCount != seenStrikes || bell.SilentStrikeCount != seenSilent)
@@ -247,7 +233,6 @@ namespace SlimeJumping.Debugging
                               (cfg != null ? $"  (wall at {cfg.strikeAngle:F1})" : ""));
                 sb.AppendLine($"lastSlam approach={bell.LastImpactSpeed:F2} kick={bell.LastImpactKick:+0.000;-0.000} " +
                               $"bounced={bell.LastImpactBounced} contact={bell.LastContact}");
-                sb.AppendLine($"verdict: {verdict}");
                 sb.AppendLine($"strikes={bell.StrikeCount} silent={bell.SilentStrikeCount} " +
                               $"lastClosing={bell.LastStrikeSpeed:F2} clips={bell.StrikeClipCount}");
                 sb.AppendLine($"lastRing: {bell.LastRingResult}");

@@ -15,9 +15,10 @@ MonoBehaviour:
   waveSpeed: 7
   maxRadius: 60
   frontWidth: 1
-  holdSeconds: 1
-  fadeSeconds: 3
-  hiddenPlatformTrailStrength: 10
+  holdSeconds: 20
+  fadeSeconds: 4
+  hiddenPlatformTrailStrength: 10000
   distortionStrength: 0.02
   distortionRingWidthWorld: 0.6
   distortionBlurSize: 0.004
+  editorPreviewAlpha: 0.4

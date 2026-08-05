@@ -26,15 +26,11 @@ MonoBehaviour:
   strikeAngle: 20
   strikeRestitution: 0.4
   clapperSeparationAngle: 1.5
-  slamSwingDegrees: 50
-  slamReferenceSpeed: 10
-  minImpactSpeed: 2
-  maxImpactKick: 1.3
-  minImpactKick: 0.9
-  minLeverFraction: 0.6
+  hardHitSpeed: 3
+  hardHitSwingDegrees: 47.5
+  lightTouchScale: 0.15
   impactCooldown: 0.12
   riderWeightScale: 1
-  bounceSpeedThreshold: 3
   bounceSpeed: 2.5
   bounceCarriesSwing: 0
   strikeClips:

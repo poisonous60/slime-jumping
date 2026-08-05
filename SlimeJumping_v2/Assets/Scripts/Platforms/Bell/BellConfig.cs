@@ -55,38 +55,25 @@ namespace SlimeJumping.Platforms.Bell
         [Range(0.05f, 10f)] public float clapperSeparationAngle = 1.5f;
 
         [Header("Slime impact — how a body slam enters the bell")]
-        [Tooltip("How far a slam at Slam Reference Speed, landing on the bell's flank, swings the bell " +
-                 "(degrees from rest). This is the whole strength knob — it is converted to an angular " +
-                 "kick against whatever inertia the mass and period imply, so retuning the bell's " +
-                 "heaviness does not silently make slams stop registering.")]
-        [Range(0f, 90f)] public float slamSwingDegrees = 50f;
-        [Tooltip("The slam speed (world u/s) that counts as a full-strength hit. Faster scales up, " +
-                 "slower scales down, both linearly.")]
-        [Min(0.1f)] public float slamReferenceSpeed = 10f;
-        [Tooltip("Slam speed below which nothing happens (world u/s). Stops resting contact chatter " +
-                 "from pumping the bell.")]
-        [Min(0f)] public float minImpactSpeed = 2f;
-        [Tooltip("Cap on the angular speed a single slam can add (rad/s).")]
-        [Min(0f)] public float maxImpactKick = 1.3f;
-        [Tooltip("Angular speed a registered slam adds at minimum (rad/s). The ringing pattern only holds " +
-                 "over a narrow band of kick — below it the bell stays quiet for seconds and then rings " +
-                 "on its own, which reads as a haunted bell. Any hit strong enough to count gets at least this.")]
-        [Min(0f)] public float minImpactKick = 0.9f;
-        [Tooltip("Smallest moment arm a slam is allowed to have, as a fraction of its distance from the " +
-                 "pivot. A slam aimed straight at the pivot has no arm and would rigidly produce no swing " +
-                 "at all — which reads as the bell randomly ignoring hits. This floors it so every solid " +
-                 "hit shoves the bell the way the slime was travelling. 0 = strict rigid-body torque.")]
-        [Range(0f, 1f)] public float minLeverFraction = 0.6f;
+        [Tooltip("Speed the slime has to close on the bell's flank at (world u/s) for the hit to count as " +
+                 "a real one. At or above this the bell takes the full swing no matter how much faster the " +
+                 "slime was going, and the slime is thrown clear. Below it the bell only nudges. Sliding " +
+                 "along the bell closes at nothing, so it never counts however fast it looks.")]
+        [Min(0.1f)] public float hardHitSpeed = 5f;
+        [Tooltip("How far a real hit swings the bell (degrees from rest). This is the whole strength " +
+                 "knob — it is converted to an angular kick against whatever inertia the mass and period " +
+                 "imply, so retuning the bell's heaviness does not silently make slams stop registering.")]
+        [Range(0f, 90f)] public float hardHitSwingDegrees = 47.5f;
+        [Tooltip("What a touch under Hard Hit Speed does, as a fraction of a real hit, faded in with how " +
+                 "fast it was. Keep it small: enough that brushing the bell visibly moves it, not enough " +
+                 "to ring it.")]
+        [Range(0f, 1f)] public float lightTouchScale = 0.15f;
         [Tooltip("Seconds after a slam before another one counts.")]
         [Min(0f)] public float impactCooldown = 0.12f;
         [Tooltip("How strongly a slime clinging to the bell tilts it by its own weight. 0 = weightless rider.")]
         [Min(0f)] public float riderWeightScale = 1f;
 
-        [Header("Bounce off — fast arrivals slam, slow ones cling")]
-        [Tooltip("Arrival speed (world u/s) at or above which the slime is thrown off the bell instead of " +
-                 "sticking to it. Below this it clings and crawls like any other surface. Set very high " +
-                 "to always cling, 0 to never cling.")]
-        [Min(0f)] public float bounceSpeedThreshold = 6f;
+        [Header("Bounce off — a real hit is thrown clear, anything softer clings")]
         [Tooltip("Speed (world u/s) the slime leaves with, straight out of the bell's flank. Flat, not " +
                  "scaled by how hard it arrived — this only has to break the grip, not launch the slime.")]
         [Min(0f)] public float bounceSpeed = 2.5f;

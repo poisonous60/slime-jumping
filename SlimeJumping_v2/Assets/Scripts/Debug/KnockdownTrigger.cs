@@ -23,6 +23,9 @@ namespace SlimeJumping.Debugging
 
         private void OnTriggerEnter2D(Collider2D other)
         {
+            // Unity delivers trigger messages to disabled MonoBehaviours on purpose, and the cooldown
+            // above runs in Update, which does not — so unticking this would fire it once and then wedge.
+            if (!enabled) return;
             if (isOnCooldown) return;
 
             var slime = other.GetComponentInParent<SlimeController>();

@@ -106,11 +106,20 @@ namespace SlimeJumping.Editor
 
             // Receiver transform is the paint plane — the wrapper is unrotated, so its local
             // frame stays world-XY even though the FBX visual child may carry import rotation.
-            var b = col.bounds;
-            Vector3 lmin3 = wrapper.transform.InverseTransformPoint(b.min);
-            Vector3 lmax3 = wrapper.transform.InverseTransformPoint(b.max);
-            Vector2 lmin = Vector2.Min(lmin3, lmax3);
-            Vector2 lmax = Vector2.Max(lmin3, lmax3);
+            // Bounds come from the collider's local path points, NOT collider.bounds — with
+            // autoSyncTransforms off, bounds are stale right after the clone is repositioned
+            // and would bake world-space garbage into localMin.
+            Vector2 lmin = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            Vector2 lmax = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+            for (int p = 0; p < col.pathCount; p++)
+            {
+                foreach (var pt in col.GetPath(p))
+                {
+                    Vector2 lp = pt + col.offset;
+                    lmin = Vector2.Min(lmin, lp);
+                    lmax = Vector2.Max(lmax, lp);
+                }
+            }
 
             // 0.2 world-unit padding, converted to local via lossyScale.
             Vector3 ls = wrapper.transform.lossyScale;
