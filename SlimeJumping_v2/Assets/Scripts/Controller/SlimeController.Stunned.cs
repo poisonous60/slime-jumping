@@ -12,7 +12,7 @@ namespace SlimeJumping.Controller
         {
             stunTimer -= dt;
 
-            velocity += -gravityUp * Mathf.Abs(settings.gravity) * dt;
+            velocity += -gravityUp * GravityMagnitude * dt;
 
             // Cancel normal velocity only — tangent survives.
             if (isTouchingSurface)

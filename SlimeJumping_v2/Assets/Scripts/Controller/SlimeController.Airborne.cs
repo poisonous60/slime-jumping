@@ -25,25 +25,25 @@ namespace SlimeJumping.Controller
             // W/S variant picked by actual velocity direction, so steering still works above apex.
             // In fluid the sign is ignored: buoyancy has no clean apex, so a rising/falling split
             // makes submerged steering feel inconsistent.
-            float gravityScale = 1f;
+            float holdGravityScale = 1f;
             float inputYRaw = inputReader.LastInputMove.y;
             if (InFluid)
             {
-                if (inputYRaw > 0.1f) gravityScale = settings.floatGravityScaleInFluid;
-                else if (inputYRaw < -0.1f) gravityScale = settings.diveGravityScaleInFluid;
+                if (inputYRaw > 0.1f) holdGravityScale = settings.floatGravityScaleInFluid;
+                else if (inputYRaw < -0.1f) holdGravityScale = settings.diveGravityScaleInFluid;
             }
             else
             {
                 bool isRisingByVelocity = Vector2.Dot(velocity, gravityUp) > 0f;
                 if (inputYRaw > 0.1f)
-                    gravityScale = isRisingByVelocity ? settings.floatGravityScaleRising : settings.floatGravityScaleFalling;
+                    holdGravityScale = isRisingByVelocity ? settings.floatGravityScaleRising : settings.floatGravityScaleFalling;
                 else if (inputYRaw < -0.1f)
-                    gravityScale = isRisingByVelocity ? settings.diveGravityScaleRising : settings.diveGravityScaleFalling;
+                    holdGravityScale = isRisingByVelocity ? settings.diveGravityScaleRising : settings.diveGravityScaleFalling;
             }
 
             // Asymmetric gravity reuses the apex-gated airControlActive split.
             float asymScale = airControlActive ? settings.fallingGravityScale : settings.risingGravityScale;
-            velocity += -gravityUp * Mathf.Abs(settings.gravity) * gravityScale * asymScale * dt;
+            velocity += -gravityUp * GravityMagnitude * holdGravityScale * asymScale * dt;
 
             if (isTouchingSurface)
             {
@@ -191,7 +191,7 @@ namespace SlimeJumping.Controller
         private float ComputeEnergyConversionSpawnDistance(out float impactSpeed)
         {
             float heightDelta = Vector2.Dot(launchPosition - rb.position, gravityUp);
-            float shadowSpeedSq = launchSpeed * launchSpeed + 2f * Mathf.Abs(settings.gravity) * heightDelta;
+            float shadowSpeedSq = launchSpeed * launchSpeed + 2f * GravityMagnitude * heightDelta;
             impactSpeed = shadowSpeedSq > 0f ? Mathf.Sqrt(shadowSpeedSq) : 0f;
             float rate = (conversionCount == 0) ? settings.initialConversionRate : settings.subsequentConversionRate;
             float speedRatio = impactSpeed / settings.baseLaunchPower;

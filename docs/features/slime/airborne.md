@@ -3,6 +3,8 @@
 ## 중력
 키네마틱. 매 프레임 `velocity += GravityVector * dt`. (GravityField 내부에서는 방향이 치환됨 — [../mechanisms/gravity-field.md](../mechanisms/gravity-field.md))
 
+크기는 `GravityMagnitude` = `|settings.gravity| × GravityScale` 경유. LowGravityZone 안에서는 배율이 걸린다 — [../mechanisms/low-gravity-zone.md](../mechanisms/low-gravity-zone.md). W/S 홀드와 상승/하강 비대칭 배율은 그 위에 곱해진다.
+
 **상승/하강 비대칭**: `risingGravityScale`, `fallingGravityScale` 곱셈. 기본값 둘 다 1.0.
 
 ## 에어 컨트롤 활성 조건

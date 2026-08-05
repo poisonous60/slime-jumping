@@ -8,7 +8,7 @@
 | `entryMultiplier` | 0.4 | 진입 시 속도 곱 |
 | `exitMultiplier` | 2.5 | 탈출 시 속도 곱 |
 | `dragFactor` | 0.4 | 초당 속도 잔류율. `MultiplyVelocity(Pow(dragFactor, dt))` |
-| `buoyancy` | 12 | 상향 가속도. `AddExternalVelocity(gravityUp * buoyancy * dt)` |
+| `buoyancy` | 12 | 상향 가속도. `AddExternalVelocity(gravityUp * buoyancy * GravityScale * dt)` — 부력은 ρVg 라 [저중력존](low-gravity-zone.md) 배율을 같이 탄다 |
 | `maxFallSpeed` | 4 | 하향 속도 캡 (`ClampFallSpeed`) |
 | `blockAttach` | true | 물 안에서 표면 부착 차단 |
 

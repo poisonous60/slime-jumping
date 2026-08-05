@@ -47,7 +47,9 @@ namespace SlimeJumping.Controller
             blockAttachCount = 0;
             inFluidCount = 0;
 
+            // 도착지 오버랩을 봐야 하므로 위치 대입 뒤에 호출한다.
             rb.position = worldPos;
+            ResyncLowGravityZones();
             velocity = newVelocity;
             externalDeltaV = Vector2.zero;
             rb.linearVelocity = newVelocity;

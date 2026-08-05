@@ -126,7 +126,7 @@ namespace SlimeJumping.Controller
 
         public Vector2 GravityUp => gravityUp;
         public Vector2 GravityRight => gravityRight;
-        public Vector2 GravityVector => -gravityUp * Mathf.Abs(settings.gravity);
+        public Vector2 GravityVector => -gravityUp * GravityMagnitude;
 
         public void PushGravityField(GravityField field)
         {

@@ -66,6 +66,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Snowstorm](features/mechanisms/snowstorm.md) — 스테이지 전체 눈폭풍 (기본 Jump King 4-페이즈 사이클: WindLeft → CalmAfterLeft → WindRight → CalmAfterRight, 구간별 `sections` override로 약한 상시 좌풍/무풍 눈 연출 등 지정 가능, `windShelterAreas`로 실내·벽 뒤처럼 슬라임 push만 차단, 짧은 lerp ramp 전환, WindZone2D_v2 동일 슬라임 push, 카메라 앵커 Local sim PS의 전체 화면 볼륨 스폰으로 viewport 전 영역 커버 [rate 변화가 화면 전역에 균일 반영 — strip 스폰의 "위에서 띠로 내려오는" 어색함 제거], 입자 외형·낙하속도를 스테이지 눈과 통일 + suppressedSnowParticles cross-fade로 "같은 눈이 거세지는" 경계 연출, slimePresenceWeight 통합 fade로 zone in/out 시 모든 비주얼 [particles + URP Volume vignette/cool-tint/WhiteBalance + ambient loop] 동기 fade in/out, calm 시 emission baseline 유지로 "바람만 멈추고 눈은 계속" 표현)
 - [Drag Zone](features/mechanisms/drag-zone.md) — 감속/모래 + 볼륨 차징
 - [Gravity Field](features/mechanisms/gravity-field.md) — 중력 방향 치환
+- [Low Gravity Zone](features/mechanisms/low-gravity-zone.md) — 중력 크기 배율. GravityField 와 스택이 따로라 겹치면 방향은 필드, 크기는 존이 결정
 - [Water Zone](features/mechanisms/water-zone.md) — 물 v1/v2 + 파도 + Underwater 포스트
 - [Cold Zone](features/mechanisms/cold-zone.md) — Stage2 동결 비주얼 (슬라임 색 lerp + 표면 frost + warm/cold 듀얼 trail RT alpha-over)
 - [Water Current Zone](features/mechanisms/water-current-zone.md) — 벽면 흐르는 물살 (centerline 리본 + 5-vert 반-튜브 단면 + 좌/우 채널 파도 시뮬 + Water_FlowingRefraction 셰이더)

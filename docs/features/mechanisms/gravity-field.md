@@ -51,7 +51,8 @@ GravityZone (GameObject, Layer 9)
 - 카메라 회전
 - force field falloff
 - 다중 zone 가중 평균
-- 중력 강도 오버라이드
+
+중력 **강도**는 별도 메커니즘이다 — [low-gravity-zone.md](low-gravity-zone.md). 스택이 따로라 겹쳐 놓으면 방향은 이쪽, 크기는 저쪽이 정한다.
 
 ## 관련 파일
 - [GravityField.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/GravityField.cs)

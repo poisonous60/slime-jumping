@@ -14,6 +14,7 @@
 - `externalDeltaV = Vector2.zero` (이전 위치 외부 힘 잔여 초기화)
 - **에너지 추적**: `launchSpeed = |newVelocity|`, `launchHeight = worldPos.y`, `conversionCount = 0`
 - **GravityField**: `gravityFieldStack.Clear()` + gravityUp/gravityRight 리셋
+- **LowGravityZone**: `ResyncLowGravityZones()` — `rb.position` 대입 **뒤**에 호출. 존 쪽 추적까지 리셋하고 `SyncTransforms` 후 도착지 오버랩을 다시 잡는다 ([../mechanisms/low-gravity-zone.md](../mechanisms/low-gravity-zone.md))
 
 ## 관련 파일
 - [SlimeController.Teleport.cs](../../../SlimeJumping_v2/Assets/Scripts/Controller/SlimeController.Teleport.cs)

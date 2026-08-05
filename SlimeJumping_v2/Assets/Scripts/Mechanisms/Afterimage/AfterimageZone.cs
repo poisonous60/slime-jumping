@@ -61,7 +61,7 @@ namespace SlimeJumping.Mechanisms.Afterimage
                 return (closest - pos).sqrMagnitude <= r * r;
             }
 
-            Vector2 up = -slime.GravityVector.normalized;
+            Vector2 up = slime.GravityUp;
             Vector2 right = new Vector2(up.y, -up.x);
             Vector2 to = pos - slime.Position;
             float upComp = Vector2.Dot(to, up);
@@ -131,7 +131,7 @@ namespace SlimeJumping.Mechanisms.Afterimage
             if (c == null) return;
             Vector3 center = trackedSlime != null ? (Vector3)trackedSlime.Position
                 : (hardenBlockShape != null ? hardenBlockShape.transform.position : transform.position);
-            Vector2 up = trackedSlime != null ? -trackedSlime.GravityVector.normalized : Vector2.up;
+            Vector2 up = trackedSlime != null ? trackedSlime.GravityUp : Vector2.up;
             Vector2 right = new Vector2(up.y, -up.x);
 
             Gizmos.color = new Color(0.2f, 0.9f, 1f, 0.9f);

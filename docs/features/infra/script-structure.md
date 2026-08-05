@@ -11,6 +11,7 @@
 | `SlimeController.Launch.cs` | | partial — Launch, Hop, ApplyGroundDash |
 | `SlimeController.Stunned.cs` | | partial — FixedUpdateStunned |
 | `SlimeController.Teleport.cs` | | partial — TeleportTo |
+| `SlimeController.LowGravity.cs` | | partial — 저중력존 스택, GravityScale/GravityMagnitude, ResyncLowGravityZones |
 
 ## 입력 / 설정
 | 스크립트 | 역할 |
@@ -71,7 +72,8 @@
 | `WaterZoneAudioManager.cs` | 씬 단일 오디오 브로드캐스트 |
 | `WindZone2D.cs` | 바람 |
 | `DragZone.cs` | 모래/감속 |
-| `GravityField.cs` | 중력 치환 |
+| `GravityField.cs` | 중력 방향 치환 |
+| `LowGravityZone.cs` | 중력 크기 배율 |
 | `Portal.cs` | 포탈 쌍 |
 | `PortalSwapper.cs` | 포탈 위치 교체 |
 | `SignalSource.cs` | 신호 베이스 |

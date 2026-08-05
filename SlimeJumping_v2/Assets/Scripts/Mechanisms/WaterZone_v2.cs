@@ -208,7 +208,8 @@ namespace SlimeJumping.Mechanisms
             if (dragFactor < 1f)
                 slime.MultiplyVelocity(Mathf.Pow(dragFactor, dt));
 
-            slime.AddExternalVelocity(slime.GravityUp * buoyancy * dt);
+            // 부력은 ρVg — 중력에 비례한다. 안 곱하면 저중력존과 겹칠 때 슬라임이 물 밖으로 쏘아 올려진다.
+            slime.AddExternalVelocity(slime.GravityUp * buoyancy * slime.GravityScale * dt);
 
             if (maxFallSpeed > 0f)
                 slime.ClampFallSpeed(maxFallSpeed);

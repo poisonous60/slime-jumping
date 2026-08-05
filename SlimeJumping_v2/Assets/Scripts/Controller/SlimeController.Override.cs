@@ -75,6 +75,9 @@ namespace SlimeJumping.Controller
             gravityUp = Vector2.up;
             gravityRight = Vector2.right;
 
+            // 저중력존은 존 쪽 추적까지 리셋하고 현재 위치 기준으로 다시 잡는다.
+            ResyncLowGravityZones();
+
             launchSpeed = 0f;
             launchPosition = rb.position;
             conversionCount = 0;

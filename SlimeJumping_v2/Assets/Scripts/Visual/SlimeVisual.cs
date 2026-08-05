@@ -767,6 +767,7 @@ public class SlimeVisual : MonoBehaviour
 
         Vector2 tangent = new Vector2(-lastSurfaceNormal.y, lastSurfaceNormal.x);
         Vector2 gravity = slimeController.GravityVector;
+        // 분모는 baseline. 저중력존에서 sag 가 배율만큼 줄어드는 게 의도다.
         float sagStrength = Vector2.Dot(gravity, tangent) / Mathf.Abs(slimeController.Gravity);
 
         return tangent * sagStrength * settings.gravitySagDistance;

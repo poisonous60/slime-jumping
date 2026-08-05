@@ -28,8 +28,11 @@ namespace SlimeJumping.Effects
 
         private Vector3 baseMeshScale;     // the round droplet's rest scale (uniform)
         private Vector3 baseMeshLocalPos;
-        private Vector2 gravity;           // slime's gravity vector (m/s²)
+        private Vector2 gravity;           // spawn-time fallback for when the body is gone
         private float lostVolume;          // full-body volume units this piece carries
+
+        // 조각은 잘려나간 슬라임 질량 — 본체가 저중력존을 드나들면 같이 따라간다.
+        private Vector2 Gravity => slime != null ? slime.GravityVector : gravity;
 
         private ChunkState state = ChunkState.Flying;
         private float jiggleEnv;
@@ -180,12 +183,12 @@ namespace SlimeJumping.Effects
                 return;   // no gravity, no pit timer while being reeled in
             }
 
-            rb.linearVelocity += gravity * dt;
+            rb.linearVelocity += Gravity * dt;
 
             // Resting → falling again (the platform under it crumbled/moved away): ground
             // contact cancels the gravity step each frame, so sustained fall speed = airborne.
             if (state == ChunkState.Resting
-                && Vector2.Dot(rb.linearVelocity, gravity.normalized) > 1.5f)
+                && Vector2.Dot(rb.linearVelocity, Gravity.normalized) > 1.5f)
             {
                 state = ChunkState.Flying;
             }
