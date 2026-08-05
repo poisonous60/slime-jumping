@@ -77,7 +77,6 @@ namespace SlimeJumping.Editor
             bellCopy.name = BellRootName + " (TestSet)";
             bellCopy.transform.position = bellPos;
 
-            var receivers = new LocalTrailReceiver[wrappers.Length];
             for (int i = 0; i < wrappers.Length; i++)
             {
                 var copy = Object.Instantiate(wrappers[i], root.transform);
@@ -87,11 +86,11 @@ namespace SlimeJumping.Editor
                 var renderer = copy.GetComponentInChildren<MeshRenderer>();
                 renderer.sharedMaterial = revealMat;
                 var goo = EnsureGooOverlay(copy, renderer, gooMat);
-                receivers[i] = AddReceiver(copy, goo, cfg);
+                AddReceiver(copy, goo, cfg);
             }
 
             var bell = bellCopy.GetComponent<SwingingBell>();
-            var broadcaster = CreateBroadcaster(root.transform, bellPos, bell, cfg, distortionMat, receivers);
+            var broadcaster = CreateBroadcaster(root.transform, bellPos, bell, cfg, distortionMat);
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
                 UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
@@ -99,7 +98,8 @@ namespace SlimeJumping.Editor
 
             Debug.Log($"[BellSoundWave] Test set spawned at {root.transform.position}. Slam the test bell: " +
                       "audible strikes send a wave that reveals the two hidden platforms in passing order. " +
-                      $"Tuning lives in {ConfigAssetPath}.", broadcaster);
+                      "Bell and platforms share the set root — that shared parent is what binds them, so a " +
+                      $"second set's bell reveals only its own. Tuning lives in {ConfigAssetPath}.", broadcaster);
         }
 
         // -------- platform clone wiring --------
@@ -174,8 +174,7 @@ namespace SlimeJumping.Editor
         // -------- broadcaster + distortion quads --------
 
         static BellSoundWave CreateBroadcaster(Transform parent, Vector3 bellPos, SwingingBell bell,
-                                               BellSoundWaveConfig cfg, Material distortionMat,
-                                               LocalTrailReceiver[] receivers)
+                                               BellSoundWaveConfig cfg, Material distortionMat)
         {
             var go = new GameObject("BellSoundWave");
             go.transform.SetParent(parent, worldPositionStays: false);
@@ -214,10 +213,6 @@ namespace SlimeJumping.Editor
             quadsProp.arraySize = quads.Length;
             for (int i = 0; i < quads.Length; i++)
                 quadsProp.GetArrayElementAtIndex(i).objectReferenceValue = quads[i];
-            var recvProp = so.FindProperty("hiddenPlatformReceivers");
-            recvProp.arraySize = receivers.Length;
-            for (int i = 0; i < receivers.Length; i++)
-                recvProp.GetArrayElementAtIndex(i).objectReferenceValue = receivers[i];
             so.ApplyModifiedProperties();
             return wave;
         }

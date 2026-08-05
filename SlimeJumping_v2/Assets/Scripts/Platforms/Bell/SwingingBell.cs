@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using SlimeJumping.Audio;
 using SlimeJumping.Controller;
@@ -35,15 +36,18 @@ namespace SlimeJumping.Platforms.Bell
         bool onWall;
 
         readonly ContactPoint2D[] contactScratch = new ContactPoint2D[8];
+        readonly List<Collider2D> ownColliders = new List<Collider2D>();
         readonly Vector2[] velScratch = new Vector2[3];
         float offSlimeSeconds = float.MaxValue;
         SlimeController trackedSlime;
         Vector2 prevSlimeVel;
         bool riding;
+        bool onBell;
         Vector2 lastRiderPos;
+        Vector2 riderArrivalVel;
 
         /// <summary>What the bell did with the slime's last touch, so a hit that produced nothing says why.</summary>
-        public enum ContactVerdict { Clear, Riding, Debounced, OnAxis, Grazing, LightTouch, Slam, JumpOff, JumpTooSlow }
+        public enum ContactVerdict { Clear, Riding, Debounced, OnAxis, Grazing, LightTouch, Slam }
         ContactVerdict lastContact = ContactVerdict.Clear;
 
         // Pulled by SwingingBellDebug; nothing here feeds the simulation.
@@ -92,6 +96,7 @@ namespace SlimeJumping.Platforms.Bell
             cfg = BellConfig.Resolve(configOverride);
             restPos = rb.position;
             restRot = rb.rotation;
+            rb.GetAttachedColliders(ownColliders);
 
             if (bellVisual == null) bellVisual = transform.childCount > 0 ? transform.GetChild(0) : transform;
             visualScale = Mathf.Abs(bellVisual.lossyScale.y);
@@ -352,13 +357,11 @@ namespace SlimeJumping.Platforms.Bell
 
         // ---- Slime -> bell ----
 
-        // Polled here rather than in OnCollisionEnter2D. At order -100 the slime still holds the velocity
-        // it arrived with; by the time a collision callback runs it can already be spent or reversed,
-        // which read as "no reaction" and "the bell swings the wrong way".
+        // One judgement per visit: contacts miss the arrival tick because SurfaceProbe attaches a tick earlier, and they flicker mid-ride, so the carrier's rider counts as contact too.
         void ScanSlimeContact(float dt)
         {
             int n = rb.GetContacts(contactScratch);
-            SlimeController slime = null;
+            SlimeController touched = null;
             Vector2 point = Vector2.zero;
 
             for (int i = 0; i < n; i++)
@@ -367,21 +370,35 @@ namespace SlimeJumping.Platforms.Bell
                 if (col == null) continue;
                 var s = col.GetComponentInParent<SlimeController>();
                 if (s == null) continue;
-                slime = s;
+                touched = s;
                 point = contactScratch[i].point;
                 break;
             }
 
-            if (slime != null) trackedSlime = slime;
-            if (slime == null) { offSlimeSeconds += dt; lastContact = ContactVerdict.Clear; return; }
+            if (touched != null) Track(touched);
 
-            // A slime already riding this bell is crawling on it, not hitting it. Its weight tilts the
-            // bell through ApplyRiderInfluence; a slide has no business ringing anything.
-            if (riding) { offSlimeSeconds = 0f; lastContact = ContactVerdict.Riding; return; }
+            // isActiveAndEnabled: a pooled slime disabled while attached never detaches, and would
+            // otherwise hold the bell occupied forever.
+            bool present = touched != null
+                        || (riding && trackedSlime != null && trackedSlime.isActiveAndEnabled
+                            && trackedSlime.CurrentState != SlimeController.SlimeState.Airborne);
 
-            bool fresh = offSlimeSeconds >= cfg.impactCooldown;
+            if (!present)
+            {
+                onBell = false;
+                riderArrivalVel = Vector2.zero;
+                offSlimeSeconds += dt;
+                lastContact = ContactVerdict.Clear;
+                return;
+            }
+
+            var slime = touched != null ? touched : trackedSlime;
+            if (onBell) { lastContact = riding ? ContactVerdict.Riding : ContactVerdict.Debounced; return; }
+
+            onBell = true;
+            if (offSlimeSeconds < cfg.impactCooldown) { lastContact = ContactVerdict.Debounced; return; }
             offSlimeSeconds = 0f;
-            if (!fresh) { lastContact = ContactVerdict.Debounced; return; }
+            if (touched == null) point = lastRiderPos;
 
             lastImpactBounced = false;
             lastImpactKick = 0f;
@@ -405,14 +422,13 @@ namespace SlimeJumping.Platforms.Bell
         // of the travel that goes INTO the bell is a hit — sliding along it is perpendicular, so it reads
         // as zero however fast the slime is going.
         // Scored over all three velocity estimates rather than taking the longest vector: the longest one
-        // can be a stale landing impact pointing away, which would veto the real hit next to it.
+        // can point away, which would veto the real hit next to it.
         float ApproachSpeed(SlimeController slime, Vector2 r, Vector2 outward, out Vector2 dir)
         {
             Vector2 surfaceVel = new Vector2(-r.y, r.x) * phi1Dot;
             velScratch[0] = slime.Velocity;
             velScratch[1] = prevSlimeVel;
-            velScratch[2] = -slime.SurfaceNormal * slime.ImpactNormalSpeed
-                          + slime.SurfaceTangent * slime.ImpactTangentSpeed;
+            velScratch[2] = riderArrivalVel;
 
             Vector2 best = Vector2.zero;
             float bestApproach = float.NegativeInfinity;
@@ -489,13 +505,28 @@ namespace SlimeJumping.Platforms.Bell
             Vector2 throwVel = outward * cfg.bounceSpeed
                              + new Vector2(-r.y, r.x) * (phi1Dot * cfg.bounceCarriesSwing);
 
+            // Before the throw: launch clearance would otherwise own the entry and impose its own duration.
+            BlockReattach(slime);
             slime.ForceAirborneWithVelocity(throwVel);
             return true;
+        }
+
+        // Hides the bell from the probe, physics left on — else the probe re-sticks the slime next tick.
+        void BlockReattach(SlimeController slime)
+        {
+            if (cfg.reattachBlockSeconds <= 0f) return;
+            for (int i = 0; i < ownColliders.Count; i++)
+            {
+                if (ownColliders[i] != null) slime.RegisterReattachGuard(ownColliders[i], cfg.reattachBlockSeconds);
+            }
         }
 
         // A slime hanging off one side is real weight on that side, so it tilts the bell.
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float riderMass, Vector2 riderVelocity, bool isCharging)
         {
+            // The carrier's first call comes from CaptureLandingImpact, before the attach zeroes the
+            // slime's velocity, so this is the arrival speed itself rather than a guess at it.
+            if (!riding) riderArrivalVel = riderVelocity;
             riding = true;
             lastRiderPos = riderWorldPos;
             if (cfg == null) return;
@@ -506,30 +537,38 @@ namespace SlimeJumping.Platforms.Bell
         public override void RemoveRider()
         {
             riderTorque = 0f;
-            if (riding) KickFromJumpOff();
             riding = false;
         }
 
-        // Jumping off the bell shoves it the way the slime did not — the same law as a slam, with the
-        // contact direction reversed. A slime that merely crawls onto the next surface is still Attached
-        // and leaves nothing behind.
-        void KickFromJumpOff()
+        void Track(SlimeController slime)
         {
-            if (cfg == null || trackedSlime == null) return;
-            if (trackedSlime.CurrentState != SlimeController.SlimeState.Airborne) return;
+            if (trackedSlime == slime) return;
+            if (trackedSlime != null) trackedSlime.OnLaunch -= OnSlimeLaunch;
+            trackedSlime = slime;
+            trackedSlime.OnLaunch += OnSlimeLaunch;
+        }
 
-            Vector2 r = lastRiderPos - pivotWorld;
+        void OnDestroy()
+        {
+            if (trackedSlime != null) trackedSlime.OnLaunch -= OnSlimeLaunch;
+        }
+
+        // Launching off the bell shoves it back. Hooked on OnLaunch rather than RemoveRider: the carrier
+        // detaches during a landing too, which fired this at the moment the slime touched down elsewhere.
+        void OnSlimeLaunch(Vector2 pos, Vector2 launchVel, bool wasHop)
+        {
+            if (cfg == null || !onBell) return;
+
+            Vector2 r = pos - pivotWorld;
             Vector2 outward = OutwardAt(r);
             if (outward == Vector2.zero) return;
 
-            float away = Vector2.Dot(trackedSlime.Velocity, outward);
+            float away = Vector2.Dot(launchVel, outward);
+            if (away <= 0f) return;
+
             lastImpactSpeed = away;
             lastImpactBounced = false;
-            lastImpactKick = 0f;
-            if (away <= 0f) { lastContact = ContactVerdict.JumpTooSlow; return; }
-
             ApplyKick(r, -outward, away);
-            lastContact = ContactVerdict.JumpOff;
         }
 
         void OnDrawGizmosSelected()

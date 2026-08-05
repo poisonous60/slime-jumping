@@ -126,6 +126,7 @@ disableRadius = enableRadius × hysteresisFactor        // 기본 1.5
 | Spawner — 화면 밖 spawn 필요 | `SnowballSpawner`, `*Spawner` |
 | Trigger-only (이미 비용 0) | `JumpPad`, `PipeEntrance`, `GraniteBlastTrigger`, `SpikeHazardV2` |
 | 씬-단위 효과 (별 처리 필요) | `RainWorldZone` |
+| 비활성 시 이미 드러난 발판이 즉시 사라짐 (`BellSoundWave.OnDisable` 이 파장 슬롯을 비움) | `SwingingBell` — `ShouldSkipAttach` 게이트, 종 GO 가 `MeshCollider2DWrapper` 를 물고 있어 런타임 fallback scan 에 걸리던 것을 차단 |
 | Deprecated | `SpringyBranchPlatform_v2` |
 
 ## 알려진 위험 (플레이테스트에서 발견 시 대응)

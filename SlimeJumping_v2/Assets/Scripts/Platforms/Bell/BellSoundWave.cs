@@ -5,7 +5,11 @@ namespace SlimeJumping.Platforms.Bell
 {
     /// <summary>Turns each audible bell strike into an expanding sound wave: pushes wave centers/ages
     /// as shader globals (read by the Trail Receiver Local Reveal shader to fade hidden platforms in
-    /// and out as the front passes) and fires a heat-haze distortion ring per strike.</summary>
+    /// and out as the front passes) and fires a heat-haze distortion ring per strike.
+    ///
+    /// Which platforms a bell reveals is set by the hierarchy: hidden platforms sitting under the same
+    /// parent as the bell are its bundle, and only its waves reveal them. Drag a platform into another
+    /// bell's parent to hand it over; one left outside every bell's parent is never revealed.</summary>
     [AddComponentMenu("SlimeJumping/Bell/Bell Sound Wave")]
     public class BellSoundWave : MonoBehaviour
     {
@@ -14,39 +18,46 @@ namespace SlimeJumping.Platforms.Bell
         [SerializeField] private SwingingBell bell;
         [Tooltip("Wave origin relative to the bell body's rigidbody position (world units).")]
         [SerializeField] private Vector2 centerOffset;
-        [Tooltip("Optional per-instance config; empty = Resources/BellSoundWaveConfig.")]
+        [Tooltip("Optional per-instance config; empty = Resources/BellSoundWaveConfig. Wave shape " +
+                 "rides along with each wave, so bells may run different speeds and hold times.")]
         [SerializeField] private BellSoundWaveConfig configOverride;
         [Tooltip("Persistent distortion quads triggered round-robin, one per audible strike.")]
         [SerializeField] private SpaceWarpEffect[] distortionQuads;
         [Tooltip("The ring material — band width/blur are pushed into it from config every frame.")]
         [SerializeField] private Material distortionMaterial;
-        [Tooltip("Hidden-platform trail receivers — stamp strength/radius multipliers are pushed " +
-                 "into them from config every frame.")]
-        [SerializeField] private Rendering.LocalTrailReceiver[] hiddenPlatformReceivers;
 
         // Baked into the reveal shader's global array (BELL_WAVE_COUNT) — not a tuning knob.
         public const int MaxWaves = 8;
 
         static readonly int IdWaveData    = Shader.PropertyToID("_BellWaveData");
-        static readonly int IdWaveParams  = Shader.PropertyToID("_BellWaveParams");
-        static readonly int IdWaveParams2 = Shader.PropertyToID("_BellWaveParams2");
+        static readonly int IdWaveShape   = Shader.PropertyToID("_BellWaveShape");
+        static readonly int IdWaveShape2  = Shader.PropertyToID("_BellWaveShape2");
         static readonly int IdRippleWidth = Shader.PropertyToID("_PulseRippleWidth");
         static readonly int IdBlurSize    = Shader.PropertyToID("_BlurSize");
+        static readonly int IdWaveGroup   = Shader.PropertyToID("_BellWaveGroup");
 
         BellSoundWaveConfig cfg;
         Rigidbody2D bellRb;
+        readonly System.Collections.Generic.List<Rendering.LocalTrailReceiver> bundleReceivers = new();
         // The wave uniforms are shader globals, so every bell in the scene shares one slot pool
         // and one push per frame — otherwise two broadcasters overwrite each other's waves.
         // Same array instance every push — Unity locks a global array's length on first set.
-        static readonly Vector4[] waveData = new Vector4[MaxWaves];
+        static readonly Vector4[] waveData   = new Vector4[MaxWaves];
+        static readonly Vector4[] waveShape  = new Vector4[MaxWaves];
+        static readonly Vector4[] waveShape2 = new Vector4[MaxWaves];
         static readonly Vector2[] centers  = new Vector2[MaxWaves];
         static readonly float[]   starts   = new float[MaxWaves];
         static readonly bool[]    active   = new bool[MaxWaves];
+        static readonly float[]   groups   = new float[MaxWaves];
+        // Kept per slot rather than snapshotted, so retuning a config still reshapes its live waves.
+        static readonly BellSoundWaveConfig[] slotCfg = new BellSoundWaveConfig[MaxWaves];
         static int nextSlot;
         static int enabledCount;
         static int lastPushFrame = -1;
+        static int nextGroup;
         int nextQuad;
         int lastWaveImpact = -1;
+        float group;
 
         public BellSoundWaveConfig Config => cfg;
 
@@ -61,6 +72,33 @@ namespace SlimeJumping.Platforms.Bell
             if (distortionQuads != null)
                 for (int i = 0; i < distortionQuads.Length; i++)
                     if (distortionQuads[i] != null) distortionQuads[i].transform.SetParent(null, true);
+
+            group = ++nextGroup;
+            StampGroup();
+        }
+
+        // Hierarchy is the bundle, resolved once on load: every reveal renderer anywhere under this
+        // bell's parent — nested in sub-groups or under the bell itself, depth does not matter — is
+        // stamped with the group id and from then on answers only this bell's waves. Anything under
+        // another bell's parent stays hidden. Runs after the quads leave the hierarchy; they carry
+        // no group property, so the material filter skips them either way.
+        void StampGroup()
+        {
+            var block = new MaterialPropertyBlock();
+            var bundle = transform.parent != null ? transform.parent : transform;
+            var renderers = bundle.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                var mat = renderers[i].sharedMaterial;
+                if (mat == null || !mat.HasProperty(IdWaveGroup)) continue;
+                renderers[i].GetPropertyBlock(block);
+                block.SetFloat(IdWaveGroup, group);
+                renderers[i].SetPropertyBlock(block);
+
+                // A receiver counts as a hidden platform's only via the reveal renderer under it.
+                var receiver = renderers[i].GetComponentInParent<Rendering.LocalTrailReceiver>();
+                if (receiver != null && !bundleReceivers.Contains(receiver)) bundleReceivers.Add(receiver);
+            }
         }
 
         void OnEnable()
@@ -104,6 +142,8 @@ namespace SlimeJumping.Platforms.Bell
             centers[slot] = center;
             starts[slot]  = Time.time;
             active[slot]  = true;
+            groups[slot]  = group;
+            slotCfg[slot] = cfg;
 
             if (distortionQuads != null && distortionQuads.Length > 0)
             {
@@ -121,16 +161,17 @@ namespace SlimeJumping.Platforms.Bell
         void Update()
         {
             // Shared slot pool: the first bell to tick each frame ages and pushes it for everyone,
-            // so the wave params come from that bell's config — keep every bell on one config.
+            // each slot on the config of the bell that filled it.
             if (lastPushFrame != Time.frameCount)
             {
                 lastPushFrame = Time.frameCount;
-                float speed    = Mathf.Max(cfg.waveSpeed, 0.0001f);
-                float lifetime = cfg.maxRadius / speed + cfg.frontWidth / speed + cfg.holdSeconds + cfg.fadeSeconds;
                 for (int i = 0; i < MaxWaves; i++)
                 {
                     if (!active[i]) continue;
-                    if (Time.time - starts[i] > lifetime) active[i] = false;
+                    var c = SlotConfig(i);
+                    float speed = Mathf.Max(c.waveSpeed, 0.0001f);
+                    if (Time.time - starts[i] > c.maxRadius / speed + c.frontWidth / speed + c.holdSeconds + c.fadeSeconds)
+                        active[i] = false;
                 }
                 PushGlobals();
             }
@@ -162,15 +203,12 @@ namespace SlimeJumping.Platforms.Bell
                     Mathf.Clamp(cfg.distortionRingWidthWorld / Mathf.Max(0.1f, cfg.maxRadius), 0.01f, 0.6f));
                 distortionMaterial.SetFloat(IdBlurSize, cfg.distortionBlurSize);
             }
-            if (hiddenPlatformReceivers != null)
+            for (int i = 0; i < bundleReceivers.Count; i++)
             {
-                for (int i = 0; i < hiddenPlatformReceivers.Length; i++)
-                {
-                    var r = hiddenPlatformReceivers[i];
-                    if (r == null) continue;
-                    r.StampStrengthMultiplier = cfg.hiddenPlatformTrailStrength;
-                    r.StampRadiusMultiplier   = cfg.hiddenPlatformTrailRadiusScale;
-                }
+                var r = bundleReceivers[i];
+                if (r == null) continue;
+                r.StampStrengthMultiplier = cfg.hiddenPlatformTrailStrength;
+                r.StampRadiusMultiplier   = cfg.hiddenPlatformTrailRadiusScale;
             }
         }
 
@@ -213,12 +251,19 @@ namespace SlimeJumping.Platforms.Bell
             for (int i = 0; i < MaxWaves; i++)
             {
                 float age = active[i] ? Time.time - starts[i] : -1f;
-                waveData[i] = new Vector4(centers[i].x, centers[i].y, age, 0f);
+                waveData[i] = new Vector4(centers[i].x, centers[i].y, age, groups[i]);
+                var c = SlotConfig(i);
+                waveShape[i]  = new Vector4(c.waveSpeed, c.frontWidth, c.holdSeconds, c.fadeSeconds);
+                waveShape2[i] = new Vector4(c.maxRadius, 0f, 0f, 0f);
             }
             Shader.SetGlobalVectorArray(IdWaveData, waveData);
-            Shader.SetGlobalVector(IdWaveParams,
-                new Vector4(cfg.waveSpeed, cfg.frontWidth, cfg.holdSeconds, cfg.fadeSeconds));
-            Shader.SetGlobalVector(IdWaveParams2, new Vector4(cfg.maxRadius, 0f, 0f, 0f));
+            Shader.SetGlobalVectorArray(IdWaveShape, waveShape);
+            Shader.SetGlobalVectorArray(IdWaveShape2, waveShape2);
+        }
+
+        BellSoundWaveConfig SlotConfig(int slot)
+        {
+            return slotCfg[slot] != null ? slotCfg[slot] : cfg;
         }
     }
 }

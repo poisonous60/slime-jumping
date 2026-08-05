@@ -26,13 +26,14 @@ MonoBehaviour:
   strikeAngle: 20
   strikeRestitution: 0.4
   clapperSeparationAngle: 1.5
-  hardHitSpeed: 2
-  hardHitSwingDegrees: 47.5
+  hardHitSpeed: 0.1
+  hardHitSwingDegrees: 90
   lightTouchScale: 0.15
-  impactCooldown: 0.12
+  impactCooldown: 0.3
   riderWeightScale: 1
   bounceSpeed: 2.5
   bounceCarriesSwing: 0
+  reattachBlockSeconds: 0.3
   strikeClips:
   - {fileID: 8300000, guid: 990f271f22294d5448d6c013b8943b57, type: 3}
   - {fileID: 8300000, guid: 6e1f7e645ace46241a403e30d5fe34fd, type: 3}

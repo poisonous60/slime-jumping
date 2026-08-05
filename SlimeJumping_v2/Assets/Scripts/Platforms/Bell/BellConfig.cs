@@ -57,8 +57,8 @@ namespace SlimeJumping.Platforms.Bell
         [Header("Slime impact — how a body slam enters the bell")]
         [Tooltip("Speed the slime has to close on the bell's flank at (world u/s) for the hit to count as " +
                  "a real one. At or above this the bell takes the full swing no matter how much faster the " +
-                 "slime was going, and the slime is thrown clear. Below it the bell only nudges. Sliding " +
-                 "along the bell closes at nothing, so it never counts however fast it looks.")]
+                 "slime was going. Below it the bell only nudges. Sliding along the bell closes at nothing, " +
+                 "so it never counts however fast it looks.")]
         [Min(0.1f)] public float hardHitSpeed = 5f;
         [Tooltip("How far a real hit swings the bell (degrees from rest). This is the whole strength " +
                  "knob — it is converted to an angular kick against whatever inertia the mass and period " +
@@ -68,8 +68,10 @@ namespace SlimeJumping.Platforms.Bell
                  "fast it was. Keep it small: enough that brushing the bell visibly moves it, not enough " +
                  "to ring it.")]
         [Range(0f, 1f)] public float lightTouchScale = 0.15f;
-        [Tooltip("Seconds after a slam before another one counts.")]
-        [Min(0f)] public float impactCooldown = 0.12f;
+        [Tooltip("Seconds of clear air after the slime leaves the bell before another hit counts. One hit " +
+                 "per visit: staying on the bell, sliding along it or bouncing back inside this window " +
+                 "never re-fires.")]
+        [Min(0f)] public float impactCooldown = 0.3f;
         [Tooltip("How strongly a slime clinging to the bell tilts it by its own weight. 0 = weightless rider.")]
         [Min(0f)] public float riderWeightScale = 1f;
 
@@ -80,6 +82,10 @@ namespace SlimeJumping.Platforms.Bell
         [Tooltip("How much of the bell's own surface motion is added to the throw. 1 = a bell already " +
                  "swinging toward the slime hurls it harder, 0 = the throw ignores the swing.")]
         [Range(0f, 1f)] public float bounceCarriesSwing = 0f;
+        [Tooltip("Seconds after a throw during which the slime cannot re-attach to this bell. Without it " +
+                 "the slime is thrown and re-sticks in the same breath, which reads as never having " +
+                 "bounced. Physics stays on, so it still rebounds off the bell.")]
+        [Min(0f)] public float reattachBlockSeconds = 0.3f;
 
         [Header("Sound")]
         [Tooltip("Strike clips ordered soft to loud. The clapper's closing speed picks one.")]
