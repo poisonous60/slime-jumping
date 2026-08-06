@@ -45,6 +45,8 @@ namespace SlimeJumping.Controller
             float asymScale = airControlActive ? settings.fallingGravityScale : settings.risingGravityScale;
             velocity += -gravityUp * GravityMagnitude * holdGravityScale * asymScale * dt;
 
+            if (!isTouchingSurface) ceilingBumpLatched = false;
+
             if (isTouchingSurface)
             {
                 // EdgeCollider2D is a polyline with no inherent outside; fast vertical motion can
@@ -77,6 +79,14 @@ namespace SlimeJumping.Controller
                         Vector2 ceilingPlatformVel = GetSurfaceVelocity(surfaceCollider);
                         EnterChargingFromLanding(ceilingPlatformVel, surfaceUp);
                         return;
+                    }
+                    if (!ceilingBumpLatched)
+                    {
+                        ceilingBumpLatched = true;
+                        // Pre-projection, platform-relative: the same quantity CaptureLandingImpact reports.
+                        Vector2 bumpRel = velocity - GetSurfaceVelocity(surfaceCollider);
+                        OnCeilingBump?.Invoke(surfaceCollider.ClosestPoint(rb.position), surfaceNormal,
+                            Mathf.Abs(Vector2.Dot(bumpRel, surfaceNormal)));
                     }
                     surfaceProbe.ProjectVelocityAgainstContacts(ref velocity, surfaceNormal);
                     return;

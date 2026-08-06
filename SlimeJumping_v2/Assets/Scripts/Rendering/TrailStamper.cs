@@ -55,12 +55,16 @@ namespace SlimeJumping.Rendering
 
         private void OnEnable()
         {
-            if (slimeController != null) slimeController.OnLanded += HandleLanded;
+            if (slimeController == null) return;
+            slimeController.OnLanded += HandleLanded;
+            slimeController.OnCeilingBump += HandleCeilingBump;
         }
 
         private void OnDisable()
         {
-            if (slimeController != null) slimeController.OnLanded -= HandleLanded;
+            if (slimeController == null) return;
+            slimeController.OnLanded -= HandleLanded;
+            slimeController.OnCeilingBump -= HandleCeilingBump;
         }
 
         private void HandleLanded(Vector2 position, Vector2 surfaceNormal)
@@ -71,6 +75,21 @@ namespace SlimeJumping.Rendering
                 ? slimeController.ImpactNormalSpeed
                 : 0f;
 
+            if (!StampImpact(position, surfaceNormal, impactSpeed, "Land")) return;
+
+            lastStampPos = position;
+            lastSurface = slimeController != null ? slimeController.SurfaceCollider : null;
+            hasLastStamp = true;
+        }
+
+        // Head hit on a ceiling: no attach, so the crawl fields stay untouched — mark only.
+        private void HandleCeilingBump(Vector2 position, Vector2 surfaceNormal, float normalSpeed)
+        {
+            StampImpact(position, surfaceNormal, normalSpeed, "Ceiling");
+        }
+
+        private bool StampImpact(Vector2 position, Vector2 surfaceNormal, float impactSpeed, string kind)
+        {
             float denom = Mathf.Max(0.01f, landingSpeedMax - landingSpeedMin);
             float t = (impactSpeed - landingSpeedMin) / denom;   // unclamped — curve's wrap mode decides extrapolation
             float radius   = Mathf.Max(0f, landingRadiusCurve.Evaluate(t));
@@ -80,17 +99,15 @@ namespace SlimeJumping.Rendering
             {
                 Collider2D surf = slimeController != null ? slimeController.SurfaceCollider : null;
                 bool routedLocal = surf != null && TrailColliderRegistry.TryGet(surf, out var lr) && lr != null;
-                Debug.Log($"[Trail] Land: pos={position} n={surfaceNormal} up={surfaceNormal.y:0.00}"
+                Debug.Log($"[Trail] {kind}: pos={position} n={surfaceNormal} up={surfaceNormal.y:0.00}"
                     + $" surf={(surf != null ? surf.name : "null")} route={(routedLocal ? "local" : "world")}"
                     + $" normalSpeed={impactSpeed:0.00} t={t:0.00} → radius={radius:0.00} strength={strength:0.00}");
             }
 
-            if (radius < 0.001f || strength < 0.001f) return;     // nothing visible to draw
+            if (radius < 0.001f || strength < 0.001f) return false;   // nothing visible to draw
 
             RouteStamp(position, radius, strength);
-            lastStampPos = position;
-            lastSurface = slimeController != null ? slimeController.SurfaceCollider : null;
-            hasLastStamp = true;
+            return true;
         }
 
         private void FixedUpdate()

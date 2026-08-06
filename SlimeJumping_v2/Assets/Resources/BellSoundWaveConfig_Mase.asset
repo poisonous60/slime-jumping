@@ -12,12 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6624dd23e03300145a8b99ccd569d006, type: 3}
   m_Name: BellSoundWaveConfig_Mase
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.Bell.BellSoundWaveConfig
-  waveSpeed: 7
+  waveSpeed: 10
   maxRadius: 60
   frontWidth: 1
-  holdSeconds: 8
+  holdSeconds: 20
   fadeSeconds: 2
-  hiddenPlatformTrailStrength: 0.01
+  hiddenPlatformTrailStrength: 1
   hiddenPlatformTrailRadiusScale: 1
   distortionStrength: 0.02
   distortionRingWidthWorld: 0.6

@@ -12,12 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3aa0d2ede70d1c347b119ffa3dafc879, type: 3}
   m_Name: BellRevealCameraConfig
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Camera.BellRevealCameraConfig
-  holdSeconds: 4.5
+  holdSeconds: 0.3
   holdStartsOnArrival: 1
   holdUntilIdleInput: 1
   freezeRevealWhileShown: 1
-  blendInSeconds: 1
-  blendOutSeconds: 1
+  blendInSeconds: 0.5
+  blendOutSeconds: 0.5
   blendStyle: 1
   keepAudioAtSlime: 1
   regionPadding: 1

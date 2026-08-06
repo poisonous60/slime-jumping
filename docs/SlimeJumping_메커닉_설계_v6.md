@@ -104,7 +104,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Teleport](features/infra/teleport.md) — TeleportTo 전체 리셋
 - [Timer Architecture](features/infra/timer-architecture.md) — wall-clock vs fixedDelta, IgnoredColliderList 모드
 - [Input Summary](features/infra/input-summary.md)
-- [Trail (진행 트레일)](features/infra/trail.md) — 항아리 게임 스타일 영속 자국
+- [Trail (진행 트레일)](features/infra/trail.md) — 항아리 게임 스타일 영속 자국 (착지 + 천장 박치기)
 - [VFX Infrastructure](features/infra/vfx-infra.md) — ImpulseEmitter, SliceEffect, Blur, Two-Ramp Y Blend, 옵션패널(Background Camera On/Off 포함)
 - Ambient Snow (`SnowCameraEmitter`) — 카메라 추종 스폰 박스 + `emitterArea` PolygonCollider2D 밖 입자 수동 cull. **고도 페이드**: `fadeStartY`~`fadeEndY` 사이에서 입자를 확률적으로 죽여 위로 갈수록 눈발이 성겨지다 그친다. 판정 난수는 `Particle.randomSeed` 해시 — `Random` 을 쓰면 프레임마다 결과가 바뀌어 전체가 깜빡인다. 알파를 낮추는 게 아니라 개수를 줄이는 방식(투명한 눈은 안개로 읽힘). 두 값 모두 Infinity(기본)면 페이드 경로를 안 탄다
 - Snowfall Volume (`SnowfallVolume`) — 원하는 위치에 붙이는 국소 눈기둥. 박스 윗변에서 스폰 → 낙하 → 아랫변에서 소멸(기즈모 사각형 = 눈 보이는 범위). `lifetime = height/fallSpeed`, `rate = density×width` 자동 산출이라 박스를 키워도 밀도 유지. World sim + World velocity 라 호스트가 움직이거나 회전해도 눈은 월드 아래로. 룩(머티리얼/알파 램프/크기/회전)은 GO 에 authored 이고 스크립트는 기하·밀도만 — 생성은 `GameObject > SlimeJumping > Snowfall Volume` 메뉴

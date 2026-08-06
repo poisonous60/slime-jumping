@@ -207,6 +207,8 @@ namespace SlimeJumping.Controller
         private Collider2D surfaceCollider;
         private Collider2D prevSurfaceCollider;
         private bool isTouchingSurface;
+        // One-shot latch: a ceiling contact spanning several frames raises OnCeilingBump once.
+        private bool ceilingBumpLatched;
 
         // Surface probe hysteresis (absorb 1-frame probe misses in Charging)
         private int surfaceProbeMissFrames;
@@ -271,6 +273,9 @@ namespace SlimeJumping.Controller
 
         // --- Landing event (for VFX, sound, etc.) ---
         public event System.Action<Vector2, Vector2> OnLanded; // (contactPoint, surfaceNormal)
+
+        // --- Ceiling bump event: head hit that never attaches, so OnLanded cannot cover it ---
+        public event System.Action<Vector2, Vector2, float> OnCeilingBump; // (contactPoint, surfaceNormal, normalSpeed)
 
         // --- Launch event (for sound, etc.) ---
         // Player-intentional launches only (Launch/Hop). External-force paths go through
