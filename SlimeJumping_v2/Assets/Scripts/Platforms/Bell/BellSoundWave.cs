@@ -61,6 +61,11 @@ namespace SlimeJumping.Platforms.Bell
 
         public BellSoundWaveConfig Config => cfg;
 
+        /// <summary>Holds every wave whose front has finished expanding at that moment, so revealed
+        /// platforms stop counting down to invisible. Shared like the slot pool. The caller must
+        /// clear it — left on, the reveal never fades.</summary>
+        public static bool PauseSettledWaves { get; set; }
+
         void Awake()
         {
             cfg = BellSoundWaveConfig.Resolve(configOverride);
@@ -170,6 +175,12 @@ namespace SlimeJumping.Platforms.Bell
                     if (!active[i]) continue;
                     var c = SlotConfig(i);
                     float speed = Mathf.Max(c.waveSpeed, 0.0001f);
+                    // Pushing the start forward by the frame keeps age fixed, so the reveal holds.
+                    if (PauseSettledWaves && Time.time - starts[i] >= (c.maxRadius + c.frontWidth) / speed)
+                    {
+                        starts[i] += Time.deltaTime;
+                        continue;
+                    }
                     if (Time.time - starts[i] > c.maxRadius / speed + c.frontWidth / speed + c.holdSeconds + c.fadeSeconds)
                         active[i] = false;
                 }

@@ -110,6 +110,12 @@ namespace SlimeJumping.Settings
         public float faceLingerThreshold = 0.1f;
         public float faceLingerDecay = 1.5f;
 
+        [Header("Face Camera Gaze")]
+        [Tooltip("카메라 축에서 벗어난 각(tan) 당 얼굴이 카메라 쪽으로 향하는 월드 오프셋. 0 이면 시선 연출 끔.")]
+        public float faceCameraGaze = 0.18f;
+        [Tooltip("시선 오프셋 월드 클램프. 슬라임 반지름 0.2 기준 0.08 = 0.4R.")]
+        public float faceCameraGazeMax = 0.08f;
+
         [Header("Face Idle Drift")]
         public float faceDriftAmplitude = 0.01f;
         public float faceDriftFreqX = 0.7f;

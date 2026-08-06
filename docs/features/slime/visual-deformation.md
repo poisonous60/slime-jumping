@@ -30,6 +30,19 @@ Phase 1.5 — 코드 기반 squash/stretch/관성 변형. 물리(FixedUpdate)와
 - 아이들 드리프트: `tanh(sin(t) * sharpness)` X축 사코드 패턴.
 - 깜빡임: `eyes_closed.png` 스왑, 3~7초 랜덤 간격 0.1초.
 
+**카메라 보정 (원근 시차 상쇄 + 시선)**: Face 는 몸 중심보다 월드 Z 로 0.4 앞에 있는데 슬라임 반지름은 0.2 — 지름의 2배다. perspective 카메라(FOV 40, z −12)에서 슬라임이 화면 중앙을 벗어나면 그만큼 시차가 생겨 얼굴이 몸에서 미끄러진다(중앙에서 4유닛 → 0.133 = 0.67R). 보정은 XY 만 건드린다:
+
+```
+parallax = -(P.xy - C.xy) * depth / (P.z - C.z)     // 얼굴을 카메라→몸중심 광선 위로
+gaze     = clamp(-(P.xy - C.xy) / (P.z - C.z) * faceCameraGaze, faceCameraGazeMax)
+```
+
+- **깊이 불변** → 3D 메쉬 관통·소팅 무영향. **회전 없음** — 카메라에 Aim 이 없어 회전은 이미 정렬돼 있고, `SlimeVisual` lossyScale 이 (0.2, 0.2, 2) 비균등이라 기울이면 스프라이트가 10:1 로 전단된다.
+- 화면 중앙이면 두 항 모두 0 → 평상시 화면은 보정 전과 동일. 전환 감지·게이트 불필요.
+- `CinemachineBrain` 의 LateUpdate 순서가 이 스크립트와 미정의라 `CinemachineCore.CameraUpdatedEvent` 에서 한 번 더 적용한다 — 브레인이 먼저 돌았으면 no-op, 나중이면 하드컷 1프레임 팝을 막는다.
+- 직교 전환(F5) 중에는 시차가 없으므로 투영행렬 `m33`(0=perspective, 1=ortho)을 그대로 페이드 가중치로 쓴다.
+- 카메라는 `CinemachineBrain.OutputCamera` 우선, 없으면 `Camera.main`, 둘 다 없으면 1회 `LogError` (조용히 꺼지지 않게).
+
 ## C-2. 충격 squash
 Airborne → Attached/Charging 전환 시:
 ```

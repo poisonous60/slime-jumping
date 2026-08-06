@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3aa0d2ede70d1c347b119ffa3dafc879, type: 3}
+  m_Name: BellRevealCameraConfig
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Camera.BellRevealCameraConfig
+  holdSeconds: 4.5
+  holdStartsOnArrival: 1
+  holdUntilIdleInput: 1
+  freezeRevealWhileShown: 1
+  blendInSeconds: 1
+  blendOutSeconds: 1
+  blendStyle: 1
+  keepAudioAtSlime: 1
+  regionPadding: 1
+  activePriority: 200
+  idlePriority: -100

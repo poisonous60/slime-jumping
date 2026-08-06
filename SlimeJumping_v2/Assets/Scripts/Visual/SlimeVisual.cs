@@ -1,4 +1,5 @@
 using UnityEngine;
+using Unity.Cinemachine;
 using SlimeJumping.Controller;
 using SlimeJumping.Settings;
 
@@ -23,6 +24,11 @@ public class SlimeVisual : MonoBehaviour
     [SerializeField] private Sprite eyesStun;
 
     // Face tracking
+    private UnityEngine.Camera faceCam;
+    private bool faceCamMissingLogged;
+    // Face XY before the camera correction. The brain's LateUpdate order against this one is
+    // undefined, so the correction is re-applied from this base once the brain has moved the camera.
+    private Vector2 faceBaseLocalXY;
     private Vector2 currentFaceOffset;
     private Vector2 faceVelocity;
     private Vector2 lastInterest;
@@ -175,6 +181,7 @@ public class SlimeVisual : MonoBehaviour
     {
         if (slimeController != null)
             slimeController.OnFrictionDetach -= HandleFrictionDetach;
+        CinemachineCore.CameraUpdatedEvent.RemoveListener(OnBrainCameraUpdated);
     }
 
     private void Start()
@@ -194,6 +201,9 @@ public class SlimeVisual : MonoBehaviour
         {
             faceRestLocalPosition = face.localPosition;
             faceRestScale = face.localScale;
+            faceBaseLocalXY = faceRestLocalPosition;
+            ResolveFaceCamera();
+            CinemachineCore.CameraUpdatedEvent.AddListener(OnBrainCameraUpdated);
         }
         // Stays null if body3d isn't wired, in which case the mesh-side push short-circuits.
         if (body3d != null)
@@ -537,7 +547,10 @@ public class SlimeVisual : MonoBehaviour
     private void ApplyExternalFaceOffset()
     {
         if (!_externalFaceOffset.HasValue || face == null) return;
-        face.localPosition = faceRestLocalPosition + _externalFaceOffset.Value;
+        Vector3 p = faceRestLocalPosition + _externalFaceOffset.Value;
+        faceBaseLocalXY = new Vector2(p.x, p.y);
+        face.localPosition = p;
+        ApplyFaceCameraOffset();
     }
 
     // Silently ignored when the gate is off, so runaway calls can't corrupt the normal pipeline.
@@ -610,6 +623,9 @@ public class SlimeVisual : MonoBehaviour
         _eyesForceState = EyesForceState.None;
         _externalRotationOverride = null;
         _externalFaceOffset = null;
+        // Only the external path writes face Z, so without this a shrine's z=0 sticks for good.
+        if (face != null)
+            face.localPosition = new Vector3(face.localPosition.x, face.localPosition.y, faceRestLocalPosition.z);
 
         if (body != null)
         {
@@ -1077,10 +1093,64 @@ public class SlimeVisual : MonoBehaviour
 
         // Face is a SIBLING of body, so the body-scale multiply on body.localScale never reaches
         // it — scale it explicitly, and shrink the drift offset with it.
-        Vector2 finalFacePos = (Vector2)body.localPosition + currentFaceOffset * displayedBodyScale;
-        face.localPosition = new Vector3(finalFacePos.x, finalFacePos.y, face.localPosition.z);
+        faceBaseLocalXY = (Vector2)body.localPosition + currentFaceOffset * displayedBodyScale;
+        ApplyFaceCameraOffset();
         face.localRotation = Quaternion.identity;
         face.localScale = faceRestScale * displayedBodyScale;
+    }
+
+    // --- Face camera correction (XY only; rotating shears the sprites 10:1 under lossyScale 0.2/0.2/2) ---
+
+    private void ResolveFaceCamera()
+    {
+        var brain = FindAnyObjectByType<CinemachineBrain>();
+        if (brain != null && brain.OutputCamera != null) faceCam = brain.OutputCamera;
+        if (faceCam == null) faceCam = UnityEngine.Camera.main;
+        if (faceCam == null && !faceCamMissingLogged)
+        {
+            faceCamMissingLogged = true;
+            Debug.LogError("SlimeVisual: no CinemachineBrain output camera and no Camera.main — "
+                         + "face camera correction is off, the face will drift off the body off-center.", this);
+        }
+    }
+
+    private void OnBrainCameraUpdated(CinemachineBrain brain)
+    {
+        if (!isActiveAndEnabled || brain == null || brain.OutputCamera == null || face == null) return;
+        faceCam = brain.OutputCamera;
+        ApplyFaceCameraOffset();
+    }
+
+    private void ApplyFaceCameraOffset()
+    {
+        Vector2 p = faceBaseLocalXY + ComputeFaceCameraOffset();
+        face.localPosition = new Vector3(p.x, p.y, face.localPosition.z);
+    }
+
+    private Vector2 ComputeFaceCameraOffset()
+    {
+        if (faceCam == null)
+        {
+            ResolveFaceCamera();
+            if (faceCam == null) return Vector2.zero;
+        }
+
+        Vector3 camPos = faceCam.transform.position;
+        float dz = transform.position.z - camPos.z;
+        if (Mathf.Abs(dz) < 1e-3f) return Vector2.zero;
+
+        // m33 runs 0 (perspective) to 1 (ortho), so CameraProjectionToggle's matrix lerp is the fade.
+        float persp = 1f - Mathf.Clamp01(faceCam.projectionMatrix.m33);
+        if (persp <= 0f) return Vector2.zero;
+
+        Vector2 off = (Vector2)(transform.position - camPos);
+        float depth = Mathf.Abs(face.localPosition.z * transform.lossyScale.z);
+
+        // Back onto the camera-to-body ray, then leaned the same way so the slime looks where the camera went.
+        Vector2 parallax = -off * (depth / dz);
+        Vector2 gaze = Vector2.ClampMagnitude(-off / dz * settings.faceCameraGaze,
+                                              settings.faceCameraGazeMax);
+        return transform.InverseTransformVector((parallax + gaze) * persp);
     }
 
     // --- Blink ---
