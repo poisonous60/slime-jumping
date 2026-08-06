@@ -1,0 +1,148 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2236ec45af50b3347b7f485493f44e06, type: 3}
+  m_Name: Temple
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceMaterial
+  carrierFriction:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  crawlOverspeedDecelerationMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  slideResistanceMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  slideGravityMultiplier:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  slideRampUpTime:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 15
+    angleMax: 80
+  slideLinearDrag:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  slideDownhillGain:
+    baseValue: 2
+    fullValue: 2
+    angleMin: 0
+    angleMax: 90
+  slideUphillBrake:
+    baseValue: 2
+    fullValue: 2
+    angleMin: 0
+    angleMax: 90
+  landingVelocityRetention:
+    baseValue: 0.6
+    fullValue: 0.6
+    angleMin: 0
+    angleMax: 90
+  landingExcessGain:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  enableLandingTangentSpeedRemap: 1
+  landingTangentSpeedRemapCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0.9989506
+      outSlope: 0.9989506
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 10.07192
+      value: 10.061351
+      inSlope: 0.70338744
+      outSlope: 0.70338744
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.37976235
+    - serializedVersion: 3
+      time: 20.746954
+      value: 17.920208
+      inSlope: 0.6037258
+      outSlope: 0.6037258
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.39331663
+    - serializedVersion: 3
+      time: 32.71434
+      value: 24.58805
+      inSlope: 0.44688773
+      outSlope: 0.44688773
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 50.025135
+      value: 30.414997
+      inSlope: 0.03130484
+      outSlope: 0.03130484
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.46852568
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  stickDurationMultiplier:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  impactRedirectRatio:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  wallAttachSpeedDampen:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 15
+    angleMax: 80
+  useInertialSlide: 0
+  launchInertiaBlendMode: 2
+  launchInertiaLerpFactor: 0.5
+  launchInertiaPNorm: 2
+  landHardClip: {fileID: 0}
+  landSoftClip: {fileID: 0}
+  launchClip: {fileID: 0}
+  hopClip: {fileID: 0}
+  landHardVolume: 0
+  landSoftVolume: 0
+  launchVolume: 0
+  hopVolume: 0
+  overrideCeilingAngle: 1
+  ceilingAngle: 150
+  ceilingReattachAngle: 140
+  overrideEnergyConversionCoyoteTime: 0
+  energyConversionCoyoteTime: 0.12

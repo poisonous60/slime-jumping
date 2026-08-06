@@ -77,12 +77,14 @@ MonoBehaviour:
   groundLayer:
     serializedVersion: 2
     m_Bits: 128
-  pinchEscapeEnabled: 1
-  pinchOpposingDot: -0.5
-  pinchMinPenetration: 0.03
-  pinchMaxStep: 0.0005
-  pinchPressTime: 0.45
-  pinchSlideRampTime: 0.25
+  pinchPressTargetComp: 0.5
+  pinchPressMaxTime: 1.2
+  pinchHoldTime: 0.35
+  pinchExtrudeSpeed: 1.5
+  pinchMaxExtrudeSpeed: 4
+  pinchSqueezeMinScale: 0.4
+  pinchSqueezeFitMargin: 0.04
+  pinchMaxLateralStep: 0.04
   surfaceProbeMode: 1
   surfaceProbeSamples: 4
   surfaceProbeRingScale: 0.8
@@ -107,6 +109,8 @@ MonoBehaviour:
   maxIgnoreTime: 0.15
   defaultStunDuration: 0.5
   defaultKnockbackForce: 8
+  stunFrictionRampStart: 0.5
+  stunFrictionDampRate: 15
   useFrictionBasedDetachment: 1
   cornerAdhesionAccel: 60
   cornerDetachMinSpeed: 1.5
@@ -199,8 +203,8 @@ MonoBehaviour:
     angleMin: 0
     angleMax: 90
   landingVelocityRetention:
-    baseValue: 0
-    fullValue: 0
+    baseValue: 0.4
+    fullValue: 0.4
     angleMin: 0
     angleMax: 90
   landingExcessGain:

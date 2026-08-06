@@ -20,14 +20,14 @@ MonoBehaviour:
   bellSwingPeriod: 4.6
   bellDamping: 1200
   maxBellAngle: 85
-  clapperMass: 5
+  clapperMass: 8
   clapperInertiaSpread: 1.5
   clapperDamping: 3
   strikeAngle: 20
   strikeRestitution: 0.4
   clapperSeparationAngle: 1.5
   hardHitSpeed: 0.1
-  hardHitSwingDegrees: 90
+  hardHitSwingDegrees: 47
   lightTouchScale: 0.15
   impactCooldown: 0.3
   riderWeightScale: 1
@@ -37,7 +37,6 @@ MonoBehaviour:
   strikeClips:
   - {fileID: 8300000, guid: 990f271f22294d5448d6c013b8943b57, type: 3}
   - {fileID: 8300000, guid: 6e1f7e645ace46241a403e30d5fe34fd, type: 3}
-  - {fileID: 8300000, guid: f361260cd7b10dd43afb9136dacce734, type: 3}
   - {fileID: 8300000, guid: 14deecfa30d770649be2471c1600bdf5, type: 3}
   soundRefSpeed: 1.2
   minStrikeSpeed: 0.12
