@@ -82,6 +82,7 @@ namespace SlimeJumping.Controller
             launchPosition = rb.position;
             conversionCount = 0;
             stunTimer = 0f;
+            ceilingBumpLatched = false;
             ChangeState(SlimeState.Airborne, intentional: true);
         }
     }

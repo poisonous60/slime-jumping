@@ -9,15 +9,16 @@ place stays, and no reply is expected when the added comments already meet the b
 Modelled on b-editor/beutl .claude/hooks/check-comment-necessity.sh and
 erigontech/erigon .claude/hooks/comment-policy.py, both advisory PostToolUse hooks.
 
-Only genuinely new runs are flagged: anything already present in old_string or in the file
-on disk is skipped, so moving or reindenting the repo's existing comments never fires.
+Only genuinely new runs are flagged: anything already present in old_string is skipped, so
+moving or reindenting the repo's existing comments never fires. The edited file itself is
+NOT consulted — PostToolUse runs after the write, so the file already contains the new run
+and every added comment would look pre-existing.
 Rule: CLAUDE.md "주석 길게 쓰지 마". A 4+ line class-top requirement block is sanctioned
 and is not flagged.
 
 Any failure degrades to silence — the edit already happened and must not be disturbed.
 """
 import json
-import os
 import sys
 
 
@@ -53,9 +54,6 @@ def main():
         new = ti.get("content") or ""
 
     prior = known(ti.get("old_string") or "")
-    if os.path.isfile(path):
-        with open(path, encoding="utf-8", errors="replace") as f:
-            prior += "\n" + known(f.read())
 
     flagged = [r for r in runs(new) if 2 <= len(r) <= 3 and "\n".join(r) not in prior]
     if not flagged:

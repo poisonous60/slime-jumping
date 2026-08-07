@@ -43,6 +43,7 @@ namespace SlimeJumping.Controller
             postLaunchAirControlLockTimer = 0f;
             chargeBufferTimer = 0f;
             wasStuck = false;
+            ceilingBumpLatched = false;
             stunTimer = 0f;
             blockAttachCount = 0;
             inFluidCount = 0;

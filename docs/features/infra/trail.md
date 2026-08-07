@@ -59,7 +59,7 @@ Quibli `StylizedLit`을 복제하고 **ForwardLit pass의 fragment만 래핑**. 
 
 ## 스탬프 규칙
 - **착지 전용 (기본)**: `OnLanded` 이벤트에서만 트리거. 수직 임팩트 속도(`ImpactNormalSpeed`, 플랫폼 상대)를 `landingSpeedMin/Max`로 정규화 → 두 `AnimationCurve`(radius, strength) 샘플. WrapMode `ClampForever`.
-- **천장 박치기**: 붙지 않는 머리 충돌은 `OnLanded` 가 안 뜨므로 `SlimeController.OnCeilingBump(contactPoint, surfaceNormal, normalSpeed)` 로 별도 발화 — 착지와 같은 커브·라우팅을 쓰고, 접촉이 여러 프레임 이어져도 컨트롤러의 `ceilingBumpLatched` 가 첫 프레임 1회로 막는다 (속도는 속도 투영 전, 플랫폼 상대). 천장에서 차징으로 이어지는 경우는 기존 `OnLanded` 경로 그대로. 크롤 보간 상태(`lastStampPos`)는 안 건드린다 — 붙은 게 아니라서.
+- **천장 박치기**: 붙지 않는 머리 충돌은 `OnLanded` 가 안 뜨므로 `SlimeController.OnCeilingBump(contactPoint, surfaceNormal, normalSpeed)` 로 별도 발화 — 착지와 같은 커브·라우팅을 쓰고, 접촉이 여러 프레임 이어져도 컨트롤러의 `ceilingBumpLatched` 가 첫 프레임 1회로 막는다 (해제 지점 3개: 비접촉 프레임, `TeleportTo`, `ReleaseOverride` — 뒤 둘은 상태머신 밖에서 위치가 옮겨져 안전망 라인이 안 도는 구간이라 명시 해제가 필요하다) (속도는 속도 투영 전, 플랫폼 상대). 천장에서 차징으로 이어지는 경우는 기존 `OnLanded` 경로 그대로. 크롤 보간 상태(`lastStampPos`)는 안 건드린다 — 붙은 게 아니라서.
 - **연속 크롤 (선택)**: `stampOnCrawl = true` 시 Attached/Charging에서 `moveStep` 간격 interpolation 포함 스탬프. `teleportCutoff`로 warp 스트릭 방지.
 - **Additive 누적 + cap**: 같은 지점 반복 → 마스크값 additive, R8 UNORM 1.0 포화. `_TrailMaxMask` (0.75) 전역으로 시각 상한 별도.
 

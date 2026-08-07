@@ -12,6 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 242309b73bf1602409430e378dee1d2b, type: 3}
   m_Name: DriftingCloudLaneConfig
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.DriftingCloudLaneConfig
-  bandSize: {x: 18, y: 11}
+  bandSize: {x: 30, y: 20}
   spawnFadeTime: 0.4
   despawnFadeTime: 0.4
