@@ -36,6 +36,12 @@ namespace SlimeJumping.Platforms
         // 서브클래스가 그 두 채널을 건드려도 되는지 판별하는 창구. Sinking 진입 = 라이더 있음.
         public bool IsIdle => state == St.Idle;
         public bool HasRider => rider != null;
+        public SlimeController Rider => rider;
+
+        // IPlatformEffect 는 발판당 하나만 디스패치되므로 관찰자(SquishyCloud)는 이 이벤트로 받는다.
+        public event System.Action<SlimeController, float> RiderAttached;   // (slime, impactNormalSpeed)
+        public event System.Action<Vector2, float> RiderPopped;             // (dir, speed) — ForceAirborne 직전
+        public event System.Action RiderReleased;
         float regenT;
         float seqT;
         float sinkDepthNow;   // 이번 착지의 눌림 깊이. 충격 속도 비례, attach 에서 확정.
@@ -64,7 +70,9 @@ namespace SlimeJumping.Platforms
         public void OnSlimeAttach(SlimeController slime)
         {
             EnsureRefs();
-            if (state != St.Idle) return;
+            // 잔류 구름은 리바운드 중 재착지도 새 착지로 받는다 — 막으면 퓨즈 없는 불능 구름이 된다.
+            bool rearm = !cfg.vanishOnUse && state == St.Sinking && rider == null;
+            if (state != St.Idle && !rearm) return;
             state = St.Sinking;
             seqT = 0f;
             // CaptureLandingImpact 가 CheckPlatformEffect(→여기)보다 먼저라 이번 착지 값이다.
@@ -77,6 +85,7 @@ namespace SlimeJumping.Platforms
             riderLaunched = false;
             rider = slime;
             slime.OnLaunch += OnRiderLaunch;
+            RiderAttached?.Invoke(slime, slime.ImpactNormalSpeed);
         }
 
         // Launch() 만 OnLaunch 를 쏜다. ForceAirborneWithVelocity(마찰 이탈, 다른 발판)와
@@ -85,7 +94,7 @@ namespace SlimeJumping.Platforms
 
         public void OnSlimeStay(SlimeController slime, float dt)
         {
-            if (state != St.Sinking) return;
+            if (state != St.Sinking || rider == null) return;
             // 붙은 면이 이 구름이 아니면 퓨즈를 돌리지 않는다. SlimeController 는 착지 때만
             // CheckPlatformEffect 를 하므로, 옆 지형으로 기어 넘어가도 참조가 남아 있다.
             var surf = slime.SurfaceCollider;
@@ -124,7 +133,8 @@ namespace SlimeJumping.Platforms
                 if (speed > 0.0001f && speed < target)
                     slime.MultiplyVelocity(target / speed);
             }
-            Consume();   // 밟은 구름은 어떤 경로로 나가든 소모.
+            if (cfg.vanishOnUse) Consume();   // 밟은 구름은 어떤 경로로 나가든 소모.
+            else ReleaseRider();              // 잔류 — Sinking 리바운드가 복귀를 완주한다.
         }
 
         // 차진 정도 → 하한 속도. 분모는 이번 차징의 판정원 반경(chargeRadiusRef) — 플레이어가 보는
@@ -147,6 +157,12 @@ namespace SlimeJumping.Platforms
                     // 눌림/리바운드는 여기서 완주한다. OnSlimeStay 에서 돌리면 슬라임이 미끄러져
                     // 벗어나거나 발사되는 순간 seqT 가 얼어 구름이 눌린 채 멈춘다(고낙하에서 빈발).
                     seqT += dt;
+                    // 잔류 구름은 라이더 없이 리바운드가 끝나면 Idle 로 복귀한다(소모 경로가 없으므로).
+                    if (rider == null && seqT >= cfg.sinkTime + cfg.reboundTime)
+                    {
+                        state = St.Idle;
+                        return (restPos, rb.rotation);
+                    }
                     return (restPos + Vector2.up * SinkOffset(seqT), rb.rotation);
 
                 case St.Gone:
@@ -214,20 +230,37 @@ namespace SlimeJumping.Platforms
         void DoPop(Vector2 dir, float speed)
         {
             var s = rider;
-            Consume();   // ForceAirborneWithVelocity 가 OnSlimeDetach 를 재진입시키므로 Gone 을 먼저.
+            RiderPopped?.Invoke(dir, speed);
+            // 라이더를 먼저 정리해야 ForceAirborneWithVelocity 의 OnSlimeDetach 재진입이 no-op 이 된다.
+            if (cfg.vanishOnUse) Consume();
+            else ReleaseRider();
             if (s != null) s.ForceAirborneWithVelocity(dir * speed);
         }
 
         void Consume()
         {
-            if (rider != null) rider.OnLaunch -= OnRiderLaunch;
+            ReleaseRider();
             if (disperser != null) disperser.Disperse();
             if (col != null) col.enabled = false;
 
             riseStartOffset = rb.position.y - restPos.y;   // 눌린 위치에서 이어 상승.
             state = St.Gone;
             goneT = 0f;
+        }
+
+        void OnDisable()
+        {
+            ReleaseRider();   // 라이더 보유 중 비활성화돼도 OnLaunch 구독이 남지 않게.
+        }
+
+        // 구독 해제·라이더 정리·이벤트 발행의 단일 창구. 중복 호출은 no-op.
+        void ReleaseRider()
+        {
+            if (rider == null) return;
+            rider.OnLaunch -= OnRiderLaunch;
             rider = null;
+            riderLaunched = false;
+            RiderReleased?.Invoke();
         }
 
     }

@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 46a8cff282547a14e8858559e344da82, type: 3}
+  m_Name: SquishyCloudConfig
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.SquishyCloudConfig
+  loadCompression: 0.08
+  impactCompressionPerSpeed: 0.015
+  impactCompressionMax: 0.25
+  bodyFrequency: 2.2
+  bodyDamping: 0.3
+  bulgeRatio: 0.6
+  dentDepth: 0.12
+  dentDepthPerSpeed: 0.008
+  dentRadius: 1.6
+  restDentDepth: 0.05
+  rollWavePerSpeed: 0.15
+  popWaveDepth: 0.08
+  waveSpread: 80
+  waveSpring: 35
+  waveDamping: 5
+  visualInfluenceRadius: 0.2
+  maxTotalDisplacement: 0.45
+  restEpsilon: 0.0015

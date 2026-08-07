@@ -29,6 +29,9 @@ namespace SlimeJumping.Platforms
         public float riseVisualHeight = 1.1f;
         public float riseVisualTime = 0.9f;
 
+        [Header("소멸")]
+        public bool vanishOnUse = true;   // false = 밟혀도 안 사라지고 리바운드 후 제자리 유지.
+
         [Header("Respawn")]
         public bool respawn = true;
         public float respawnDelay = 1.5f;   // 소멸 후 다시 모이기 시작까지.
