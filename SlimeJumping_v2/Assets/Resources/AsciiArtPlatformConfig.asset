@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a3ffa8b2a58dd004aa75b3d7e0a56d41, type: 3}
+  m_Name: AsciiArtPlatformConfig
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.AsciiArtPlatformConfig
+  fontSize: 3
+  charWidthEm: 0.55
+  lineSpacing: 0
+  textColor: {r: 1, g: 1, b: 1, a: 1}
+  simplifyEpsilonCells: 0.35
+  dentDepthCells: 1.5
+  dentDepthPerSpeedCells: 0.08
+  restDentDepthCells: 0.8
+  rollWavePerSpeedCells: 0.25
+  popWaveDepthCells: 1
+  maxTotalDisplacementCells: 3
+  dentRadius: 5
+  waveSpread: 160
+  waveSpring: 35
+  waveDamping: 3
+  maxSurfaceSpeed: 3
+  visualInfluenceRadius: 1
+  mappingArcWindow: 16
+  waveQuantizeCells: 0.25
+  restEpsilonCells: 0.01

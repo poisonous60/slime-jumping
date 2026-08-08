@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 597765a9de9ae3c449ad5f7ace212f5a, type: 3}
+  m_Name: BellV2Config
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Platforms.Bell.BellV2Config
+  pivotLocalY: 0.545
+  bellComLocalY: -0.15
+  clapperAxisLocalY: 0.2078
+  clapperComLocalY: -0.4123
+  bellMass: 200
+  bellSwingPeriod: 4.6
+  bellDamping: 1200
+  maxBellAngle: 85
+  swingDegrees: 47
+  softSwingDegrees: 12
+  fullSwingSpeed: 9
+  clapperMass: 8
+  clapperInertiaSpread: 1.5
+  clapperDamping: 3
+  strikeAngle: 20
+  strikeRestitution: 0.4
+  clapperSeparationAngle: 1.5
+  minRingSpeed: 3
+  retriggerCooldown: 0.1
+  riderWeightScale: 1
+  bounceRestitution: 0.85
+  bounceSwingTransfer: 1
+  minSeparationSpeed: 2
+  reattachBlockSeconds: 0.25
+  strikeClips:
+  - {fileID: 8300000, guid: 990f271f22294d5448d6c013b8943b57, type: 3}
+  - {fileID: 8300000, guid: 6e1f7e645ace46241a403e30d5fe34fd, type: 3}
+  - {fileID: 8300000, guid: 14deecfa30d770649be2471c1600bdf5, type: 3}
+  volume: 1.6
+  pitch: 1
+  pitchJitter: 0.03
+  substeps: 4
