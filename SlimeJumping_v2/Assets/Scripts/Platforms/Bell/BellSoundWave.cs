@@ -8,8 +8,9 @@ namespace SlimeJumping.Platforms.Bell
     /// and out as the front passes) and fires a heat-haze distortion ring per strike.
     ///
     /// Which platforms a bell reveals is set by the hierarchy: hidden platforms sitting under the same
-    /// parent as the bell are its bundle, and only its waves reveal them. Drag a platform into another
-    /// bell's parent to hand it over; one left outside every bell's parent is never revealed.</summary>
+    /// parent as the bell are its bundle, and only its waves reveal them. Bells sharing a parent share
+    /// the bundle, so any of them reveals the same platforms. Drag a platform into another bell's
+    /// parent to hand it over; one left outside every bell's parent is never revealed.</summary>
     [AddComponentMenu("SlimeJumping/Bell/Bell Sound Wave")]
     public class BellSoundWave : MonoBehaviour
     {
@@ -55,6 +56,8 @@ namespace SlimeJumping.Platforms.Bell
         static int enabledCount;
         static int lastPushFrame = -1;
         static int nextGroup;
+        // Group ids are per bundle root, so bells under one parent answer for the same platforms.
+        static readonly System.Collections.Generic.Dictionary<Transform, float> bundleGroups = new();
         int nextQuad;
         int lastWaveImpact = -1;
         float group;
@@ -78,19 +81,19 @@ namespace SlimeJumping.Platforms.Bell
                 for (int i = 0; i < distortionQuads.Length; i++)
                     if (distortionQuads[i] != null) distortionQuads[i].transform.SetParent(null, true);
 
-            group = ++nextGroup;
-            StampGroup();
+            var bundle = transform.parent != null ? transform.parent : transform;
+            if (!bundleGroups.TryGetValue(bundle, out group)) bundleGroups[bundle] = group = ++nextGroup;
+            StampGroup(bundle);
         }
 
         // Hierarchy is the bundle, resolved once on load: every reveal renderer anywhere under this
         // bell's parent — nested in sub-groups or under the bell itself, depth does not matter — is
-        // stamped with the group id and from then on answers only this bell's waves. Anything under
-        // another bell's parent stays hidden. Runs after the quads leave the hierarchy; they carry
-        // no group property, so the material filter skips them either way.
-        void StampGroup()
+        // stamped with the bundle's group id and from then on answers only this bundle's waves.
+        // Anything under another bundle stays hidden. Runs after the quads leave the hierarchy; they
+        // carry no group property, so the material filter skips them either way.
+        void StampGroup(Transform bundle)
         {
             var block = new MaterialPropertyBlock();
-            var bundle = transform.parent != null ? transform.parent : transform;
             var renderers = bundle.GetComponentsInChildren<Renderer>(true);
             for (int i = 0; i < renderers.Length; i++)
             {

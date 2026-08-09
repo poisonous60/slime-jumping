@@ -19,7 +19,36 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("끄면 자식 'Visual' 이펙트를 비활성화한다. 스테이지 전체를 덮는 큰 존은 꺼서 쓴다.")]
         [SerializeField] private bool showVisualEffect = true;
 
-        public float GravityScale => gravityScale;
+        [Header("상단 추가 저중력")]
+        [Tooltip("켜면 기준 높이 위에서 upperGravityScale 을 대신 쓴다.")]
+        [SerializeField] private bool useUpperZone = false;
+
+        [Tooltip("기준 높이. 존 피벗 기준 Y 오프셋 (월드 기준선 = 피벗 Y + 이 값).")]
+        [SerializeField] private float upperZoneHeight = 5f;
+
+        [Tooltip("기준 높이 위 중력 배율. gravityScale 보다 낮게 잡으면 위쪽이 더 가벼워진다.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float upperGravityScale = 0.15f;
+
+        [Header("상승/하강 비대칭 (SlimeSettings override)")]
+        [Tooltip("켜면 존 안에서 settings 의 risingGravityScale/fallingGravityScale 를 아래 값으로 대체한다.")]
+        [SerializeField] private bool overrideRiseFallScale = false;
+
+        [Tooltip("상승 중 중력 배율. settings.risingGravityScale 대체.")]
+        [SerializeField, Min(0f)] private float risingGravityScale = 1f;
+
+        [Tooltip("하강 중 중력 배율. settings.fallingGravityScale 대체.")]
+        [SerializeField, Min(0f)] private float fallingGravityScale = 1f;
+
+        public bool OverridesRiseFall => overrideRiseFallScale;
+        public float RisingGravityScale => risingGravityScale;
+        public float FallingGravityScale => fallingGravityScale;
+
+        public float GetGravityScale(float worldY)
+        {
+            if (useUpperZone && worldY >= transform.position.y + upperZoneHeight) return upperGravityScale;
+            return gravityScale;
+        }
 
         private Collider2D[] zoneColliders;
 
@@ -167,6 +196,24 @@ namespace SlimeJumping.Mechanisms
                 Gizmos.DrawLine(start, tip);
                 Gizmos.DrawLine(tip, tip + new Vector3(-0.12f, -0.22f, 0f));
                 Gizmos.DrawLine(tip, tip + new Vector3(0.12f, -0.22f, 0f));
+            }
+
+            // 상단 구간 기준선 + 그 위 화살표
+            if (useUpperZone)
+            {
+                float lineY = transform.position.y + upperZoneHeight;
+                var b = col.bounds;
+                Gizmos.DrawLine(new Vector3(b.min.x, lineY, 0f), new Vector3(b.max.x, lineY, 0f));
+
+                float upperLen = Mathf.Lerp(1.8f, 0.2f, upperGravityScale);
+                for (int i = -1; i <= 1; i++)
+                {
+                    Vector3 start = new Vector3(b.center.x + i * 0.5f, lineY + 0.3f, 0f);
+                    Vector3 tip = start + Vector3.up * upperLen;
+                    Gizmos.DrawLine(start, tip);
+                    Gizmos.DrawLine(tip, tip + new Vector3(-0.12f, -0.22f, 0f));
+                    Gizmos.DrawLine(tip, tip + new Vector3(0.12f, -0.22f, 0f));
+                }
             }
         }
     }

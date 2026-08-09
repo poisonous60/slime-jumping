@@ -14,10 +14,22 @@ namespace SlimeJumping.Controller
         // NameToLayer 는 필드 이니셜라이저에서 호출 금지 — 텔레포트 때만 쓰므로 그때 계산한다.
         private int lowGravityLayerMask;
 
-        /// <summary>스택 최상위 배율 (LIFO). 비면 1.</summary>
+        /// <summary>스택 최상위 배율 (LIFO). 비면 1. 존이 높이별 배율을 가질 수 있어 슬라임 높이로 조회한다.</summary>
         public float GravityScale => lowGravityStack.Count > 0
-            ? Mathf.Clamp01(lowGravityStack[lowGravityStack.Count - 1].GravityScale)
+            ? Mathf.Clamp01(lowGravityStack[lowGravityStack.Count - 1].GetGravityScale(rb.position.y))
             : 1f;
+
+        // 존이 켜져 있으면 settings 의 상승/하강 비대칭 배율을 존 값으로 대체한다.
+        private float GetAsymGravityScale(bool falling)
+        {
+            if (lowGravityStack.Count > 0)
+            {
+                var zone = lowGravityStack[lowGravityStack.Count - 1];
+                if (zone.OverridesRiseFall)
+                    return falling ? zone.FallingGravityScale : zone.RisingGravityScale;
+            }
+            return falling ? settings.fallingGravityScale : settings.risingGravityScale;
+        }
 
         /// <summary>유효 중력 가속도 크기. 기본 크기는 V2 힘장 활성 시 샘플 크기로 바뀐다.</summary>
         public float GravityMagnitude => BaseGravityMagnitude * GravityScale;

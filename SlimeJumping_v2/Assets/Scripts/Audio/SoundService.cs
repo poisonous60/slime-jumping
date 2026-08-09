@@ -82,6 +82,7 @@ namespace SlimeJumping.Audio
                     src.rolloffMode = settings.default3DRolloff;
                     src.minDistance = settings.default3DMinDistance;
                     src.maxDistance = settings.default3DMaxDistance;
+                    src.dopplerLevel = 0f;
                     list.Add(new PooledSource { source = src });
                 }
                 pools[cat] = list;

@@ -11,7 +11,7 @@
 | 방향 | `gravityFieldStack` | `gravityUp` / `gravityRight` |
 | 크기 | `lowGravityStack` | `GravityScale` → `GravityMagnitude` |
 
-- `GravityScale` = 스택 최상위 zone 의 `gravityScale` (LIFO, 마지막 진입이 이김). 비면 1.
+- `GravityScale` = 스택 최상위 zone 의 `GetGravityScale(슬라임 Y)` (LIFO, 마지막 진입이 이김). 비면 1.
 - `GravityMagnitude` = `|settings.gravity| × GravityScale`.
 - `GravityVector` = `-gravityUp × GravityMagnitude`.
 - 중력 크기를 읽는 코드는 전부 `GravityMagnitude` / `GravityVector` 를 경유한다. `Mathf.Abs(settings.gravity)` 직접 읽기는 금지.
@@ -73,7 +73,17 @@ velocity 보존, 가속도만 즉시 바뀐다. 블렌드·페이드 없음 — 
 |---------|------|------|
 | `gravityScale` | float [0, 1] | 0.35 = 원래의 35%. 1 = 무효과, 0 = 무중력 |
 | `showVisualEffect` | bool (기본 true) | 끄면 자식 `Visual` 을 비활성화. 스테이지 전체를 덮는 큰 존은 꺼서 쓴다 — 파티클이 화면 전체로 늘어나 비싸고 의미 없다. 손으로 만든 존은 `Visual` 자식이 없어 무동작 |
+| `useUpperZone` | bool (기본 false) | 켜면 기준 높이 위에서 `upperGravityScale` 을 대신 쓴다 |
+| `upperZoneHeight` | float | 기준 높이. 존 피벗 기준 Y 오프셋 (월드 기준선 = 피벗 Y + 이 값). 기즈모에 수평 기준선 표시 |
+| `upperGravityScale` | float [0, 1] | 기준 높이 위 중력 배율. `gravityScale` 보다 낮게 잡으면 위쪽이 더 가벼워진다 |
+| `overrideRiseFallScale` | bool (기본 false) | 켜면 존 안에서 settings 의 상승/하강 비대칭 배율을 아래 값으로 대체 |
+| `risingGravityScale` | float ≥0 (기본 1) | 상승 중 중력 배율. `settings.risingGravityScale` 대체 |
+| `fallingGravityScale` | float ≥0 (기본 1) | 하강 중 중력 배율. `settings.fallingGravityScale` 대체 |
 | (collider) | Collider2D, `isTrigger=true` | 아무 모양 OK. Layer 9: GravityField (`GravityField` 와 레이어 공유) |
+
+상단 구간은 별도 존이 아니라 같은 존 안의 높이 분기다 — 배율 조회가 슬라임 `rb.position.y` 를 받아 (`GetGravityScale(worldY)`) 기준선 위/아래를 매 FixedUpdate 판정한다. 경계는 스냅 (기존 존 진입과 동일한 C0 거동).
+
+상승/하강 비대칭은 새 채널이 아니라 기존 `SlimeSettings.risingGravityScale`/`fallingGravityScale` (Airborne 의 apex-gated `asymScale`) 의 존-스코프 override 다 — 컨트롤러 `GetAsymGravityScale(falling)` 이 스택 최상위 존의 `overrideRiseFallScale` 을 보고 존 값/설정 값 중 하나를 돌려준다. 소비처·타이밍(apex 게이트)은 기존 그대로, Airborne 에서만 작동한다. 높이 밴드 배율과는 기존처럼 곱으로 합성.
 
 `gravityScale = 0` 은 완전 무중력: 슬라이드·sag·`gravityHelp` 가 전부 0 이 되고 조각도 안 떨어진다.
 

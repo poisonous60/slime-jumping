@@ -42,7 +42,7 @@ namespace SlimeJumping.Controller
             }
 
             // Asymmetric gravity reuses the apex-gated airControlActive split.
-            float asymScale = airControlActive ? settings.fallingGravityScale : settings.risingGravityScale;
+            float asymScale = GetAsymGravityScale(airControlActive);
             velocity += -gravityUp * GravityMagnitude * holdGravityScale * asymScale * dt;
 
             if (!isTouchingSurface) ceilingBumpLatched = false;
