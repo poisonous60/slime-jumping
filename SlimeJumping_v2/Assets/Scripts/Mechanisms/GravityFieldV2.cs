@@ -17,6 +17,10 @@ namespace SlimeJumping.Mechanisms
         [Min(0f)]
         [SerializeField] private float featherWidth = 2f;
 
+        [Tooltip("점 반경 끝의 이 비율 구간에서만 전역 중력으로 이행한다. 그 안쪽은 점 중력만 적용.")]
+        [Range(0.01f, 1f)]
+        [SerializeField] private float dominanceEdgeFraction = 0.08f;
+
         [Tooltip("gravityUp 회전 속도 상한 (도/초).")]
         [Min(1f)]
         [SerializeField] private float rotationDegPerSec = 360f;
@@ -63,20 +67,35 @@ namespace SlimeJumping.Mechanisms
             else slime.PopGravityFieldV2(this);
         }
 
-        /// <summary>worldPos 의 가속도. 점 합성 + 경계 페더(전역 아래 중력으로 수렴).</summary>
+        /// <summary>worldPos 의 가속도. 점 영향권 안 = 점 중력만(전역 아래 중력 무시), 점 밖 = 전역
+        /// 아래 중력. 반경 끝 dominanceEdgeFraction 구간에서만 둘을 이행(프레임 스냅 방지).</summary>
         public Vector2 SampleAcceleration(Vector2 worldPos, float baseGravity)
         {
             if (points == null) points = GetComponentsInChildren<GravityPoint2D>();
 
             Vector2 sum = Vector2.zero;
+            float dominance = 0f;
             for (int i = 0; i < points.Length; i++)
             {
                 var p = points[i];
-                if (p != null && p.isActiveAndEnabled) sum += p.Contribution(worldPos);
+                if (p == null || !p.isActiveAndEnabled) continue;
+                sum += p.Contribution(worldPos);
+                dominance = Mathf.Max(dominance, DominanceWeight(p.NormalizedDistance(worldPos)));
             }
 
+            Vector2 globalDown = Vector2.down * baseGravity;
+            Vector2 g = Vector2.Lerp(globalDown, sum, dominance);
+
             float w = FeatherWeight(worldPos);
-            return w <= 0f ? sum : Vector2.Lerp(sum, Vector2.down * baseGravity, w);
+            return w <= 0f ? g : Vector2.Lerp(g, globalDown, w);
+        }
+
+        // 반경 끝 이행 구간 밖(안쪽)은 1 = 점 중력 단독, 반경 밖은 0. 스무스스텝 이행.
+        private float DominanceWeight(float q)
+        {
+            float bandStart = 1f - dominanceEdgeFraction;
+            float t = 1f - Mathf.Clamp01((q - bandStart) / dominanceEdgeFraction);
+            return t * t * (3f - 2f * t);
         }
 
         // 경계에서 1, featherWidth 안쪽에서 0 이 되는 전역 중력 가중치 (스무스스텝 = C1).
@@ -239,18 +258,26 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        // 기즈모 전용: 캐시(points/zoneColliders)를 건드리지 않고 매번 새로 계산한다.
+        // 기즈모 전용: 캐시(points/zoneColliders)를 건드리지 않고 매번 새로 계산한다. 식은 SampleAcceleration 과 동일.
         private Vector2 SampleForGizmo(GravityPoint2D[] previewPoints, Collider2D[] cols, Vector2 pos)
         {
             Vector2 sum = Vector2.zero;
+            float dominance = 0f;
             for (int i = 0; i < previewPoints.Length; i++)
-                if (previewPoints[i].isActiveAndEnabled) sum += previewPoints[i].Contribution(pos);
+            {
+                if (!previewPoints[i].isActiveAndEnabled) continue;
+                sum += previewPoints[i].Contribution(pos);
+                dominance = Mathf.Max(dominance, DominanceWeight(previewPoints[i].NormalizedDistance(pos)));
+            }
 
-            if (featherWidth <= 0f) return sum;
+            Vector2 globalDown = Vector2.down * gizmoPreviewGravity;
+            Vector2 g = Vector2.Lerp(globalDown, sum, dominance);
+
+            if (featherWidth <= 0f) return g;
             float edge = InsideDistanceForGizmo(cols, pos);
             float t = 1f - Mathf.Clamp01(edge / featherWidth);
             float w = t * t * (3f - 2f * t);
-            return Vector2.Lerp(sum, Vector2.down * gizmoPreviewGravity, w);
+            return Vector2.Lerp(g, globalDown, w);
         }
 
         private static float InsideDistanceForGizmo(Collider2D[] cols, Vector2 pos)

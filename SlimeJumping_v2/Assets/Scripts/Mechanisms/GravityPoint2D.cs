@@ -3,24 +3,32 @@ using UnityEngine;
 namespace SlimeJumping.Mechanisms
 {
     /// <summary>
-    /// GravityFieldV2 점 중력원. Wendland C2 힘 프로파일 — 중심과 반경 경계에서 0, 반경 25% 지점에서
-    /// peakAccel 최대. 경계에서 힘과 1차 미분이 모두 0이라 겹치는 점들은 단순 덧셈으로 합성해도
-    /// C1 연속이 유지된다. radius 는 월드 단위이며 transform 스케일의 영향을 받지 않는다.
+    /// GravityFieldV2 점 중력원. 튜닝(radius/peakAccel/forceProfile)은 전부 GravityPointConfig 로 —
+    /// 기본은 Resources canonical asset, 변종만 configOverride. 힘 분포 곡선은 x = 중심→반경 0..1,
+    /// y = 0..1 × peakAccel, 기본 곡선은 Wendland 모양(중심 0 → 0.25R 최대 → 경계 0).
+    /// 영향권 안에서는 전역 중력을 무시하고 이 점(들)의 힘만 적용된다 — 이행은 GravityFieldV2 의
+    /// dominanceEdgeFraction 구간이 담당. radius 는 월드 단위, transform 스케일 영향 없음.
     /// </summary>
     public class GravityPoint2D : MonoBehaviour
     {
-        [Tooltip("영향 반경 (월드 단위). 반경 밖은 정확히 0.")]
-        [Min(0.01f)]
-        [SerializeField] private float radius = 6f;
+        [Tooltip("비우면 Resources/GravityPointConfig.asset 사용. 반경/세기가 다른 변종만 지정.")]
+        [SerializeField] private GravityPointConfig configOverride;
 
-        [Tooltip("최대 중력 가속도. 반경 25% 지점에서 이 값에 도달한다.")]
-        [Min(0f)]
-        [SerializeField] private float peakAccel = 20f;
+        private GravityPointConfig cachedConfig;
 
-        public float Radius => radius;
+        private GravityPointConfig Config
+        {
+            get
+            {
+                if (cachedConfig == null) cachedConfig = GravityPointConfig.Resolve(configOverride);
+                return cachedConfig;
+            }
+        }
 
-        // q(1-q)³ 최대값이 27/256 (q=0.25) — 역수를 곱해 |g| 최대치를 peakAccel 에 맞춘다.
-        private const float PeakNormalizer = 256f / 27f;
+        public float Radius => Config.radius;
+        public AnimationCurve ForceProfile => Config.forceProfile;
+
+        void OnValidate() { cachedConfig = null; }
 
         /// <summary>worldPos 에서의 가속도 기여. 반경 밖과 정중심은 0.</summary>
         public Vector2 Contribution(Vector2 worldPos)
@@ -29,12 +37,19 @@ namespace SlimeJumping.Mechanisms
             float dist = toCenter.magnitude;
             if (dist < 0.0001f) return Vector2.zero;
 
-            float q = dist / radius;
+            var cfg = Config;
+            float q = dist / cfg.radius;
             if (q >= 1f) return Vector2.zero;
 
-            float f = 1f - q;
-            float magnitude = peakAccel * PeakNormalizer * q * f * f * f;
+            // Clamp01 = 베이크 텍스처(R8)와 동일 범위 — 곡선이 1을 넘어도 물리·비주얼이 같이 캡된다.
+            float magnitude = cfg.peakAccel * Mathf.Clamp01(cfg.forceProfile.Evaluate(q));
             return toCenter * (magnitude / dist);
+        }
+
+        /// <summary>중심 기준 정규화 거리 (반경 = 1).</summary>
+        public float NormalizedDistance(Vector2 worldPos)
+        {
+            return Vector2.Distance(transform.position, worldPos) / Config.radius;
         }
 
         // --- Gizmos ---
@@ -44,12 +59,25 @@ namespace SlimeJumping.Mechanisms
 
         void OnDrawGizmos()
         {
+            var cfg = Config;
             Gizmos.color = WireColor;
-            Gizmos.DrawWireSphere(transform.position, radius);
+            Gizmos.DrawWireSphere(transform.position, cfg.radius);
             Gizmos.DrawSphere(transform.position, 0.08f);
-            // 주황 링 = 최대 세기 지점 (0.25R)
+            // 주황 링 = forceProfile 최대 세기 지점
             Gizmos.color = PeakColor;
-            Gizmos.DrawWireSphere(transform.position, radius * 0.25f);
+            Gizmos.DrawWireSphere(transform.position, cfg.radius * FindPeakQ(cfg.forceProfile));
+        }
+
+        private static float FindPeakQ(AnimationCurve profile)
+        {
+            float bestQ = 0.25f, bestV = float.MinValue;
+            for (int i = 0; i <= 32; i++)
+            {
+                float q = i / 32f;
+                float v = Mathf.Clamp01(profile.Evaluate(q));
+                if (v > bestV) { bestV = v; bestQ = q; }
+            }
+            return bestQ;
         }
     }
 }

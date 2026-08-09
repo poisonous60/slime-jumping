@@ -15,19 +15,26 @@ namespace SlimeJumping.Editor
             float baseX = 220f;
             float baseY = 0f;
 
+            // canonical 기본 + 케이스별 변종 config (재실행 시 값 갱신)
+            EnsureConfig("GravityPointConfig", 6f, 20f);
+            var cfgT1 = EnsureConfig("GravityPointConfig_T1", 6f, 25f);
+            var cfgT2 = EnsureConfig("GravityPointConfig_T2", 5.5f, 20f);
+            var cfgT3 = EnsureConfig("GravityPointConfig_T3", 4.5f, 18f);
+            var cfgT4 = EnsureConfig("GravityPointConfig_T4", 7f, 30f);
+
             // --- Test 1: 단일 점 — 궤도 휘어짐 + 점 근처 저중력 ---
             CreatePlatform("T1_LaunchPad", root.transform,
                 new Vector3(baseX, baseY - 0.5f, 0f), new Vector3(6f, 1f, 1f));
 
             var region1 = CreateRegion("T1_SinglePoint", root.transform,
                 new Vector3(baseX, baseY + 10f, 0f), new Vector2(16f, 14f), 2f);
-            CreatePoint(region1.transform, new Vector3(baseX, baseY + 12f, 0f), 6f, 25f);
+            CreatePoint(region1.transform, new Vector3(baseX, baseY + 12f, 0f), cfgT1);
 
             // --- Test 2: 두 점 상쇄 — 중간 데드존에서 방향 freeze 확인 ---
             var region2 = CreateRegion("T2_TwinDeadzone", root.transform,
                 new Vector3(baseX + 26f, baseY + 9f, 0f), new Vector2(18f, 12f), 2f);
-            CreatePoint(region2.transform, new Vector3(baseX + 21f, baseY + 9f, 0f), 5.5f, 20f);
-            CreatePoint(region2.transform, new Vector3(baseX + 31f, baseY + 9f, 0f), 5.5f, 20f);
+            CreatePoint(region2.transform, new Vector3(baseX + 21f, baseY + 9f, 0f), cfgT2);
+            CreatePoint(region2.transform, new Vector3(baseX + 31f, baseY + 9f, 0f), cfgT2);
             CreateMarker("T2_SaddleMarker", root.transform, new Vector3(baseX + 26f, baseY + 9f, 0f));
             CreatePlatform("T2_LaunchPad", root.transform,
                 new Vector3(baseX + 26f, baseY - 0.5f, 0f), new Vector3(6f, 1f, 1f));
@@ -38,7 +45,7 @@ namespace SlimeJumping.Editor
 
             var region3 = CreateRegion("T3_FeatherBand", root.transform,
                 new Vector3(baseX + 54f, baseY + 8f, 0f), new Vector2(9f, 16f), 3f);
-            CreatePoint(region3.transform, new Vector3(baseX + 54f, baseY + 10f, 0f), 4.5f, 18f);
+            CreatePoint(region3.transform, new Vector3(baseX + 54f, baseY + 10f, 0f), cfgT3);
 
             CreatePlatform("T3_LandingPad", root.transform,
                 new Vector3(baseX + 64f, baseY - 0.5f, 0f), new Vector3(6f, 1f, 1f));
@@ -49,11 +56,12 @@ namespace SlimeJumping.Editor
 
             var region4 = CreateRegion("T4_WallAttract", root.transform,
                 new Vector3(baseX + 84f, baseY + 8f, 0f), new Vector2(16f, 14f), 2f);
-            CreatePoint(region4.transform, new Vector3(baseX + 88f, baseY + 8f, 0f), 7f, 30f);
+            CreatePoint(region4.transform, new Vector3(baseX + 88f, baseY + 8f, 0f), cfgT4);
 
             CreatePlatform("T4_Wall", root.transform,
                 new Vector3(baseX + 90f, baseY + 8f, 0f), new Vector3(1f, 10f, 1f));
 
+            AssetDatabase.SaveAssets();
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
                 UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
 
@@ -76,69 +84,84 @@ namespace SlimeJumping.Editor
             var so = new SerializedObject(zone);
             so.FindProperty("featherWidth").floatValue = feather;
             so.ApplyModifiedProperties();
-
-            AddRegionVisual(go, col);
             return go;
         }
 
-        static GameObject CreatePoint(Transform region, Vector3 pos, float radius, float peakAccel)
+        static GravityPointConfig EnsureConfig(string assetName, float radius, float peakAccel)
         {
+            string path = $"Assets/Resources/{assetName}.asset";
+            var cfg = AssetDatabase.LoadAssetAtPath<GravityPointConfig>(path);
+            if (cfg == null)
+            {
+                cfg = ScriptableObject.CreateInstance<GravityPointConfig>();
+                cfg.radius = radius;
+                cfg.peakAccel = peakAccel;
+                AssetDatabase.CreateAsset(cfg, path);
+            }
+            else
+            {
+                cfg.radius = radius;
+                cfg.peakAccel = peakAccel;
+                EditorUtility.SetDirty(cfg);
+            }
+            return cfg;
+        }
+
+        static GameObject CreatePoint(Transform region, Vector3 pos, GravityPointConfig cfg)
+        {
+            float radius = cfg.radius;
             var go = new GameObject("GravityPoint");
             go.transform.parent = region;
             go.transform.position = pos;
 
             var point = go.AddComponent<GravityPoint2D>();
             var so = new SerializedObject(point);
-            so.FindProperty("radius").floatValue = radius;
-            so.FindProperty("peakAccel").floatValue = peakAccel;
+            so.FindProperty("configOverride").objectReferenceValue = cfg;
             so.ApplyModifiedProperties();
 
-            // 게임 뷰 표식 (기즈모는 씬 뷰 전용)
+            // 임시 리그 비주얼(힘 곡선 비례 글로우+펄스) — 실전 비주얼 확정 전 메커닉 테스트용.
+            var rim = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            rim.name = "FieldRim";
+            rim.transform.SetParent(go.transform, false);
+            rim.transform.localScale = new Vector3(radius * 2f, radius * 2f, 1f);
+            Object.DestroyImmediate(rim.GetComponent<MeshCollider>());
+            var rimRenderer = rim.GetComponent<MeshRenderer>();
+            var rimMat = new Material(Shader.Find("SlimeJumping/GravityPointField"));
+            var profileTex = BakeProfileTexture(point.ForceProfile);
+            Undo.RegisterCreatedObjectUndo(rimMat, "Create GravityFieldV2 Test");
+            Undo.RegisterCreatedObjectUndo(profileTex, "Create GravityFieldV2 Test");
+            rimMat.SetTexture("_ProfileTex", profileTex);
+            rimRenderer.sharedMaterial = rimMat;
+            rimRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            rimRenderer.receiveShadows = false;
+            rimRenderer.sortingOrder = -1;
+
             var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             marker.name = "Marker";
             marker.transform.SetParent(go.transform, false);
-            marker.transform.localScale = Vector3.one * 0.5f;
+            marker.transform.localScale = Vector3.one * 0.2f;
             Object.DestroyImmediate(marker.GetComponent<SphereCollider>());
             marker.GetComponent<MeshRenderer>().sharedMaterial =
-                MakeUnlitMaterial(new Color(1f, 0.6f, 0.2f, 0.9f));
+                MakeUnlitMaterial(new Color(1f, 0.6f, 0.2f, 0.45f));
             return go;
         }
 
-        static readonly Color RegionFillColor = new Color(0.70f, 0.30f, 1.00f, 0.10f);
-
-        static void AddRegionVisual(GameObject host, BoxCollider2D col)
+        static Texture2D BakeProfileTexture(AnimationCurve profile)
         {
-            var visual = new GameObject("Visual");
-            visual.transform.SetParent(host.transform, false);
-
-            visual.AddComponent<MeshFilter>().sharedMesh = BuildQuad(col);
-            var mr = visual.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = MakeUnlitMaterial(RegionFillColor);
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mr.receiveShadows = false;
-            mr.sortingOrder = -1;
-        }
-
-        static Mesh BuildQuad(BoxCollider2D b)
-        {
-            Vector2 h = b.size * 0.5f;
-            var mesh = new Mesh { name = "GravityFieldV2Fill" };
-            mesh.vertices = new[]
+            const int width = 128;
+            var tex = new Texture2D(width, 1, TextureFormat.R8, false)
             {
-                (Vector3)(b.offset + new Vector2(-h.x, -h.y)),
-                (Vector3)(b.offset + new Vector2(-h.x,  h.y)),
-                (Vector3)(b.offset + new Vector2( h.x,  h.y)),
-                (Vector3)(b.offset + new Vector2( h.x, -h.y)),
+                name = "GravityPointProfile",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
             };
-            mesh.uv = new[]
+            for (int x = 0; x < width; x++)
             {
-                new Vector2(0f, 0f), new Vector2(0f, 1f),
-                new Vector2(1f, 1f), new Vector2(1f, 0f),
-            };
-            mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
-            mesh.RecalculateBounds();
-            mesh.RecalculateNormals();
-            return mesh;
+                float v = Mathf.Clamp01(profile.Evaluate(x / (float)(width - 1)));
+                tex.SetPixel(x, 0, new Color(v, v, v, 1f));
+            }
+            tex.Apply(false, true);
+            return tex;
         }
 
         static GameObject CreateMarker(string name, Transform parent, Vector3 pos)
