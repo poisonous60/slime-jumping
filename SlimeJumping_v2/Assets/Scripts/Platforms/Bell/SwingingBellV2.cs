@@ -205,6 +205,8 @@ namespace SlimeJumping.Platforms.Bell
             if (cfg == null) cfg = BellV2Config.Resolve(configOverride);
 
             retriggerTimer = Mathf.Max(0f, retriggerTimer - dt);
+            // Tracked before first touch — the first contact arrives with its closing speed already spent.
+            if (trackedSlime == null) trackedSlime = FindFirstObjectByType<SlimeController>();
             ScanContact();
             // After the scan, so the scan sees the tick before this one — the one still in flight.
             if (trackedSlime != null) prevSlimeVel = trackedSlime.Velocity;

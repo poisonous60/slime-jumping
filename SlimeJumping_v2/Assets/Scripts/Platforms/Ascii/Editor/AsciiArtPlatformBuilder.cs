@@ -61,6 +61,8 @@ namespace SlimeJumping.Editor
                 var prev = ti.characterInfo[i - 1];
                 var cur = ti.characterInfo[i];
                 if (cur.lineNumber != prev.lineNumber) continue;
+                // 공백 포함 쌍 제외 — 글리프 중앙정렬 오프셋 탓에 공백→잉크 간격이 셀폭이 아니다.
+                if (!prev.isVisible || !cur.isVisible) continue;
                 float adv = cur.origin - prev.origin;
                 if (adv > 1e-4f) { cellW = adv; break; }
             }

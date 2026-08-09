@@ -81,6 +81,14 @@ unity-cli screenshot --view scene --output_path Screenshots/x.png
 
 Project rule (CLAUDE.md + memory): **debug scripts pull from the controller via
 public getters and write nothing back. No debug fields in `SlimeController`.**
+
+**NEVER self-spawn the probe.** No `[RuntimeInitializeOnLoadMethod]` bootstrap, no
+auto-created GameObjects on Play — the user rejected that form outright. A probe is
+ALWAYS a plain MonoBehaviour attached to the Slime GameObject via
+`driver.mjs attach <FullTypeName>` (visible in the Inspector, removable by hand).
+Even probes that watch other objects (bells, platforms) live on the Slime and
+resolve their targets in `Start()`.
+
 Copy the shape of an existing one — the canonical template is
 [CornerWedgeAccelDebugger.cs](SlimeJumping_v2/Assets/Scripts/Debug/CornerWedgeAccelDebugger.cs):
 
