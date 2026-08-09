@@ -545,6 +545,8 @@ namespace SlimeJumping.Controller
         // sample at the midpoint (pos + vel*dt/2) — forward Euler otherwise drifts energy.
         private void UpdateGravityDirection(float dt)
         {
+            if (TryResolveGravityFieldV2(dt)) return; // V2 힘장이 방향·크기 모두 결정
+
             if (gravityFieldStack.Count > 0)
             {
                 var topField = gravityFieldStack[gravityFieldStack.Count - 1];

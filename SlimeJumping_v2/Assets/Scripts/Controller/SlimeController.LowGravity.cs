@@ -19,8 +19,8 @@ namespace SlimeJumping.Controller
             ? Mathf.Clamp01(lowGravityStack[lowGravityStack.Count - 1].GravityScale)
             : 1f;
 
-        /// <summary>유효 중력 가속도 크기.</summary>
-        public float GravityMagnitude => Mathf.Abs(settings.gravity) * GravityScale;
+        /// <summary>유효 중력 가속도 크기. 기본 크기는 V2 힘장 활성 시 샘플 크기로 바뀐다.</summary>
+        public float GravityMagnitude => BaseGravityMagnitude * GravityScale;
 
         public void PushLowGravityZone(LowGravityZone zone)
         {

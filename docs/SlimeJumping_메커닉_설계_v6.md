@@ -69,6 +69,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [Drag Zone](features/mechanisms/drag-zone.md) — 감속/모래 + 볼륨 차징
 - [Gravity Field](features/mechanisms/gravity-field.md) — 중력 방향 치환
 - [Low Gravity Zone](features/mechanisms/low-gravity-zone.md) — 중력 크기 배율. GravityField 와 스택이 따로라 겹치면 방향은 필드, 크기는 존이 결정
+- Gravity Field V2 — 영역(트리거) 안에 점 중력원(GravityPoint2D: radius/peakAccel)을 배치하면 Wendland C2 커널 덧셈 합성으로 연속 힘장이 생긴다. 방향과 크기를 함께 공급(힘장): 공중 가속 크기 = 샘플 크기, LowGravityZone 배율은 그 위에 곱. 영역 경계 featherWidth 에서 전역 아래 중력과 C1 블렌드. gravityUp 은 물리장과 분리된 resolver 경유 — 각속도 상한(rotationDegPerSec) + 상쇄점 저중력 래치(enter/exit 이중 임계 히스테리시스, freeze 시 마지막 안정 방향 유지). V1 GravityField 는 그대로 유지(별개 채널)
 - [Water Zone](features/mechanisms/water-zone.md) — 물 v1/v2 + 파도 + Underwater 포스트
 - [Cold Zone](features/mechanisms/cold-zone.md) — Stage2 동결 비주얼 (슬라임 색 lerp + 표면 frost + warm/cold 듀얼 trail RT alpha-over)
 - [Water Current Zone](features/mechanisms/water-current-zone.md) — 벽면 흐르는 물살 (centerline 리본 + 5-vert 반-튜브 단면 + 좌/우 채널 파도 시뮬 + Water_FlowingRefraction 셰이더)
