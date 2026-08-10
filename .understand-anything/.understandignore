@@ -1,0 +1,120 @@
+# .understandignore — patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+#
+# Scope for this Unity project: project-authored C# under Assets/Scripts,
+# project-authored shaders, and top-level design docs.
+
+# --- Unity generated / editor state ---
+Library/
+Temp/
+Obj/
+obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+MemoryCaptures/
+Recordings/
+*.meta
+*.csproj
+*.sln
+*.userprefs
+
+# --- Unity binary/YAML assets (not source) ---
+*.unity
+*.prefab
+*.asset
+*.mat
+*.anim
+*.controller
+*.overrideController
+*.physicsMaterial2D
+*.physicMaterial2D
+*.inputactions
+*.asmref
+*.fbx
+*.blend
+*.blend1
+*.obj
+*.spriteatlas
+*.lighting
+*.renderTexture
+*.signal
+*.playable
+*.terrainlayer
+*.cubemap
+*.flare
+*.shadergraph
+*.shadersubgraph
+*.vfx
+*.vfxoperator
+
+# --- Unity project config (do not hand-edit per CLAUDE.md) ---
+SlimeJumping_v2/ProjectSettings/
+SlimeJumping_v2/Packages/
+
+# --- Third-party / vendored inside the Unity project ---
+SlimeJumping_v2/Assets/ThirdParty/
+SlimeJumping_v2/Assets/Plugins/
+SlimeJumping_v2/Assets/DBK/
+SlimeJumping_v2/Assets/Tools/
+SlimeJumping_v2/Assets/Scripts/Editor/TerrainShape/Clipper2/
+
+# --- Non-source asset trees ---
+SlimeJumping_v2/Assets/Art/Textures/
+SlimeJumping_v2/Assets/Textures/
+SlimeJumping_v2/Assets/Audio/
+SlimeJumping_v2/Assets/Sound/
+SlimeJumping_v2/Assets/AsciiArt/
+SlimeJumping_v2/Assets/GeneratedMeshes/
+SlimeJumping_v2/Assets/GeneratedShards/
+SlimeJumping_v2/Assets/Memos/
+SlimeJumping_v2/Assets/Prebs/
+SlimeJumping_v2/Assets/_PianoImportTest/
+SlimeJumping_v2/Assets/_Recovery/
+SlimeJumping_v2/Assets/_Project/
+
+# --- Repo trees outside the Unity project ---
+SlimeJumping_AssetVault/
+Jelly Merge/
+other_work/
+screenshots/
+sound/
+tools/
+plans/
+.claude/
+.understand-anything/
+
+# --- Doc noise (scratch, per-bug logs, research dumps) ---
+docs/tmp/
+docs/bug/
+docs/features/
+docs/클로드 연구/
+
+# --- Media / binaries ---
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.tga
+*.psd
+*.exr
+*.hdr
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.mp3
+*.wav
+*.ogg
+*.mp4
+*.pdf
+*.zip
+*.tar
+*.gz
+*.dll
+*.so
+*.dylib
+*.log

@@ -109,6 +109,16 @@ namespace SlimeJumping.Audio
             return src;
         }
 
+        /// Mixer group for a category, for the few AudioSources that cannot go through the pool
+        /// (media playback, the piano voice pool). Nobody drags a group into an inspector.
+        /// Null when no service is up — callers must keep their current group rather than clear it.
+        public static AudioMixerGroup GetGroup(SoundCategory cat)
+        {
+            var svc = Instance;
+            if (svc == null || svc.settings == null) return null;
+            return svc.ResolveGroup(cat);
+        }
+
         private AudioMixerGroup ResolveGroup(SoundCategory cat)
         {
             switch (cat)
@@ -131,6 +141,7 @@ namespace SlimeJumping.Audio
             for (int i = 0; i < list.Count; i++)
             {
                 var p = list[i];
+                if (p.source == null) continue;   // a loop's follow target took it down with its scene
                 if (p.locked) continue;
                 if (!p.source.isPlaying) return p;
                 if (oldest == null || p.releaseDspTime < oldest.releaseDspTime) oldest = p;
@@ -185,9 +196,12 @@ namespace SlimeJumping.Audio
             p.releaseDspTime = AudioSettings.dspTime + (clip.length / Mathf.Max(0.01f, pitch));
         }
 
+        /// minDistance/maxDistance below 0 keep the pool defaults. An ambient loop with its own
+        /// falloff (a waterfall heard from far away) needs them; a point sound does not.
         public static SoundHandle PlayLooping(AudioClip clip, Transform follow,
                                               SoundCategory category = SoundCategory.SFX_Environment,
-                                              float volume = 1f, bool spatial3D = true)
+                                              float volume = 1f, bool spatial3D = true,
+                                              float minDistance = -1f, float maxDistance = -1f)
         {
             if (clip == null) return default;
             var svc = Instance;
@@ -198,11 +212,14 @@ namespace SlimeJumping.Audio
 
             var src = p.source;
             if (follow != null) src.transform.SetParent(follow, false);
+            src.transform.localPosition = Vector3.zero;   // a previous PlayAt left a world offset on it
             src.spatialBlend = spatial3D ? 1f : 0f;
             src.loop = true;
             src.volume = volume;
             src.pitch = 1f;
             src.clip = clip;
+            if (minDistance >= 0f) src.minDistance = minDistance;
+            if (maxDistance >= 0f) src.maxDistance = maxDistance;
             src.outputAudioMixerGroup = svc.ResolveGroup(category);
             src.Play();
             p.locked = true;
@@ -217,7 +234,10 @@ namespace SlimeJumping.Audio
             handle.source.clip = null;
             handle.source.loop = false;
             if (Instance != null)
+            {
                 handle.source.transform.SetParent(Instance.transform, false);
+                Instance.RestorePoolDefaults(handle.source);
+            }
             var list = Instance != null ? Instance.FindPoolContaining(handle.source) : null;
             if (list != null)
             {
@@ -226,11 +246,22 @@ namespace SlimeJumping.Audio
             }
         }
 
+        // A loop can leave its own falloff on a pooled source; the next borrower must not inherit it.
+        private void RestorePoolDefaults(AudioSource src)
+        {
+            src.transform.localPosition = Vector3.zero;
+            if (settings == null) return;
+            src.minDistance = settings.default3DMinDistance;
+            src.maxDistance = settings.default3DMaxDistance;
+            src.rolloffMode = settings.default3DRolloff;
+            src.spatialBlend = 0f;
+        }
+
         private List<PooledSource> FindPoolContaining(AudioSource s)
         {
             foreach (var kv in pools)
                 for (int i = 0; i < kv.Value.Count; i++)
-                    if (kv.Value[i].source == s) return kv.Value;
+                    if (kv.Value[i].source != null && kv.Value[i].source == s) return kv.Value;
             return null;
         }
 

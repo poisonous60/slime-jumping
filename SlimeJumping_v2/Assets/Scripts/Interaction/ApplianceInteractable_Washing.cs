@@ -1,8 +1,11 @@
 using UnityEngine;
+using SlimeJumping.Audio;
 using SlimeJumping.Controller;
 
 namespace SlimeJumping.Interaction
 {
+    /// Keeps its own AudioSource because the drum loop toggles on and off with the appliance, which
+    /// the SoundService pool API does not expose; the mixer group comes from the category.
     public class ApplianceInteractable_Washing : InteractableBase
     {
         [Header("Vibration (visual only)")]
@@ -13,6 +16,7 @@ namespace SlimeJumping.Interaction
 
         [Header("Audio")]
         [SerializeField] private AudioSource audioSource;
+        [SerializeField] private SoundCategory category = SoundCategory.SFX_Object;
 
         private bool isOn;
         private Vector3 visualBaseLocalPos;
@@ -21,6 +25,8 @@ namespace SlimeJumping.Interaction
         {
             base.Awake();
             if (visualRoot != null) visualBaseLocalPos = visualRoot.localPosition;
+            var group = SoundService.GetGroup(category);
+            if (audioSource != null && group != null) audioSource.outputAudioMixerGroup = group;
         }
 
         protected override void OnInteract(SlimeController slime)

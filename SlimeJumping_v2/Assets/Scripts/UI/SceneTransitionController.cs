@@ -1,4 +1,5 @@
 using System.Collections;
+using SlimeJumping.Audio;
 using SlimeJumping.Controller;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -15,12 +16,12 @@ namespace SlimeJumping.UI
         [SerializeField] private CanvasGroup canvasGroup;
         [SerializeField] private Image irisImage;
         [SerializeField] private Image fadeImage;
-        [SerializeField] private AudioSource audioSource;
 
         [Header("Audio")]
         [SerializeField] private AudioClip fadeOutClip;
         [SerializeField] private AudioClip irisOpenClip;
         [SerializeField] private AudioClip irisExpandClip;
+        [SerializeField, Range(0f, 1f)] private float sfxVolume = 1f;
 
         [Header("Timings (seconds, unscaled)")]
         [SerializeField] private float fadeOutDuration = 0.35f;
@@ -98,7 +99,7 @@ namespace SlimeJumping.UI
             fadeImage.gameObject.SetActive(true);
             fadeImage.color = new Color(0f, 0f, 0f, 0f);
             irisImage.gameObject.SetActive(false);
-            if (audioSource != null && fadeOutClip != null) audioSource.PlayOneShot(fadeOutClip);
+            SoundService.Play2D(fadeOutClip, SoundCategory.UI, sfxVolume);
 
             float t = 0f;
             while (t < fadeOutDuration)
@@ -151,7 +152,7 @@ namespace SlimeJumping.UI
                 yield return new WaitForSecondsRealtime(preIrisHold);
 
             // --- Phase 4: iris open. Small circle reveals the slime. ---
-            if (audioSource != null && irisOpenClip != null) audioSource.PlayOneShot(irisOpenClip);
+            SoundService.Play2D(irisOpenClip, SoundCategory.UI, sfxVolume);
             t = 0f;
             while (t < irisOpenDuration)
             {
@@ -167,7 +168,7 @@ namespace SlimeJumping.UI
                 yield return new WaitForSecondsRealtime(slimeRevealHold);
 
             // --- Phase 6: iris expand. Opens up to full screen. ---
-            if (audioSource != null && irisExpandClip != null) audioSource.PlayOneShot(irisExpandClip);
+            SoundService.Play2D(irisExpandClip, SoundCategory.UI, sfxVolume);
             t = 0f;
             while (t < irisExpandDuration)
             {
@@ -205,7 +206,7 @@ namespace SlimeJumping.UI
             mat.SetFloat("_Radius", irisExpandRadius);
 
             // --- Phase 2: iris shrinks to the inner radius around the center. ---
-            if (audioSource != null && irisExpandClip != null) audioSource.PlayOneShot(irisExpandClip);
+            SoundService.Play2D(irisExpandClip, SoundCategory.UI, sfxVolume);
             float t = 0f;
             while (t < irisExpandDuration)
             {
@@ -221,7 +222,7 @@ namespace SlimeJumping.UI
                 yield return new WaitForSecondsRealtime(slimeRevealHold);
 
             // --- Phase 4: iris closes from inner radius to 0 (fully black). ---
-            if (audioSource != null && irisOpenClip != null) audioSource.PlayOneShot(irisOpenClip);
+            SoundService.Play2D(irisOpenClip, SoundCategory.UI, sfxVolume);
             t = 0f;
             while (t < irisOpenDuration)
             {
@@ -251,7 +252,7 @@ namespace SlimeJumping.UI
             yield return null;
 
             // --- Phase 6: fade from black to clear (end-scene reveal). ---
-            if (audioSource != null && fadeOutClip != null) audioSource.PlayOneShot(fadeOutClip);
+            SoundService.Play2D(fadeOutClip, SoundCategory.UI, sfxVolume);
             t = 0f;
             while (t < fadeOutDuration)
             {

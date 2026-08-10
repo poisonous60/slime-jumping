@@ -1,12 +1,16 @@
 using UnityEngine;
+using SlimeJumping.Audio;
 using SlimeJumping.Controller;
 
 namespace SlimeJumping.Interaction
 {
+    /// Keeps its own AudioSource because track switching and stop-mid-playback are outside the
+    /// SoundService pool API; the mixer group still comes from the category, never a dragged field.
     public class MediaInteractable_Phonograph : InteractableBase
     {
         [Header("Audio")]
         [SerializeField] private AudioSource audioSource;
+        [SerializeField] private SoundCategory category = SoundCategory.SFX_Object;
         [SerializeField] private AudioClip[] tracks;
 
         [Header("Disc")]
@@ -20,6 +24,8 @@ namespace SlimeJumping.Interaction
         protected override void Awake()
         {
             base.Awake();
+            var group = SoundService.GetGroup(category);
+            if (audioSource != null && group != null) audioSource.outputAudioMixerGroup = group;
             if (tracks == null) return;
             for (int i = 0; i < tracks.Length; i++)
             {

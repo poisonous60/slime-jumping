@@ -37,12 +37,10 @@ MonoBehaviour:
   minSeparationSpeed: 2
   reattachBlockSeconds: 0.25
   strikeClips:
-  - {fileID: 8300000, guid: 0b8419a341238da4d9e15f34b589095f, type: 3}
-  - {fileID: 8300000, guid: b129afd8fb331f44e9a98b1d9521ac6d, type: 3}
-  - {fileID: 8300000, guid: 0e6a14ab9bcceb54f9d223ba9031f95a, type: 3}
-  - {fileID: 8300000, guid: 857faba8c32c16e4faf223c4d0a54a62, type: 3}
-  - {fileID: 8300000, guid: 8929754aa70e2144d95e97257a686b00, type: 3}
-  - {fileID: 8300000, guid: 88e0d344f50cbc348ba8918ff4942a83, type: 3}
+  - {fileID: 8300000, guid: c21edc54b92fe554483963dfd29de792, type: 3}
+  - {fileID: 8300000, guid: 19eeca5c1e908ba4682d88ebde818830, type: 3}
+  - {fileID: 8300000, guid: ad1bde2ceaa519441943a0fac4dd280a, type: 3}
+  - {fileID: 8300000, guid: 84890cc07b93d564e9ccd86007a4b6c8, type: 3}
   volume: 1
   pitch: 1
   pitchJitter: 0.03

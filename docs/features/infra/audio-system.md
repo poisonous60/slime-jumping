@@ -6,7 +6,9 @@
 
 1. **모든 재생은 `SoundService.PlayAt / Play2D / PlayLooping / PlayBgm / StopBgm` 경유.** `AudioSource.Play()` / `PlayOneShot()` / `PlayClipAtPoint()` 직접 호출 금지. 서비스가 `SoundCategory` → `AudioMixerGroup` 매핑을 소유하고 있어 올바른 슬라이더에 자동 반응.
 
-2. **씬/프리팹에 직접 꽂은 `AudioSource`는 반드시 `Output AudioMixerGroup` 지정.** 비워두면 Master 직결 → 슬라이더 우회. `AudioSourceMixerGroupValidator`가 저장 시 콘솔 경고 (저장 차단은 안 함).
+2. **믹서 그룹을 인스펙터에서 드래그하지 말 것 (2026-08-10).** 카테고리가 유일한 어휘다. 상태 재생(play/pause/트랙 전환)이 필요해 `AudioSource`를 직접 들고 있어야 하는 컴포넌트는 `[SerializeField] SoundCategory` 를 두고 `Awake` 에서 `audioSource.outputAudioMixerGroup = SoundService.GetGroup(category)`. 손으로 꽂는 경로가 남아있는 한 오배선은 재발한다 — 실제로 두 건 있었다(아래 "적발된 오배선").
+   - 남은 예외: 피아노 건반/페달(`PianoKeyboardBuilder.LoadSfxObjectGroup()` 이 `SoundSettings` 에서 읽어 빌드 시 주입 — 드래그 아님).
+   - `AudioSourceMixerGroupValidator`가 저장 시 `outputAudioMixerGroup == null` 을 콘솔 경고 (저장 차단은 안 함).
 
 3. **`SoundCategory` 선택 기준**:
    - `SFX_Slime` — 슬라임 자체가 내는 소리 (착지/발사/슬라이드) → Player SFX 슬라이더
@@ -40,7 +42,9 @@ MainMixer
 | `SoundService` | [SlimeJumping_v2/Assets/Scripts/Audio/SoundService.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/SoundService.cs) | 싱글톤 재생 허브. 카테고리별 AudioSource 풀 + BGM 2-source. `DontDestroyOnLoad` 지속. |
 | `SoundSettings` (ScriptableObject) | [SlimeJumping_v2/Assets/Settings/SoundSettings.asset](../../../SlimeJumping_v2/Assets/Settings/SoundSettings.asset) | 믹서 에셋 + 그룹 참조 + 노출 파라미터 이름 보관. |
 | `StageBgmPlayer` | [SlimeJumping_v2/Assets/Scripts/Audio/StageBgmPlayer.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/StageBgmPlayer.cs) | 씬 로컬 BGM 트리거. Start에서 `PlayBgm` 호출. |
-| `UIClickSoundInstaller` | [SlimeJumping_v2/Assets/Scripts/UI/UIClickSoundInstaller.cs](../../../SlimeJumping_v2/Assets/Scripts/UI/UIClickSoundInstaller.cs) | Canvas 하위 모든 Button의 onClick에 UI 버스 SFX 자동 부착. SoundService 독립. |
+| `UIClickSoundInstaller` | [SlimeJumping_v2/Assets/Scripts/UI/UIClickSoundInstaller.cs](../../../SlimeJumping_v2/Assets/Scripts/UI/UIClickSoundInstaller.cs) | Canvas 하위 모든 Button의 onClick에 UI 버스 SFX 자동 부착. `Play2D(UI)` 경유 (2026-08-10). |
+| `AmbientSound` | [SlimeJumping_v2/Assets/Scripts/Audio/AmbientSound.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/AmbientSound.cs) | 루프 환경음. `OnEnable` 에서 `PlayLooping`, `OnDisable` 에서 `StopLoop`. 자체 감쇠 거리(`minDistance`/`maxDistance`)를 들고 있어 풀 기본값(3/20)보다 멀리 들리는 앰비언스를 표현. |
+| `SoundInventoryWindow` | [SlimeJumping_v2/Assets/Scripts/Editor/SoundInventoryWindow.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/SoundInventoryWindow.cs) | `Tools/Sound Inventory`. 아래 별도 섹션. |
 | `AudioSourceMixerGroupValidator` | [SlimeJumping_v2/Assets/Scripts/Editor/AudioSourceMixerGroupValidator.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/AudioSourceMixerGroupValidator.cs) | 에디터 저장 시 `outputAudioMixerGroup == null` AudioSource 경고. |
 | `GameOptions` | [SlimeJumping_v2/Assets/Scripts/Settings/GameOptions.cs](../../../SlimeJumping_v2/Assets/Scripts/Settings/GameOptions.cs) | PlayerPrefs 영속화 + dB 변환 + 부팅 시 적용. |
 
@@ -83,13 +87,15 @@ PlayerPrefs 키는 전부 `opt.*` 접두사. 레거시 단일 `opt.sfxVolume`은
 SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, volume);
 ```
 
-**루프/앰비언스**:
+**루프/앰비언스**: 오브젝트에 `AmbientSound` 컴포넌트 + 클립/카테고리/볼륨/거리 입력. 끝. 코드에서 직접 걸어야 하면:
 ```csharp
 var handle = SoundService.PlayLooping(loopClip, followTransform,
-                                       SoundCategory.SFX_Environment, volume, spatial3D: true);
+                                       SoundCategory.SFX_Environment, volume, spatial3D: true,
+                                       minDistance: -1f, maxDistance: -1f);  // 음수 = 풀 기본값 유지
 // 나중에
 SoundService.StopLoop(handle);
 ```
+루프는 풀 소스를 점유(lock)한다. 카테고리당 `poolSizePerCategory`(현재 8)가 상한이므로 같은 카테고리 루프가 늘면 이 값을 올린다.
 
 **ZoneAudioManager 프록시 패턴** (여러 존에 같은 클립 일괄 주입): `WaterZoneAudioManager.cs` 참고 — 프록시는 클립/볼륨만 전달, 카테고리는 재생 주체(Zone 클래스) 안에 하드코딩.
 
@@ -125,7 +131,33 @@ SoundService.StopLoop(handle);
 - `MediaInteractable_Phonograph.cs` → `MainMixer/BGM` (디스크 회전 sync with `audioSource.time`)
 - `MediaInteractable_TV.cs` → `MainMixer/SFX/SFX_Object` (toggle on/off clip)
 
-**DEFER** — 이번 범위 밖, 별도 PR에서 진행:
+**CONVERT 완료 (2026-08-10 Phase 3)** — 남아있던 손배선 AudioSource 정리:
 
-- `SceneTransitionController.cs` (6개 `PlayOneShot`) — 비동기 씬 로드 async 로직과 얽힘. 현재 prefab의 AudioSource `Output` 필드만 지정하면 슬라이더 반영은 됨 (validator로 관리).
-- `UIClickSoundInstaller.cs` — 자체 AudioSource + `settings.uiGroup` 경로로 이미 규칙 충족. 변경 불필요.
+- `SceneTransitionController.cs` — 직렬화 `audioSource` 제거, `PlayOneShot` 6곳 → `Play2D(UI)` + `sfxVolume` 노브. `Resources/SceneTransition.prefab` 의 AudioSource 제거.
+- `UIClickSoundInstaller.cs` — 런타임 `AddComponent<AudioSource>` 와 드래그 `outputGroup` 필드 제거, `Play2D(UI)` 경유. 대가: SoundService 없는 씬에서 UI 소리가 안 난다(모든 씬에 서비스 인스턴스 필요).
+- `WaterfallAmbient` (`stage1_floor2/wheel set/WaterfallImpactVFX_Test/`) — 스크립트 없는 생 AudioSource → `AmbientSound`(min 46.23 / max 82.93 이식).
+- KEEP 3종(`ApplianceInteractable_Washing` / `MediaInteractable_Phonograph` / `MediaInteractable_TV`)은 AudioSource 유지하되 드래그 그룹 → `[SerializeField] SoundCategory` + `SoundService.GetGroup()`.
+
+### 적발된 오배선 (2026-08-10)
+
+인벤토리 창을 만들게 된 계기이자, 창을 만들면서 실제로 나온 것:
+
+| 대상 | 상태 | 증상 |
+|---|---|---|
+| `UIRoot.prefab` 의 `UIClickSoundInstaller.outputGroup` | **BGM 그룹**에 배선 | UI 클릭음이 BGM 슬라이더를 따라 커지고 작아짐. UI 슬라이더는 무반응 |
+| `SceneTransition.prefab` 의 `AudioSource.outputAudioMixerGroup` | **NULL** | Master 직결 — 씬 전환음이 UI·카테고리 슬라이더를 전부 우회 |
+
+`SoundSettings.asset` 의 카테고리 → 그룹 매핑 자체는 정상이었다(UI → UI). 오배선은 전부 **손으로 꽂은 쪽**에서 나왔다. 규칙 2가 여기서 나온 것.
+
+## 사운드 인벤토리 창 (2026-08-10)
+
+`Tools/Sound Inventory`. 프로젝트가 실제로 물고 있는 사운드 전부를 한 목록에.
+
+- **스캔 대상**: 로드된 씬 전체 + `Assets/Resources`·`Assets/Settings`·`Assets/Prefabs`(창에서 편집 가능한 폴더 목록)의 프리팹/ScriptableObject. `AudioSource` 는 물론 모든 컴포넌트/에셋의 직렬화된 `AudioClip` 참조를 `SerializedObject` 순회로 수집(배열·중첩 포함). 실측 27그룹 / 198ms.
+- **레지스트리 없음**: 클립이 전부 직렬화 참조라서(프로젝트 전체에 `Resources.Load<AudioClip>` 0곳) 리플렉션 스캔이면 충분하다. 새 `[SerializeField] AudioClip` 을 추가하면 창을 안 고쳐도 다음 Rescan 에 뜬다.
+- **기능별 그룹**: 소유 컴포넌트 타입으로 폴드아웃. `AudioSource` 만 있는 오브젝트는 형제 `MonoBehaviour` 이름으로 라벨링(콜라이더/렌더러는 제외 — 안 그러면 피아노가 `BoxCollider2D ×52` 로 뜬다).
+- **카테고리 컬럼**: `AudioSource` 는 실제 `outputAudioMixerGroup` 을 `SoundSettings` 로 역매핑. 클립 필드는 **소유 스크립트 소스 텍스트에서 `SoundCategory.X` 토큰을 스캔** — 카테고리가 직렬화 데이터가 아니라 호출부 리터럴이라 이 방법뿐이다. 파일 단위라 한 스크립트가 두 카테고리를 쓰면 둘 다 병기된다. `PlayBgm`/`StopBgm` 은 카테고리 인자가 없어 메서드명으로 BGM 매핑.
+- **경고**: 클립 미배정 / Output 그룹 없음 / 생 AudioSource / 그룹↔스크립트 카테고리 불일치. "미배정" 필터가 곧 **아직 사운드 안 넣은 자리** 목록이다.
+- **미사용 클립**: 프로젝트의 `AudioClip` 에셋 중 위 스캔에 안 잡힌 것(ThirdParty/Plugins 제외).
+- **인라인 수정**: 클립 교체, 볼륨 슬라이더(컴포넌트의 `*volume*` float 필드 자동 노출), AudioSource 의 그룹·거리.
+- **▶ 프리뷰의 한계**: 에디터 API `AudioUtil.PlayPreviewClip` 에 볼륨 인자가 없다. 원본 클립이 그대로 재생되며 볼륨·믹서 라우팅은 반영되지 않는다. 실제 볼륨 판정은 Play 모드에서.
