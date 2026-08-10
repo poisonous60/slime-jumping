@@ -72,6 +72,7 @@ namespace SlimeJumping.EditorTools
         static readonly Dictionary<Type, List<FieldInfo>> volumeFieldCache = new Dictionary<Type, List<FieldInfo>>();
         static readonly Dictionary<Type, string> categoryCache = new Dictionary<Type, string>();
 
+        AudioSource previewSource;
         SoundSettings settings;
         Vector2 scroll;
         string search = "";
@@ -86,12 +87,19 @@ namespace SlimeJumping.EditorTools
         {
             EditorSceneManager.sceneOpened += OnSceneOpened;
             EditorSceneManager.sceneClosed += OnSceneClosed;
+
+            var go = new GameObject("SoundInventoryPreviewPlayer") { hideFlags = HideFlags.HideAndDontSave };
+            previewSource = go.AddComponent<AudioSource>();
+            previewSource.playOnAwake = false;
+            previewSource.loop = false;
+            previewSource.spatialBlend = 0f;
         }
 
         void OnDisable()
         {
             EditorSceneManager.sceneOpened -= OnSceneOpened;
             EditorSceneManager.sceneClosed -= OnSceneClosed;
+            if (previewSource != null) DestroyImmediate(previewSource.gameObject);
         }
 
         // Entries hold live scene object references; a scene swap leaves them dangling.
@@ -101,6 +109,9 @@ namespace SlimeJumping.EditorTools
         void OnGUI()
         {
             if (!scanned) Rescan();
+
+            // The editor audio engine only advances while the loop is being pumped.
+            if (previewSource != null && previewSource.isPlaying) Repaint();
 
             DrawSettingsPanel();
             DrawToolbar();
@@ -143,8 +154,8 @@ namespace SlimeJumping.EditorTools
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
             if (GUILayout.Button("⟳ 다시 검색", EditorStyles.toolbarButton, GUILayout.Width(84)))
                 Rescan();
-            if (GUILayout.Button("■ 정지", EditorStyles.toolbarButton, GUILayout.Width(52)))
-                AudioPreviewShortcut.StopAll();
+            if (GUILayout.Button("■ 정지", EditorStyles.toolbarButton, GUILayout.Width(52)) && previewSource != null)
+                previewSource.Stop();
             GUILayout.Space(8);
             onlyMissing = GUILayout.Toggle(onlyMissing, "미배정", EditorStyles.toolbarButton, GUILayout.Width(56));
             onlyNoGroup = GUILayout.Toggle(onlyNoGroup, "그룹없음", EditorStyles.toolbarButton, GUILayout.Width(64));
@@ -228,11 +239,19 @@ namespace SlimeJumping.EditorTools
                 s.clip = next;
             }
 
+            float previewVolume = PreviewVolumeFor(e, s, out bool matched);
             using (new EditorGUI.DisabledScope(s.clip == null))
             {
-                if (GUILayout.Button("▶", GUILayout.Width(24)))
-                    AudioPreviewShortcut.Play(s.clip);
+                string tip = matched
+                    ? $"volume {previewVolume:0.00} 로 재생"
+                    : "볼륨 필드가 여럿이라 짝을 못 정함 — 원본 크기로 재생";
+                if (GUILayout.Button(new GUIContent("▶", tip), GUILayout.Width(24)))
+                    PlayPreview(s.clip, previewVolume);
             }
+            if (matched && previewVolume < 0.999f)
+                GUILayout.Label($"×{previewVolume:0.00}", EditorStyles.miniLabel, GUILayout.Width(40));
+            else
+                GUILayout.Space(40);
             if (s.clip == null) GUILayout.Label("미배정 ⚠", EditorStyles.miniLabel, GUILayout.Width(60));
             else GUILayout.Space(64);
 
@@ -300,7 +319,7 @@ namespace SlimeJumping.EditorTools
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField(Path.GetFileNameWithoutExtension(path), EditorStyles.miniLabel);
                 if (GUILayout.Button("▶", GUILayout.Width(24)))
-                    AudioPreviewShortcut.Play(AssetDatabase.LoadAssetAtPath<AudioClip>(path));
+                    PlayPreview(AssetDatabase.LoadAssetAtPath<AudioClip>(path), 1f);
                 if (GUILayout.Button("Select", EditorStyles.miniButton, GUILayout.Width(50)))
                 {
                     var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
@@ -310,6 +329,59 @@ namespace SlimeJumping.EditorTools
                 EditorGUILayout.EndHorizontal();
             }
             EditorGUI.indentLevel--;
+        }
+
+        // ---------- preview ----------
+
+        /// Plays through a window-owned AudioSource, not AudioUtil.PlayPreviewClip — that API takes no
+        /// volume. Copied from IntuitiveAudioAdjust, which previews the same way.
+        void PlayPreview(AudioClip clip, float volume)
+        {
+            if (clip == null || previewSource == null) return;
+            previewSource.Stop();
+            previewSource.clip = clip;
+            previewSource.volume = Mathf.Clamp01(volume);
+            previewSource.Play();
+            Repaint();
+        }
+
+        /// Volume for a clip slot: the AudioSource's own, else the volume field whose name shares the
+        /// slot's stem (fireClip ↔ fireVolume), else the only volume field if there is just one.
+        static float PreviewVolumeFor(Entry e, Slot s, out bool matched)
+        {
+            matched = true;
+            if (e.source != null) return e.source.volume;
+            if (e.volumes.Count == 0) return 1f;
+
+            string stem = Stem(s.label);
+            if (stem.Length > 0)
+                for (int i = 0; i < e.volumes.Count; i++)
+                    if (Stem(e.volumes[i].label) == stem) return e.volumes[i].value;
+
+            if (e.volumes.Count == 1) return e.volumes[0].value;
+
+            matched = false;
+            return 1f;
+        }
+
+        static readonly string[] StemSuffixes = { "volume", "vol", "clips", "clip", "sfx", "sound", "audio", "s" };
+
+        static string Stem(string name)
+        {
+            string s = name.Replace(" ", "").ToLowerInvariant();
+            bool cut = true;
+            while (cut)
+            {
+                cut = false;
+                for (int i = 0; i < StemSuffixes.Length; i++)
+                {
+                    if (s.Length <= StemSuffixes[i].Length || !s.EndsWith(StemSuffixes[i])) continue;
+                    s = s.Substring(0, s.Length - StemSuffixes[i].Length);
+                    cut = true;
+                    break;
+                }
+            }
+            return s;
         }
 
         bool Passes(Entry e)

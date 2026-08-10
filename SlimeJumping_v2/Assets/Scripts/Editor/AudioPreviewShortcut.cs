@@ -2,8 +2,6 @@ using UnityEngine;
 using UnityEditor;
 using System.Reflection;
 
-/// Editor-only clip audition over UnityEditor.AudioUtil. The API takes no volume or mixer group,
-/// so a preview is the raw clip — not what the clip will sound like in game.
 public static class AudioPreviewShortcut
 {
     [MenuItem("Tools/Play Selected Audio _F1")]
@@ -16,14 +14,7 @@ public static class AudioPreviewShortcut
             return;
         }
 
-        Play(clip);
-    }
-
-    public static void Play(AudioClip clip)
-    {
-        if (clip == null) return;
-
-        StopAll();
+        StopAllAudio();
 
         var audioUtilType = typeof(AudioImporter).Assembly
             .GetType("UnityEditor.AudioUtil");
@@ -38,7 +29,7 @@ public static class AudioPreviewShortcut
     }
 
     [MenuItem("Tools/Stop All Audio _F3")]
-    public static void StopAll()
+    static void StopAllAudio()
     {
         var audioUtilType = typeof(AudioImporter).Assembly
             .GetType("UnityEditor.AudioUtil");

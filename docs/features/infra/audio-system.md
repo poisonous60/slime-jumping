@@ -160,4 +160,8 @@ SoundService.StopLoop(handle);
 - **경고**: 클립 미배정 / Output 그룹 없음 / 생 AudioSource / 그룹↔스크립트 카테고리 불일치. "미배정" 필터가 곧 **아직 사운드 안 넣은 자리** 목록이다.
 - **미사용 클립**: 프로젝트의 `AudioClip` 에셋 중 위 스캔에 안 잡힌 것(ThirdParty/Plugins 제외).
 - **인라인 수정**: 클립 교체, 볼륨 슬라이더(컴포넌트의 `*volume*` float 필드 자동 노출), AudioSource 의 그룹·거리.
-- **▶ 프리뷰의 한계**: 에디터 API `AudioUtil.PlayPreviewClip` 에 볼륨 인자가 없다. 원본 클립이 그대로 재생되며 볼륨·믹서 라우팅은 반영되지 않는다. 실제 볼륨 판정은 Play 모드에서.
+- **▶ 프리뷰는 창이 소유한 `AudioSource` 로 재생한다 (2026-08-10)**. `AudioUtil.PlayPreviewClip` 은 **볼륨 인자가 없어서** 못 쓴다. 대신 `OnEnable` 에서 `HideFlags.HideAndDontSave` GameObject + `AudioSource` 를 만들어 창 수명 동안 들고, `volume` 을 꽂고 `Play()`. `OnDisable` 에서 파괴. 재생 중에는 `OnGUI` 에서 `Repaint()` — **에디터 오디오는 에디터 루프가 돌아야 진행한다.** 같은 프로젝트의 `ThirdParty/IntuitiveCreative/IntuitiveAudioAdjust` 가 쓰는 방식 그대로.
+  - 어느 볼륨을 쓰나: `AudioSource` 행은 자기 `volume`. 클립 필드는 **어간이 같은 볼륨 필드**(`fireClip` ↔ `fireVolume`), 없으면 볼륨 필드가 하나뿐일 때 그것, 여럿이면 원본 크기(▶ 툴팁에 표시). 고른 값은 행 옆에 `×0.10` 으로 표기.
+  - 믹서 그룹 라우팅(카테고리 볼륨 슬라이더)은 반영 안 된다. 그건 Play 모드에서.
+  - **막다른 길 기록** — 샘플에 볼륨을 곱한 임시 클립(`AudioClip.Create`+`SetData`)을 `PlayPreviewClip` 에 넘기면 **무음**이다. 데이터는 정상으로 들어가고(peak 0.560 → ×0.25 → 0.140) `samplePos` 도 진행하는데 소리만 없다 — `AudioUtil.HasPreview(생성클립)` 가 False. 프리뷰 플레이어는 임포트된 에셋의 프리뷰 데이터를 읽지 런타임 클립 샘플을 안 읽는다.
+  - **측정 함정** — 에디트 모드 `AudioSource` 가 "안 돈다"고 오판하기 쉽다. 창 없이 `exec` 로 오브젝트만 만들어 재면 `dspTime` 이 고정(엔진이 서비스되지 않음)이라 `timeSamples` 0 · `isPlaying` false 로 보인다. 루프를 돌리는 주체(창의 `Repaint`)가 있어야 실제 동작이다.

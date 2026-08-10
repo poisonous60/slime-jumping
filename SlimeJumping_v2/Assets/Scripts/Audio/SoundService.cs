@@ -23,6 +23,7 @@ namespace SlimeJumping.Audio
             public AudioSource source;
             public bool locked;          // true while owned by a loop SoundHandle
             public double releaseDspTime; // when a one-shot is expected to end; older = steal candidate
+            public Transform follow;      // loop target; tracked by position, never by parenting
         }
 
         private readonly Dictionary<SoundCategory, List<PooledSource>> pools =
@@ -64,6 +65,21 @@ namespace SlimeJumping.Audio
         void OnDestroy()
         {
             if (Instance == this) Instance = null;
+        }
+
+        // Position-tracked, not parented: parenting pulls the pooled source into the target's scene.
+        void LateUpdate()
+        {
+            foreach (var kv in pools)
+            {
+                var list = kv.Value;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var p = list[i];
+                    if (!p.locked || p.follow == null) continue;
+                    if (p.source != null) p.source.transform.position = p.follow.position;
+                }
+            }
         }
 
         private void BuildPools()
@@ -141,7 +157,6 @@ namespace SlimeJumping.Audio
             for (int i = 0; i < list.Count; i++)
             {
                 var p = list[i];
-                if (p.source == null) continue;   // a loop's follow target took it down with its scene
                 if (p.locked) continue;
                 if (!p.source.isPlaying) return p;
                 if (oldest == null || p.releaseDspTime < oldest.releaseDspTime) oldest = p;
@@ -211,8 +226,8 @@ namespace SlimeJumping.Audio
             if (p == null) return default;
 
             var src = p.source;
-            if (follow != null) src.transform.SetParent(follow, false);
-            src.transform.localPosition = Vector3.zero;   // a previous PlayAt left a world offset on it
+            p.follow = follow;
+            src.transform.position = follow != null ? follow.position : Vector3.zero;
             src.spatialBlend = spatial3D ? 1f : 0f;
             src.loop = true;
             src.volume = volume;
@@ -233,16 +248,13 @@ namespace SlimeJumping.Audio
             handle.source.Stop();
             handle.source.clip = null;
             handle.source.loop = false;
-            if (Instance != null)
-            {
-                handle.source.transform.SetParent(Instance.transform, false);
-                Instance.RestorePoolDefaults(handle.source);
-            }
+            if (Instance != null) Instance.RestorePoolDefaults(handle.source);
+
             var list = Instance != null ? Instance.FindPoolContaining(handle.source) : null;
             if (list != null)
             {
                 for (int i = 0; i < list.Count; i++)
-                    if (list[i].source == handle.source) list[i].locked = false;
+                    if (list[i].source == handle.source) { list[i].locked = false; list[i].follow = null; }
             }
         }
 
@@ -261,7 +273,7 @@ namespace SlimeJumping.Audio
         {
             foreach (var kv in pools)
                 for (int i = 0; i < kv.Value.Count; i++)
-                    if (kv.Value[i].source != null && kv.Value[i].source == s) return kv.Value;
+                    if (kv.Value[i].source == s) return kv.Value;
             return null;
         }
 
