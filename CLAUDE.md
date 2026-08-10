@@ -48,6 +48,8 @@ Unity 자산(`.unity`/`.prefab`/`.asset`) 조회는 무조건 `unity-cli exec`. 
 
 플래그 지어내지 마. 확실치 않으면 `--help` 먼저. 코드는 인자로 넘기거나 stdin 파이프.
 
+`exec` 코드에 공백 둘린 `<` (비교식, for 루프)가 있으면 인라인 인자 금지 — unity-cli 가 에러 없이 무한 행. 그런 코드는 무조건 stdin 파이프(`cat <<'EOF' | unity-cli exec`)로 넘겨라. 제네릭처럼 붙여 쓴 `<>` 는 무관.
+
 
 
 ### Coding Convention

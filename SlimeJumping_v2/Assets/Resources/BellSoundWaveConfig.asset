@@ -17,7 +17,7 @@ MonoBehaviour:
   frontWidth: 1
   holdSeconds: 8
   fadeSeconds: 2
-  hiddenPlatformTrailStrength: 0.5
+  hiddenPlatformTrailStrength: 1
   hiddenPlatformTrailRadiusScale: 1
   distortionStrength: 0.02
   distortionRingWidthWorld: 0.6
