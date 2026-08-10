@@ -15,7 +15,7 @@ namespace SlimeJumping.Editor
         const int GroundLayer = 7;
         const string ArtFolder = "Assets/AsciiArt/Ending";
         const string ConfigAssetPath = "Assets/Resources/AsciiArtPlatformConfig.asset";
-        const string SlimePrefabPath = "Assets/Prebs/Slime.prefab";
+        const string MainScenePath = "Assets/Scenes/MainScene.unity";
 
         static readonly string[] WordsBottomUp = { "PLAYING", "FOR", "THANKS" };
         const float LetterGap = 0.6f;
@@ -24,6 +24,13 @@ namespace SlimeJumping.Editor
         const float SlimeDropHeight = 4f;
         const float CameraMargin = 0.8f;
         const float CameraAspect = 16f / 9f;
+        const float BackdropZ = 8f;
+        const float BackdropWidth = 40f;
+        const float BackdropHeight = 26f;
+        const float CeilingThickness = 0.5f;
+        const float CeilingWidthPad = 1f;
+        const float SlimeSpawnXMargin = 1.5f;
+        const float CameraZ = -10f;
         static readonly Color CameraBackground = new Color(0.02f, 0.06f, 0.045f);
 
         [MenuItem("SlimeJumping/Platform/Setup Ascii Ending (EndScene)")]
@@ -85,18 +92,14 @@ namespace SlimeJumping.Editor
             var wallR = BuildArt(root.transform, "WallRight", "wall", cfg, out _, out _);
             if (wallR == null) { Object.DestroyImmediate(root); return; }
             wallR.transform.localPosition = new Vector3(halfArena - wallW, wallH, 0f);
-            CreateInvisibleBox(root.transform, "Ceiling", new Vector2(0f, wallH + 0.25f), new Vector2(groundW + 1f, 0.5f));
+            CreateInvisibleBox(root.transform, "Ceiling", new Vector2(0f, wallH + CeilingThickness * 0.5f), new Vector2(groundW + CeilingWidthPad, CeilingThickness));
 
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(SlimePrefabPath);
-            if (prefab == null)
+            if (!CloneMainSceneParts(root.transform, new Vector3(-(maxRowHalf + SlimeSpawnXMargin), groundTop + SlimeDropHeight, 0f)))
             {
-                Debug.LogError($"[AsciiEnding] 슬라임 프리팹 없음: {SlimePrefabPath}");
                 Object.DestroyImmediate(root);
                 return;
             }
-            var slime = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
-            slime.transform.SetParent(root.transform, false);
-            slime.transform.position = new Vector3(-(maxRowHalf + 1.5f), groundTop + SlimeDropHeight, 0f);
+            CreateBackdrop(root.transform, topY);
 
             var cam = UnityEngine.Camera.main;
             if (cam != null)
@@ -109,7 +112,7 @@ namespace SlimeJumping.Editor
                 cam.orthographicSize = Mathf.Max(halfH, halfW / CameraAspect);
                 cam.clearFlags = CameraClearFlags.SolidColor;
                 cam.backgroundColor = CameraBackground;
-                cam.transform.position = new Vector3(0f, topY * 0.5f, -10f);
+                cam.transform.position = new Vector3(0f, topY * 0.5f, CameraZ);
             }
             else Debug.LogWarning("[AsciiEnding] Main Camera 없음 — 프레이밍 생략.");
 
@@ -124,7 +127,7 @@ namespace SlimeJumping.Editor
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
             Selection.activeGameObject = root;
             Debug.Log($"[AsciiEnding] 배치 완료: arena {groundW:F1}u, top {topY:F1}u, button x {maxRowHalf + ButtonMargin:F1}. " +
-                      "RETURN 버튼을 밟거나 클릭하면 메인 메뉴.", root);
+                      "END 버튼을 밟거나 클릭하면 아이리스 전환 후 메인 메뉴.", root);
         }
 
         static GameObject BuildArt(Transform parent, string name, string artFile,
@@ -147,6 +150,95 @@ namespace SlimeJumping.Editor
             w = platform.Columns * platform.CellWidth;
             h = platform.Rows * platform.CellHeight;
             return go;
+        }
+
+        /// MainScene 을 additive 로 열어 슬라임/라이트/사운드/PostFX 인스턴스와 환경 설정을 복제한다.
+        /// 씬 인스턴스 복제 = 프리팹 기본값이 아니라 실제 튜닝 상태를 가져오기 위함.
+        static bool CloneMainSceneParts(Transform root, Vector3 slimeSpawn)
+        {
+            var end = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+            var main = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(
+                MainScenePath, UnityEditor.SceneManagement.OpenSceneMode.Additive);
+            GameObject srcSlime = null, srcLight = null, srcSound = null, srcPostFx = null;
+            Material sky = null;
+            float ambientIntensity = 1f;
+            UnityEngine.Rendering.AmbientMode ambientMode = UnityEngine.Rendering.AmbientMode.Skybox;
+            try
+            {
+                try
+                {
+                    UnityEditor.SceneManagement.EditorSceneManager.SetActiveScene(main);
+                    sky = RenderSettings.skybox;
+                    ambientIntensity = RenderSettings.ambientIntensity;
+                    ambientMode = RenderSettings.ambientMode;
+                }
+                finally
+                {
+                    // Instantiate 는 활성 씬에 생성되므로 복제 전에 반드시 EndScene 으로 복귀.
+                    UnityEditor.SceneManagement.EditorSceneManager.SetActiveScene(end);
+                }
+                foreach (var go in main.GetRootGameObjects())
+                {
+                    if (go == null) continue;
+                    if (go.name == "Slime") srcSlime = go;
+                    else if (go.name == "Directional Light") srcLight = go;
+                    else if (go.name == "PostFX_Stage1") srcPostFx = go;
+                    else if (go.name == "Manager")
+                    {
+                        var svc = go.GetComponentInChildren<SlimeJumping.Audio.SoundService>(true);
+                        if (svc != null) srcSound = svc.gameObject;
+                    }
+                }
+                if (srcSlime == null)
+                {
+                    Debug.LogError("[AsciiEnding] MainScene 에서 Slime 루트를 못 찾았다.");
+                    return false;
+                }
+                var slime = Object.Instantiate(srcSlime);
+                slime.name = "Slime";
+                slime.transform.SetParent(root, true);
+                slime.transform.position = slimeSpawn;
+                if (srcLight != null)
+                {
+                    var light = Object.Instantiate(srcLight);
+                    light.name = "Directional Light";
+                    light.transform.SetParent(root, true);
+                }
+                if (srcSound != null)
+                {
+                    var sound = Object.Instantiate(srcSound);
+                    sound.name = "SoundService";
+                    sound.transform.SetParent(root, false);
+                }
+                if (srcPostFx != null)
+                {
+                    var fx = Object.Instantiate(srcPostFx);
+                    fx.name = "PostFX_Ending";
+                    fx.transform.SetParent(root, true);
+                }
+            }
+            finally
+            {
+                if (main.isLoaded)
+                    UnityEditor.SceneManagement.EditorSceneManager.CloseScene(main, true);
+            }
+            RenderSettings.skybox = sky;
+            RenderSettings.ambientMode = ambientMode;
+            RenderSettings.ambientIntensity = ambientIntensity;
+            DynamicGI.UpdateEnvironment();
+            return true;
+        }
+
+        static void CreateBackdrop(Transform parent, float topY)
+        {
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = "Backdrop";
+            Object.DestroyImmediate(quad.GetComponent<MeshCollider>());
+            quad.transform.SetParent(parent, false);
+            quad.transform.localPosition = new Vector3(0f, topY * 0.5f, BackdropZ);
+            quad.transform.localScale = new Vector3(BackdropWidth, BackdropHeight, 1f);
+            var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { color = Color.black };
+            quad.GetComponent<MeshRenderer>().sharedMaterial = mat;
         }
 
         static void CreateInvisibleBox(Transform parent, string name, Vector2 pos, Vector2 size)

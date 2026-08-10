@@ -63,10 +63,9 @@ namespace SlimeJumping.Platforms.Bell
         [Range(0.05f, 10f)] public float clapperSeparationAngle = 1.5f;
 
         [Header("Contact — no direction condition; speed decides the sound, not the reaction")]
-        [Tooltip("Closing speed (world u/s) a touch needs to actually sound the bell. Below it the " +
-                 "bell still swings and the slime still bounces — it is just silent. Measured into " +
-                 "the surface actually touched, so slamming the underside from below counts in full " +
-                 "while sliding down the outside counts for nothing.")]
+        [Tooltip("Contact speed (world u/s, flank-relative, any direction) a touch needs to actually " +
+                 "sound the bell. Below it the bell still swings and the slime still bounces — it is " +
+                 "just silent. Grazes along the flank count the same as head-on slams.")]
         [Min(0f)] public float minRingSpeed = 3f;
         [Tooltip("Seconds before the same slime can set this bell off again. 60-120ms is the range " +
                  "commercial bounce objects use.")]

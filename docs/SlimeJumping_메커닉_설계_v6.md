@@ -112,6 +112,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 - [VFX Infrastructure](features/infra/vfx-infra.md) — ImpulseEmitter, SliceEffect, Blur, Two-Ramp Y Blend, 옵션패널(Background Camera On/Off 포함)
 - Ambient Snow (`SnowCameraEmitter`) — 카메라 추종 스폰 박스 + `emitterArea` PolygonCollider2D 밖 입자 수동 cull. **고도 페이드**: `fadeStartY`~`fadeEndY` 사이에서 입자를 확률적으로 죽여 위로 갈수록 눈발이 성겨지다 그친다. 판정 난수는 `Particle.randomSeed` 해시 — `Random` 을 쓰면 프레임마다 결과가 바뀌어 전체가 깜빡인다. 알파를 낮추는 게 아니라 개수를 줄이는 방식(투명한 눈은 안개로 읽힘). 두 값 모두 Infinity(기본)면 페이드 경로를 안 탄다
 - Snowfall Volume (`SnowfallVolume`) — 원하는 위치에 붙이는 국소 눈기둥. 박스 윗변에서 스폰 → 낙하 → 아랫변에서 소멸(기즈모 사각형 = 눈 보이는 범위). `lifetime = height/fallSpeed`, `rate = density×width` 자동 산출이라 박스를 키워도 밀도 유지. World sim + World velocity 라 호스트가 움직이거나 회전해도 눈은 월드 아래로. 룩(머티리얼/알파 램프/크기/회전)은 GO 에 authored 이고 스크립트는 기하·밀도만 — 생성은 `GameObject > SlimeJumping > Snowfall Volume` 메뉴
+- Ascii Ending (EndScene) — 엔딩 = "글자를 밟는 플레이"(2026-08-10). THANKS/FOR/PLAYING 낱글자가 각각 Ascii Art Platform(+출렁임) 발판인 3단 계단 + 아스키 지면/벽 + `## END ##` 물리 버튼. 버튼은 밟기(피아노식 x 겹침 + 윗면 근접) 또는 마우스 클릭 → 비주얼만 눌림 → 짧은 검정 페이드로 메인 메뉴(`EndingReturnButton`, 아이리스 재사용은 과해서 반려). 슬라임/라이트/SoundService/PostFX/skybox 는 MainScene 씬 인스턴스 복제(프리팹 기본값 아님), 구형 EndPanel(any-key 복귀) 비활성. 셋업 `SlimeJumping/Platform/Setup Ascii Ending (EndScene)` — AsciiEnding 루트 삭제 + EndPanel 재활성 = 완전 롤백.
 - [Tuning Parameters](features/infra/tuning-parameters.md) — SlimeSettings 전체 목록
 - [Script Structure](features/infra/script-structure.md) — 전체 스크립트 인벤토리
 

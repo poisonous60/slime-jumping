@@ -21,6 +21,8 @@ namespace SlimeJumping.EditorTools.UI
             "MainMenuCanvas", "OptionsCanvas", "EndCanvas", "FullscreenEffectCanvas", "EventSystem",
             // Legacy controller host GameObjects.
             "MainMenuController", "DemoEndController",
+            // 지난 실행이 만든 UIRoot 도 제거 — 없으면 재실행마다 UIRoot 가 한 벌씩 쌓인다.
+            "UIRoot",
         };
 
         public static string WireMainMenuScene()

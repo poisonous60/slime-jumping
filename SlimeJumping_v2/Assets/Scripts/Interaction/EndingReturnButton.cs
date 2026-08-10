@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 using SlimeJumping.Controller;
 using SlimeJumping.Platforms;
 using SlimeJumping.UI;
@@ -20,6 +21,9 @@ namespace SlimeJumping.Interaction
         [SerializeField] private float pressDepth = 0.18f;
         [SerializeField] private float pressDuration = 0.12f;
         [SerializeField] private float returnDelay = 0.5f;
+        [SerializeField] private float fadeDuration = 0.35f;
+
+        private const float SlimeSearchInterval = 1f;
 
         private Collider2D buttonCollider;
         private Transform visual;
@@ -41,7 +45,7 @@ namespace SlimeJumping.Interaction
             if (slime == null)
             {
                 if (Time.time < nextSlimeSearch) return;
-                nextSlimeSearch = Time.time + 1f;
+                nextSlimeSearch = Time.time + SlimeSearchInterval;
                 slime = FindFirstObjectByType<SlimeController>();
                 if (slime == null) return;
             }
@@ -78,12 +82,40 @@ namespace SlimeJumping.Interaction
             float t = 0f;
             while (visual != null && t < pressDuration)
             {
-                t += Time.deltaTime;
+                t += Time.unscaledDeltaTime;
                 visual.localPosition = Vector3.Lerp(rest, pressed, Mathf.Clamp01(t / pressDuration));
                 yield return null;
             }
-            if (returnDelay > 0f) yield return new WaitForSeconds(returnDelay);
+            if (returnDelay > 0f) yield return new WaitForSecondsRealtime(returnDelay);
+            // 진입 리빌 전환과 겹치면 페이드가 이중으로 보인다 — 끝날 때까지 대기.
+            while (SceneTransitionController.IsRunning) yield return null;
+            yield return FadeToBlack();
             GameFlow.LoadMainMenu();
+        }
+
+        private IEnumerator FadeToBlack()
+        {
+            var canvasGo = new GameObject("EndingFade");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = short.MaxValue;
+            var imgGo = new GameObject("Black");
+            imgGo.transform.SetParent(canvasGo.transform, false);
+            var img = imgGo.AddComponent<Image>();
+            img.raycastTarget = false;
+            var rt = img.rectTransform;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            float t = 0f;
+            while (t < fadeDuration)
+            {
+                t += Time.unscaledDeltaTime;
+                img.color = new Color(0f, 0f, 0f, Mathf.Clamp01(t / fadeDuration));
+                yield return null;
+            }
+            img.color = Color.black;
         }
     }
 }

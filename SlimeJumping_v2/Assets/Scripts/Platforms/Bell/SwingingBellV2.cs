@@ -8,10 +8,10 @@ using SlimeJumping.InputHandling;
 namespace SlimeJumping.Platforms.Bell
 {
     // Hanging bell, rebuilt around the contact frame. Touching it swings the bell, bounces the slime
-    // and — if the touch was fast enough — sounds it, all in the same tick. The swing is what the hit
-    // looks like, never what decides it: the physics bell decided all three from the clapper reaching
-    // the wall, which put the sound 0.3-2s behind the touch and let a hit that arrived on the wrong
-    // phase produce nothing at all.
+    // and — if the touch was fast enough — ARMS the ring, all in the same tick. The sound itself is
+    // released when the clapper lands on the wall, once per armed hit; the arming tick also injects
+    // enough clapper-relative speed that the strike is guaranteed, so unlike the physics bell a hit
+    // on the wrong swing phase can never cancel into silence.
     //
     // Three rules the tuning has to keep. Nothing has a direction condition — where the contact sits
     // decides which way the bell goes, never which way the slime was travelling, so a hit straight
@@ -62,6 +62,10 @@ namespace SlimeJumping.Platforms.Bell
         bool riding;
         int nextClip;
         int ringCount;
+        bool pendingRing;
+        float pendingStrikeTimer;
+        // Fallback only — an armed ring the pendulum somehow never delivers still plays.
+        const float PendingStrikeTimeout = 0.8f;
 
         readonly ContactPoint2D[] contactScratch = new ContactPoint2D[8];
         readonly List<Collider2D> ownColliders = new List<Collider2D>();
@@ -205,6 +209,11 @@ namespace SlimeJumping.Platforms.Bell
             if (cfg == null) cfg = BellV2Config.Resolve(configOverride);
 
             retriggerTimer = Mathf.Max(0f, retriggerTimer - dt);
+            if (pendingRing)
+            {
+                pendingStrikeTimer -= dt;
+                if (pendingStrikeTimer <= 0f) ReleaseRing();
+            }
             // Tracked before first touch — the first contact arrives with its closing speed already spent.
             if (trackedSlime == null) trackedSlime = FindFirstObjectByType<SlimeController>();
             ScanContact();
@@ -272,7 +281,7 @@ namespace SlimeJumping.Platforms.Bell
             phi2 += phi2Dot * h;
         }
 
-        // eq. 2.1 contact at |phi1 - phi2| = alpha, resolved by eq. 2.5/2.6. Makes no sound now.
+        // eq. 2.1 contact at |phi1 - phi2| = alpha, resolved by eq. 2.5/2.6. Releases the armed ring.
         void ResolveWallContact()
         {
             float alpha = cfg.strikeAngle * Mathf.Deg2Rad;
@@ -301,6 +310,7 @@ namespace SlimeJumping.Platforms.Bell
                     phi1Dot = (momentum - B * wAfter) / sum;
                     phi2Dot = phi1Dot + wAfter;
                 }
+                if (!onWall && pendingRing) ReleaseRing();
                 onWall = true;
             }
 
@@ -368,20 +378,26 @@ namespace SlimeJumping.Platforms.Bell
             Vector2 r = point - pivotWorld;
             Vector2 rel = FlankRelative(slime, r, surf, out Vector2 surfaceVel);
 
-            // Speed INTO the surface, so sliding down the bell's face is the graze it looks like.
-            float speed = -Vector2.Dot(rel, surf);
+            // Contact speed regardless of direction, so a graze along the flank rings too.
+            float speed = rel.magnitude;
 
             // Speed only picks a point in the soft-to-full window; outside it nothing changes.
             float t = Mathf.InverseLerp(cfg.minRingSpeed, FullSwingSpeed(), speed);
             float swing = Mathf.Lerp(cfg.softSwingDegrees, cfg.swingDegrees, t);
             // Which way it goes still comes from where the contact sits, never from the travel.
-            phi1Dot += -Mathf.Sign(OutwardAt(r).x) * ReferenceKick(swing);
+            float side = -Mathf.Sign(OutwardAt(r).x);
+            float kick = ReferenceKick(swing);
+            phi1Dot += side * kick;
 
             if (speed >= cfg.minRingSpeed)
             {
-                ringCount++;
-                PlayClip(point);
-                PulseRevealRelay();
+                // The hit only arms the ring; the clapper reaching the wall releases it, once.
+                pendingRing = true;
+                pendingStrikeTimer = PendingStrikeTimeout;
+                // The clapper must reach the wall however the bell was already swinging.
+                float toWall = -side;
+                float w = phi2Dot - phi1Dot;
+                if (w * toWall < kick) phi2Dot = phi1Dot + toWall * kick;
             }
 
             ReflectSlime(slime, rel, surfaceVel, surf);
@@ -406,7 +422,17 @@ namespace SlimeJumping.Platforms.Bell
             return Mathf.Sqrt(2f * restore * rise / inertia);
         }
 
-        void PlayClip(Vector2 point)
+        // One sound per armed hit, released the moment the clapper lands on the wall.
+        void ReleaseRing()
+        {
+            pendingRing = false;
+            ringCount++;
+            PlayClip();
+            PulseRevealRelay();
+        }
+
+        // 2D flat playback on purpose: the ring must reach the player at full volume from anywhere.
+        void PlayClip()
         {
             var clips = cfg.strikeClips;
             if (clips == null || clips.Length == 0) return;
@@ -416,7 +442,7 @@ namespace SlimeJumping.Platforms.Bell
             if (clip == null) return;
 
             float p = cfg.pitch + Random.Range(-cfg.pitchJitter, cfg.pitchJitter);
-            SoundService.PlayAt(clip, point, SoundCategory.SFX_Object, cfg.volume, Mathf.Max(0.01f, p));
+            SoundService.Play2D(clip, SoundCategory.SFX_Object, cfg.volume, Mathf.Max(0.01f, p));
         }
 
         // Contact the ring latch already spent. Still pushed off, just not re-rung or re-swung.

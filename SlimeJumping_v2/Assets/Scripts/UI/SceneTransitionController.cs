@@ -93,6 +93,7 @@ namespace SlimeJumping.UI
 
         private IEnumerator Run(string sceneName)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew(); // 임시 계측 — 진단 후 제거
             // --- Phase 1: fade the current view to black. ---
             fadeImage.gameObject.SetActive(true);
             fadeImage.color = new Color(0f, 0f, 0f, 0f);
@@ -108,18 +109,22 @@ namespace SlimeJumping.UI
                 yield return null;
             }
             fadeImage.color = Color.black;
+            Debug.Log($"[TransitionTiming] fade done {sw.ElapsedMilliseconds}ms"); // 임시 계측
 
             // --- Phase 2: load the target scene while the screen is black. ---
             AsyncOperation load = SceneManager.LoadSceneAsync(sceneName);
             load.allowSceneActivation = false;
             while (load.progress < 0.9f) yield return null;
+            Debug.Log($"[TransitionTiming] load 0.9 {sw.ElapsedMilliseconds}ms"); // 임시 계측
             load.allowSceneActivation = true;
             while (!load.isDone) yield return null;
+            Debug.Log($"[TransitionTiming] activation done {sw.ElapsedMilliseconds}ms"); // 임시 계측
 
             // Let Awake/Start/LateUpdate run so Cinemachine can frame the slime.
             yield return null;
             yield return null;
             yield return null;
+            Debug.Log($"[TransitionTiming] first frames {sw.ElapsedMilliseconds}ms"); // 임시 계측
 
             // --- Phase 3: compute iris center at the slime's screen position. ---
             Vector2 center = new Vector2(0.5f, 0.5f);
@@ -172,6 +177,7 @@ namespace SlimeJumping.UI
                 yield return null;
             }
             mat.SetFloat("_Radius", irisExpandRadius);
+            Debug.Log($"[TransitionTiming] total {sw.ElapsedMilliseconds}ms"); // 임시 계측
 
             Destroy(gameObject);
         }
