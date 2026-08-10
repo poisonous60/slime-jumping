@@ -17,21 +17,6 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
-  crawlSpeedMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  crawlAccelerationMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  crawlDecelerationMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
   crawlOverspeedDecelerationMultiplier:
     baseValue: 1
     fullValue: 1
@@ -72,6 +57,18 @@ MonoBehaviour:
     fullValue: 0
     angleMin: 0
     angleMax: 90
+  landingExcessGain:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  enableLandingTangentSpeedRemap: 0
+  landingTangentSpeedRemapCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   stickDurationMultiplier:
     baseValue: 1
     fullValue: 1
@@ -82,99 +79,21 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
-  groundDashScale:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  overrideGroundDash: 0
-  groundDashImpulse: 8
-  groundDashAngleMin: 30
-  groundDashAngleMax: 60
-  groundDashAngleFalloffCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 1
-      inSlope: 0
-      outSlope: -1
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 0
-      inSlope: -1
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  dashFalloffStart: 5
-  dashFalloffEnd: 13
-  dashSpeedFalloffCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 1
-      inSlope: 0
-      outSlope: -1
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 0
-      inSlope: -1
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  disableDashFalloff: 0
   wallAttachSpeedDampen:
     baseValue: 0
     fullValue: 0
     angleMin: 0
     angleMax: 90
-  hopPowerMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  hopVelocityRetention:
-    baseValue: 0
-    fullValue: 0
-    angleMin: 0
-    angleMax: 90
-  hopNormalToTangentRatio:
-    baseValue: 0
-    fullValue: 0
-    angleMin: 0
-    angleMax: 90
-  hopInstantFlip: 1
-  overrideHopMomentum: 0
-  hopMomentumBonus: 0
-  hopMomentumMaxSpeed: 10
   useInertialSlide: 0
-  landHardClip: {fileID: 8300000, guid: aaba36eb6cc3c544c9ff2ed2c748b1e6, type: 3}
-  landSoftClip: {fileID: 8300000, guid: 066d1902983a0064db39438157934e57, type: 3}
-  launchClip: {fileID: 0}
-  hopClip: {fileID: 8300000, guid: e9f33d146351ea946b125ce147a62810, type: 3}
-  landHardVolume: 1
-  landSoftVolume: 0.264
-  launchVolume: 1
-  hopVolume: 1
+  launchInertiaBlendMode: 0
+  launchInertiaLerpFactor: 0.5
+  launchInertiaPNorm: 2
+  landHardSound: {fileID: 11400000, guid: aca6c058f4fa2354bb07b797a05e6819, type: 2}
+  landSoftSound: {fileID: 11400000, guid: 6c8d0aa9757e8be4d9c171eb160d8efa, type: 2}
+  launchSound: {fileID: 0}
+  hopSound: {fileID: 11400000, guid: 365e41364f0337b439caa5e91f821b8c, type: 2}
   overrideCeilingAngle: 0
   ceilingAngle: 107
   ceilingReattachAngle: 101
+  overrideEnergyConversionCoyoteTime: 0
+  energyConversionCoyoteTime: 0.12

@@ -327,10 +327,8 @@ namespace SlimeJumping.Platforms
         void PlayCrackSound()
         {
             var config = ice.ResolvedConfig;
-            if (config == null || config.crackSounds == null || config.crackSounds.Length == 0) return;
-            var clip = config.crackSounds[Random.Range(0, config.crackSounds.Length)];
-            if (clip == null) return;
-            SoundService.PlayAt(clip, ice.transform.position, SoundCategory.SFX_Object, config.soundVolume);
+            if (config == null) return;
+            SoundService.Play(config.crackSound, ice.transform.position);
         }
 
         // --- Collapse: hide the original, drop a physics corpse --------------------

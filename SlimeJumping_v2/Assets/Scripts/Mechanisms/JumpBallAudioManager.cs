@@ -11,9 +11,9 @@ namespace SlimeJumping.Mechanisms
     {
         [Header("Clips")]
         [Tooltip("Played the moment the slime eats the ball (consume animation start).")]
-        [SerializeField] AudioClip consumeClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef consumeSound;
         [Tooltip("Played when the ball begins its respawn (grow-in) animation.")]
-        [SerializeField] AudioClip respawnClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef respawnSound;
 
         [Header("Levels")]
         [Tooltip("Shared volume applied to both one-shots.")]
@@ -39,7 +39,7 @@ namespace SlimeJumping.Mechanisms
 
             for (int i = 0; i < balls.Length; i++)
             {
-                balls[i].ApplyAudioSettings(consumeClip, respawnClip, volume);
+                balls[i].ApplyAudioSettings(consumeSound, respawnSound);
 #if UNITY_EDITOR
                 if (!Application.isPlaying) EditorUtility.SetDirty(balls[i]);
 #endif

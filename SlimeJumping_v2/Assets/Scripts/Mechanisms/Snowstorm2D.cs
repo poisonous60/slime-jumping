@@ -143,7 +143,7 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float shakeForce = 0f;
 
         [Header("Audio")]
-        [SerializeField] private AudioClip ambientLoopClip;
+        [SerializeField] private SlimeJumping.Audio.SoundDef ambientLoopSound;
 
         [Range(0f, 1f)]
         [SerializeField] private float ambientPeakVolume = 0.6f;
@@ -832,7 +832,7 @@ namespace SlimeJumping.Mechanisms
 
         void ApplyAmbient()
         {
-            if (ambientLoopClip == null) return;
+            if (ambientLoopSound == null) return;
 
             float volume = NormalizedIntensity() * slimePresenceWeight * ambientPeakVolume;
 
@@ -840,16 +840,13 @@ namespace SlimeJumping.Mechanisms
             {
                 if (!ambientHandle.IsValid)
                 {
-                    ambientHandle = SoundService.PlayLooping(
-                        ambientLoopClip,
-                        follow: transform,
-                        category: SoundCategory.SFX_Environment,
-                        volume: volume,
-                        spatial3D: false);
+                    // SetVolume writes an absolute level, so the def's own level is kept to re-apply.
+                    ambientBaseVolume = ambientLoopSound.PickVolume();
+                    ambientHandle = SoundService.PlayLooping(ambientLoopSound, transform, volume);
                 }
                 else
                 {
-                    ambientHandle.SetVolume(volume);
+                    ambientHandle.SetVolume(ambientBaseVolume * volume);
                 }
             }
             else
@@ -859,6 +856,8 @@ namespace SlimeJumping.Mechanisms
                 StopAmbient();
             }
         }
+
+        float ambientBaseVolume = 1f;
 
         void StopAmbient()
         {

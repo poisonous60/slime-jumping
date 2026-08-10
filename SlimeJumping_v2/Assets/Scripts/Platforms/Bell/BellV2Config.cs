@@ -95,15 +95,8 @@ namespace SlimeJumping.Platforms.Bell
         [Min(0f)] public float reattachBlockSeconds = 0.2f;
 
         [Header("Sound — played on contact, not when the clapper lands")]
-        [Tooltip("Strike clips cycled round-robin, so repeats never sound identical.")]
-        public AudioClip[] strikeClips;
-        [Tooltip("Playback volume. Flat, not scaled by arrival speed — a struck bronze bell is loud " +
-                 "however it was struck.")]
-        [Range(0f, 4f)] public float volume = 1.6f;
-        [Tooltip("Base playback pitch.")]
-        [Range(0.1f, 3f)] public float pitch = 1f;
-        [Tooltip("Random pitch spread added on every ring.")]
-        [Range(0f, 0.5f)] public float pitchJitter = 0.03f;
+        [Tooltip("Flat, not scaled by arrival speed — a struck bronze bell is loud however it was struck.")]
+        public SlimeJumping.Audio.SoundDef strikeSound;
 
         [Header("Solver")]
         [Tooltip("Physics substeps per FixedUpdate for the swing.")]

@@ -60,12 +60,9 @@ namespace SlimeJumping.Mechanisms
         public enum KnockbackMode { BulletDirection, Fixed }
 
         [Header("Audio")]
-        [SerializeField] private AudioClip detectSound;
-        [SerializeField] private AudioClip telegraphSound;
-        [SerializeField] private AudioClip fireSound;
-        [SerializeField] [Range(0f, 1f)] private float detectVolume = 0.6f;
-        [SerializeField] [Range(0f, 1f)] private float telegraphVolume = 0.5f;
-        [SerializeField] [Range(0f, 1f)] private float fireVolume = 0.9f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef detectSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef telegraphSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef fireSound;
 
         [Header("VFX")]
         [Tooltip("Particle system played at the muzzle when a shot fires.")]
@@ -353,7 +350,7 @@ namespace SlimeJumping.Mechanisms
             ApplyIndicator(true);
             if (laserSight != null) laserSight.enabled = false;
             if (detectSound != null)
-                SoundService.PlayAt(detectSound, AimOrigin(), SoundCategory.SFX_Object, detectVolume);
+                SoundService.Play(detectSound, AimOrigin());
         }
 
         private void EnterTelegraphing()
@@ -363,7 +360,7 @@ namespace SlimeJumping.Mechanisms
             ApplyIndicator(true);
             if (laserSight != null) laserSight.enabled = true;
             if (telegraphSound != null)
-                SoundService.PlayAt(telegraphSound, AimOrigin(), SoundCategory.SFX_Object, telegraphVolume);
+                SoundService.Play(telegraphSound, AimOrigin());
         }
 
         private void EnterCooldown()
@@ -459,7 +456,7 @@ namespace SlimeJumping.Mechanisms
 
             if (muzzleFlash != null) muzzleFlash.Play(true);
             if (fireSound != null)
-                SoundService.PlayAt(fireSound, origin, SoundCategory.SFX_Object, fireVolume);
+                SoundService.Play(fireSound, origin);
 
             var hit = RaycastExcludingSelf((Vector2)origin, dir2D, maxShotDistance, bulletHitMask);
             Vector3 tracerEnd;

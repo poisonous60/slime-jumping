@@ -434,15 +434,7 @@ namespace SlimeJumping.Platforms.Bell
         // 2D flat playback on purpose: the ring must reach the player at full volume from anywhere.
         void PlayClip()
         {
-            var clips = cfg.strikeClips;
-            if (clips == null || clips.Length == 0) return;
-
-            var clip = clips[nextClip % clips.Length];
-            nextClip = (nextClip + 1) % clips.Length;
-            if (clip == null) return;
-
-            float p = cfg.pitch + Random.Range(-cfg.pitchJitter, cfg.pitchJitter);
-            SoundService.Play2D(clip, SoundCategory.SFX_Object, cfg.volume, Mathf.Max(0.01f, p));
+            SoundService.Play2D(cfg.strikeSound);
         }
 
         // Contact the ring latch already spent. Still pushed off, just not re-rung or re-swung.

@@ -36,6 +36,7 @@ MonoBehaviour:
     m_Bits: 193
   hitRadius: 0.4
   knockbackImpulse: 12
+  slimeHitCooldown: 0.3
   hitStopDuration: 0.06
   hitStopFrozenScale: 0
   hitShakeForce: 1
@@ -53,9 +54,7 @@ MonoBehaviour:
   impactPrefab: {fileID: 1091756393576693912, guid: 7537d8af5adc8434ea90c85cb79c4b3b, type: 3}
   groundExplosionPrefab: {fileID: 4940053736127461535, guid: a139783aaa3df33428e699287f631674, type: 3}
   groundExplosionScale: 0.5
-  impactSound: {fileID: 8300000, guid: 02ab1a997909af440928681a5e21362c, type: 3}
-  impactVolume: 0.7
-  impactPitchJitter: 0.1
+  impactSound: {fileID: 11400000, guid: fd29fbb331607c44688dd9c58ec75b7d, type: 2}
   impactAudioFullDistance: 4
   impactAudioCutoffDistance: 8
   impactAudioFalloffExponent: 2.5

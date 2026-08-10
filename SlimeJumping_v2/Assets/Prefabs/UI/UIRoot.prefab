@@ -247,13 +247,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 634e68b33eb355744b782d102d47c581, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.UI.UIClickSoundInstaller
-  clickClip: {fileID: 8300000, guid: a2ba3a3e7e55dfa469a4c562510044f1, type: 3}
-  hoverClip: {fileID: 0}
-  outputGroup: {fileID: -392418750002537481, guid: f5c4b4cbe33287f46a2b3ebe1665485f, type: 2}
-  volume: 0.8
-  hoverVolume: 0.45
-  pitch: 1
-  hoverPitchJitter: 0.06
+  clickSound: {fileID: 11400000, guid: 49baa39214d51b54eae2671bad3fc9c0, type: 2}
+  hoverSound: {fileID: 11400000, guid: cc8f37f0e754dc644ac9d0d3c7a4ba98, type: 2}
 --- !u!1 &1985165393266246321
 GameObject:
   m_ObjectHideFlags: 0

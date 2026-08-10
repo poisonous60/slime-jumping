@@ -359,15 +359,9 @@ namespace SlimeJumping.Mechanisms
 
         private void PlayImpactSound(Vector3 worldPos)
         {
-            if (cfg.impactSound == null) return;
-
-            float volume = cfg.impactVolume * DistanceFalloff(worldPos);
-            if (volume <= 0.001f) return;
-
-            float pitch = 1f;
-            if (cfg.impactPitchJitter > 0f)
-                pitch = 1f + Random.Range(-cfg.impactPitchJitter, cfg.impactPitchJitter);
-            SoundService.PlayAt(cfg.impactSound, worldPos, SoundCategory.SFX_Object, volume, pitch);
+            float falloff = DistanceFalloff(worldPos);
+            if (falloff <= 0.001f) return;
+            SoundService.Play(cfg.impactSound, worldPos, falloff);
         }
 
         // The listener rides the camera, a fixed ~12 units off the play plane, and that constant

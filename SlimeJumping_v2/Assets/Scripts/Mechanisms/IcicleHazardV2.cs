@@ -64,7 +64,7 @@ namespace SlimeJumping.Mechanisms
 
         [Header("Shatter — VFX / audio / shake")]
         [SerializeField] private GameObject frostCloudVFXPrefab;
-        [SerializeField] private AudioClip[] shatterSounds;
+        [SerializeField] private SlimeJumping.Audio.SoundDef shatterSound;
 
         [SerializeField] private bool useEmissiveFlash = false;
         [SerializeField] private Color flashColor = Color.white;
@@ -83,18 +83,18 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private LayerMask regenBlockingLayers = ~0;
 
         [Header("Audio")]
-        [SerializeField] private AudioClip shakeStartSound;
-        [SerializeField] private AudioClip fallingSound;
-        [SerializeField] private AudioClip impactSound;
-        [Range(0f, 1f)] [SerializeField] private float soundVolume = 1f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef shakeStartSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef fallingSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef impactSound;
 
         /// <summary>Mirrors v1's API so IcicleAudioManager can broadcast a shared set.</summary>
-        public void ApplyAudioSettings(AudioClip shakeStart, AudioClip falling, AudioClip impact, float volume)
+        public void ApplyAudioSettings(SlimeJumping.Audio.SoundDef shakeStart,
+                                       SlimeJumping.Audio.SoundDef falling,
+                                       SlimeJumping.Audio.SoundDef impact)
         {
             shakeStartSound = shakeStart;
             fallingSound = falling;
             impactSound = impact;
-            soundVolume = volume;
         }
 
         private IcicleState state = IcicleState.Idle;
@@ -196,7 +196,7 @@ namespace SlimeJumping.Mechanisms
             impactVelocityInherit = p.impactVelocityInherit;
 
             frostCloudVFXPrefab = p.frostCloudVFXPrefab;
-            shatterSounds = p.shatterSounds;
+            shatterSound = p.shatterSound;
 
             useEmissiveFlash = p.useEmissiveFlash;
             flashColor = p.flashColor;
@@ -213,7 +213,6 @@ namespace SlimeJumping.Mechanisms
             shakeStartSound = p.shakeStartSound;
             fallingSound = p.fallingSound;
             impactSound = p.impactSound;
-            soundVolume = p.soundVolume;
         }
 
         private void FixedUpdate()
@@ -391,7 +390,7 @@ namespace SlimeJumping.Mechanisms
 
                 case IcicleState.Shaking:
                     timer = shakeDuration;
-                    PlaySound(shakeStartSound);
+                    SoundService.Play(shakeStartSound, transform.position);
                     if (shakeDuration <= 0f)
                     {
                         SetState(IcicleState.Falling);
@@ -403,7 +402,7 @@ namespace SlimeJumping.Mechanisms
                     fallElapsed = 0f;
                     lastFallSpeed = 0f;
                     if (visualRoot != null) visualRoot.localPosition = visualOrigin;
-                    PlaySound(fallingSound);
+                    SoundService.Play(fallingSound, transform.position);
                     break;
 
                 case IcicleState.Broken:
@@ -432,10 +431,10 @@ namespace SlimeJumping.Mechanisms
 
         private void EnterBroken()
         {
-            PlaySound(impactSound);
+            SoundService.Play(impactSound, transform.position);
             SpawnShards(lastFallSpeed);
             SpawnFrostCloud();
-            PlayRandom(shatterSounds);
+            SoundService.Play(shatterSound, transform.position);
 
             if (useEmissiveFlash)
             {
@@ -537,26 +536,6 @@ namespace SlimeJumping.Mechanisms
             meshRenderer.SetPropertyBlock(mpb);
         }
 
-        private void PlaySound(AudioClip clip)
-        {
-            if (clip == null) return;
-            SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, soundVolume);
-        }
-
-        private void PlayRandom(AudioClip[] clips)
-        {
-            if (clips == null || clips.Length == 0) return;
-            var clip = clips[Random.Range(0, clips.Length)];
-            if (clip == null)
-            {
-                for (int i = 0; i < clips.Length; i++)
-                {
-                    if (clips[i] != null) { clip = clips[i]; break; }
-                }
-                if (clip == null) return;
-            }
-            SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, soundVolume);
-        }
 
         private void OnDrawGizmosSelected()
         {

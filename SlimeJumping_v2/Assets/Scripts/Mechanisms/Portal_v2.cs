@@ -42,10 +42,8 @@ namespace SlimeJumping.Mechanisms
             new AnimationCurve(new Keyframe(0f, 0f, 0f, 2f), new Keyframe(1f, 1f, 0f, 0f));
 
         [Header("SFX")]
-        [SerializeField] private AudioClip consumeSfx;
-        [SerializeField] private AudioClip respawnSfx;
-        [Range(0f, 1f)]
-        [SerializeField] private float sfxVolume = 1f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef consumeSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef respawnSound;
 
         private enum State { Idle, Consuming, Gone, Respawning }
 
@@ -174,7 +172,7 @@ namespace SlimeJumping.Mechanisms
             state = State.Consuming;
             stateTimer = Mathf.Max(0.0001f, consumeDuration);
             if (ownCollider != null) ownCollider.enabled = false;
-            PlaySfx(consumeSfx);
+            PlaySfx(consumeSound);
         }
 
         private void EnterGone()
@@ -193,7 +191,7 @@ namespace SlimeJumping.Mechanisms
                 visual.gameObject.SetActive(true);
                 visual.localScale = visualBaseLocalScale * respawnScaleCurve.Evaluate(0f);
             }
-            PlaySfx(respawnSfx);
+            PlaySfx(respawnSound);
         }
 
         private void EnterIdle()
@@ -208,10 +206,9 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        private void PlaySfx(AudioClip clip)
+        private void PlaySfx(SlimeJumping.Audio.SoundDef def)
         {
-            if (clip == null) return;
-            SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, sfxVolume);
+            SoundService.Play(def, transform.position);
         }
 
         [ContextMenu("Create Paired Portal")]

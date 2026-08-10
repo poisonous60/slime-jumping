@@ -29,9 +29,8 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] int maxAlive = 3;
 
         [Header("Spawn Cue")]
-        [SerializeField] AudioClip spawnClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef spawnSound;
         [Range(0f, 1f)]
-        [SerializeField] float spawnVolume = 1f;
         [Tooltip("Spawn 시 instantiate 할 ParticleSystem prefab. 자체 lifetime 으로 destroy 처리.")]
         [SerializeField] ParticleSystem spawnVFX;
 
@@ -94,8 +93,7 @@ namespace SlimeJumping.Mechanisms
             s.Initialize(transform.position, launchDir);
             alive.Add(s);
 
-            if (spawnClip != null)
-                SoundService.PlayAt(spawnClip, transform.position, SoundCategory.SFX_Object, spawnVolume);
+            SoundService.Play(spawnSound, transform.position);
             if (spawnVFX != null)
                 Instantiate(spawnVFX, transform.position, Quaternion.identity);
         }

@@ -32,8 +32,6 @@ MonoBehaviour:
   shardFadeWindow: 0.4
   jumpVelocityInherit: 0.3
   shardScaleRange: {x: 1, y: 1}
-  crackSounds: []
-  shatterSounds:
-  - {fileID: 8300000, guid: 75018a733128739488a094abb41e9203, type: 3}
+  crackSound: {fileID: 0}
+  shatterSound: {fileID: 11400000, guid: fb3680d9ec2c8c54ab6c0df223aa5cf7, type: 2}
   regenSound: {fileID: 0}
-  soundVolume: 1

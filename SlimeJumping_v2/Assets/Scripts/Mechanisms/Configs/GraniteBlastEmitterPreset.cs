@@ -68,18 +68,11 @@ namespace SlimeJumping.Mechanisms
         public Color telegraphColor = new Color(0.7f, 0.95f, 1f, 0.3f);
 
         [Header("Audio")]
-        public AudioClip detectSound;
-        public AudioClip preFireSound;
-        public AudioClip fireStartSound;
-        public AudioClip postFireSound;
-        public AudioClip groundImpactSound;
-        [Range(0f, 1f)] public float detectVolume = 0.6f;
-        [Range(0f, 1f)] public float preFireVolume = 0.7f;
-        [Range(0f, 1f)] public float fireStartVolume = 1f;
-        [Range(0f, 1f)] public float postFireVolume = 0.55f;
-        [Range(0f, 1f)] public float groundImpactVolume = 0.7f;
-        [Range(0f, 0.4f)] public float groundImpactPitchJitter = 0.1f;
-        [Range(0f, 0.4f)] public float fireStartPitchJitter = 0.08f;
+        public SlimeJumping.Audio.SoundDef detectSound;
+        public SlimeJumping.Audio.SoundDef preFireSound;
+        public SlimeJumping.Audio.SoundDef fireStartSound;
+        public SlimeJumping.Audio.SoundDef postFireSound;
+        public SlimeJumping.Audio.SoundDef groundImpactSound;
 
         [Header("VFX Prefabs")]
         [Tooltip("Spawned at each tendril/beam/bullet impact (slime + ground).")]

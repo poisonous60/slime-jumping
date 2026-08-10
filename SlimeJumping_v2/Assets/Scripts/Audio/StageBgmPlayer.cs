@@ -7,7 +7,7 @@ namespace SlimeJumping.Audio
     [AddComponentMenu("SlimeJumping/Audio/Stage BGM Player")]
     public class StageBgmPlayer : MonoBehaviour
     {
-        [SerializeField] AudioClip bgmClip;
+        [SerializeField] SoundDef bgm;
         [Range(0f, 1f)] [SerializeField] float volume = 1f;
         [Min(0f)] [SerializeField] float fadeSeconds = 1.5f;
         [Tooltip("If bgmClip is null and this is true, StopBgm is called on Start " +
@@ -16,8 +16,8 @@ namespace SlimeJumping.Audio
 
         void Start()
         {
-            if (bgmClip != null)
-                SoundService.PlayBgm(bgmClip, fadeSeconds, volume);
+            if (bgm != null && bgm.HasClip)
+                SoundService.PlayBgm(bgm.PickClip(), fadeSeconds, bgm.PickVolume() * volume);
             else if (stopIfClipNull)
                 SoundService.StopBgm(fadeSeconds);
         }

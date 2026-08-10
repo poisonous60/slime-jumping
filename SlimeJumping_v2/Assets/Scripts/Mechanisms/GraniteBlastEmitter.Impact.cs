@@ -18,9 +18,7 @@ namespace SlimeJumping.Mechanisms
         {
             if (groundImpactSound == null) return;
             float pitch = 1f;
-            if (groundImpactPitchJitter > 0f)
-                pitch = 1f + Random.Range(-groundImpactPitchJitter, groundImpactPitchJitter);
-            SoundService.PlayAt(groundImpactSound, worldPos, SoundCategory.SFX_Object, groundImpactVolume, pitch);
+            SoundService.Play(groundImpactSound, worldPos);
         }
 
         // Routes through the same channel as slime landing so the bite looks identical.

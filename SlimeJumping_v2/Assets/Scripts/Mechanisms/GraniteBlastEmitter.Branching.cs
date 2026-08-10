@@ -65,9 +65,7 @@ namespace SlimeJumping.Mechanisms
                 if (fireStartSound != null)
                 {
                     float pitch = 1f;
-                    if (fireStartPitchJitter > 0f)
-                        pitch = 1f + Random.Range(-fireStartPitchJitter, fireStartPitchJitter);
-                    SoundService.PlayAt(fireStartSound, muzzleOrigin, SoundCategory.SFX_Object, fireStartVolume, pitch);
+                    SoundService.Play(fireStartSound, muzzleOrigin);
                 }
 
                 // Trail is sampled at this tendril's spawn moment; later tendrils resample.

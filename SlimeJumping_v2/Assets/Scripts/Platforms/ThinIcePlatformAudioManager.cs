@@ -11,11 +11,11 @@ namespace SlimeJumping.Platforms
     {
         [Header("Clips")]
         [Tooltip("Played when the slime first attaches — the ice starts to crack.")]
-        [SerializeField] AudioClip crackClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef crackSound;
         [Tooltip("Played at the moment the tile shatters and disappears.")]
-        [SerializeField] AudioClip shatterClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef shatterSound;
         [Tooltip("Played when the tile begins its regen fade-in.")]
-        [SerializeField] AudioClip regenClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef regenSound;
 
         [Header("Levels")]
         [Tooltip("Shared volume applied to all three one-shots.")]
@@ -41,7 +41,7 @@ namespace SlimeJumping.Platforms
 
             for (int i = 0; i < tiles.Length; i++)
             {
-                tiles[i].ApplyAudioSettings(crackClip, shatterClip, regenClip, volume);
+                tiles[i].ApplyAudioSettings(crackSound, shatterSound, regenSound);
 #if UNITY_EDITOR
                 if (!Application.isPlaying) EditorUtility.SetDirty(tiles[i]);
 #endif

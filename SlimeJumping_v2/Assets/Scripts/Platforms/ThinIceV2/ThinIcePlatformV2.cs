@@ -68,12 +68,9 @@ namespace SlimeJumping.Platforms.ThinIceV2
 
         [Header("Audio (override)")]
         [SerializeField] bool overrideAudio;
-        [Tooltip("One clip is picked at random per crack event.")]
-        [SerializeField] AudioClip[] crackSounds;
-        [Tooltip("One clip is picked at random per shatter event.")]
-        [SerializeField] AudioClip[] shatterSounds;
-        [SerializeField] AudioClip regenSound;
-        [Range(0f, 1f)] [SerializeField] float soundVolume = 1f;
+        [SerializeField] SoundDef crackSound;
+        [SerializeField] SoundDef shatterSound;
+        [SerializeField] SoundDef regenSound;
 
         // --- Optional FX (per-instance: ImpulseEmitter is a scene ref) -----------
 
@@ -138,10 +135,9 @@ namespace SlimeJumping.Platforms.ThinIceV2
         float   ResolvedJumpVelocityInherit => overrideShardLaunch || resolvedConfig == null ? jumpVelocityInherit : resolvedConfig.jumpVelocityInherit;
         Vector2 ResolvedShardScaleRange    => overrideShardLaunch || resolvedConfig == null ? shardScaleRange    : resolvedConfig.shardScaleRange;
 
-        AudioClip[] ResolvedCrackSounds   => overrideAudio || resolvedConfig == null ? crackSounds   : resolvedConfig.crackSounds;
-        AudioClip[] ResolvedShatterSounds => overrideAudio || resolvedConfig == null ? shatterSounds : resolvedConfig.shatterSounds;
-        AudioClip   ResolvedRegenSound    => overrideAudio || resolvedConfig == null ? regenSound    : resolvedConfig.regenSound;
-        float       ResolvedSoundVolume   => overrideAudio || resolvedConfig == null ? soundVolume   : resolvedConfig.soundVolume;
+        SoundDef ResolvedCrackSound   => overrideAudio || resolvedConfig == null ? crackSound   : resolvedConfig.crackSound;
+        SoundDef ResolvedShatterSound => overrideAudio || resolvedConfig == null ? shatterSound : resolvedConfig.shatterSound;
+        SoundDef ResolvedRegenSound   => overrideAudio || resolvedConfig == null ? regenSound   : resolvedConfig.regenSound;
 
         // --- Lifecycle -----------------------------------------------------------
 
@@ -350,7 +346,7 @@ namespace SlimeJumping.Platforms.ThinIceV2
         {
             state = IceState.Cracking;
             timer = ResolvedCrackingDuration;
-            PlayRandom(ResolvedCrackSounds);
+            SoundService.Play(ResolvedCrackSound, transform.position);
         }
 
         void EnterShattered(bool jumpInherit)
@@ -376,7 +372,7 @@ namespace SlimeJumping.Platforms.ThinIceV2
             {
                 impulseEmitter.Emit(shakeForce);
             }
-            PlayRandom(ResolvedShatterSounds);
+            SoundService.Play(ResolvedShatterSound, transform.position);
         }
 
         void EnterRegenerating()
@@ -385,7 +381,7 @@ namespace SlimeJumping.Platforms.ThinIceV2
             timer = ResolvedRegenDuration;
             if (visualRenderer != null) visualRenderer.enabled = true;
             ApplyShaderProgress(1f);
-            PlaySound(ResolvedRegenSound);
+            SoundService.Play(ResolvedRegenSound, transform.position);
         }
 
         // --- Public API for Zone -------------------------------------------------
@@ -532,28 +528,6 @@ namespace SlimeJumping.Platforms.ThinIceV2
             Color c = Color.Lerp(baseCrackColor, flashColor * flashIntensity, t);
             mpb.SetColor(CrackColorID, c);
             visualRenderer.SetPropertyBlock(mpb);
-        }
-
-        void PlaySound(AudioClip clip)
-        {
-            if (clip == null) return;
-            SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, ResolvedSoundVolume);
-        }
-
-        // Null entries get one retry so a sparsely-filled inspector array doesn't drop sounds.
-        void PlayRandom(AudioClip[] clips)
-        {
-            if (clips == null || clips.Length == 0) return;
-            var clip = clips[Random.Range(0, clips.Length)];
-            if (clip == null)
-            {
-                for (int i = 0; i < clips.Length; i++)
-                {
-                    if (clips[i] != null) { clip = clips[i]; break; }
-                }
-                if (clip == null) return;
-            }
-            SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, ResolvedSoundVolume);
         }
 
         // --- Editor preview ------------------------------------------------------

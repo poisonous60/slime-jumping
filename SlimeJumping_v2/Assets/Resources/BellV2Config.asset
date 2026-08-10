@@ -36,12 +36,5 @@ MonoBehaviour:
   bounceSwingTransfer: 1
   minSeparationSpeed: 2
   reattachBlockSeconds: 0.25
-  strikeClips:
-  - {fileID: 8300000, guid: c21edc54b92fe554483963dfd29de792, type: 3}
-  - {fileID: 8300000, guid: 19eeca5c1e908ba4682d88ebde818830, type: 3}
-  - {fileID: 8300000, guid: ad1bde2ceaa519441943a0fac4dd280a, type: 3}
-  - {fileID: 8300000, guid: 84890cc07b93d564e9ccd86007a4b6c8, type: 3}
-  volume: 1
-  pitch: 1
-  pitchJitter: 0.03
+  strikeSound: {fileID: 11400000, guid: f2695c40366a8da46ae4b0e1db8a8c50, type: 2}
   substeps: 4

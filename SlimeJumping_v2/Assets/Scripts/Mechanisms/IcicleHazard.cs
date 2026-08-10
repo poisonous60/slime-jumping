@@ -71,18 +71,16 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private LayerMask regenBlockingLayers = ~0;
 
         [Header("Audio")]
-        [SerializeField] private AudioClip shakeStartSound;
-        [SerializeField] private AudioClip fallingSound;
-        [SerializeField] private AudioClip impactSound;
-        [Range(0f, 1f)][SerializeField] private float soundVolume = 1f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef shakeStartSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef fallingSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef impactSound;
 
         /// <summary>Overwrites the per-icicle clips + volume; called by IcicleAudioManager's scene-wide broadcast.</summary>
-        public void ApplyAudioSettings(AudioClip shakeStart, AudioClip falling, AudioClip impact, float volume)
+        public void ApplyAudioSettings(SlimeJumping.Audio.SoundDef shakeStart, SlimeJumping.Audio.SoundDef falling, SlimeJumping.Audio.SoundDef impact)
         {
             shakeStartSound = shakeStart;
             fallingSound = falling;
             impactSound = impact;
-            soundVolume = volume;
         }
 
         private IcicleState state = IcicleState.Idle;
@@ -164,7 +162,6 @@ namespace SlimeJumping.Mechanisms
             shakeStartSound = p.shakeStartSound;
             fallingSound = p.fallingSound;
             impactSound = p.impactSound;
-            soundVolume = p.soundVolume;
         }
 
         private void FixedUpdate()
@@ -377,10 +374,9 @@ namespace SlimeJumping.Mechanisms
             }
         }
 
-        private void PlaySound(AudioClip clip)
+        private void PlaySound(SlimeJumping.Audio.SoundDef def)
         {
-            if (clip == null) return;
-            SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, soundVolume);
+            SoundService.Play(def, transform.position);
         }
 
         // --- Gizmos ---

@@ -31,9 +31,8 @@ namespace SlimeJumping.Mechanisms
         public LayerMask regenBlockingLayers = ~0;
 
         [Header("Audio (overridden by IcicleAudioManager when present)")]
-        public AudioClip shakeStartSound;
-        public AudioClip fallingSound;
-        public AudioClip impactSound;
-        [Range(0f, 1f)] public float soundVolume = 1f;
+        public SlimeJumping.Audio.SoundDef shakeStartSound;
+        public SlimeJumping.Audio.SoundDef fallingSound;
+        public SlimeJumping.Audio.SoundDef impactSound;
     }
 }

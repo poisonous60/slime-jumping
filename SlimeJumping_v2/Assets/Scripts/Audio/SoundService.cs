@@ -24,6 +24,7 @@ namespace SlimeJumping.Audio
             public bool locked;          // true while owned by a loop SoundHandle
             public double releaseDspTime; // when a one-shot is expected to end; older = steal candidate
             public Transform follow;      // loop target; tracked by position, never by parenting
+            public bool tracksFollow;     // true when the loop was given a target, so losing it ends the loop
         }
 
         private readonly Dictionary<SoundCategory, List<PooledSource>> pools =
@@ -67,7 +68,7 @@ namespace SlimeJumping.Audio
             if (Instance == this) Instance = null;
         }
 
-        // Position-tracked, not parented: parenting pulls the pooled source into the target's scene.
+        // Parenting would pull the pooled source into the target's scene; a lost target ends the loop.
         void LateUpdate()
         {
             foreach (var kv in pools)
@@ -76,8 +77,19 @@ namespace SlimeJumping.Audio
                 for (int i = 0; i < list.Count; i++)
                 {
                     var p = list[i];
-                    if (!p.locked || p.follow == null) continue;
-                    if (p.source != null) p.source.transform.position = p.follow.position;
+                    if (!p.locked || !p.tracksFollow || p.source == null) continue;
+
+                    if (p.follow == null)
+                    {
+                        p.source.Stop();
+                        p.source.clip = null;
+                        p.source.loop = false;
+                        RestorePoolDefaults(p.source);
+                        p.locked = false;
+                        p.tracksFollow = false;
+                        continue;
+                    }
+                    p.source.transform.position = p.follow.position;
                 }
             }
         }
@@ -164,7 +176,32 @@ namespace SlimeJumping.Audio
             return oldest; // soft-steal
         }
 
-        // ---- Public API ----
+        // ---- Public API (SoundDef) ----
+
+        /// volumeScale/pitchScale multiply the def's own values rather than replacing them, so a call
+        /// site can make one impact louder without owning the sound's level.
+        public static void Play(SoundDef def, Vector3 worldPos, float volumeScale = 1f, float pitchScale = 1f)
+        {
+            if (def == null) return;
+            PlayAt(def.PickClip(), worldPos, def.category,
+                   def.PickVolume() * volumeScale, def.PickPitch() * pitchScale);
+        }
+
+        public static void Play2D(SoundDef def, float volumeScale = 1f, float pitchScale = 1f)
+        {
+            if (def == null) return;
+            Play2D(def.PickClip(), def.category,
+                   def.PickVolume() * volumeScale, def.PickPitch() * pitchScale);
+        }
+
+        public static SoundHandle PlayLooping(SoundDef def, Transform follow, float volumeScale = 1f)
+        {
+            if (def == null) return default;
+            return PlayLooping(def.PickClip(), follow, def.category, def.PickVolume() * volumeScale,
+                               def.spatial3D, def.minDistance, def.maxDistance);
+        }
+
+        // ---- Public API (raw clip; being migrated to SoundDef) ----
 
         public static void PlayAt(AudioClip clip, Vector3 worldPos,
                                   SoundCategory category = SoundCategory.SFX_Object,
@@ -227,6 +264,7 @@ namespace SlimeJumping.Audio
 
             var src = p.source;
             p.follow = follow;
+            p.tracksFollow = follow != null;
             src.transform.position = follow != null ? follow.position : Vector3.zero;
             src.spatialBlend = spatial3D ? 1f : 0f;
             src.loop = true;
@@ -254,7 +292,12 @@ namespace SlimeJumping.Audio
             if (list != null)
             {
                 for (int i = 0; i < list.Count; i++)
-                    if (list[i].source == handle.source) { list[i].locked = false; list[i].follow = null; }
+                    if (list[i].source == handle.source)
+                    {
+                        list[i].locked = false;
+                        list[i].follow = null;
+                        list[i].tracksFollow = false;
+                    }
             }
         }
 

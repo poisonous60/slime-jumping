@@ -283,10 +283,9 @@ MonoBehaviour:
   canvasGroup: {fileID: 2344349324292935797}
   irisImage: {fileID: 2449892671479386612}
   fadeImage: {fileID: 5427994718418259127}
-  fadeOutClip: {fileID: 8300000, guid: 63f45aad6bf91cf44b9f0237cad91db8, type: 3}
-  irisOpenClip: {fileID: 8300000, guid: a2ba3a3e7e55dfa469a4c562510044f1, type: 3}
-  irisExpandClip: {fileID: 8300000, guid: 813c2efeea26e284da6ebf514df773a8, type: 3}
-  sfxVolume: 1
+  fadeOutSound: {fileID: 11400000, guid: 1e1001fb834f2e140a59b4586e8e9bdd, type: 2}
+  irisOpenSound: {fileID: 11400000, guid: a22668cd5d6eb99428b41db7283a980a, type: 2}
+  irisExpandSound: {fileID: 11400000, guid: e2c8e10db33d36b44a11b56059dd7c42, type: 2}
   fadeOutDuration: 0.35
   preIrisHold: 0.15
   irisOpenDuration: 0.35

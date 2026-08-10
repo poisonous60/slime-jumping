@@ -76,22 +76,14 @@ namespace SlimeJumping.Physics
         public float launchInertiaPNorm = 2f;
 
         [Header("Audio")]
-        [Tooltip("Hard landing clip override. Null → SlimeLocomotionAudio's default landHardClip plays.")]
-        public AudioClip landHardClip;
-        [Tooltip("Soft landing clip override. Null → SlimeLocomotionAudio's default landSoftClip plays.")]
-        public AudioClip landSoftClip;
-        [Tooltip("Charged Launch clip override. Null → SlimeLocomotionAudio's default launchClip plays.")]
-        public AudioClip launchClip;
-        [Tooltip("Hop clip override. Null → SlimeLocomotionAudio's default hopClip plays.")]
-        public AudioClip hopClip;
-        [Tooltip("Volume for this surface's landHardClip override. 0 = inherit SlimeLocomotionAudio.landHardVolume. Only used when landHardClip is also set.")]
-        [Range(0f, 1f)] public float landHardVolume = 0f;
-        [Tooltip("Volume for this surface's landSoftClip override. 0 = inherit SlimeLocomotionAudio.landSoftVolume. Only used when landSoftClip is also set.")]
-        [Range(0f, 1f)] public float landSoftVolume = 0f;
-        [Tooltip("Volume for this surface's launchClip override. 0 = inherit SlimeLocomotionAudio.launchVolume. Only used when launchClip is also set.")]
-        [Range(0f, 1f)] public float launchVolume = 0f;
-        [Tooltip("Volume for this surface's hopClip override. 0 = inherit SlimeLocomotionAudio.hopVolume. Only used when hopClip is also set.")]
-        [Range(0f, 1f)] public float hopVolume = 0f;
+        [Tooltip("Hard landing override. Null → SlimeLocomotionAudio's own hard landing sound plays.")]
+        public SlimeJumping.Audio.SoundDef landHardSound;
+        [Tooltip("Soft landing override. Null → SlimeLocomotionAudio's own soft landing sound plays.")]
+        public SlimeJumping.Audio.SoundDef landSoftSound;
+        [Tooltip("Charged Launch override. Null → SlimeLocomotionAudio's own launch sound plays.")]
+        public SlimeJumping.Audio.SoundDef launchSound;
+        [Tooltip("Hop override. Null → SlimeLocomotionAudio's own hop sound plays.")]
+        public SlimeJumping.Audio.SoundDef hopSound;
 
         [Header("Ceiling")]
         [Tooltip("Override the global ceiling thresholds with the values below. ON lets sticky surfaces extend the attachable arc past 107° (e.g. 180° = slime climbs full overhangs) or slippery surfaces tighten it.")]

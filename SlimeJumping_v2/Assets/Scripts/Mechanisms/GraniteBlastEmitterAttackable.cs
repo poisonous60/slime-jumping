@@ -34,11 +34,9 @@ namespace SlimeJumping.Mechanisms
         [Header("Feedback (optional)")]
         [SerializeField] private ParticleSystem destroyVfx;
         [Tooltip("Plays at first contact — the moment the slime touches the emitter.")]
-        [SerializeField] private AudioClip impactSfx;
-        [Range(0f, 1f)][SerializeField] private float impactVolume = 0.9f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef impactSound;
         [Tooltip("Plays when the BulbShatter membrane breaks — fires when the pass-through drive ends and Pop() is called. Leave null to skip.")]
-        [SerializeField] private AudioClip shatterSfx;
-        [Range(0f, 1f)][SerializeField] private float shatterVolume = 1f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef shatterSound;
 
         [Header("Slime Pass-Through Drive")]
         [Tooltip("On contact, take override control of the slime and drive it along the impact direction at a constant speed so the BulbShatter membrane visibly elongates. Set 0 to disable the drive (slime keeps whatever momentum it had).")]
@@ -89,8 +87,7 @@ namespace SlimeJumping.Mechanisms
             if (worldFreezeDuration > 0f) WorldTimeFreezeService.Freeze(worldFreezeDuration);
 
             if (destroyVfx != null) destroyVfx.Play(true);
-            if (impactSfx != null)
-                SoundService.PlayAt(impactSfx, transform.position, SoundCategory.SFX_Object, impactVolume);
+            SoundService.Play(impactSound, transform.position);
 
             StartCoroutine(ShrinkAndDeactivate());
         }
@@ -162,8 +159,7 @@ namespace SlimeJumping.Mechanisms
             s.ReleaseOverride(this);
             // Pop at drive end so the shatter lands as the slime regains normal physics.
             if (warpEffect != null) warpEffect.Pop();
-            if (shatterSfx != null)
-                SoundService.PlayAt(shatterSfx, transform.position, SoundCategory.SFX_Object, shatterVolume);
+            SoundService.Play(shatterSound, transform.position);
         }
 
         private void OnDisable()

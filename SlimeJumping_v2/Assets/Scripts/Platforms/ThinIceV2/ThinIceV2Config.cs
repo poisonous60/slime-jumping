@@ -62,12 +62,9 @@ namespace SlimeJumping.Platforms.ThinIceV2
         public Vector2 shardScaleRange = new Vector2(0.7f, 1.3f);
 
         [Header("Audio")]
-        [Tooltip("One clip is picked at random per crack event. Empty/all-null = silent.")]
-        public AudioClip[] crackSounds;
-        [Tooltip("One clip is picked at random per shatter event. Empty/all-null = silent.")]
-        public AudioClip[] shatterSounds;
-        public AudioClip regenSound;
-        [Range(0f, 1f)] public float soundVolume = 1f;
+        public SlimeJumping.Audio.SoundDef crackSound;
+        public SlimeJumping.Audio.SoundDef shatterSound;
+        public SlimeJumping.Audio.SoundDef regenSound;
 
         const string ResourcesPath = "ThinIceV2Config";
 

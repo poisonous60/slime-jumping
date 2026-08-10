@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.Serialization;
 using SlimeJumping.Controller;
 
 namespace SlimeJumping.Audio
@@ -13,30 +12,20 @@ namespace SlimeJumping.Audio
 
         [Header("Landing")]
         [Tooltip("Played when impact speed (normal component) >= Land Hard Threshold.")]
-        [SerializeField] AudioClip landHardClip;
+        [SerializeField] SoundDef landHardSound;
         [Tooltip("Played on softer landings below Land Hard Threshold.")]
-        [SerializeField] AudioClip landSoftClip;
-        [Tooltip("ImpactNormalSpeed at or above which the hard land clip is used.")]
+        [SerializeField] SoundDef landSoftSound;
+        [Tooltip("ImpactNormalSpeed at or above which the hard land sound is used.")]
         [Min(0f)] [SerializeField] float landHardThreshold = 8f;
-        [Tooltip("Constant volume for hard landings (>= Land Hard Threshold). Not impact-speed scaled.")]
-        [Range(0f, 1f)] [FormerlySerializedAs("landVolume")] [SerializeField] float landHardVolume = 0.9f;
-        [Tooltip("Constant volume for soft landings. Not impact-speed scaled.")]
-        [Range(0f, 1f)] [SerializeField] float landSoftVolume = 0.9f;
 
         [Header("Launch / Hop")]
         [Tooltip("Played on charged Launch().")]
-        [SerializeField] AudioClip launchClip;
+        [SerializeField] SoundDef launchSound;
         [Tooltip("Played on Hop() (quick jump without full charge).")]
-        [SerializeField] AudioClip hopClip;
-        [Range(0f, 1f)] [SerializeField] float launchVolume = 0.9f;
-        [Range(0f, 1f)] [SerializeField] float hopVolume = 0.7f;
+        [SerializeField] SoundDef hopSound;
 
         [Tooltip("Suppress soft landing SFX if a hop fired within this many seconds. Prevents hop+land overlap on quick re-hops.")]
         [Min(0f)] [SerializeField] float softLandHopSuppressWindow = 0.4f;
-
-        [Header("Common")]
-        [Tooltip("±random pitch jitter applied to each playback.")]
-        [Range(0f, 0.3f)] [SerializeField] float pitchJitter = 0.06f;
 
         float _lastHopTime = float.NegativeInfinity;
 
@@ -65,47 +54,29 @@ namespace SlimeJumping.Audio
             float speed = slimeController.ImpactNormalSpeed;
             bool hard = speed >= landHardThreshold;
             if (!hard && Time.time - _lastHopTime < softLandHopSuppressWindow) return;
-            AudioClip clip = hard ? landHardClip : landSoftClip;
-            float vol = hard ? landHardVolume : landSoftVolume;
+
+            SoundDef def = hard ? landHardSound : landSoftSound;
             var mat = slimeController.ActiveSurfaceMaterial;
             if (mat != null)
             {
-                AudioClip overrideClip = hard ? mat.landHardClip : mat.landSoftClip;
-                if (overrideClip != null)
-                {
-                    clip = overrideClip;
-                    float surfaceVol = hard ? mat.landHardVolume : mat.landSoftVolume;
-                    if (surfaceVol > 0f) vol = surfaceVol;
-                }
+                SoundDef surfaceDef = hard ? mat.landHardSound : mat.landSoftSound;
+                if (surfaceDef != null) def = surfaceDef;
             }
-            Play(clip, position, vol);
+            SoundService.Play(def, position);
         }
 
         void HandleLaunch(Vector2 position, Vector2 velocity, bool wasHop)
         {
             if (wasHop) _lastHopTime = Time.time;
-            AudioClip clip = wasHop ? hopClip : launchClip;
-            float vol = wasHop ? hopVolume : launchVolume;
+
+            SoundDef def = wasHop ? hopSound : launchSound;
             var mat = slimeController.ActiveSurfaceMaterial;
             if (mat != null)
             {
-                AudioClip overrideClip = wasHop ? mat.hopClip : mat.launchClip;
-                if (overrideClip != null)
-                {
-                    clip = overrideClip;
-                    float surfaceVol = wasHop ? mat.hopVolume : mat.launchVolume;
-                    if (surfaceVol > 0f) vol = surfaceVol;
-                }
+                SoundDef surfaceDef = wasHop ? mat.hopSound : mat.launchSound;
+                if (surfaceDef != null) def = surfaceDef;
             }
-            Play(clip, position, vol);
-        }
-
-        void Play(AudioClip clip, Vector2 position, float volume)
-        {
-            if (clip == null) return;
-            if (volume <= 0.001f) return;
-            float pitch = 1f + Random.Range(-pitchJitter, pitchJitter);
-            SoundService.PlayAt(clip, position, SoundCategory.SFX_Slime, volume, pitch);
+            SoundService.Play(def, position);
         }
     }
 }

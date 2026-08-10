@@ -11,11 +11,11 @@ namespace SlimeJumping.Mechanisms
     {
         [Header("Clips")]
         [Tooltip("Played when the slime enters the detection box and the icicle begins to shake.")]
-        [SerializeField] AudioClip shakeStartClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef shakeStartSound;
         [Tooltip("Played at the moment the icicle begins to fall.")]
-        [SerializeField] AudioClip fallingClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef fallingSound;
         [Tooltip("Played when the falling icicle hits the ground and breaks.")]
-        [SerializeField] AudioClip impactClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef impactSound;
 
         [Header("Levels")]
         [Tooltip("Shared volume applied to all three one-shots.")]
@@ -41,7 +41,7 @@ namespace SlimeJumping.Mechanisms
 
             for (int i = 0; i < icicles.Length; i++)
             {
-                icicles[i].ApplyAudioSettings(shakeStartClip, fallingClip, impactClip, volume);
+                icicles[i].ApplyAudioSettings(shakeStartSound, fallingSound, impactSound);
 #if UNITY_EDITOR
                 if (!Application.isPlaying) EditorUtility.SetDirty(icicles[i]);
 #endif

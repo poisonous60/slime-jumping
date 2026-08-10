@@ -9,7 +9,7 @@ namespace SlimeJumping.Mechanisms
     {
         [SerializeField] private JumpscareCanvasController canvas;
         [SerializeField] private Sprite scareImage;
-        [SerializeField] private AudioClip scareSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef scareSound;
         [SerializeField] private bool oneShot = true;
         [SerializeField] private float displaySeconds = 0.4f;
         [SerializeField] private float fadeSeconds = 0.3f;

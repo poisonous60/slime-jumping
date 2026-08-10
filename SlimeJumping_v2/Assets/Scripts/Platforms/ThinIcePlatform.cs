@@ -34,10 +34,9 @@ namespace SlimeJumping.Platforms
         [Header("Audio")]
         [Tooltip("Per-tile clips are overwritten at Awake by ThinIcePlatformAudioManager " +
                  "if one is present in the scene.")]
-        [SerializeField] AudioClip crackSound;
-        [SerializeField] AudioClip shatterSound;
-        [SerializeField] AudioClip regenSound;
-        [Range(0f, 1f)] [SerializeField] float soundVolume = 1f;
+        [SerializeField] SlimeJumping.Audio.SoundDef crackSound;
+        [SerializeField] SlimeJumping.Audio.SoundDef shatterSound;
+        [SerializeField] SlimeJumping.Audio.SoundDef regenSound;
 
         [Header("Particles")]
         [Tooltip("Played once at the moment the platform shatters")]
@@ -65,12 +64,11 @@ namespace SlimeJumping.Platforms
         static readonly int ColorID = Shader.PropertyToID("_Color");
 
         /// <summary>Overwrites the per-tile clips + volume; ThinIcePlatformAudioManager broadcasts a shared set across the scene.</summary>
-        public void ApplyAudioSettings(AudioClip crack, AudioClip shatter, AudioClip regen, float volume)
+        public void ApplyAudioSettings(SlimeJumping.Audio.SoundDef crack, SlimeJumping.Audio.SoundDef shatter, SlimeJumping.Audio.SoundDef regen)
         {
             crackSound = crack;
             shatterSound = shatter;
             regenSound = regen;
-            soundVolume = volume;
         }
 
         void Awake()
@@ -306,10 +304,9 @@ namespace SlimeJumping.Platforms
             }
         }
 
-        void PlaySound(AudioClip clip)
+        void PlaySound(SlimeJumping.Audio.SoundDef def)
         {
-            if (clip == null) return;
-            SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, soundVolume);
+            SoundService.Play(def, transform.position);
         }
 
         // --- Editor Helpers ---

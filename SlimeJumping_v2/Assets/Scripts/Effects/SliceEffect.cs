@@ -8,9 +8,7 @@ namespace SlimeJumping.Effects
     public class SliceEffect : MonoBehaviour
     {
         [SerializeField] private ParticleSystem particles;
-        [SerializeField] private AudioClip[] hitClips;
-        [SerializeField, Range(0f, 1f)] private float sfxVolume = 1f;
-        [SerializeField, Range(0f, 0.5f)] private float pitchJitter = 0.1f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef hitSound;
 
         /// <summary>Instantiate and play. signedTangent is the slime's slide direction, not the blade's rotation direction.</summary>
         public static SliceEffect Spawn(SliceEffect prefab, Vector3 contactPoint, Vector2 signedTangent)
@@ -31,17 +29,11 @@ namespace SlimeJumping.Effects
         {
             if (particles != null) particles.Play();
 
-            AudioClip chosen = null;
-            if (hitClips != null && hitClips.Length > 0)
-            {
-                chosen = hitClips[Random.Range(0, hitClips.Length)];
-                if (chosen != null)
-                {
-                    float pitch = 1f + Random.Range(-pitchJitter, pitchJitter);
-                    SoundService.PlayAt(chosen, transform.position,
-                                        SoundCategory.SFX_Object, sfxVolume, pitch);
-                }
-            }
+            // Pick once: the clip whose length gates SelfDestruct must be the clip that actually played.
+            AudioClip chosen = hitSound != null ? hitSound.PickClip() : null;
+            if (chosen != null)
+                SoundService.PlayAt(chosen, transform.position, hitSound.category,
+                                    hitSound.PickVolume(), hitSound.PickPitch());
 
             StartCoroutine(SelfDestruct(chosen));
         }

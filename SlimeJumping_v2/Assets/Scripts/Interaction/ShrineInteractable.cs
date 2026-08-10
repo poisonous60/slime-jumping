@@ -31,8 +31,7 @@ namespace SlimeJumping.Interaction
         [SerializeField] private float faceLookSmoothTime = 0.25f;
 
         [Header("Audio")]
-        [SerializeField] private AudioClip wispAppearSfx;
-        [SerializeField, Range(0f, 1f)] private float wispAppearVolume = 1f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef wispAppearSound;
 
         private bool isFiring;
 
@@ -66,8 +65,7 @@ namespace SlimeJumping.Interaction
                     StartCoroutine(FaceTrackRoutine(visual, slime.transform, wispInstance.transform));
             }
 
-            SoundService.PlayAt(wispAppearSfx, transform.position,
-                                SoundCategory.SFX_Object, wispAppearVolume);
+            SoundService.Play(wispAppearSound, transform.position);
 
             if (appearHold > 0f)
                 yield return new WaitForSeconds(appearHold);

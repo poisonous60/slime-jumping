@@ -47,11 +47,7 @@ namespace SlimeJumping.Mechanisms
             // Per-projectile fire SFX so each launch has its own crack.
             if (fireStartSound != null)
             {
-                float pitch = fireStartPitchJitter > 0f
-                    ? 1f + Random.Range(-fireStartPitchJitter, fireStartPitchJitter)
-                    : 1f;
-                SoundService.PlayAt(fireStartSound, muzzleOrigin, SoundCategory.SFX_Object,
-                    fireStartVolume, pitch);
+                SoundService.Play(fireStartSound, muzzleOrigin);
             }
 
             // upwardBias 0 = uniform 360° ejection, 1 = straight up.

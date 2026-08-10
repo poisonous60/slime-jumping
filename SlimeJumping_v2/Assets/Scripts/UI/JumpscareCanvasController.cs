@@ -5,7 +5,7 @@ namespace SlimeJumping.UI
 {
     public class JumpscareCanvasController : FullscreenOverlayCanvas
     {
-        public void Trigger(Sprite image, AudioClip sound,
+        public void Trigger(Sprite image, SoundDef sound,
             float displaySeconds = 0.4f, float fadeSeconds = 0.3f)
         {
             if (fullscreenImage != null)
@@ -13,7 +13,7 @@ namespace SlimeJumping.UI
                 if (image != null) fullscreenImage.sprite = image;
                 fullscreenImage.color = Color.white;
             }
-            SoundService.Play2D(sound, SoundCategory.UI, 1f);
+            SoundService.Play2D(sound);
             if (impulseEmitter != null) impulseEmitter.Emit(1.5f);
             StartFade(displaySeconds, fadeSeconds);
         }

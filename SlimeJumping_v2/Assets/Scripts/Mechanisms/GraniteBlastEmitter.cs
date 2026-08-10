@@ -189,24 +189,15 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private Color telegraphColor = new Color(0.7f, 0.95f, 1f, 0.3f);
 
         [Header("Audio")]
-        [SerializeField] private AudioClip detectSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef detectSound;
         [Tooltip("발사 전 준비. Plays once when PreFire begins.")]
-        [SerializeField] private AudioClip preFireSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef preFireSound;
         [Tooltip("발사 시작. Sharp punctuation at FireStart.")]
-        [SerializeField] private AudioClip fireStartSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef fireStartSound;
         [Tooltip("발사 이후. Optional residual sound at PostFire.")]
-        [SerializeField] private AudioClip postFireSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef postFireSound;
         [Tooltip("Plays at each tendril/beam/burst-flash impact point on the ground. Branching = once per tendril; Beam = once per beam (first ground contact); Burst = once per flash.")]
-        [SerializeField] private AudioClip groundImpactSound;
-        [Range(0f, 1f)] [SerializeField] private float detectVolume = 0.6f;
-        [Range(0f, 1f)] [SerializeField] private float preFireVolume = 0.7f;
-        [Range(0f, 1f)] [SerializeField] private float fireStartVolume = 1f;
-        [Range(0f, 1f)] [SerializeField] private float postFireVolume = 0.55f;
-        [Range(0f, 1f)] [SerializeField] private float groundImpactVolume = 0.7f;
-        [Tooltip("Random pitch jitter applied to each ground-impact sound (multiplier offset). 0 = no jitter.")]
-        [Range(0f, 0.4f)] [SerializeField] private float groundImpactPitchJitter = 0.1f;
-        [Tooltip("Branching mode: random pitch jitter per fireStartSound play (one per tendril). 0 = no jitter.")]
-        [Range(0f, 0.4f)] [SerializeField] private float fireStartPitchJitter = 0.08f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef groundImpactSound;
 
         [Header("VFX")]
         [Tooltip("Particle system that scales 0.05x → 1x during PreFire. Stopped at PostFire.")]
@@ -408,13 +399,6 @@ namespace SlimeJumping.Mechanisms
             fireStartSound = p.fireStartSound;
             postFireSound = p.postFireSound;
             groundImpactSound = p.groundImpactSound;
-            detectVolume = p.detectVolume;
-            preFireVolume = p.preFireVolume;
-            fireStartVolume = p.fireStartVolume;
-            postFireVolume = p.postFireVolume;
-            groundImpactVolume = p.groundImpactVolume;
-            groundImpactPitchJitter = p.groundImpactPitchJitter;
-            fireStartPitchJitter = p.fireStartPitchJitter;
 
             impactPrefab = p.impactPrefab;
             groundExplosionPrefab = p.groundExplosionPrefab;
@@ -553,7 +537,7 @@ namespace SlimeJumping.Mechanisms
             stateTimer = detectionDelay;
             ApplyIndicator(true);
             if (detectSound != null)
-                SoundService.PlayAt(detectSound, AimOrigin(), SoundCategory.SFX_Object, detectVolume);
+                SoundService.Play(detectSound, AimOrigin());
         }
 
         private void EnterPreFire()
@@ -575,7 +559,7 @@ namespace SlimeJumping.Mechanisms
             StartChargeGlow();
             ShowTelegraph();
             if (preFireSound != null)
-                SoundService.PlayAt(preFireSound, lockedOrigin, SoundCategory.SFX_Object, preFireVolume);
+                SoundService.Play(preFireSound, lockedOrigin);
         }
 
         private void EnterFireStart()
@@ -588,7 +572,7 @@ namespace SlimeJumping.Mechanisms
             if (muzzleFlash != null) muzzleFlash.Play(true);
             // Branching/Mortar play fireStartSound per projectile inside their spawn loops.
             if (fireStartSound != null && mode != FireMode.Branching && mode != FireMode.Mortar)
-                SoundService.PlayAt(fireStartSound, lockedOrigin, SoundCategory.SFX_Object, fireStartVolume);
+                SoundService.Play(fireStartSound, lockedOrigin);
 
             // Endpoints resolve at spawn time against the live trail, so movement after
             // PreFire is still followed.
@@ -639,7 +623,7 @@ namespace SlimeJumping.Mechanisms
 
             StopChargeGlow();
             if (postFireSound != null)
-                SoundService.PlayAt(postFireSound, lockedOrigin, SoundCategory.SFX_Object, postFireVolume);
+                SoundService.Play(postFireSound, lockedOrigin);
         }
 
         private void EnterCooldown()

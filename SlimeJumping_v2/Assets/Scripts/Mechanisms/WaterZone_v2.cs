@@ -53,39 +53,30 @@ namespace SlimeJumping.Mechanisms
 
         [Header("Audio")]
         [Tooltip("Played on entry when impact speed >= hardEnterThreshold (e.g. fall-splash).")]
-        [SerializeField] AudioClip hardEnterClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef hardEnterSound;
         [Tooltip("Played on entry when impact speed < hardEnterThreshold (e.g. gentle dip).")]
-        [SerializeField] AudioClip softEnterClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef softEnterSound;
         [Tooltip("Played once when the slime leaves the water.")]
-        [SerializeField] AudioClip exitClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef exitSound;
         [Tooltip("Looped while the slime is submerged. Leave empty to disable the loop.")]
-        [SerializeField] AudioClip underwaterLoopClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef underwaterLoopSound;
 
         [Tooltip("Speed (m/s) at or above which the hard entry clip plays instead of the soft one.")]
         [Min(0f)] [SerializeField] float hardEnterThreshold = 6f;
         [Tooltip("Slime speed (m/s) that maps to full one-shot volume. Slower impacts scale down linearly.")]
         [Min(0.1f)] [SerializeField] float audioRefSpeed = 8f;
 
-        // Owned by WaterZoneAudioManager; these defaults apply only when no manager is in the scene.
-        float splashVolume = 0.9f;
-        float splashPitchJitter = 0.08f;
-        float underwaterLoopVolume = 0.7f;
-
         SoundHandle underwaterLoopHandle;
 
         Vector2 centerLocal;
 
-        /// <summary>Overwrites clips + splash/loop volume params; WaterZoneAudioManager broadcasts a shared set to every zone.</summary>
-        public void ApplyAudioSettings(AudioClip hardEnter, AudioClip softEnter, AudioClip exit, AudioClip underwaterLoop,
-                                       float splashVolume, float splashPitchJitter, float underwaterLoopVolume)
+        /// <summary>WaterZoneAudioManager broadcasts a shared set to every zone.</summary>
+        public void ApplyAudioSettings(SlimeJumping.Audio.SoundDef hardEnter, SlimeJumping.Audio.SoundDef softEnter, SlimeJumping.Audio.SoundDef exit, SlimeJumping.Audio.SoundDef underwaterLoop)
         {
-            hardEnterClip = hardEnter;
-            softEnterClip = softEnter;
-            exitClip = exit;
-            underwaterLoopClip = underwaterLoop;
-            this.splashVolume = splashVolume;
-            this.splashPitchJitter = splashPitchJitter;
-            this.underwaterLoopVolume = underwaterLoopVolume;
+            hardEnterSound = hardEnter;
+            softEnterSound = softEnter;
+            exitSound = exit;
+            underwaterLoopSound = underwaterLoop;
         }
 
         protected override void Reset()
@@ -159,41 +150,33 @@ namespace SlimeJumping.Mechanisms
             slime.ResetLaunchReference();
 
             StopUnderwaterLoop();
-            PlaySplash(exitClip, slime);
+            PlaySplash(exitSound, slime);
         }
 
         void PlayEnterSplash(SlimeController slime)
         {
             float speed = slime.Velocity.magnitude;
-            AudioClip clip = speed >= hardEnterThreshold ? hardEnterClip : softEnterClip;
-            PlaySplash(clip, slime, speed);
+            PlaySplash(speed >= hardEnterThreshold ? hardEnterSound : softEnterSound, slime, speed);
         }
 
-        void PlaySplash(AudioClip clip, SlimeController slime)
+        void PlaySplash(SlimeJumping.Audio.SoundDef def, SlimeController slime)
         {
-            PlaySplash(clip, slime, slime.Velocity.magnitude);
+            PlaySplash(def, slime, slime.Velocity.magnitude);
         }
 
-        void PlaySplash(AudioClip clip, SlimeController slime, float speed)
+        // Impact speed only scales the sound; how loud a splash is at full speed belongs to the SoundDef.
+        void PlaySplash(SlimeJumping.Audio.SoundDef def, SlimeController slime, float speed)
         {
-            if (clip == null) return;
-            float vol = splashVolume * Mathf.Clamp01(speed / audioRefSpeed);
-            if (vol <= 0.001f) return;
-            float pitch = 1f + Random.Range(-splashPitchJitter, splashPitchJitter);
-            SoundService.PlayAt(clip, slime.transform.position,
-                                SoundCategory.SFX_Environment, vol, pitch);
+            float scale = Mathf.Clamp01(speed / audioRefSpeed);
+            if (scale <= 0.001f) return;
+            SoundService.Play(def, slime.transform.position, scale);
         }
 
         void StartUnderwaterLoop(SlimeController slime)
         {
-            if (underwaterLoopClip == null) return;
+            if (underwaterLoopSound == null) return;
             if (underwaterLoopHandle.IsValid) return;
-            underwaterLoopHandle = SoundService.PlayLooping(
-                underwaterLoopClip,
-                follow: slime.transform,
-                category: SoundCategory.SFX_Environment,
-                volume: underwaterLoopVolume,
-                spatial3D: true);
+            underwaterLoopHandle = SoundService.PlayLooping(underwaterLoopSound, slime.transform);
         }
 
         void StopUnderwaterLoop()

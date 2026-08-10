@@ -17,8 +17,7 @@ MonoBehaviour:
   knockbackSpeed: 8
   hitCooldown: 0.35
   burnMarkScale: 1
-  hitClip: {fileID: 8300000, guid: 567ea169cf83cd34db2a2c8baf972f83, type: 3}
-  hitVolume: 1
+  hitSound: {fileID: 11400000, guid: cacb7bb3678a42c46b23bf8d82a2a238, type: 2}
   endCapA:
     prefab: {fileID: 163066565360232778, guid: 03ad752a2c9f63547aab86b5f3bb7dbe, type: 3}
     positionOffset: {x: 0, y: 0, z: 1}

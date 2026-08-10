@@ -4,21 +4,33 @@
 
 ## 규칙 (지켜야 할 것)
 
-1. **모든 재생은 `SoundService.PlayAt / Play2D / PlayLooping / PlayBgm / StopBgm` 경유.** `AudioSource.Play()` / `PlayOneShot()` / `PlayClipAtPoint()` 직접 호출 금지. 서비스가 `SoundCategory` → `AudioMixerGroup` 매핑을 소유하고 있어 올바른 슬라이더에 자동 반응.
+1. **사운드 하나 = `SoundDef` 에셋 하나** (2026-08-10 전환). 클립·볼륨·피치·카테고리를 한 에셋이 들고, 코드는 그 에셋을 재생만 한다. 컴포넌트는 `[SerializeField] SoundDef` 만 든다.
 
-2. **믹서 그룹을 인스펙터에서 드래그하지 말 것 (2026-08-10).** 카테고리가 유일한 어휘다. 상태 재생(play/pause/트랙 전환)이 필요해 `AudioSource`를 직접 들고 있어야 하는 컴포넌트는 `[SerializeField] SoundCategory` 를 두고 `Awake` 에서 `audioSource.outputAudioMixerGroup = SoundService.GetGroup(category)`. 손으로 꽂는 경로가 남아있는 한 오배선은 재발한다 — 실제로 두 건 있었다(아래 "적발된 오배선").
-   - 남은 예외: 피아노 건반/페달(`PianoKeyboardBuilder.LoadSfxObjectGroup()` 이 `SoundSettings` 에서 읽어 빌드 시 주입 — 드래그 아님).
-   - `AudioSourceMixerGroupValidator`가 저장 시 `outputAudioMixerGroup == null` 을 콘솔 경고 (저장 차단은 안 함).
+```csharp
+[SerializeField] SoundDef fireSound;
+SoundService.Play(fireSound, transform.position);            // 3D 원샷
+SoundService.Play2D(clickSound);                             // 2D 원샷
+handle = SoundService.PlayLooping(ambientSound, transform);  // 루프
+```
 
-3. **`SoundCategory` 선택 기준**:
+2. **호출부는 배율만 넘긴다.** `Play(def, pos, volumeScale, pitchScale)` 는 에셋 값을 **곱한다**(덮지 않는다). 충돌 세기·거리 감쇠처럼 그때그때 달라지는 값만 호출부 몫:
+
+```csharp
+SoundService.Play(cfg.impactSound, worldPos, DistanceFalloff(worldPos));
+```
+
+3. **믹서 그룹을 인스펙터에서 드래그하지 말 것.** 라우팅은 `SoundDef.category` → `SoundSettings` → `AudioMixerGroup` 3단으로만. 손으로 꽂는 경로가 남으면 오배선이 재발한다 — 실제로 두 건 있었다(아래 "적발된 오배선").
+
+4. **`SoundCategory` 선택 기준**:
    - `SFX_Slime` — 슬라임 자체가 내는 소리 (착지/발사/슬라이드) → Player SFX 슬라이더
-   - `SFX_Environment` — 환경 앰비언스/루프 (물, 바람, 흐르는 진흙) → World SFX 슬라이더
-   - `SFX_Object` — 월드 오브젝트 이벤트 (고드름, 점프볼, 얇은 얼음, 포탑, 폭발) → World SFX 슬라이더
-   - `UI` — 버튼 클릭, 메뉴 피드백 → UI 슬라이더
-   - `BGM` — 배경음악 → BGM 슬라이더. `PlayBgm` 전용, `PlayLooping`로 쓰지 말 것
-   - 역할 고정 메커니즘 → 클래스 안에 하드코딩. 범용 에미터일 때만 `[SerializeField] SoundCategory`.
+   - `SFX_Environment` — 환경 앰비언스/루프 (물, 바람, 폭포) → World SFX 슬라이더
+   - `SFX_Object` — 월드 오브젝트 이벤트 (고드름, 얇은 얼음, 포탑, 폭발) → World SFX 슬라이더
+   - `UI` — 버튼 클릭, 씬 전환 → UI 슬라이더
+   - `BGM` — 배경음악 → BGM 슬라이더
 
-4. **BGM은 `StageBgmPlayer` 컴포넌트로.** 스테이지 씬에 빈 GameObject 하나 + 컴포넌트 + 클립 드래그. 씬 전환 크로스페이드 자동. 묵음 스테이지는 `stopIfClipNull=true + bgmClip=null`.
+5. **AudioSource 를 직접 드는 것은 예외뿐.** SoundService 풀이 표현 못 하는 것만: 피아노 보이스풀(88건반 동시 발음), 축음기·TV·세탁기(재생/정지/트랙 전환), `Snowball`(구르기/날기 루프를 자체 AudioSource 로 전환 — 클립·볼륨이 아직 raw). 폐기 상태인 `SwingingBell`(V1)도 타격 세기로 클립 인덱스를 고르는 구조라 이관하지 않았다. 이들도 그룹은 `SoundCategory` 에서 받아온다(`SoundService.GetGroup`). `AudioSourceMixerGroupValidator` 가 저장 시 그룹 null 을 경고.
+
+6. **BGM 은 `StageBgmPlayer`.** 씬에 빈 GameObject + 컴포넌트 + `SoundDef` 하나.
 
 ## 믹서 계층
 
@@ -39,6 +51,7 @@ MainMixer
 
 | 컴포넌트 | 경로 | 역할 |
 |---|---|---|
+| `SoundDef` (ScriptableObject) | [SlimeJumping_v2/Assets/Scripts/Audio/SoundDef.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/SoundDef.cs) | 사운드 정의 1개 = 클립 목록 + 재생 순서(Random/Sequential) + 볼륨/피치 범위 + 카테고리 + 3D 거리. 에셋은 `Assets/Settings/Sounds/`. (`Assets/Audio/` 는 대용량 오디오 바이너리용이라 통째로 gitignore 대상 — 데이터 에셋을 거기 두면 추적이 안 된다.) |
 | `SoundService` | [SlimeJumping_v2/Assets/Scripts/Audio/SoundService.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/SoundService.cs) | 싱글톤 재생 허브. 카테고리별 AudioSource 풀 + BGM 2-source. `DontDestroyOnLoad` 지속. |
 | `SoundSettings` (ScriptableObject) | [SlimeJumping_v2/Assets/Settings/SoundSettings.asset](../../../SlimeJumping_v2/Assets/Settings/SoundSettings.asset) | 믹서 에셋 + 그룹 참조 + 노출 파라미터 이름 보관. |
 | `StageBgmPlayer` | [SlimeJumping_v2/Assets/Scripts/Audio/StageBgmPlayer.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/StageBgmPlayer.cs) | 씬 로컬 BGM 트리거. Start에서 `PlayBgm` 호출. |
@@ -81,33 +94,23 @@ PlayerPrefs 키는 전부 `opt.*` 접두사. 레거시 단일 `opt.sfxVolume`은
 
 ## 새 사운드 추가하는 법 (치트시트)
 
-**단발성 효과음** (충돌/트리거 등):
-```csharp
-// 메커니즘 클래스 내부
-SoundService.PlayAt(clip, transform.position, SoundCategory.SFX_Object, volume);
-```
+1. `Tools/Sound Inventory` → **+ 새 사운드** (또는 Project 우클릭 → Create → SlimeJumping → Sound Definition)
+2. 에셋에 클립·카테고리·볼륨 입력. 클립 여러 개 넣으면 Random 또는 Sequential 로 골라 재생
+3. 쓰는 쪽에 `[SerializeField] SoundDef xxxSound;` + `SoundService.Play(xxxSound, pos)`
 
-**루프/앰비언스**: 오브젝트에 `AmbientSound` 컴포넌트 + 클립/카테고리/볼륨/거리 입력. 끝. 코드에서 직접 걸어야 하면:
-```csharp
-var handle = SoundService.PlayLooping(loopClip, followTransform,
-                                       SoundCategory.SFX_Environment, volume, spatial3D: true,
-                                       minDistance: -1f, maxDistance: -1f);  // 음수 = 풀 기본값 유지
-// 나중에
-SoundService.StopLoop(handle);
-```
-루프는 풀 소스를 점유(lock)한다. 카테고리당 `poolSizePerCategory`(현재 8)가 상한이므로 같은 카테고리 루프가 늘면 이 값을 올린다.
+`clipOrder = Sequential` 의 커서는 **에셋에 있다** — 같은 SoundDef 를 여러 오브젝트가 물면 사이클을 공유한다(종 두 개가 번갈아 b1,b2 를 나눠 가짐). 개별 사이클이 필요하면 에셋을 복제해라.
 
-**ZoneAudioManager 프록시 패턴** (여러 존에 같은 클립 일괄 주입): `WaterZoneAudioManager.cs` 참고 — 프록시는 클립/볼륨만 전달, 카테고리는 재생 주체(Zone 클래스) 안에 하드코딩.
+끝. 볼륨을 호출부에 쓰지 않는다 — 크기가 상황에 따라 달라져야 하면 `volumeScale` 배율만 넘긴다.
 
-**BGM**: 씬에 빈 GameObject → `StageBgmPlayer` 컴포넌트 → `bgmClip` 드래그 → `fadeSeconds` 조정. 끝.
+**루프/앰비언스**: 오브젝트에 `AmbientSound` 컴포넌트 + `SoundDef` 하나. 감쇠 거리도 에셋이 들고 있다.
 
-**UI 사운드**: 기존 `UIClickSoundInstaller`가 Canvas 하위 모든 버튼 자동 처리. 다른 UI 사운드 필요 시 `SoundService.Play2D(clip, SoundCategory.UI)`.
+**여러 인스턴스에 같은 소리 일괄 주입**(`WaterZoneAudioManager` 등): 매니저가 `SoundDef` 참조만 브로드캐스트한다.
 
 ## 표면별 슬라임 사운드 (2026-04-30)
 
-슬라임 착지 / 점프 사운드를 닿는 표면별로 다르게 재생. `SlimeLocomotionAudio` 의 4 클립(landHard / landSoft / launch / hop)은 **fallback** 으로만 남고, 실제 재생 클립은 표면에서 가져옴.
+슬라임 착지 / 점프 사운드를 닿는 표면별로 다르게 재생. `SlimeLocomotionAudio` 의 4 `SoundDef`(landHard / landSoft / launch / hop)는 **fallback** 이고, 표면이 자기 것을 들고 있으면 그쪽이 이긴다.
 
-- **데이터**: `SurfaceMaterial` 에 `[Header("Audio")]` 4 필드 (landHardClip / landSoftClip / launchClip / hopClip). 비워두면 fallback. Ice / Mud / Sand 등 모든 SurfaceMaterial 에셋이 자동으로 동일 슬롯 보유.
+- **데이터**: `SurfaceMaterial` 에 `SoundDef` 4개 (landHardSound / landSoftSound / launchSound / hopSound). 비워두면 fallback. **2026-08-10 이전의 "볼륨 0 = 상속" 규칙은 사라졌다** — 오버라이드 여부는 에셋이 있냐 없냐로만 갈린다. 현재 채워진 것은 Snow 뿐(landHard/landSoft/hop).
 - **눈 브리지**: `SnowField` 는 `SurfaceTag` 가 없지만 `SnowSettings.snowSurfaceMaterial` 에 이미 `SurfaceMaterial` 참조가 있음 (Snow.asset 사용 중). 따라서 눈 사운드는 Snow.asset 의 audio 필드만 채우면 됨 — `SnowSettings` 자체에는 audio 필드 추가하지 않음.
 - **해석**: [SurfaceAudioResolver.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/SurfaceAudioResolver.cs) — 정적 헬퍼. `(slimeController.SurfaceCollider, contactPoint)` 받아서 (1) **SnowField 우선**: `SnowFieldRegistry.TryGet` 성공 + `SampleDepthRatio01(contactPoint) ≥ 0.1` 이면 `snowSurfaceMaterial` 사용, (2) 그 외에는 host 의 `GetComponentInParent<SurfaceTag>()` 폴백, (3) 둘 다 없으면 false.
 - **왜 snow 우선?** SnowField 는 `[SnowField.cs:12]` 자기 설명대로 `SurfaceTag` 가 없는 visual layer. 슬라임은 항상 host 콜라이더 위에 서있고, host 가 자기 SurfaceTag 를 들고있음. 만약 SurfaceTag 를 먼저 검사하면 항상 host 의 tag 가 매칭되어 snow 분기까지 도달조차 못 함 → snow 클립 영원히 미재생. 게임플레이 측 `RefreshSnowBlend` 도 host tag + snowSurfaceMaterial 을 depth 비율로 블렌드하는데, audio 는 단발 SFX 라 임계값 분기로 단순화: depth ≥ 0.1 → snow 클립, 미만 (완전히 파인 트랙 / SnowField 미등록) → host 클립.

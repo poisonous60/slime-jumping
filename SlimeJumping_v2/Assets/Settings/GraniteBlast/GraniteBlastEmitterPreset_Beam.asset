@@ -42,17 +42,10 @@ MonoBehaviour:
   telegraphWidth: 0.04
   telegraphColor: {r: 0.7, g: 0.95, b: 1, a: 0.3}
   detectSound: {fileID: 0}
-  preFireSound: {fileID: 8300000, guid: 78014e8f162eb2d4bacedee861ec2333, type: 3}
-  fireStartSound: {fileID: 8300000, guid: f7dcd819c9468da45a64dcee3a87d479, type: 3}
+  preFireSound: {fileID: 11400000, guid: acb28f15e9bb76f4d815f3f1eb7e653c, type: 2}
+  fireStartSound: {fileID: 11400000, guid: 00caeb62e2fbdde47b3135f2d74ee326, type: 2}
   postFireSound: {fileID: 0}
   groundImpactSound: {fileID: 0}
-  detectVolume: 0.6
-  preFireVolume: 0.7
-  fireStartVolume: 1
-  postFireVolume: 0.55
-  groundImpactVolume: 0.7
-  groundImpactPitchJitter: 0.1
-  fireStartPitchJitter: 0.08
   impactPrefab: {fileID: 1091756393576693912, guid: 7537d8af5adc8434ea90c85cb79c4b3b, type: 3}
   groundExplosionPrefab: {fileID: 4940053736127461535, guid: a139783aaa3df33428e699287f631674, type: 3}
   snowCarveOnImpact: 1

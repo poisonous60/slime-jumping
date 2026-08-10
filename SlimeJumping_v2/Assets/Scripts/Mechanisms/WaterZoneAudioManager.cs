@@ -10,21 +10,15 @@ namespace SlimeJumping.Mechanisms
     {
         [Header("Clips")]
         [Tooltip("Played on entry when impact speed >= WaterZone_v2.hardEnterThreshold.")]
-        [SerializeField] AudioClip hardEnterClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef hardEnterSound;
         [Tooltip("Played on entry when impact speed < WaterZone_v2.hardEnterThreshold.")]
-        [SerializeField] AudioClip softEnterClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef softEnterSound;
         [Tooltip("Played once when the slime leaves the water.")]
-        [SerializeField] AudioClip exitClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef exitSound;
         [Tooltip("Looped while the slime is submerged.")]
-        [SerializeField] AudioClip underwaterLoopClip;
+        [SerializeField] SlimeJumping.Audio.SoundDef underwaterLoopSound;
 
         [Header("Levels")]
-        [Tooltip("Base volume at audioRefSpeed impact for one-shot splashes.")]
-        [Range(0f, 1f)] [SerializeField] float splashVolume = 0.9f;
-        [Tooltip("±random pitch jitter applied to each one-shot.")]
-        [Range(0f, 0.3f)] [SerializeField] float splashPitchJitter = 0.08f;
-        [Tooltip("Volume of the looping underwater ambient sound.")]
-        [Range(0f, 1f)] [SerializeField] float underwaterLoopVolume = 0.7f;
 
         [Header("Scope")]
         [Tooltip("Include inactive WaterZone_v2 objects when applying.")]
@@ -46,8 +40,7 @@ namespace SlimeJumping.Mechanisms
 
             for (int i = 0; i < zones.Length; i++)
             {
-                zones[i].ApplyAudioSettings(hardEnterClip, softEnterClip, exitClip, underwaterLoopClip,
-                                            splashVolume, splashPitchJitter, underwaterLoopVolume);
+                zones[i].ApplyAudioSettings(hardEnterSound, softEnterSound, exitSound, underwaterLoopSound);
 #if UNITY_EDITOR
                 if (!Application.isPlaying) EditorUtility.SetDirty(zones[i]);
 #endif

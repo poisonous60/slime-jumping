@@ -19,8 +19,7 @@ namespace SlimeJumping.Mechanisms
 
         [Header("Visual / Audio")]
         [SerializeField] private FlashCanvasController flashCanvas;
-        [SerializeField] private AudioClip shutterClip;
-        [SerializeField, Range(0f, 1f)] private float shutterVolume = 1f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef shutterSound;
         [SerializeField] private ImpulseEmitter impulseEmitter;
         [SerializeField] private Light2D bulbLight;
         [SerializeField] private float bulbBaseIntensity = 0f;
@@ -90,8 +89,7 @@ namespace SlimeJumping.Mechanisms
             }
 
             if (bulbLight != null) bulbLight.intensity = bulbFlashIntensity;
-            SoundService.PlayAt(shutterClip, transform.position,
-                                SoundCategory.SFX_Object, shutterVolume);
+            SoundService.Play(shutterSound, transform.position);
             if (impulseEmitter != null) impulseEmitter.Emit(0.2f);
             if (flashCanvas != null) flashCanvas.Trigger();
 

@@ -57,7 +57,7 @@ namespace SlimeJumping.Mechanisms
                  "lifetime via Stop Action = Destroy (or similar); not parented to the icicle.")]
         public GameObject frostCloudVFXPrefab;
         [Tooltip("One clip is picked at random per shatter event.")]
-        public AudioClip[] shatterSounds;
+        public SlimeJumping.Audio.SoundDef shatterSound;
 
         [Tooltip("Boost emissive color via MaterialPropertyBlock. Requires a shader with " +
                  "an emission/color property; default off.")]
@@ -78,9 +78,8 @@ namespace SlimeJumping.Mechanisms
         public LayerMask regenBlockingLayers = ~0;
 
         [Header("Audio (overridden by IcicleAudioManager when present)")]
-        public AudioClip shakeStartSound;
-        public AudioClip fallingSound;
-        public AudioClip impactSound;
-        [Range(0f, 1f)] public float soundVolume = 1f;
+        public SlimeJumping.Audio.SoundDef shakeStartSound;
+        public SlimeJumping.Audio.SoundDef fallingSound;
+        public SlimeJumping.Audio.SoundDef impactSound;
     }
 }

@@ -327,8 +327,7 @@ namespace SlimeJumping.Mechanisms
             if (slime.CurrentState == SlimeController.SlimeState.Attached)
                 slime.ForceAirborneWithVelocity(slime.Velocity);
             slime.ApplyHazardPush(dir * Cfg.knockbackSpeed, hitPoint);
-            if (Cfg.hitClip != null)
-                SoundService.PlayAt(Cfg.hitClip, slime.Position, SoundCategory.SFX_Object, Cfg.hitVolume);
+            SoundService.Play(Cfg.hitSound, slime.Position);
             nextHitTime = Time.time + Cfg.hitCooldown;
         }
 

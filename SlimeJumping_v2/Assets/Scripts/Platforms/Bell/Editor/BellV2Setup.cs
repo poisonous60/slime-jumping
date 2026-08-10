@@ -93,9 +93,9 @@ namespace SlimeJumping.Editor
             if (clapper == null)
                 Debug.LogWarning($"[SwingingBellV2] '{go.name}': no '{ClapperName}' under the bell visual — " +
                                  "the clapper will not swing. Assign Clapper Visual by hand.", bell);
-            if (cfg.strikeClips == null || cfg.strikeClips.Length == 0)
-                Debug.LogWarning($"[SwingingBellV2] {ConfigAssetPath} has no strike clips — the bell will be " +
-                                 "silent. Assign some from Assets/Sound/Bell/.", cfg);
+            if (cfg.strikeSound == null)
+                Debug.LogWarning($"[SwingingBellV2] {ConfigAssetPath} has no strike sound — the bell will be " +
+                                 "silent. Assign a SoundDef from Assets/Audio/Sounds/.", cfg);
 
             EditorUtility.SetDirty(bell);
             return bell;
@@ -145,7 +145,6 @@ namespace SlimeJumping.Editor
                 cfg.strikeRestitution = v1.strikeRestitution;
                 cfg.clapperSeparationAngle = v1.clapperSeparationAngle;
                 cfg.substeps = v1.substeps;
-                cfg.strikeClips = v1.strikeClips;
             }
 
             AssetDatabase.CreateAsset(cfg, ConfigAssetPath);

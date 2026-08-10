@@ -92,9 +92,7 @@ namespace SlimeJumping.Mechanisms
         public ParticleSystem groundExplosionPrefab;
         [Tooltip("Scale of the spawned explosion. The prefab is shared with Granite Blast, so shrink it here, not on the asset.")]
         public float groundExplosionScale = 0.5f;
-        public AudioClip impactSound;
-        [Range(0f, 1f)] public float impactVolume = 1f;
-        [Range(0f, 0.5f)] public float impactPitchJitter = 0.1f;
+        public SlimeJumping.Audio.SoundDef impactSound;
         [Tooltip("Full volume within this XY distance from the listener. Measured in screen-plane units — the listener's fixed camera Z offset is excluded.")]
         public float impactAudioFullDistance = 4f;
         [Tooltip("Silent beyond this XY distance. Stacks on top of the pooled AudioSource's own 3D rolloff from SoundSettings.")]

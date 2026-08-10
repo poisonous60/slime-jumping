@@ -24,9 +24,8 @@ namespace SlimeJumping.Mechanisms
         [Range(0f, 3f)] public float burnMarkScale = 1f;
 
         [Header("Audio")]
-        [Tooltip("One-shot on slime hit, SFX_Object bus (World SFX slider). Empty = silent.")]
-        public AudioClip hitClip;
-        [Range(0f, 1f)] public float hitVolume = 1f;
+        [Tooltip("One-shot on slime hit. Empty = silent.")]
+        public SlimeJumping.Audio.SoundDef hitSound;
 
         [System.Serializable]
         public class EndCapSide

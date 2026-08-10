@@ -24,7 +24,7 @@ namespace SlimeJumping.Mechanisms
             [Tooltip("Particle system prefab — instantiated and Played at the anchor on snap; auto-destroyed.")]
             public ParticleSystem snapVFXPrefab;
             [Tooltip("Sharp crack/snap one-shot for this connector.")]
-            public AudioClip snapSound;
+            public SlimeJumping.Audio.SoundDef snapSound;
             [Tooltip("Wait this long after the previous snap (or after Telegraph entry for the first one) before this connector breaks.")]
             public float preDelay = 1.0f;
             [Tooltip("Degrees the train sags after this connector snaps. Pivot is automatically the centroid of the *remaining* connectors. Direction is auto-signed so the snapped side drops.")]
@@ -120,13 +120,12 @@ namespace SlimeJumping.Mechanisms
 
         [Header("Impact (3-layer SFX)")]
         [Tooltip("Sharp initial crack — first 100ms of impact.")]
-        [SerializeField] private AudioClip crackSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef crackSound;
         [Tooltip("Sustained metallic groan — 1–2s tail.")]
-        [SerializeField] private AudioClip groanSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef groanSound;
         [Tooltip("Long dust-settle hiss — 3–4s tail. Played slightly delayed.")]
-        [SerializeField] private AudioClip dustSettleSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef dustSettleSound;
         [SerializeField] private float dustSettleDelay = 0.15f;
-        [Range(0f, 1f)][SerializeField] private float impactVolume = 1f;
         [SerializeField] private ImpulseEmitter impactImpulse;
         [SerializeField] private float impactImpulseForce = 1.0f;
         [Tooltip("Spawned at the contact point on impact (dust/debris cloud). Auto-destroyed after impactVFXLifetime.")]
@@ -336,8 +335,7 @@ namespace SlimeJumping.Mechanisms
             }
 
             if (c.snapSound != null)
-                SoundService.PlayAt(c.snapSound, c.anchor != null ? c.anchor.position : (Vector3)currentSagPos,
-                                    SoundCategory.SFX_Object, impactVolume);
+                SoundService.Play(c.snapSound, c.anchor != null ? c.anchor.position : (Vector3)currentSagPos);
             if (snapImpulse != null && c.joltForce > 0f) snapImpulse.Emit(c.joltForce);
             if (c.snapVFXPrefab != null && c.anchor != null)
             {
@@ -512,10 +510,8 @@ namespace SlimeJumping.Mechanisms
             rb.angularVelocity = 0f;
             rb.bodyType = RigidbodyType2D.Kinematic;
 
-            if (crackSound != null)
-                SoundService.PlayAt(crackSound, impactPos, SoundCategory.SFX_Object, impactVolume);
-            if (groanSound != null)
-                SoundService.PlayAt(groanSound, impactPos, SoundCategory.SFX_Object, impactVolume * 0.85f);
+            SoundService.Play(crackSound, impactPos);
+            SoundService.Play(groanSound, impactPos, 0.85f);
             if (dustSettleSound != null)
                 StartCoroutine(PlayDelayedRealtime(dustSettleSound, impactPos, dustSettleDelay));
 
@@ -541,10 +537,10 @@ namespace SlimeJumping.Mechanisms
             if (state == TrainState.HitStop) EnterSettling();
         }
 
-        private IEnumerator PlayDelayedRealtime(AudioClip clip, Vector3 pos, float delay)
+        private IEnumerator PlayDelayedRealtime(SlimeJumping.Audio.SoundDef def, Vector3 pos, float delay)
         {
             yield return new WaitForSecondsRealtime(delay);
-            SoundService.PlayAt(clip, pos, SoundCategory.SFX_Object, impactVolume);
+            SoundService.Play(def, pos);
         }
 
         private void EnterSettling()

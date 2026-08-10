@@ -35,9 +35,8 @@ namespace SlimeJumping.Interaction
         [SerializeField] private ParticleSystem explosionVFX;
         [Tooltip("Optional trail/jet VFX that plays during flight. Usually childed to rocketVisual so it follows the rocket automatically. Works in both Transform and VFX-sync modes.")]
         [SerializeField] private ParticleSystem trailVFX;
-        [SerializeField] private AudioClip launchSfx;
-        [SerializeField] private AudioClip explosionSfx;
-        [SerializeField, Range(0f, 1f)] private float sfxVolume = 1f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef launchSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef explosionSound;
         [SerializeField] private ImpulseEmitter impulseEmitter;
         [SerializeField] private float impulseForce = 0f;
 
@@ -92,7 +91,7 @@ namespace SlimeJumping.Interaction
         {
             busy = true;
 
-            SoundService.PlayAt(launchSfx, transform.position, SoundCategory.SFX_Object, sfxVolume);
+            SoundService.Play(launchSound, transform.position);
             if (trailVFX != null) trailVFX.Play();
 
             Vector3 dir3 = new Vector3(flightDirection.x, flightDirection.y, 0f);
@@ -127,7 +126,7 @@ namespace SlimeJumping.Interaction
             }
             if (trailVFX != null) trailVFX.Stop();
 
-            SoundService.PlayAt(explosionSfx, explosionWorld, SoundCategory.SFX_Object, sfxVolume);
+            SoundService.Play(explosionSound, explosionWorld);
             if (impulseEmitter != null && impulseForce > 0f) impulseEmitter.Emit(impulseForce);
 
             LaunchSlime(slime, explosionWorld);
@@ -165,7 +164,7 @@ namespace SlimeJumping.Interaction
         private IEnumerator FireSequenceVfxSync(SlimeController slime)
         {
             busy = true;
-            SoundService.PlayAt(launchSfx, transform.position, SoundCategory.SFX_Object, sfxVolume);
+            SoundService.Play(launchSound, transform.position);
             if (trailVFX != null) trailVFX.Play();
 
             Vector3 pivotOriginWorld = transform.TransformPoint(rocketOriginLocal);
@@ -260,7 +259,7 @@ namespace SlimeJumping.Interaction
             }
 
             // Particle died — SF_1's Death sub-emitters are now firing the burst.
-            SoundService.PlayAt(explosionSfx, lastWorldPos, SoundCategory.SFX_Object, sfxVolume);
+            SoundService.Play(explosionSound, lastWorldPos);
             if (impulseEmitter != null && impulseForce > 0f) impulseEmitter.Emit(impulseForce);
             LaunchSlime(slime, lastWorldPos);
 

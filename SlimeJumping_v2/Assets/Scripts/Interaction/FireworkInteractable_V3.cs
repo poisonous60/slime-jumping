@@ -50,9 +50,8 @@ namespace SlimeJumping.Interaction
             new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.6f, 1.15f), new Keyframe(1f, 1f));
 
         [Header("FX")]
-        [SerializeField] private AudioClip igniteSfx;
-        [SerializeField] private AudioClip burstSfx;
-        [SerializeField, Range(0f, 1f)] private float sfxVolume = 1f;
+        [SerializeField] private SlimeJumping.Audio.SoundDef igniteSound;
+        [SerializeField] private SlimeJumping.Audio.SoundDef burstSound;
         [SerializeField] private ImpulseEmitter impulseEmitter;
         [SerializeField] private float impulseForce = 0f;
 
@@ -191,7 +190,7 @@ namespace SlimeJumping.Interaction
 
                 var vfx = SpawnShellVfx(from, to, shell.flightDuration);
                 foreach (var ps in state.trails) if (ps != null) ps.Play();
-                SoundService.PlayAt(igniteSfx, from, SoundCategory.SFX_Object, sfxVolume);
+                SoundService.Play(igniteSound, from);
 
                 var flight = new FlightResult { point = from };
                 yield return Fly(vfx, shell.visual, from, to, centreOffset, shell.flightDuration, flight);
@@ -203,7 +202,7 @@ namespace SlimeJumping.Interaction
                 // firing sound and push here would be a burst the player never sees.
                 if (flight.burst)
                 {
-                    SoundService.PlayAt(burstSfx, flight.point, SoundCategory.SFX_Object, sfxVolume);
+                    SoundService.Play(burstSound, flight.point);
                     if (impulseEmitter != null && impulseForce > 0f) impulseEmitter.Emit(impulseForce);
                     LaunchSlime(slime, flight.point);
                 }
