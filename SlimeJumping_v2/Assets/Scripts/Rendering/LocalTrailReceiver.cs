@@ -45,6 +45,7 @@ namespace SlimeJumping.Rendering
         private RenderTexture rtCold;
         private LocalColdTarget coldTarget;
         private MaterialPropertyBlock mpb;
+        private Matrix4x4 lastPushedL2W;
         private Vector2Int resolution;
         // Per route: a shared flag lets whichever target saves first clear the other's, and the
         // persistence round-robin then skips it — the cold file would go stale.
@@ -191,8 +192,7 @@ namespace SlimeJumping.Rendering
             mpb.SetVector (IdLocalTrailSize, new Vector4(localSize.x, localSize.y, 0f, 0f));
             mpb.SetMatrix (IdLocalTrailW2L,  transform.worldToLocalMatrix);
             targetRenderer.SetPropertyBlock(mpb);
-            // Clear engine-set hasChanged so LateUpdate only repushes on real TRS edits.
-            transform.hasChanged = false;
+            lastPushedL2W = transform.localToWorldMatrix;
 
             TrailColliderRegistry.Register(contactCollider, this);
 
@@ -239,11 +239,13 @@ namespace SlimeJumping.Rendering
             // Unity auto-updates unity_WorldToObject for the renderer, but _LocalTrailW2L is a
             // possibly-separate transform, so it must be pushed manually when it moves.
             if (targetRenderer == null || mpb == null) return;
-            if (!transform.hasChanged) return;
+            // Matrix compare, not transform.hasChanged: a moving ancestor never flags the child.
+            Matrix4x4 l2w = transform.localToWorldMatrix;
+            if (l2w == lastPushedL2W) return;
+            lastPushedL2W = l2w;
             targetRenderer.GetPropertyBlock(mpb);
             mpb.SetMatrix(IdLocalTrailW2L, transform.worldToLocalMatrix);
             targetRenderer.SetPropertyBlock(mpb);
-            transform.hasChanged = false;
         }
 
         private void ResolveTargetRenderer()
