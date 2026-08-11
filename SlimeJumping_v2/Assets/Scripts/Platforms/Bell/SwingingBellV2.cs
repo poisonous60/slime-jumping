@@ -14,9 +14,11 @@ namespace SlimeJumping.Platforms.Bell
     // on the wrong swing phase can never cancel into silence.
     //
     // Three rules the tuning has to keep. Nothing has a direction condition — where the contact sits
-    // decides which way the bell goes, never which way the slime was travelling, so a hit straight
-    // down counts for as much as a flat one. Every contact moves BOTH: the slime bounces off an
-    // elastic collision with the moving flank and can never come to rest on a bell, and the bell
+    // decides which way BOTH go, never which way the slime was travelling, so a hit straight down
+    // counts for as much as a flat one. The slime leaves straight out of the flank with its whole
+    // arrival velocity replaced, so where it ends up is readable before the touch; only how FAST it
+    // leaves comes from how hard it came in, and the bell's own swing never adds to that. Every
+    // contact moves BOTH: the slime can never come to rest on a bell, and the bell
     // always takes at least its soft swing. Speed decides only whether it SOUNDS, plus where in a
     // narrow soft-to-full window the swing lands — a fast hit must not read as a different bell.
     //
@@ -69,7 +71,6 @@ namespace SlimeJumping.Platforms.Bell
 
         readonly ContactPoint2D[] contactScratch = new ContactPoint2D[8];
         readonly List<Collider2D> ownColliders = new List<Collider2D>();
-        readonly Vector2[] velScratch = new Vector2[3];
         SlimeController trackedSlime;
         SlimeInputReader input;
         Vector2 prevSlimeVel;
@@ -336,7 +337,7 @@ namespace SlimeJumping.Platforms.Bell
         {
             int n = rb.GetContacts(contactScratch);
             SlimeController slime = null;
-            Vector2 point = Vector2.zero, reported = Vector2.zero;
+            Vector2 point = Vector2.zero;
 
             for (int i = 0; i < n; i++)
             {
@@ -347,7 +348,6 @@ namespace SlimeJumping.Platforms.Bell
                 slime = s;
                 trackedSlime = s;
                 point = contactScratch[i].point;
-                reported = contactScratch[i].normal;
                 break;
             }
 
@@ -356,14 +356,14 @@ namespace SlimeJumping.Platforms.Bell
             {
                 slime = trackedSlime;
                 point = lastRiderPos;
-                reported = Vector2.zero;
             }
 
             if (slime != null)
             {
-                Vector2 surf = SurfaceNormal(point, reported);
-                if (!occupied && retriggerTimer <= 0f) Ring(slime, point, surf);
-                else PushOff(slime, point, surf);   // a bell is never somewhere the slime can rest
+                // The flank, not the collider normal, which under the bell's skirt faces down.
+                Vector2 outward = OutwardAt(point - pivotWorld);
+                if (!occupied && retriggerTimer <= 0f) Ring(slime, outward);
+                else PushOff(slime, outward);   // a bell is never somewhere the slime can rest
             }
             else if (!riding) riderArrivalVel = Vector2.zero;   // else it wins a later, slower visit
 
@@ -371,21 +371,18 @@ namespace SlimeJumping.Platforms.Bell
             occupied = slime != null || (occupied && riding);
         }
 
-        void Ring(SlimeController slime, Vector2 point, Vector2 surf)
+        void Ring(SlimeController slime, Vector2 outward)
         {
             retriggerTimer = cfg.retriggerCooldown;
 
-            Vector2 r = point - pivotWorld;
-            Vector2 rel = FlankRelative(slime, r, surf, out Vector2 surfaceVel);
-
             // Contact speed regardless of direction, so a graze along the flank rings too.
-            float speed = rel.magnitude;
+            float speed = ArrivalSpeed(slime);
 
             // Speed only picks a point in the soft-to-full window; outside it nothing changes.
             float t = Mathf.InverseLerp(cfg.minRingSpeed, FullSwingSpeed(), speed);
             float swing = Mathf.Lerp(cfg.softSwingDegrees, cfg.swingDegrees, t);
             // Which way it goes still comes from where the contact sits, never from the travel.
-            float side = -Mathf.Sign(OutwardAt(r).x);
+            float side = -Mathf.Sign(outward.x);
             float kick = ReferenceKick(swing);
             phi1Dot += side * kick;
 
@@ -400,7 +397,7 @@ namespace SlimeJumping.Platforms.Bell
                 if (w * toWall < kick) phi2Dot = phi1Dot + toWall * kick;
             }
 
-            ReflectSlime(slime, rel, surfaceVel, surf);
+            ThrowOut(slime, outward, speed);
         }
 
         // Away from the bell's axis; a hit dead on the axis has no flank, so it takes the right one.
@@ -438,28 +435,9 @@ namespace SlimeJumping.Platforms.Bell
         }
 
         // Contact the ring latch already spent. Still pushed off, just not re-rung or re-swung.
-        void PushOff(SlimeController slime, Vector2 point, Vector2 surf)
+        void PushOff(SlimeController slime, Vector2 outward)
         {
-            Vector2 rel = FlankRelative(slime, point - pivotWorld, surf, out Vector2 surfaceVel);
-            ReflectSlime(slime, rel, surfaceVel, surf);
-        }
-
-        // Box2D's normal sign depends on which collider reports it, so it is faced out of the body.
-        Vector2 SurfaceNormal(Vector2 point, Vector2 reported)
-        {
-            Vector2 com = pivotWorld + new Vector2(Mathf.Sin(phi1), -Mathf.Cos(phi1)) * ArmBellCom;
-            Vector2 outFromBody = point - com;
-            if (reported.sqrMagnitude < 1e-6f)
-                return outFromBody.sqrMagnitude < 1e-6f ? OutwardAt(point - pivotWorld)
-                                                        : outFromBody.normalized;
-            return Vector2.Dot(reported, outFromBody) < 0f ? -reported : reported;
-        }
-
-        // Arrival measured against the flank's own motion, which is what a collision actually sees.
-        Vector2 FlankRelative(SlimeController slime, Vector2 r, Vector2 n, out Vector2 surfaceVel)
-        {
-            surfaceVel = new Vector2(-r.y, r.x) * (phi1Dot * cfg.bounceSwingTransfer);
-            return ArrivalVelocity(slime, n) - surfaceVel;
+            ThrowOut(slime, outward, ArrivalSpeed(slime));
         }
 
         // The ramp needs an ordered window; an inverted one would map slow hits to the full swing.
@@ -476,20 +454,16 @@ namespace SlimeJumping.Platforms.Bell
             return cfg.minRingSpeed + 0.01f;
         }
 
-        // Elastic collision resolved in the flank's own moving frame: v' = vs + reflect(v - vs).
-        void ReflectSlime(SlimeController slime, Vector2 rel, Vector2 surfaceVel, Vector2 n)
+        // Replaced, not reflected: a kept tangent would let the arrival steer the throw again.
+        void ThrowOut(SlimeController slime, Vector2 outward, float arrivalSpeed)
         {
             if (HoldingCharge(slime)) return;   // the one exception, see the header
 
-            float closing = -Vector2.Dot(rel, n);
-            Vector2 tangent = rel + closing * n;
-
             // Floored, never gated: a bell is not something the slime can come to rest on.
-            float leaving = Mathf.Max(closing * cfg.bounceRestitution, cfg.minSeparationSpeed);
-            Vector2 outVel = surfaceVel + tangent + leaving * n;
+            float speed = Mathf.Max(arrivalSpeed * cfg.bounceRestitution, cfg.minSeparationSpeed);
 
             BlockReattach(slime);
-            slime.ForceAirborneWithVelocity(outVel);
+            slime.ForceAirborneWithVelocity(outward * speed);
         }
 
         // The held key, not the Charging state, because the state only turns on a tick later.
@@ -500,21 +474,11 @@ namespace SlimeJumping.Platforms.Bell
             return input != null && input.IsJumpHeld;
         }
 
-        // Whichever source closes hardest wins; the longest can be a stale one pointing away.
-        Vector2 ArrivalVelocity(SlimeController slime, Vector2 n)
+        // Fastest of the three wins: the contact tick often reads a slime the attach already zeroed.
+        float ArrivalSpeed(SlimeController slime)
         {
-            velScratch[0] = slime.Velocity;
-            velScratch[1] = prevSlimeVel;
-            velScratch[2] = riderArrivalVel;
-
-            Vector2 best = Vector2.zero;
-            float bestClosing = float.NegativeInfinity;
-            for (int i = 0; i < velScratch.Length; i++)
-            {
-                float closing = -Vector2.Dot(velScratch[i], n);
-                if (closing > bestClosing) { bestClosing = closing; best = velScratch[i]; }
-            }
-            return best;
+            return Mathf.Max(slime.Velocity.magnitude,
+                             Mathf.Max(prevSlimeVel.magnitude, riderArrivalVel.magnitude));
         }
 
         // A slime hanging off one side is real weight on that side, so it tilts the bell.

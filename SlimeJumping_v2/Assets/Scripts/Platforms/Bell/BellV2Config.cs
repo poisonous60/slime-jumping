@@ -75,16 +75,12 @@ namespace SlimeJumping.Platforms.Bell
                  "0 = weightless rider.")]
         [Min(0f)] public float riderWeightScale = 1f;
 
-        [Header("Bounce — an elastic collision, so the slime keeps the momentum it brought")]
-        [Tooltip("Coefficient of restitution. 1 = the slime leaves as fast as it arrived, 0.5 = half. " +
-                 "The bell never adds speed of its own beyond its swing, so how far the slime goes is " +
-                 "how hard it came in — hit it hard and you are thrown far, drift into it and you " +
-                 "barely move.")]
+        [Header("Bounce — always straight out of the flank; only the speed comes from the slime")]
+        [Tooltip("Fraction of its own arrival speed the slime leaves at. 1 = as fast as it arrived, " +
+                 "0.5 = half. The bell adds nothing of its own, not even its swing, so how far the " +
+                 "slime goes is how hard it came in — hit it hard and you are thrown far, drift into " +
+                 "it and you barely move.")]
         [Range(0f, 1f)] public float bounceRestitution = 0.85f;
-        [Tooltip("How much of the bell's own swing enters the collision, as a fraction. 1 = a bell " +
-                 "swinging toward the slime hits it back harder, which is what a moving wall really " +
-                 "does; 0 = the bell reads as if it were standing still.")]
-        [Range(0f, 1f)] public float bounceSwingTransfer = 1f;
         [Tooltip("Slowest speed (world u/s) the slime may leave the flank at. The slime never sticks " +
                  "to a bell, so a drift-in that would reflect at almost nothing is pushed off at this " +
                  "instead. Keep it small — it is a floor, not a launch.")]

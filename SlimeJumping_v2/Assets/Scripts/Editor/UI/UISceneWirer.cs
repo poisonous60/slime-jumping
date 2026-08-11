@@ -68,6 +68,17 @@ namespace SlimeJumping.EditorTools.UI
             var uiRoot = InstantiateUIRoot();
             if (uiRoot == null) return "Error: UIRoot prefab missing — build it first.";
             InstantiatePanel(uiRoot, EndPanelSetup.PrefabPath);
+            InstantiatePanel(uiRoot, OptionsPanelSetup.PrefabPath);
+
+            var manager = uiRoot.GetComponent<UIManager>();
+            var reader = Object.FindFirstObjectByType<SlimeInputReader>(FindObjectsInactive.Include);
+            if (manager != null && reader != null)
+            {
+                var so = new SerializedObject(manager);
+                so.FindProperty("slimeInputReader").objectReferenceValue = reader;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             return $"Wired {scene.name}";

@@ -7,31 +7,18 @@ using SlimeJumping.UI;
 
 namespace SlimeJumping.Editor
 {
-    /// 크레딧 구간 부품 생성기. 배치는 하지 않는다 — 등반 발판 20종을 일렬로 뽑아두면
-    /// 씬에서 복사해 쓰고, 엔딩 방은 한 덩어리로 뽑아 통째로 옮긴다.
+    /// 엔딩 방 생성기. 배치는 하지 않는다 — 한 덩어리로 뽑아 통째로 옮긴다.
     /// 기존 오브젝트는 건드리지 않는다. 루트 삭제 = 완전 롤백.
     public static class AsciiCreditsSectionSetup
     {
         const string SceneName = "MainScene";
-        const string ClimbRootName = "AsciiClimbPlatforms";
         const string RoomRootName = "AsciiEndRoom";
         const int GroundLayer = 7;
-        const string ClimbFolder = "Assets/AsciiArt/Climb";
         const string EndingFolder = "Assets/AsciiArt/Ending";
         const string ConfigAssetPath = "Assets/Resources/AsciiArtPlatformConfig.asset";
 
         // 뽑아두는 자리. 어차피 옮겨 쓰는 물건이라 stage4(y ~495) 위 빈 공간이면 된다.
-        static readonly Vector3 ClimbPaletteWorld = new Vector3(20f, 540f, 0f);
         static readonly Vector3 RoomWorld = new Vector3(20f, 560f, 0f);
-
-        static readonly string[] ClimbArts =
-        {
-            "01_slab", "02_brick", "03_stair_right", "04_stair_left", "05_cloud",
-            "06_triangle", "07_arch", "08_diamond", "09_cross", "10_wave",
-            "11_zigzag", "12_dots", "13_pillar", "14_ramp", "15_star",
-            "16_mushroom", "17_bar", "18_checker", "19_heart", "20_arrow",
-        };
-        const float PaletteGap = 1.5f;
 
         const float LetterGap = 0.6f;
         const float RowClearance = 1.6f;
@@ -40,28 +27,6 @@ namespace SlimeJumping.Editor
         const float TimeLabelFontScale = 2f;
 
         static readonly string[] WordsBottomUp = { "PLAYING", "FOR", "THANKS" };
-
-        [MenuItem("SlimeJumping/Platform/Create Ascii Climb Platforms (MainScene)")]
-        public static void CreateClimbPlatforms()
-        {
-            if (!CheckScene(ClimbRootName, out var scene)) return;
-            var cfg = EnsureConfig();
-
-            var root = new GameObject(ClimbRootName);
-            root.transform.position = ClimbPaletteWorld;
-            Undo.RegisterCreatedObjectUndo(root, "Create Ascii Climb Platforms");
-
-            float x = 0f;
-            foreach (var art in ClimbArts)
-            {
-                var go = BuildArt(root.transform, $"Climb_{art}", ClimbFolder, art, cfg, out float w, out float h);
-                if (go == null) { Object.DestroyImmediate(root); return; }
-                go.transform.localPosition = new Vector3(x, h, 0f); // 아랫변을 y=0 에 맞춰 일렬로.
-                x += w + PaletteGap;
-            }
-
-            Finish(scene, root, $"[AsciiCredits] 등반 발판 {ClimbArts.Length}종 생성, 가로 {x - PaletteGap:F1}u.");
-        }
 
         [MenuItem("SlimeJumping/Platform/Create Ascii End Room (MainScene)")]
         public static void CreateEndRoom()
@@ -116,6 +81,7 @@ namespace SlimeJumping.Editor
             var display = room.AddComponent<EndingTimeDisplay>();
             var so = new SerializedObject(display);
             so.FindProperty("label").objectReferenceValue = label;
+            so.FindProperty("prefix").stringValue = "TIME  ";
             so.ApplyModifiedPropertiesWithoutUndo();
 
             Finish(scene, room, $"[AsciiCredits] 엔딩 방 생성: 바닥 {groundW:F1}u, 글자 최상단 로컬 y {topY:F1}. " +
