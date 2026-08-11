@@ -162,6 +162,7 @@ PlayerPrefs 키는 전부 `opt.*` 접두사. 레거시 단일 `opt.sfxVolume`은
 - **카테고리 컬럼**: `AudioSource` 는 실제 `outputAudioMixerGroup` 을 `SoundSettings` 로 역매핑. 클립 필드는 **소유 스크립트 소스 텍스트에서 `SoundCategory.X` 토큰을 스캔** — 카테고리가 직렬화 데이터가 아니라 호출부 리터럴이라 이 방법뿐이다. 파일 단위라 한 스크립트가 두 카테고리를 쓰면 둘 다 병기된다. `PlayBgm`/`StopBgm` 은 카테고리 인자가 없어 메서드명으로 BGM 매핑.
 - **경고**: 클립 미배정 / Output 그룹 없음 / 생 AudioSource / 그룹↔스크립트 카테고리 불일치. "미배정" 필터가 곧 **아직 사운드 안 넣은 자리** 목록이다.
 - **미사용 클립**: 프로젝트의 `AudioClip` 에셋 중 위 스캔에 안 잡힌 것(ThirdParty/Plugins 제외).
+- **피아노 자동연주 곡 (2026-08-11)**: `PianoConfig.autoPlay.songs` 는 SoundDef 가 아니라 설정 에셋 안의 클립 리스트라 별도 폴드아웃으로 뜬다. 곡마다 슬라이더 = `PianoSong.volume`, 옆의 `= 0.xx` 는 `autoPlay.volume`(master)까지 곱한 실제 재생 볼륨이고 ▶ 도 그 값으로 들려준다. 40곡이 든 `PianoConfig` 를 드래그 틱마다 재직렬화하면 슬라이더가 끊겨서, `Undo.RecordObject` 는 첫 틱 1회 · `SetDirty` 는 `MouseUp` 에 몰아서 한다.
 - **인라인 수정**: 클립 교체, 볼륨 슬라이더(컴포넌트의 `*volume*` float 필드 자동 노출), AudioSource 의 그룹·거리.
 - **▶ 프리뷰는 창이 소유한 `AudioSource` 로 재생한다 (2026-08-10)**. `AudioUtil.PlayPreviewClip` 은 **볼륨 인자가 없어서** 못 쓴다. 대신 `OnEnable` 에서 `HideFlags.HideAndDontSave` GameObject + `AudioSource` 를 만들어 창 수명 동안 들고, `volume` 을 꽂고 `Play()`. `OnDisable` 에서 파괴. 재생 중에는 `OnGUI` 에서 `Repaint()` — **에디터 오디오는 에디터 루프가 돌아야 진행한다.** 같은 프로젝트의 `ThirdParty/IntuitiveCreative/IntuitiveAudioAdjust` 가 쓰는 방식 그대로.
   - 어느 볼륨을 쓰나: `AudioSource` 행은 자기 `volume`. 클립 필드는 **어간이 같은 볼륨 필드**(`fireClip` ↔ `fireVolume`), 없으면 볼륨 필드가 하나뿐일 때 그것, 여럿이면 원본 크기(▶ 툴팁에 표시). 고른 값은 행 옆에 `×0.10` 으로 표기.

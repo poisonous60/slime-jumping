@@ -14,8 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
   clips:
   - {fileID: 8300000, guid: 813c2efeea26e284da6ebf514df773a8, type: 3}
+  clipOrder: 0
   category: 4
-  volumeRange: {x: 0.6, y: 0.6}
+  volumeRange: {x: 1, y: 1}
   pitchRange: {x: 1, y: 1}
   spatial3D: 0
   minDistance: -1

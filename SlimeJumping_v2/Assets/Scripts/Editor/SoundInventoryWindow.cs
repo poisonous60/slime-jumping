@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using SlimeJumping.Audio;
+using SlimeJumping.Platforms.Piano;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -13,8 +14,9 @@ namespace SlimeJumping.EditorTools
 {
     /// Every sound in the project, one row per SoundDef asset. Because a SoundDef carries its own clips,
     /// level, pitch and bus, the list needs no guessing: the volume shown is the volume that plays, and
-    /// ▶ auditions at exactly that volume. Two extra sections keep the picture honest — clips that no
-    /// SoundDef uses, and the components still holding a raw AudioClip or AudioSource.
+    /// ▶ auditions at exactly that volume. Three extra sections keep the picture honest — the piano's
+    /// auto-play songs (owned by PianoConfig, one volume each), clips that no SoundDef uses, and the
+    /// components still holding a raw AudioClip or AudioSource.
     public class SoundInventoryWindow : EditorWindow
     {
         static readonly string[] ExcludedPathParts = { "/ThirdParty/", "/Plugins/", "/AssetVault/" };
@@ -23,6 +25,7 @@ namespace SlimeJumping.EditorTools
         readonly List<string> unusedClipPaths = new List<string>();
         readonly List<string> legacyOwners = new List<string>();
         readonly HashSet<string> usedClipPaths = new HashSet<string>();
+        readonly List<PianoConfig> pianoConfigs = new List<PianoConfig>();
 
         AudioSource previewSource;
         SoundSettings settings;
@@ -30,6 +33,8 @@ namespace SlimeJumping.EditorTools
         string search = "";
         bool onlyMissing;
         bool unusedExpanded, legacyExpanded;
+        bool pianoExpanded = true;
+        bool pianoEdited;          // a slider moved since the last mouse-up
         bool scanned;
 
         [MenuItem("Tools/Sound Inventory")]
@@ -72,9 +77,17 @@ namespace SlimeJumping.EditorTools
 
             scroll = EditorGUILayout.BeginScrollView(scroll);
             foreach (SoundCategory cat in Enum.GetValues(typeof(SoundCategory))) DrawCategory(cat);
+            DrawPianoSongs();
             DrawUnusedClips();
             DrawLegacy();
             EditorGUILayout.EndScrollView();
+
+            // Deferred: PianoConfig is one big asset, re-serializing it per drag tick stutters the slider.
+            if (pianoEdited && Event.current.type == EventType.MouseUp)
+            {
+                for (int i = 0; i < pianoConfigs.Count; i++) EditorUtility.SetDirty(pianoConfigs[i]);
+                pianoEdited = false;
+            }
         }
 
         // ---------- header ----------
@@ -170,6 +183,78 @@ namespace SlimeJumping.EditorTools
             if (!def.HasClip) return "(클립 없음)";
             if (def.clips.Length == 1) return def.clips[0] != null ? def.clips[0].name : "(null)";
             return $"{def.clips[0].name} 외 {def.clips.Length - 1}개 · {def.clipOrder}";
+        }
+
+        /// The auto-play rotation is 40+ recordings with levels that differ per track, so each song
+        /// carries its own volume; what a row shows and auditions is that times the AutoPlay master.
+        void DrawPianoSongs()
+        {
+            int total = 0;
+            for (int i = 0; i < pianoConfigs.Count; i++)
+            {
+                var songs = pianoConfigs[i].autoPlay.songs;
+                if (songs != null) total += songs.Count;
+            }
+            if (total == 0) return;
+
+            EditorGUILayout.Space(6);
+            pianoExpanded = EditorGUILayout.Foldout(
+                pianoExpanded, $"피아노 자동연주 곡  ×{total}", true, EditorStyles.foldoutHeader);
+            if (!pianoExpanded) return;
+
+            EditorGUI.indentLevel++;
+            for (int c = 0; c < pianoConfigs.Count; c++)
+            {
+                var cfg = pianoConfigs[c];
+                var songs = cfg.autoPlay.songs;
+                if (songs == null) continue;
+
+                EditorGUILayout.LabelField($"{cfg.name}   master ×{cfg.autoPlay.volume:0.00}", EditorStyles.miniLabel);
+                for (int i = 0; i < songs.Count; i++) DrawPianoSong(cfg, songs[i]);
+            }
+            EditorGUI.indentLevel--;
+        }
+
+        void DrawPianoSong(PianoConfig cfg, PianoSong song)
+        {
+            if (song == null) return;
+            string name = song.label.Length > 0 ? song.label
+                        : song.clip != null ? song.clip.name : "(이름 없음)";
+            if (onlyMissing && song.clip != null) return;
+            if (search.Length > 0 && name.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0) return;
+
+            float master = cfg.autoPlay.volume;
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(name, song.enabled ? EditorStyles.miniBoldLabel : EditorStyles.miniLabel,
+                                       GUILayout.MinWidth(120));
+
+            using (new EditorGUI.DisabledScope(song.clip == null))
+            {
+                if (GUILayout.Button(new GUIContent("▶", $"volume {song.volume * master:0.00} 로 재생"),
+                                     GUILayout.Width(24)))
+                    PlayPreview(song.clip, song.volume * master);
+            }
+
+            EditorGUI.BeginChangeCheck();
+            float v = EditorGUILayout.Slider(song.volume, 0f, 1f, GUILayout.MaxWidth(160));
+            if (EditorGUI.EndChangeCheck())
+            {
+                if (!pianoEdited) Undo.RecordObject(cfg, "Piano Song Volume");
+                pianoEdited = true;
+                song.volume = v;
+            }
+
+            GUILayout.Label($"= {song.volume * master:0.00}", EditorStyles.miniLabel, GUILayout.Width(48));
+            if (song.clip == null) GUILayout.Label("미배정 ⚠", EditorStyles.miniLabel, GUILayout.Width(56));
+            else if (!song.enabled) GUILayout.Label("꺼짐", EditorStyles.miniLabel, GUILayout.Width(56));
+
+            if (GUILayout.Button("Select", EditorStyles.miniButton, GUILayout.Width(50)))
+            {
+                Selection.activeObject = cfg;
+                EditorGUIUtility.PingObject(cfg);
+            }
+            EditorGUILayout.EndHorizontal();
         }
 
         void DrawUnusedClips()
@@ -268,6 +353,23 @@ namespace SlimeJumping.EditorTools
                 }
             }
             defs.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
+
+            // Song recordings are owned by PianoConfig, not a SoundDef — claim them off the unused list.
+            pianoConfigs.Clear();
+            foreach (var guid in AssetDatabase.FindAssets("t:" + nameof(PianoConfig)))
+            {
+                var cfg = AssetDatabase.LoadAssetAtPath<PianoConfig>(AssetDatabase.GUIDToAssetPath(guid));
+                if (cfg == null) continue;
+                pianoConfigs.Add(cfg);
+                var songs = cfg.autoPlay.songs;
+                if (songs == null) continue;
+                for (int i = 0; i < songs.Count; i++)
+                {
+                    if (songs[i] == null || songs[i].clip == null) continue;
+                    string p = AssetDatabase.GetAssetPath(songs[i].clip);
+                    if (!string.IsNullOrEmpty(p)) usedClipPaths.Add(p);
+                }
+            }
 
             foreach (var guid in AssetDatabase.FindAssets("t:AudioClip", new[] { "Assets" }))
             {

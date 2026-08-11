@@ -29,6 +29,7 @@ namespace SlimeJumping.Platforms.Piano
         private int autoPlayNext;                // index of the next note to fire
         private float autoPlayPrevClipTime;      // to notice the clip looping back
         private float autoPlayFade;              // 0..1 envelope applied on top of settings.volume
+        private float autoPlaySongVolume = 1f;   // pinned like the score: rotation may pick the next song mid-fade
         private float autoPlayStartTime;
 
         private int autoPlayPresses;
@@ -290,11 +291,12 @@ namespace SlimeJumping.Platforms.Piano
             EnsureAutoPlaySource();
 
             autoPlayingScore = autoPlayScore;   // pin it: rotation may refill the cache mid-fade
+            autoPlaySongVolume = song.volume;
             autoPlaySource.clip = song.clip;
             autoPlaySource.loop = a.loop;
             autoPlaySource.time = 0f;
             autoPlayFade = a.fadeInSeconds > 0f ? 0f : 1f;
-            autoPlaySource.volume = a.volume * autoPlayFade;
+            autoPlaySource.volume = a.volume * autoPlaySongVolume * autoPlayFade;
             autoPlaySource.Play();
 
             autoPlayNext = 0;
@@ -327,7 +329,7 @@ namespace SlimeJumping.Platforms.Piano
                 autoPlayFade = Mathf.Min(1f, autoPlayFade
                     + (a.fadeInSeconds > 0f ? Time.deltaTime / a.fadeInSeconds : 1f));
             }
-            autoPlaySource.volume = a.volume * autoPlayFade;
+            autoPlaySource.volume = a.volume * autoPlaySongVolume * autoPlayFade;
             if (!autoPlayHeard) return;   // nothing to clock the keys with yet
 
             // The clip is the clock: reading the playhead, never accumulating deltaTime, is what keeps

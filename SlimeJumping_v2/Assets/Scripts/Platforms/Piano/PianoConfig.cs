@@ -420,6 +420,9 @@ namespace SlimeJumping.Platforms.Piano
         [Tooltip("재생할 녹음. 소리는 전적으로 이 클립에서 나온다(샘플러 아님).")]
         public AudioClip clip;
 
+        [Tooltip("이 곡만의 볼륨. AutoPlay 의 volume 에 곱해진다. 녹음 레벨이 곡마다 달라 크게 튀는 곡을 낮출 때. Tools/Sound Inventory 에서 곡별로 조절.")]
+        [Range(0f, 1f)] public float volume = 1f;
+
         [Tooltip("위 클립을 전사한 노트 이벤트 JSON(TextAsset). 건반은 이 노트대로 눌리고, 조성도 여기서 읽는다.")]
         public TextAsset scoreJson;
 
