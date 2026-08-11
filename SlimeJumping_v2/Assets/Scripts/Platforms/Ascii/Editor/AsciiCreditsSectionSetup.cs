@@ -78,10 +78,20 @@ namespace SlimeJumping.Editor
             button.AddComponent<EndingReturnButton>();
 
             var label = CreateTimeLabel(room.transform, cfg, topY + TimeLabelRise, groundW);
+
+            // 도착 판정 존. Environment(7) 밖 레이어라 슬라임 표면 탐색이 안 집는다.
+            var zoneGo = new GameObject("CaptureZone") { layer = 2 };
+            zoneGo.transform.SetParent(room.transform, false);
+            zoneGo.transform.localPosition = new Vector3(0f, topY * 0.5f, 0f);
+            var zone = zoneGo.AddComponent<BoxCollider2D>();
+            zone.isTrigger = true;
+            zone.size = new Vector2(groundW, topY + TimeLabelRise * 2f);
+
             var display = room.AddComponent<EndingTimeDisplay>();
             var so = new SerializedObject(display);
             so.FindProperty("label").objectReferenceValue = label;
             so.FindProperty("prefix").stringValue = "TIME  ";
+            so.FindProperty("captureZone").objectReferenceValue = zone;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             Finish(scene, room, $"[AsciiCredits] 엔딩 방 생성: 바닥 {groundW:F1}u, 글자 최상단 로컬 y {topY:F1}. " +

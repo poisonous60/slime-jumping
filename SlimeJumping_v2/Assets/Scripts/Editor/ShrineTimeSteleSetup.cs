@@ -25,6 +25,9 @@ namespace SlimeJumping.Editor
         const float TextFontSize = 7.5f;
         const string LabelPrefix = "<size=55%>YOUR TIME</size>\n";
 
+        const int ZoneLayer = 2; // Ignore Raycast — Environment 마스크 밖이면 뭐든 된다.
+        static readonly Vector2 ZoneSize = new Vector2(12f, 8f);
+
         // 판 알베도가 0.56 이라 각인은 그 그늘만큼 어두워야 읽힌다.
         static readonly Color FaceColor = new Color(0.11f, 0.105f, 0.10f);
         static readonly Color OutlineColor = new Color(0.04f, 0.04f, 0.04f);
@@ -70,16 +73,30 @@ namespace SlimeJumping.Editor
             tmp.rectTransform.sizeDelta = new Vector2(SlabScale.x, SlabScale.y);
             tmp.fontSharedMaterial = EnsureEngravedMaterial(tmp.fontSharedMaterial);
 
+            var zone = CreateCaptureZone(root.transform);
+
             var display = root.AddComponent<EndingTimeDisplay>();
             var so = new SerializedObject(display);
             so.FindProperty("label").objectReferenceValue = tmp;
             so.FindProperty("prefix").stringValue = LabelPrefix;
+            so.FindProperty("captureZone").objectReferenceValue = zone;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
             Selection.activeGameObject = root;
             Debug.Log($"[TimeStele] 석판 배치: 중심 {SlabCenter}, 크기 {SlabScale}. " +
                       $"각인 머티리얼 {EngravedMaterialPath} — Bevel 이 볼록해 보이면 _ShaderFlags 를 0/1 로 뒤집어라.", root);
+        }
+
+        /// 도착 판정 존. Environment(7) 밖 레이어라 슬라임 표면 탐색이 안 집는다.
+        static Collider2D CreateCaptureZone(Transform parent)
+        {
+            var go = new GameObject("CaptureZone") { layer = ZoneLayer };
+            go.transform.SetParent(parent, false);
+            var box = go.AddComponent<BoxCollider2D>();
+            box.isTrigger = true;
+            box.size = ZoneSize;
+            return box;
         }
 
         /// 폰트 머티리얼을 복제해 Inner Bevel + 위쪽 광원각을 박은 에셋. 획 윗변이 그늘,

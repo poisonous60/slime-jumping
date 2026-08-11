@@ -5,10 +5,12 @@ namespace SlimeJumping.Background
     /// <summary>Manager-style object. Builds a camera-facing quad on the
     /// BackgroundBlur layer, far behind the background decor, running the starfield
     /// shader, and reveals it by camera height — independent of the skybox
-    /// crossfade. Reveal grows the star *count* (the shader gates each star on its
-    /// own hashed birth threshold) rather than dimming the whole field, is damped
-    /// so the constant up-and-down of play does not make the sky flicker, and snaps
-    /// hard to nothing below fadeStartY so no star ever shows under it. Star look
+    /// crossfade. Reveal is a plain function of the current height, so one altitude
+    /// always shows one sky, and it grows the star *count* (the shader gates each
+    /// star on its own hashed birth threshold) instead of dimming the whole field.
+    /// Below fadeStartY nothing is drawn at all. The quad only has to cover the view;
+    /// the shader samples in screen space, so the FOV that sizes it stays out of
+    /// which stars come out. Star look
     /// knobs live on the material asset; this component only drives placement and
     /// reveal (via MaterialPropertyBlock, so the asset is never mutated). Removing
     /// the object is a full rollback.</summary>
@@ -24,8 +26,6 @@ namespace SlimeJumping.Background
         [SerializeField] private float fadeStartY = 420f;
         [Tooltip("Camera height where every star is out.")]
         [SerializeField] private float fadeEndY = 470f;
-        [Tooltip("Seconds the reveal takes to catch up to camera height. Higher = calmer during repeated climbs and falls.")]
-        [SerializeField] private float revealSmoothTime = 0.8f;
 
         [Header("Placement")]
         [Tooltip("Quad distance in front of the camera. Keep beyond the farthest background decor (~256).")]
@@ -40,10 +40,8 @@ namespace SlimeJumping.Background
         private Transform quad;
         private MaterialPropertyBlock mpb;
         private float reveal;
-        private float revealVel;
 
         private static readonly int Reveal = Shader.PropertyToID("_Reveal");
-        private static readonly int UvScale = Shader.PropertyToID("_UvScale");
 
         private void OnEnable()
         {
@@ -61,11 +59,6 @@ namespace SlimeJumping.Background
                     new Vector3(-0.5f, -0.5f), new Vector3(0.5f, -0.5f),
                     new Vector3(-0.5f, 0.5f), new Vector3(0.5f, 0.5f)
                 },
-                uv = new[]
-                {
-                    new Vector2(0f, 0f), new Vector2(1f, 0f),
-                    new Vector2(0f, 1f), new Vector2(1f, 1f)
-                },
                 triangles = new[] { 0, 2, 1, 1, 2, 3 }
             };
 
@@ -82,17 +75,12 @@ namespace SlimeJumping.Background
             rend.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
             mpb = new MaterialPropertyBlock();
             reveal = 0f;
-            revealVel = 0f;
         }
 
         private void LateUpdate()
         {
-            float target = Mathf.SmoothStep(0f, 1f,
+            reveal = Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(fadeStartY, fadeEndY, cam.transform.position.y));
-            // Below fadeStartY the damped value is discarded, never trailed down.
-            reveal = target <= 0f
-                ? 0f
-                : Mathf.SmoothDamp(reveal, target, ref revealVel, revealSmoothTime);
             if (reveal <= 0.0005f)
             {
                 if (rend.enabled) rend.enabled = false;
@@ -106,7 +94,6 @@ namespace SlimeJumping.Background
 
             rend.enabled = true;
             mpb.SetFloat(Reveal, reveal);
-            mpb.SetFloat(UvScale, w / h);
             rend.SetPropertyBlock(mpb);
         }
 

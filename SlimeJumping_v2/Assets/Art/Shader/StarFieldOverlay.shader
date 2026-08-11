@@ -4,9 +4,11 @@ Shader "SlimeJumping/Star Field Overlay"
     // counter-scrolled over time, saturate+power each, multiplied together,
     // tinted by a vertical HDR color gradient. Rendered additively on a
     // camera-facing quad. Every noise cell hashes to its own birth threshold, so
-    // raising _Reveal lights up more stars instead of brightening the same ones —
-    // _Reveal and _UvScale come per-frame from StarFieldOverlay via
-    // MaterialPropertyBlock, the rest are asset-side look knobs.
+    // raising _Reveal lights up more stars instead of brightening the same ones.
+    // Sampling is in screen space, not the quad's mesh UV: the quad is sized from
+    // the camera FOV, which Cinemachine blends per vcam, so mesh UV made the whole
+    // field re-roll and change count whenever the FOV moved. _Reveal comes per-frame
+    // from StarFieldOverlay via MaterialPropertyBlock, the rest are look knobs.
     Properties
     {
         _StarsScale ("Stars Scale", Float) = 100
@@ -17,7 +19,6 @@ Shader "SlimeJumping/Star Field Overlay"
         _MasterAlpha ("Master Alpha", Range(0, 1)) = 1
         _Reveal ("Reveal", Range(0, 1)) = 1
         _RevealFade ("Reveal Per-Star Fade", Range(0.01, 1)) = 0.15
-        _UvScale ("Uv Aspect Scale", Float) = 1
     }
 
     SubShader
@@ -40,25 +41,24 @@ Shader "SlimeJumping/Star Field Overlay"
 
             float _StarsScale, _BlinkSpeed, _StarsPower;
             float4 _ColorTop, _ColorBottom;
-            float _MasterAlpha, _Reveal, _RevealFade, _UvScale;
+            float _MasterAlpha, _Reveal, _RevealFade;
 
             struct appdata
             {
                 float4 vertex : POSITION;
-                float2 uv : TEXCOORD0;
             };
 
             struct v2f
             {
                 float4 pos : SV_POSITION;
-                float2 uv : TEXCOORD0;
+                float4 screen : TEXCOORD0;
             };
 
             v2f vert(appdata v)
             {
                 v2f o;
                 o.pos = UnityObjectToClipPos(v.vertex);
-                o.uv = v.uv;
+                o.screen = ComputeScreenPos(o.pos);
                 return o;
             }
 
@@ -91,13 +91,14 @@ Shader "SlimeJumping/Star Field Overlay"
 
             fixed4 frag(v2f i) : SV_Target
             {
-                float2 uv = float2(i.uv.x * _UvScale, i.uv.y);
+                float2 s = i.screen.xy / i.screen.w;
+                float2 uv = float2(s.x * (_ScreenParams.x / _ScreenParams.y), s.y);
                 float2 t = _Time.y * _BlinkSpeed;
                 float f1 = pow(saturate(gradient_noise((uv + t) * _StarsScale)), _StarsPower);
                 float f2 = pow(saturate(gradient_noise((uv - t) * _StarsScale)), _StarsPower);
                 float birth = hash21(floor(uv * _StarsScale));
                 float gate = smoothstep(birth, birth + _RevealFade, _Reveal * (1 + _RevealFade));
-                float3 tint = lerp(_ColorBottom.rgb, _ColorTop.rgb, i.uv.y);
+                float3 tint = lerp(_ColorBottom.rgb, _ColorTop.rgb, s.y);
                 return fixed4(f1 * f2 * gate * tint * _MasterAlpha, 1);
             }
             ENDCG
