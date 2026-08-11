@@ -7,7 +7,8 @@ SlimeJumping_AssetVault/
 # Third-party Asset Store packages (move imported packages here)
 # ===========================
 SlimeJumping_v2/Assets/ThirdParty/
-SlimeJumping_v2/Assets/Art/
+SlimeJumping_v2/Assets/Art/*
+!SlimeJumping_v2/Assets/Art/Shader/
 SlimeJumping_v2/Assets/POLYGON city pack/
 SlimeJumping_v2/Assets/Inguz Media Studio/
 SlimeJumping_v2/Assets/Prebs/

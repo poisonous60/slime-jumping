@@ -20,8 +20,8 @@ MonoBehaviour:
   bellSwingPeriod: 4.6
   bellDamping: 1200
   maxBellAngle: 85
-  swingDegrees: 47
-  softSwingDegrees: 12
+  swingDegrees: 60
+  softSwingDegrees: 30
   fullSwingSpeed: 9
   clapperMass: 8
   clapperInertiaSpread: 1.5

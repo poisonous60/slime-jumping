@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!28 &2800000
+Texture2D:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: BellRevealRamp_Gray
+  m_ImageContentsHash:
+    serializedVersion: 2
+    Hash: 00000000000000000000000000000000
+  m_IsAlphaChannelOptional: 0
+  serializedVersion: 4
+  m_Width: 256
+  m_Height: 1
+  m_CompleteImageSize: 1024
+  m_MipsStripped: 0
+  m_TextureFormat: 4
+  m_MipCount: 1
+  m_IsReadable: 1
+  m_IsPreProcessed: 0
+  m_IgnoreMipmapLimit: 1
+  m_MipmapLimitGroupName: 
+  m_StreamingMipmaps: 0
+  m_StreamingMipmapsPriority: 0
+  m_VTOnly: 0
+  m_AlphaIsTransparency: 0
+  m_ImageCount: 1
+  m_TextureDimension: 2
+  m_TextureSettings:
+    serializedVersion: 2
+    m_FilterMode: 1
+    m_Aniso: 1
+    m_MipBias: 0
+    m_WrapU: 1
+    m_WrapV: 1
+    m_WrapW: 1
+  m_LightmapFormat: 0
+  m_ColorSpace: 0
+  m_PlatformBlob: 
+  image data: 1024
+  _typelessdata: 000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff010101ff030303ff050505ff070707ff090909ff0b0b0bff0d0d0dff0f0f0fff111111ff131313ff151515ff171717ff191919ff1b1b1bff1d1d1dff1f1f1fff212121ff232323ff252525ff272727ff292929ff2b2b2bff2d2d2dff2f2f2fff313131ff333333ff353535ff373737ff393939ff3b3b3bff3d3d3dff3f3f3fff414141ff434343ff454545ff474747ff494949ff4b4b4bff4d4d4dff4f4f4fff515151ff535353ff555555ff575757ff595959ff5b5b5bff5d5d5dff5f5f5fff616161ff636363ff656565ff676767ff696969ff6b6b6bff6d6d6dff6f6f6fff717171ff737373ff757575ff777777ff797979ff7b7b7bff7d7d7dff7f7f7fff818181ff838383ff858585ff878787ff898989ff8b8b8bff8d8d8dff8f8f8fff919191ff939393ff959595ff979797ff999999ff9b9b9bff9d9d9dff9f9f9fffa1a1a1ffa3a3a3ffa5a5a5ffa7a7a7ffa9a9a9ffabababffadadadffafafafffb1b1b1ffb3b3b3ffb5b5b5ffb7b7b7ffb9b9b9ffbbbbbbffbdbdbdffbfbfbfffc1c1c1ffc3c3c3ffc5c5c5ffc7c7c7ffc9c9c9ffcbcbcbffcdcdcdffcfcfcfffd1d1d1ffd3d3d3ffd5d5d5ffd7d7d7ffd9d9d9ffdbdbdbffddddddffdfdfdfffe1e1e1ffe3e3e3ffe5e5e5ffe7e7e7ffe9e9e9ffebebebffedededffefefeffff1f1f1fff3f3f3fff5f5f5fff7f7f7fff9f9f9fffbfbfbfffdfdfdffffffffff
+  m_StreamData:
+    serializedVersion: 2
+    offset: 0
+    size: 0
+    path: 
