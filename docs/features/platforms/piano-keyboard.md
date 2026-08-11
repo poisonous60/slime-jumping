@@ -122,6 +122,7 @@ sensor(`BoxCollider2D`)는 정적 자식 GO, dip 애니는 건반 mesh transform
 - **클립의 재생 헤드가 유일한 클럭**: `TickAutoPlay`가 매 프레임 `AudioSource.time`을 읽어 그 시점까지의 노트를 소비한다. deltaTime 누적도, 자체 타이머도 없다 → 프레임 히칭·루프·일시정지 어느 경우에도 건반과 소리가 어긋날 수 없다. (폐기된 자동 반주 1차 실패가 정확히 "두 리듬이 각자 클럭을 가져서" 발생했음)
 - **건반 시각은 harmonize와 완전히 같은 경로**: `ResolveKeyVisual(midi)` → `PianoKeyVisual.Press`. 시각 튜닝 파라미터도 `harmonize.visual*`를 그대로 재사용한다(같은 악기 = 한 곳에서만 조절). `autoPlay.visualDepthScale`로 깊이 배수만 따로 준다.
 - 눌림 유지 시간 = **전사된 실제 음 길이**(`ScoreNote.dur`)를 `visualHoldSeconds`~`visualMaxHoldSeconds`로 clamp.
+- **곡 뽑기 = 가방식 셔플 (2026-08-12)**: 켜진 곡 전부를 가방에 넣고 하나씩 꺼낸다 — **다 나오기 전엔 재등장 없음**. 항상 무작위이며 토글이 없다(`autoPlay.shuffle` 및 리스트 순서 재생 경로 삭제). 새 가방의 첫 장이 직전 곡이면 한 칸 밀어 연속 재생만 피한다. 곡을 런타임에 끄면 그 곡만 가방에서 빠진다. 이전(직전 곡만 제외한 매번 추첨)은 41곡인데도 10곡 안에 중복이 나올 확률이 67%, 전곡을 다 듣는 데 기대 176회여서 "나오는 곡만 나온다"로 체감됐다. 난수는 `UnityEngine.Random`(전역 상태 + 시작 시드가 매 실행 새롭다는 보장 없음) 대신 `System.Random` 인스턴스를 `Guid.NewGuid().GetHashCode()`로 시드해 쓴다.
 - **곡별 볼륨 (2026-08-11)**: 녹음 레벨이 곡마다 달라 `autoPlay.volume` 하나로는 튀는 곡을 못 잡는다. `PianoSong.volume`(0..1)을 곱해 쓰고, 조절은 `Tools/Sound Inventory` 의 피아노 폴드아웃에서(▶ 로 그 볼륨 그대로 미리듣기). 재생 볼륨은 페이드 중 로테이션이 다음 곡을 뽑아도 안 바뀌게 `autoPlayingScore` 와 같은 이유로 `StartAutoPlay` 에서 고정한다.
 
 ### 전사 파이프라인 (오프라인, 1회성)

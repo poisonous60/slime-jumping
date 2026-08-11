@@ -75,7 +75,7 @@ namespace SlimeJumping.Platforms.Bell
                  "0 = weightless rider.")]
         [Min(0f)] public float riderWeightScale = 1f;
 
-        [Header("Bounce — always straight out of the flank; only the speed comes from the slime")]
+        [Header("Bounce — out of the flank, or down the mouth from inside; the slime decides only speed")]
         [Tooltip("Fraction of its own arrival speed the slime leaves at. 1 = as fast as it arrived, " +
                  "0.5 = half. The bell adds nothing of its own, not even its swing, so how far the " +
                  "slime goes is how hard it came in — hit it hard and you are thrown far, drift into " +
@@ -89,6 +89,10 @@ namespace SlimeJumping.Platforms.Bell
                  "it the slime bounces and re-sticks in the same breath, which reads as never having " +
                  "bounced. Physics stays on, so it still rebounds off the bell.")]
         [Min(0f)] public float reattachBlockSeconds = 0.2f;
+        [Tooltip("Seconds a slime thrown out of the bell's mouth passes through the bell for. It leaves " +
+                 "down the axis, so this only has to outlast the rim on the way past — too long and it " +
+                 "can fall back up through the skirt unopposed.")]
+        [Min(0f)] public float mouthExitTime = 0.25f;
 
         [Header("Sound — played on contact, not when the clapper lands")]
         [Tooltip("Flat, not scaled by arrival speed — a struck bronze bell is loud however it was struck.")]

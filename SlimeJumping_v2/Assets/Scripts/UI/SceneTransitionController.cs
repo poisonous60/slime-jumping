@@ -63,6 +63,9 @@ namespace SlimeJumping.UI
         {
             if (_active != null) return;
 
+            // 옛 씬이 아직 살아 있는 지금이 슬라임 위치를 읽을 수 있는 마지막 시점이다.
+            LoadSaveManager.SaveNow();
+
             var prefab = Resources.Load<SceneTransitionController>("SceneTransition");
             if (prefab == null)
             {

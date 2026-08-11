@@ -23,6 +23,10 @@ namespace SlimeJumping.Platforms.Piano
         private int autoPlaySongIndex = -1;      // -1 = nothing picked yet
         private bool autoPlayAway = true;        // the slime is not at the piano, so the next touch is an arrival
         private readonly System.Collections.Generic.List<int> autoPlayPickable = new System.Collections.Generic.List<int>();
+        private readonly System.Collections.Generic.List<int> autoPlayBag = new System.Collections.Generic.List<int>();
+
+        // Own generator: UnityEngine.Random is global state with no reliably fresh per-run seed.
+        private System.Random autoPlayRng;
 
         private bool autoPlayActive, autoPlayStopping, autoPlayContactPrev;
         private bool autoPlayHeard;              // the source has actually been playing at least one frame
@@ -137,28 +141,16 @@ namespace SlimeJumping.Platforms.Piano
             }
             if (autoPlayPickable.Count == 0) { autoPlaySongIndex = -1; return; }
 
-            int n = autoPlayPickable.Count;
-            if (!a.shuffle)
-            {
-                // list order, wrapping past the disabled ones
-                int next = autoPlayPickable[0];
-                for (int i = 0; i < n; i++)
-                    if (autoPlayPickable[i] > autoPlaySongIndex) { next = autoPlayPickable[i]; break; }
-                autoPlaySongIndex = next;
-            }
-            else if (n == 1)
-            {
-                autoPlaySongIndex = autoPlayPickable[0];
-            }
-            else
-            {
-                // Never repeat while anything else is available — an immediate repeat reads as a
-                // broken rotation. Re-roll over the other n-1 keeps them equally likely.
-                int pick = Random.Range(0, n);
-                if (autoPlayPickable[pick] == autoPlaySongIndex)
-                    pick = (pick + 1 + Random.Range(0, n - 1)) % n;
-                autoPlaySongIndex = autoPlayPickable[pick];
-            }
+            // A bag, not a dice roll: memoryless picking repeats songs long before the list is spent.
+            if (autoPlayRng == null) autoPlayRng = new System.Random(System.Guid.NewGuid().GetHashCode());
+            autoPlayBag.RemoveAll(i => !autoPlayPickable.Contains(i));
+            if (autoPlayBag.Count == 0) autoPlayBag.AddRange(autoPlayPickable);
+
+            int pick = autoPlayRng.Next(autoPlayBag.Count);
+            if (autoPlayBag.Count > 1 && autoPlayBag[pick] == autoPlaySongIndex)
+                pick = (pick + 1) % autoPlayBag.Count;   // only a fresh bag can repeat the last song
+            autoPlaySongIndex = autoPlayBag[pick];
+            autoPlayBag.RemoveAt(pick);
 
             var song = list[autoPlaySongIndex];
             if (song == null) return;

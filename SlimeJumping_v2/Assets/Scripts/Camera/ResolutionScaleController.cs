@@ -3,14 +3,28 @@ using Unity.Cinemachine;
 
 namespace SlimeJumping.Camera
 {
-    /// <summary>Holds pixels-per-world-unit constant across resolutions:
-    /// tan(newFov/2) = tan(referenceFov/2) * (Screen.height / referenceHeight).</summary>
+    /// <summary>Keeps the framed world area constant: the rect defined by referenceFov at
+    /// targetAspect stays fully visible at any resolution, expanding outward on other aspects.</summary>
     [DefaultExecutionOrder(-50)]
     public class ResolutionScaleController : MonoBehaviour
     {
-        [SerializeField] private float referenceHeight = 1080f;
-        [Tooltip("FOV designed for referenceHeight. Used as the 1:1 anchor point.")]
+        [Tooltip("Vertical FOV designed for targetAspect. Resolution-independent.")]
         [SerializeField] private float referenceFov = 40f;
+
+        [Tooltip("Aspect the framing was authored at. 16:9 = 1.7778.")]
+        [SerializeField] private float targetAspect = 16f / 9f;
+
+        public float ReferenceFov => referenceFov;
+        public float TargetAspect => targetAspect;
+
+        /// <summary>Vertical FOV that keeps the authored rect fully in frame at the given screen aspect.</summary>
+        public static float FovForAspect(float referenceFov, float targetAspect, float screenAspect)
+        {
+            float refTanHalf = Mathf.Tan(referenceFov * 0.5f * Mathf.Deg2Rad);
+            // Narrower than target: widen vertically to keep the authored width in frame.
+            float widthFitFov = 2f * Mathf.Atan(refTanHalf * targetAspect / Mathf.Max(0.01f, screenAspect)) * Mathf.Rad2Deg;
+            return Mathf.Max(referenceFov, widthFitFov);
+        }
 
         [Tooltip("Cinemachine cameras whose Lens.FieldOfView drives a live camera via Brain.")]
         [SerializeField] private CinemachineCamera[] vcams;
@@ -33,9 +47,8 @@ namespace SlimeJumping.Camera
             lastW = Screen.width;
             lastH = Screen.height;
 
-            float h = Mathf.Max(1, Screen.height);
-            float refTanHalf = Mathf.Tan(referenceFov * 0.5f * Mathf.Deg2Rad);
-            float newFov = 2f * Mathf.Atan(refTanHalf * (h / referenceHeight)) * Mathf.Rad2Deg;
+            float aspect = Screen.width / Mathf.Max(1f, Screen.height);
+            float newFov = FovForAspect(referenceFov, targetAspect, aspect);
 
             if (vcams != null)
             {

@@ -149,9 +149,9 @@ namespace SlimeJumping.EditorTools.UI
             var closeBtn = UISetupCommon.CreateButton(actions.transform, "CloseButton", "Close");
             UISetupCommon.TagSlot(closeBtn.gameObject, UISlotType.CloseButton);
             UISetupCommon.AddLayoutElement(closeBtn.gameObject, preferredWidth: 300f);
-            var quitBtn = UISetupCommon.CreateButton(actions.transform, "QuitButton", "Quit");
-            UISetupCommon.TagSlot(quitBtn.gameObject, UISlotType.QuitButton);
-            UISetupCommon.AddLayoutElement(quitBtn.gameObject, preferredWidth: 300f);
+            var menuBtn = UISetupCommon.CreateButton(actions.transform, "MenuButton", "Return to Menu");
+            UISetupCommon.TagSlot(menuBtn.gameObject, UISlotType.ReturnButton);
+            UISetupCommon.AddLayoutElement(menuBtn.gameObject, preferredWidth: 300f);
 
             // Wire OptionsPanel's [SerializeField] fields
             var so = new SerializedObject(panel);
@@ -211,7 +211,7 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("debugTabLabel").objectReferenceValue = debugTabText;
 
             so.FindProperty("closeButton").objectReferenceValue = closeBtn;
-            so.FindProperty("quitButton").objectReferenceValue = quitBtn;
+            so.FindProperty("menuButton").objectReferenceValue = menuBtn;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             return UISetupCommon.SavePanelPrefab(root, "OptionsPanel");

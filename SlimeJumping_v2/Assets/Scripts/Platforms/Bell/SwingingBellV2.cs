@@ -22,6 +22,9 @@ namespace SlimeJumping.Platforms.Bell
     // always takes at least its soft swing. Speed decides only whether it SOUNDS, plus where in a
     // narrow soft-to-full window the swing lands — a fast hit must not read as a different bell.
     //
+    // A contact inside the skirt is the one place the flank is the wrong way out: there the throw goes
+    // straight down the mouth instead, since that is the only direction that leaves the bell at all.
+    //
     // Holding the charge key is the ONLY thing that may keep a slime on a bell — that slime leaves
     // under its own launch instead of being thrown, since cancelling a charge is forbidden outright.
     // Anything else is pushed off every tick it is present, and presence counts the carrier's rider
@@ -71,6 +74,9 @@ namespace SlimeJumping.Platforms.Bell
 
         readonly ContactPoint2D[] contactScratch = new ContactPoint2D[8];
         readonly List<Collider2D> ownColliders = new List<Collider2D>();
+        readonly RaycastHit2D[] mouthScratch = new RaycastHit2D[8];
+        ContactFilter2D mouthFilter;
+        bool insideMouth;
         SlimeController trackedSlime;
         SlimeInputReader input;
         Vector2 prevSlimeVel;
@@ -94,6 +100,12 @@ namespace SlimeJumping.Platforms.Bell
             restPos = rb.position;
             restRot = rb.rotation;
             rb.GetAttachedColliders(ownColliders);
+            // Off the colliders, not this object: they can sit on children with their own layers.
+            int mouthMask = 0;
+            for (int i = 0; i < ownColliders.Count; i++)
+                if (ownColliders[i] != null) mouthMask |= 1 << ownColliders[i].gameObject.layer;
+            mouthFilter = new ContactFilter2D { useTriggers = false };
+            mouthFilter.SetLayerMask(mouthMask);
 
             if (bellVisual == null) bellVisual = transform.childCount > 0 ? transform.GetChild(0) : transform;
             if (clapperVisual == null && bellVisual != transform) clapperVisual = bellVisual.Find("bell_clapper");
@@ -362,6 +374,7 @@ namespace SlimeJumping.Platforms.Bell
             {
                 // The flank, not the collider normal, which under the bell's skirt faces down.
                 Vector2 outward = OutwardAt(point - pivotWorld);
+                insideMouth = InsideMouth(slime.Position);
                 if (!occupied && retriggerTimer <= 0f) Ring(slime, outward);
                 else PushOff(slime, outward);   // a bell is never somewhere the slime can rest
             }
@@ -403,10 +416,26 @@ namespace SlimeJumping.Platforms.Bell
         // Away from the bell's axis; a hit dead on the axis has no flank, so it takes the right one.
         Vector2 OutwardAt(Vector2 r)
         {
-            Vector2 down = new Vector2(Mathf.Sin(phi1), -Mathf.Cos(phi1));
+            Vector2 down = MouthOut;
             Vector2 outward = r - down * Vector2.Dot(r, down);
             return outward.sqrMagnitude < 1e-6f ? new Vector2(Mathf.Cos(phi1), Mathf.Sin(phi1))
                                                 : outward.normalized;
+        }
+
+        /// <summary>Down the bell's own axis — the direction that leaves the skirt.</summary>
+        Vector2 MouthOut => new Vector2(Mathf.Sin(phi1), -Mathf.Cos(phi1));
+
+        // Bell above it along the axis: the outer profile only narrows going up, so a flank hit has none.
+        bool InsideMouth(Vector2 p)
+        {
+            Vector2 toPivot = pivotWorld - p;
+            float dist = toPivot.magnitude;
+            if (dist < 1e-4f) return true;
+
+            int n = Physics2D.Raycast(p, -MouthOut, mouthFilter, mouthScratch, dist);
+            for (int i = 0; i < n; i++)
+                if (ownColliders.Contains(mouthScratch[i].collider)) return true;
+            return false;
         }
 
         // Solves 1/2*I*w^2 = (M*L + m*lc)*g*(1 - cos(theta)) for the swing angle asked for.
@@ -462,8 +491,19 @@ namespace SlimeJumping.Platforms.Bell
             // Floored, never gated: a bell is not something the slime can come to rest on.
             float speed = Mathf.Max(arrivalSpeed * cfg.bounceRestitution, cfg.minSeparationSpeed);
 
-            BlockReattach(slime);
-            slime.ForceAirborneWithVelocity(outward * speed);
+            Vector2 dir = insideMouth ? MouthOut : outward;
+            if (insideMouth) OpenMouth(slime); else BlockReattach(slime);
+            slime.ForceAirborneWithVelocity(dir * speed);
+        }
+
+        // Passthrough, not the probe guard: the rim clips the way out, and a sealed mouth blocks it.
+        void OpenMouth(SlimeController slime)
+        {
+            for (int i = 0; i < ownColliders.Count; i++)
+            {
+                if (ownColliders[i] != null)
+                    slime.RegisterIgnoredCollider(ownColliders[i], cfg.mouthExitTime);
+            }
         }
 
         // The held key, not the Charging state, because the state only turns on a tick later.

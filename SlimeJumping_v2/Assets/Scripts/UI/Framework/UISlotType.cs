@@ -27,6 +27,7 @@ namespace SlimeJumping.UI.Framework
         OptionsButton = 34,
         PrevButton = 35,
         NextButton = 36,
+        LoadButton = 37,
 
         // Controls
         Slider = 50,

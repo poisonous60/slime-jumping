@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
 using SlimeJumping.Rendering;
@@ -67,7 +68,7 @@ namespace SlimeJumping.UI.Panels
 
         [Header("Actions")]
         [SerializeField] private Button closeButton;
-        [SerializeField] private Button quitButton;
+        [SerializeField] private Button menuButton;
 
         private int frameLimitIndex;
         private int windowModeIndex;
@@ -149,7 +150,12 @@ namespace SlimeJumping.UI.Panels
             SelectTab(0);
 
             if (closeButton != null) closeButton.onClick.AddListener(HandleClose);
-            if (quitButton != null) quitButton.onClick.AddListener(GameFlow.QuitGame);
+            if (menuButton != null)
+            {
+                // 메인 메뉴에서 연 옵션창엔 무의미한 같은 씬 재로드다. 앱 종료는 MainMenuPanel 의 Quit 담당.
+                menuButton.gameObject.SetActive(SceneManager.GetActiveScene().name != GameFlow.MainMenuScene);
+                menuButton.onClick.AddListener(GameFlow.LoadMainMenu);
+            }
         }
 
         private void HandleClose()
@@ -205,7 +211,7 @@ namespace SlimeJumping.UI.Panels
             if (displayTabButton != null)  displayTabButton.onClick.RemoveAllListeners();
             if (debugTabButton != null)    debugTabButton.onClick.RemoveAllListeners();
             if (closeButton != null) closeButton.onClick.RemoveAllListeners();
-            if (quitButton != null) quitButton.onClick.RemoveAllListeners();
+            if (menuButton != null) menuButton.onClick.RemoveAllListeners();
             base.OnDestroy();
         }
 

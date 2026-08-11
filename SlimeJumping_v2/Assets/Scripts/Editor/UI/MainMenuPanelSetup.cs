@@ -49,8 +49,12 @@ namespace SlimeJumping.EditorTools.UI
             var spacer = UISetupCommon.CreateChild(content.transform, "Spacer", typeof(RectTransform));
             UISetupCommon.AddLayoutElement(spacer, minHeight: 20f, preferredHeight: 24f);
 
-            var start = UISetupCommon.CreateButton(content.transform, "StartButton", "Start");
+            var start = UISetupCommon.CreateButton(content.transform, "StartButton", "Start New Game");
             UISetupCommon.TagSlot(start.gameObject, UISlotType.StartButton);
+
+            // 세이브가 있을 때만 MainMenuPanel 이 런타임에 켠다.
+            var load = UISetupCommon.CreateButton(content.transform, "LoadButton", "Load Game");
+            UISetupCommon.TagSlot(load.gameObject, UISlotType.LoadButton);
 
             var options = UISetupCommon.CreateButton(content.transform, "OptionsButton", "Options");
             UISetupCommon.TagSlot(options.gameObject, UISlotType.OptionsButton);

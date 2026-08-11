@@ -142,13 +142,16 @@ ESC로 열고 닫되 `Time.timeScale`은 건드리지 않아 게임 진행 유�
 
 > **오디오 시스템 전체 아키텍처/규칙**: [audio-system.md](audio-system.md) 참고. SoundService, 믹서 계층, BGM, validator, 새 사운드 추가 가이드.
 
-## 해상도 독립 슬라임 크기 (2026-04-23)
+## 해상도 독립 프레이밍 (2026-04-23 / 2026-08-11 개편)
 `ResolutionScaleController.cs`:
 ```
-newFov = 2 * atan(tan(refFov/2) * Screen.height / refHeight)
+newFov = max(refFov, 2 * atan(tan(refFov/2) * targetAspect / screenAspect))
 ```
 - `Start` + 매 프레임 `Screen` 변화 감지 시 적용.
 - `CinemachineCamera.Lens.FieldOfView` (SlimeVCam, Brain이 Main Camera에 전파) + 비Cinemachine 카메라들(BackgroundCamera 스택)에 직접 적용.
-- Ref = 1080p / FOV 40°.
+- 씬 값: `referenceFov` 42° / `targetAspect` 16:9. 이 둘이 정의하는 사각형이 어떤 해상도·비율에서도 전부 보임 (좁은 화면에선 세로로 확장 = overscan).
+- 2026-08-11 이전은 `Screen.height / referenceHeight` 스케일 = 픽셀당 월드 단위 고정. 해상도 높을수록 보이는 범위가 넓어져 폐기.
+- 미관리 카메라: `BellRevealVCam`, `3d Camera (1)` 는 FOV 고정 (세로 화각만 유지).
+- `FramingPreviewGizmo.cs` (Slime 에 부착, `#if UNITY_EDITOR`): 카메라 거리 12 평면에 비율별 시야 사각형 + 현재 Game 뷰 비율 + authored rect(노랑) 를 Scene 뷰에 그림. 공식은 `ResolutionScaleController.FovForAspect()` static 공유. 데드존 20% 만큼 실제 프레임이 밀릴 수 있음.
 - 창모드 토글로 `Screen.height` 변하면 자동 재적용.
 - **F5 projection toggle 주의**: `CameraProjectionToggle.cs`는 `perspectiveFov`를 상수 40 하드코딩 → F5 전환 종료 시 스케일 리셋. 데모 한정 디버그 전용이므로 무시.

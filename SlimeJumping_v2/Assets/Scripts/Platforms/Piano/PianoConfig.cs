@@ -445,9 +445,6 @@ namespace SlimeJumping.Platforms.Piano
         [Tooltip("로테이션에 들어가는 곡들. 슬라임이 피아노에 올라탈 때마다 다음 곡으로 넘어가면서 조성·장식이 그 곡에 맞춰진다. 각 항목의 체크박스로 개별 on/off.")]
         public System.Collections.Generic.List<PianoSong> songs = new System.Collections.Generic.List<PianoSong>();
 
-        [Tooltip("켜면 무작위(직전 곡은 제외), 끄면 리스트 순서대로. 꺼진 곡은 어느 쪽이든 건너뛴다.")]
-        public bool shuffle = true;
-
         [Header("Trigger")]
         [Tooltip("자동연주가 걸리려면 그 전에 건반을 이만큼 밟았어야 한다. 지나가기만 한 슬라임에겐 안 걸린다.")]
         [Min(1)] public int minPresses = 3;

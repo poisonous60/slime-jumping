@@ -110,7 +110,8 @@
 | `GameOptions.cs` | 데모용 옵션 영속화 |
 | `OptionsPanelController.cs` | 옵션 패널 ESC 토글 |
 | `UIClickSoundInstaller.cs` | 버튼 클릭 SFX 후킹 |
-| `ResolutionScaleController.cs` | FOV 해상도 비례 스케일 |
+| `ResolutionScaleController.cs` | 프레이밍 고정용 FOV 아스펙트 보정 |
+| `FramingPreviewGizmo.cs` | 비율별 시야 사각형 Scene 뷰 기즈모 (에디터 전용) |
 | `BackgroundCameraOption.cs` | BG 카메라 + TIS 온/오프 + Main 카메라 Overlay↔Base 전환 |
 
 ## 에디터
