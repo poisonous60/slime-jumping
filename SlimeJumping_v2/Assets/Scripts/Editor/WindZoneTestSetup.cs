@@ -142,21 +142,11 @@ namespace SlimeJumping.Editor
             if (!AssetDatabase.IsValidFolder("Assets/Materials"))
                 AssetDatabase.CreateFolder("Assets", "Materials");
 
-            var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            // Stencil-gated stripe shader: alpha blending alone stacks where stripes overlap.
+            var shader = Shader.Find("SlimeJumping/WindStripe");
             mat = new Material(shader) { name = "WindParticle" };
-
-            // Transparent + Additive (SrcAlpha, One)
-            mat.SetFloat("_Surface", 1f);
-            mat.SetFloat("_Blend", 2f);
-            mat.SetFloat("_AlphaClip", 0f);
-            mat.SetFloat("_ZWrite", 0f);
-            mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);
-            mat.renderQueue = 3000;
-            mat.SetOverrideTag("RenderType", "Transparent");
-            mat.DisableKeyword("_SURFACE_TYPE_OPAQUE");
-            mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             mat.SetColor("_BaseColor", Color.white);
+            mat.SetFloat("_StencilBit", 16f);
 
             AssetDatabase.CreateAsset(mat, WindParticleMaterialPath);
             AssetDatabase.SaveAssets();

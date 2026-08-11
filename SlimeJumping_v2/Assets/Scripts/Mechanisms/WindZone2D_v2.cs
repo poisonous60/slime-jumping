@@ -31,6 +31,9 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Stripe particle visual speed (units/s). Independent of physics acceleration.")]
         [SerializeField] private float particleSpeed = 8f;
 
+        [Tooltip("Optional BoxCollider2D marking where stripes are drawn — resize it with the collider handles. None = whole zone. Physics push and the snow ForceField always use the zone collider. Kept disabled so it never touches physics.")]
+        [SerializeField] private BoxCollider2D stripeBounds;
+
         [Header("Visual — Snow Force Field")]
         [Tooltip("Box ParticleSystemForceField that pushes snow (and any other ExternalForces-enabled PS on the WindForceField layer). Auto-synced from BoxCollider2D bounds + windAcceleration. Box-only.")]
         [SerializeField] private ParticleSystemForceField snowForceField;
@@ -56,6 +59,7 @@ namespace SlimeJumping.Mechanisms
 
         private SlimeController trackedSlime;
         private int overlappingColliderCount;
+        private Vector4 lastStripeRect;
 
         void Reset()
         {
@@ -64,6 +68,8 @@ namespace SlimeJumping.Mechanisms
 
         void OnValidate()
         {
+            if (stripeBounds != null && stripeBounds.enabled)
+                stripeBounds.enabled = false;
             SyncParticles();
             SyncForceField();
         }
@@ -79,8 +85,10 @@ namespace SlimeJumping.Mechanisms
             Vector2 windDir = windAcceleration / mag;
             Vector2 perpDir = new Vector2(-windDir.y, windDir.x);
 
-            if (!TryGetWindAlignedBounds(col, windDir, perpDir,
-                    out Vector2 localCenter, out float alongWind, out float acrossWind))
+            if (!TryGetStripeBounds(windDir, perpDir,
+                    out Vector2 localCenter, out float alongWind, out float acrossWind)
+                && !TryGetWindAlignedBounds(col, windDir, perpDir,
+                    out localCenter, out alongWind, out acrossWind))
                 return;
 
             float angle = Mathf.Atan2(windDir.y, windDir.x) * Mathf.Rad2Deg;
@@ -111,6 +119,51 @@ namespace SlimeJumping.Mechanisms
             var emis = windParticles.emission;
             emis.rateOverTime = acrossWind * 12f;
         }
+
+        // Stripe-only rect, mapped into zone local space. Box rotation is ignored.
+        bool TryGetStripeBounds(Vector2 windDir, Vector2 perpDir,
+            out Vector2 localCenter, out float alongWind, out float acrossWind)
+        {
+            localCenter = default;
+            alongWind = 0f;
+            acrossWind = 0f;
+            if (stripeBounds == null) return false;
+
+            Vector3 bs = stripeBounds.transform.lossyScale;
+            Vector3 zs = transform.lossyScale;
+            Vector2 s = new Vector2(
+                stripeBounds.size.x * bs.x / Mathf.Max(Mathf.Abs(zs.x), 0.0001f),
+                stripeBounds.size.y * bs.y / Mathf.Max(Mathf.Abs(zs.y), 0.0001f));
+
+            localCenter = transform.InverseTransformPoint(
+                stripeBounds.transform.TransformPoint(stripeBounds.offset));
+            alongWind = Mathf.Abs(s.x * windDir.x) + Mathf.Abs(s.y * windDir.y);
+            acrossWind = Mathf.Abs(s.x * perpDir.x) + Mathf.Abs(s.y * perpDir.y);
+            return alongWind > 0.01f && acrossWind > 0.01f;
+        }
+
+#if UNITY_EDITOR
+        [ContextMenu("Create Stripe Bounds")]
+        void CreateStripeBounds()
+        {
+            if (stripeBounds != null) return;
+            var col = GetComponent<Collider2D>();
+            if (col == null) return;
+
+            var go = new GameObject("StripeBounds");
+            UnityEditor.Undo.RegisterCreatedObjectUndo(go, "Create Stripe Bounds");
+            go.transform.SetParent(transform, false);
+
+            var box = go.AddComponent<BoxCollider2D>();
+            Vector3 s = transform.InverseTransformVector(col.bounds.size);
+            box.size = new Vector2(Mathf.Abs(s.x), Mathf.Abs(s.y));
+            box.offset = transform.InverseTransformPoint(col.bounds.center);
+            box.enabled = false;
+
+            stripeBounds = box;
+            SyncParticles();
+        }
+#endif
 
         void SyncForceField()
         {
@@ -296,6 +349,18 @@ namespace SlimeJumping.Mechanisms
 
         void OnDrawGizmos()
         {
+            // Dragging the box fires no OnValidate and the zone isn't the selected object.
+            if (!Application.isPlaying && stripeBounds != null)
+            {
+                Vector4 rect = new Vector4(stripeBounds.offset.x, stripeBounds.offset.y,
+                    stripeBounds.size.x, stripeBounds.size.y);
+                if (rect != lastStripeRect)
+                {
+                    lastStripeRect = rect;
+                    SyncParticles();
+                }
+            }
+
             if (windAcceleration.sqrMagnitude < 0.0001f) return;
 
             Vector3 center = transform.position;
@@ -352,6 +417,17 @@ namespace SlimeJumping.Mechanisms
                         Gizmos.DrawLine(a, b);
                     }
                 }
+            }
+
+            if (stripeBounds != null)
+            {
+                Matrix4x4 oldM = Gizmos.matrix;
+                Gizmos.matrix = Matrix4x4.TRS(
+                    stripeBounds.transform.TransformPoint(stripeBounds.offset),
+                    stripeBounds.transform.rotation, stripeBounds.transform.lossyScale);
+                Gizmos.color = new Color(1f, 0.85f, 0.3f, 0.8f);
+                Gizmos.DrawWireCube(Vector3.zero, stripeBounds.size);
+                Gizmos.matrix = oldM;
             }
 
             if (windAcceleration.sqrMagnitude < 0.0001f) return;

@@ -167,7 +167,23 @@ namespace SlimeJumping.EditorTools
                 EditorUtility.SetDirty(def);
             }
 
-            GUILayout.Label(ClipSummary(def), EditorStyles.miniLabel, GUILayout.MinWidth(140));
+            // Editable so auditioning a replacement is one drop here, not a trip to the asset.
+            var first = def.clips != null && def.clips.Length > 0 ? def.clips[0] : null;
+            EditorGUI.BeginChangeCheck();
+            var picked = (AudioClip)EditorGUILayout.ObjectField(first, typeof(AudioClip), false,
+                                                               GUILayout.MinWidth(140));
+            if (EditorGUI.EndChangeCheck() && picked != first)
+            {
+                Undo.RecordObject(def, "Sound Clip");
+                if (def.clips == null || def.clips.Length == 0) def.clips = new AudioClip[1];
+                def.clips[0] = picked;
+                EditorUtility.SetDirty(def);
+                scanned = false;
+            }
+            if (def.clips != null && def.clips.Length > 1)
+                GUILayout.Label($"외 {def.clips.Length - 1}개 · {def.clipOrder}",
+                                EditorStyles.miniLabel, GUILayout.Width(92));
+
             if (!def.HasClip) GUILayout.Label("미배정 ⚠", EditorStyles.miniLabel, GUILayout.Width(56));
 
             if (GUILayout.Button("Select", EditorStyles.miniButton, GUILayout.Width(50)))
@@ -176,13 +192,6 @@ namespace SlimeJumping.EditorTools
                 EditorGUIUtility.PingObject(def);
             }
             EditorGUILayout.EndHorizontal();
-        }
-
-        static string ClipSummary(SoundDef def)
-        {
-            if (!def.HasClip) return "(클립 없음)";
-            if (def.clips.Length == 1) return def.clips[0] != null ? def.clips[0].name : "(null)";
-            return $"{def.clips[0].name} 외 {def.clips.Length - 1}개 · {def.clipOrder}";
         }
 
         /// The auto-play rotation is 40+ recordings with levels that differ per track, so each song

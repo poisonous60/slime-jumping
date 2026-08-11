@@ -17,21 +17,6 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
-  crawlSpeedMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  crawlAccelerationMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
-  crawlDecelerationMultiplier:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
   crawlOverspeedDecelerationMultiplier:
     baseValue: 1
     fullValue: 1
@@ -52,11 +37,38 @@ MonoBehaviour:
     fullValue: 0
     angleMin: 0
     angleMax: 90
+  slideLinearDrag:
+    baseValue: 0
+    fullValue: 0
+    angleMin: 0
+    angleMax: 90
+  slideDownhillGain:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  slideUphillBrake:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
   landingVelocityRetention:
     baseValue: 0
     fullValue: 0
     angleMin: 0
     angleMax: 90
+  landingExcessGain:
+    baseValue: 1
+    fullValue: 1
+    angleMin: 0
+    angleMax: 90
+  enableLandingTangentSpeedRemap: 0
+  landingTangentSpeedRemapCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   stickDurationMultiplier:
     baseValue: 1
     fullValue: 1
@@ -67,19 +79,21 @@ MonoBehaviour:
     fullValue: 1
     angleMin: 0
     angleMax: 90
-  groundDashScale:
-    baseValue: 1
-    fullValue: 1
-    angleMin: 0
-    angleMax: 90
   wallAttachSpeedDampen:
     baseValue: 0
     fullValue: 0
     angleMin: 0
     angleMax: 90
-  hopVelocityRetention:
-    baseValue: 0
-    fullValue: 0
-    angleMin: 0
-    angleMax: 90
-  hopInstantFlip: 1
+  useInertialSlide: 0
+  launchInertiaBlendMode: 0
+  launchInertiaLerpFactor: 0.5
+  launchInertiaPNorm: 2
+  landHardSound: {fileID: 11400000, guid: 09535e173252bd14d97d446966681494, type: 2}
+  landSoftSound: {fileID: 11400000, guid: 0ca7c81342fe44745a80d90f7c0401d9, type: 2}
+  launchSound: {fileID: 0}
+  hopSound: {fileID: 11400000, guid: 8190b9f8ec0f7234e83382accc698399, type: 2}
+  overrideCeilingAngle: 0
+  ceilingAngle: 107
+  ceilingReattachAngle: 101
+  overrideEnergyConversionCoyoteTime: 0
+  energyConversionCoyoteTime: 0.12

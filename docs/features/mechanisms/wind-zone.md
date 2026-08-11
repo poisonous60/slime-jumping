@@ -31,6 +31,20 @@ slime.AddExternalVelocity(deltaV)
 ## 비주얼
 자식 ParticleSystem. Stretched Billboard + Velocity over Lifetime으로 바람 방향 시각화. Noise 모듈로 물결 효과 가능. `SyncParticles`가 바람 방향 투영으로 파티클 emit strip / lifetime / rate 자동 계산.
 
+`stripeBounds` (BoxCollider2D, 비었으면 존 전체) 로 줄무늬가 보이는 영역만 따로 잡는다. 존 콜라이더와 같은 방식으로 씬에서 핸들로 드래그·리사이즈 — 0~1 숫자 노브 대신 박스를 쓴 건 사용자 요구. 컴포넌트 컨텍스트 메뉴 `Create Stripe Bounds` 가 존 bounds 크기의 자식 박스를 만들어 물린다. 슬라임 push 와 ForceField 범위는 존 콜라이더 그대로 — 비주얼 전용. v1/v2 동일.
+
+구현 주의: 박스는 `enabled=false` 로 강제된다 (OnValidate) — 켜져 있으면 물리에 실제 콜라이더가 생겨 슬라임이 붙는다. 비활성 콜라이더도 Edit Collider 핸들은 동작. 박스 드래그는 존의 `OnValidate` 를 안 태우고 선택 대상도 자식이라, `OnDrawGizmos` 에서 rect 변화를 폴링해 `SyncParticles` 를 다시 돌린다. 박스 회전은 무시(wind-aligned AABB 투영).
+
+겹침 누적 제거 (2026-08-12) — [WindStripe.shader](../../../SlimeJumping_v2/Assets/Art/Shader/WindStripe.shader) 전용 셰이더. `WindParticle.mat` 이 URP Particles/Unlit(additive) 에서 이걸로 교체됐다. PS `startColor` 는 원래대로 `(1,1,1,0.3)` — 알파와 색은 그대로 두고 겹침만 없앤 게 요구사항.
+
+스텐실 1비트(`_StencilBit` 기본 16)를 픽셀당 선점: `Comp NotEqual` + `Pass Replace`, ReadMask/WriteMask 둘 다 그 비트. 한 픽셀에 처음 닿은 줄무늬만 블렌드하고 뒤따르는 줄무늬는 전부 탈락 → 몇 겹이 쌓이든 알파는 authored 값 그대로. [SkylineReflection.shader](../../../SlimeJumping_v2/Assets/Art/Shader/SkylineReflection.shader) 의 `Comp Equal` + `IncrSat` 와 같은 수법.
+
+폐기된 시도 2종 (재제안 금지):
+- additive → 알파 블렌드 전환만: 0.3 두 겹 = 0.51 로 여전히 진해짐.
+- 불투명(알파 1) + RGB 로 밝기 보정: 겹침은 평탄해지지만 색 자체가 바뀜.
+
+비트 마스킹이라 IceLake 가 쓰는 stencil 40 을 건드리지 않는다 (40 에 16 비트 없음, 게다가 얼음은 Geometry 큐라 줄무늬보다 먼저 끝난다). `_BaseMap` 없음 — 줄무늬는 단색 사각형, 페이드는 sizeOverLifetime.
+
 ## 관련 파일
 - [WindZone2D.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/WindZone2D.cs)
 
