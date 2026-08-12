@@ -34,6 +34,9 @@ namespace SlimeJumping.VFX
         private ParticleSystem _ps;
         private UnityCamera _cam;
 
+        /// <summary>Altitude band factor the rain is emitting at right now, 0 outside the band.</summary>
+        public float BandFactor { get; private set; }
+
         private void OnEnable()
         {
             _ps = GetComponent<ParticleSystem>();
@@ -86,9 +89,10 @@ namespace SlimeJumping.VFX
             var shape = _ps.shape;
             shape.scale = new Vector3(w, h, 0f);
 
+            BandFactor = BandKeep(transform.position.y, h);
+
             var emission = _ps.emission;
-            float rate = dropsPerSquareUnit * w * h * BandKeep(transform.position.y, h);
-            emission.rateOverTime = new ParticleSystem.MinMaxCurve(rate);
+            emission.rateOverTime = new ParticleSystem.MinMaxCurve(dropsPerSquareUnit * w * h * BandFactor);
         }
 
         // Signed distance: a layer behind the camera would otherwise mirror into a positive box size.

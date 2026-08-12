@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Sound_RainAmbient
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
   clips:
-  - {fileID: 8300000, guid: 41cad8654ca258d4b956fd73a143e54c, type: 3}
+  - {fileID: 8300000, guid: 5b3fda7184081304dae631b8830b4e46, type: 3}
   clipOrder: 0
   category: 2
   volumeRange: {x: 0.25, y: 0.25}

@@ -3,7 +3,9 @@ Shader "SlimeJumping/Star Field Overlay"
     // Binary Lunar starfield (youtube wSM-l2T8wOk): two gradient-noise fields
     // counter-scrolled over time, saturate+power each, multiplied together,
     // tinted by a vertical HDR color gradient. Rendered additively on a
-    // camera-facing quad. Every noise cell hashes to its own birth threshold, so
+    // camera-facing quad. The two fields sit at a fixed domain offset: same domain
+    // means they coincide while the scroll is still near zero, and the whole field
+    // lights up for the first ~100s of play. Every noise cell hashes to its own birth threshold, so
     // raising _Reveal lights up more stars instead of brightening the same ones.
     // Sampling is in screen space, not the quad's mesh UV: the quad is sized from
     // the camera FOV, which Cinemachine blends per vcam, so mesh UV made the whole
@@ -95,7 +97,7 @@ Shader "SlimeJumping/Star Field Overlay"
                 float2 uv = float2(s.x * (_ScreenParams.x / _ScreenParams.y), s.y);
                 float2 t = _Time.y * _BlinkSpeed;
                 float f1 = pow(saturate(gradient_noise((uv + t) * _StarsScale)), _StarsPower);
-                float f2 = pow(saturate(gradient_noise((uv - t) * _StarsScale)), _StarsPower);
+                float f2 = pow(saturate(gradient_noise((uv - t) * _StarsScale + float2(37.3, 91.7))), _StarsPower);
                 float birth = hash21(floor(uv * _StarsScale));
                 float gate = smoothstep(birth, birth + _RevealFade, _Reveal * (1 + _RevealFade));
                 float3 tint = lerp(_ColorBottom.rgb, _ColorTop.rgb, s.y);
