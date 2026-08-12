@@ -54,18 +54,18 @@ Unity 자산(`.unity`/`.prefab`/`.asset`) 조회는 무조건 `unity-cli exec`. 
 
 ### Coding Convention
 - 주석 길게 쓰지 마
-- 주석 길게 쓰지 마
-- 주석 길게 쓰지 마
 - 코드 변경했으면 주석에 변경한 내용 덧붙이지 말고 전체 행동만 써. 변경한 내용을 주석에 쓰지마
 - 주석에 오류 고쳤다고 쓰지 마
-- 오류 생겼을 땐 파일 뒤져보지 말고 구글 검색 먼저해.
 
-- 요청 안 받은 산출물(테스트 파일, 헬퍼, 에디터 툴, 새 문서) 만들지 말고 물어본다.
 - Use `rb.position` instead of `transform.position`
 - If some feature add or change, update  `SlimeJumping_메커닉_설계_v6.md`, `프로토타입_구현_현황.md` document in /docs folder
 - Never use `??` or `?.` with UnityEngine.Object references (Component, GameObject, etc). C# null-coalescing operators bypass Unity's overloaded `==` and mis-handle "fake null" (destroyed-but-not-null) references.
 - Divide visual and collider. Don't let them effect each other (e.g. even if visual rotate, collider shouldn't be effected)
 - SlimeController에 외부 시스템(Zone, Platform, Hazard, IExternalController 등) 통합 코드를 추가할 때는 `SlimeController.{SubsystemName}.cs` partial 파일로 분리한다. Main `SlimeController.cs`에는 라이프사이클(Awake/Update/FixedUpdate orchestration), 상태머신 dispatch, 공유 유틸/공유 상태 필드만 둔다. 상태별 처리(Attached/Charging/Airborne/Stunned)는 별도 패턴이며 기존대로 유지.
+
+- 로그는 기능 코드에 금지(`Debug.Log`·`logXxx` 노브 둘 다). 슬라임에 붙이는 디버그 컴포넌트에서만 찍고, 감시 대상은 `Start()`에서 해석한다.
+- 슬라임 안 거치는 동작(오브젝트가 자기 상태로 판정)은 그 오브젝트에 컴포넌트로. 슬라임 이벤트 트리거만 슬라임 쪽.
+- 오브젝트 컴포넌트 튜닝값은 공유 config 에셋 하나(`Assets/Resources/{Name}Config.asset` + 인스턴스엔 `configOverride`만).
 
 
 

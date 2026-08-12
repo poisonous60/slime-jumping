@@ -1,82 +1,124 @@
 using UnityEngine;
 using SlimeJumping.Audio;
-using SlimeJumping.Controller;
 using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Effects
 {
-    /// Creak + dust when the slime lands on a bamboo stalk, graded by how far that landing will
-    /// bend it. The bend is predicted, not measured: the spring only reaches its peak ~a quarter
-    /// period later, and a sound that late reads as a separate event. Landing amplitude of an
-    /// undamped spring is dOmega / omega_n, and BambooPlatformV3 publishes both terms on the
-    /// attach frame, which lands before OnLanded fires.
-    /// Pull-only from SlimeController, so nothing is wired on the stalks; sits on the Slime.
+    /// Creak + dust when the slime lands on this stalk, graded by how far that landing will bend it.
+    /// The bend is predicted, not measured: the spring only reaches its peak ~a quarter period later,
+    /// and a sound that late reads as a separate event. Landing amplitude of an undamped spring is
+    /// dOmega / omega_n, and BambooPlatformV3 publishes both terms on the attach frame.
+    /// The creak plays once and is cut short only when the rider leaves, so it never outlives what
+    /// is on screen — a stalk still holding a slime is not creaking, and a clip stopped at the bend
+    /// peak reads as a sound someone interrupted.
+    /// Execution order 100 polls after the rider has pushed those terms in.
+    /// All tuning lives on the shared BambooLandingFeedbackConfig.
+    /// No RequireComponent: BambooOnThinIce strips the stalk driver off its corpse clone, and a
+    /// declared dependency makes Unity refuse that removal — the corpse then keeps two PlatformMotors
+    /// and never falls.
+    [DefaultExecutionOrder(100)]
     [AddComponentMenu("SlimeJumping/Effects/Bamboo Landing Feedback")]
     public class BambooLandingFeedback : MonoBehaviour
     {
-        [SerializeField] SlimeController slimeController;
+        [Tooltip("Optional override of the shared BambooLandingFeedbackConfig. Leave null to auto-load " +
+                 "Assets/Resources/BambooLandingFeedbackConfig.asset.")]
+        [SerializeField] BambooLandingFeedbackConfig configOverride;
 
-        [Header("Sound")]
-        [Tooltip("Creak for a landing whose predicted bend is under Large Bend Deg.")]
-        [SerializeField] SoundDef bendSmallSound;
-        [Tooltip("Creak for a landing at or over Large Bend Deg.")]
-        [SerializeField] SoundDef bendLargeSound;
+        BambooLandingFeedbackConfig config;
+        BambooPlatformV3 bamboo;
 
-        [Header("Bend grading")]
-        [Tooltip("Predicted bend below this plays nothing — a graze must not creak.")]
-        [Min(0f)] [SerializeField] float minBendDeg = 2f;
-        [Tooltip("Predicted bend at or above this uses the large creak and the full dust burst.")]
-        [Min(0f)] [SerializeField] float largeBendDeg = 20f;
+        SoundHandle bendLoop;
+        float bendVolume;
+        float fadeTimer;
+        float fadeDuration;
+        bool wasAttached;
 
-        [Header("Dust")]
-        [Tooltip("Puff spawned at the contact point. playOnAwake must be OFF; Play() is called explicitly.")]
-        [SerializeField] GameObject dustPuffPrefab;
-        [Tooltip("Puffs spawned at Min Bend Deg.")]
-        [Min(0)] [SerializeField] int puffsAtMinBend = 1;
-        [Tooltip("Puffs spawned at Large Bend Deg.")]
-        [Min(0)] [SerializeField] int puffsAtLargeBend = 3;
-        [Tooltip("Puff scale at Min Bend Deg.")]
-        [Min(0.01f)] [SerializeField] float puffScaleAtMinBend = 0.6f;
-        [Tooltip("Puff scale at Large Bend Deg.")]
-        [Min(0.01f)] [SerializeField] float puffScaleAtLargeBend = 1.4f;
-        [Tooltip("World spread of the extra puffs around the contact point.")]
-        [Min(0f)] [SerializeField] float puffSpread = 0.15f;
-
-        void Reset()
+        void Awake()
         {
-            if (slimeController == null) slimeController = GetComponentInParent<SlimeController>();
-        }
+            bamboo = GetComponent<BambooPlatformV3>();
+            if (bamboo == null)
+            {
+                enabled = false;
+                return;
+            }
 
-        void OnEnable()
-        {
-            if (slimeController == null) return;
-            slimeController.OnLanded += HandleLanded;
+            // Fallback instance so a config-less project needs no null guard on every read.
+            config = BambooLandingFeedbackConfig.Resolve(configOverride);
+            if (config == null) config = ScriptableObject.CreateInstance<BambooLandingFeedbackConfig>();
         }
 
         void OnDisable()
         {
-            if (slimeController == null) return;
-            slimeController.OnLanded -= HandleLanded;
+            wasAttached = false;
+            StopCreak();
         }
 
-        void HandleLanded(Vector2 position, Vector2 surfaceNormal)
+        void FixedUpdate()
         {
-            var col = slimeController.SurfaceCollider;
-            if (col == null) return;
-            var bamboo = col.GetComponentInParent<BambooPlatformV3>();
-            if (bamboo == null) return;
+            // BambooOnThinIce strips the stalk driver off its corpse clone under a live component.
+            if (bamboo == null)
+            {
+                StopCreak();
+                enabled = false;
+                return;
+            }
 
-            float bendDeg = PredictedBendDeg(bamboo);
-            if (bendDeg < minBendDeg) return;
+            bool attached = bamboo.RiderAttached;
+            if (attached && !wasAttached) HandleLanded();
+            wasAttached = attached;
 
-            SoundService.Play(bendDeg >= largeBendDeg ? bendLargeSound : bendSmallSound, position);
+            bool barelyMoving = Mathf.Abs(bamboo.AngularVelocity) < config.settleSpeedDegPerSec;
+            if (fadeTimer <= 0f && bendLoop.IsPlaying && (!attached || barelyMoving)) BeginFade();
+        }
 
-            float t = Mathf.InverseLerp(minBendDeg, Mathf.Max(largeBendDeg, minBendDeg + 0.01f), bendDeg);
+        void Update()
+        {
+            if (fadeTimer <= 0f)
+            {
+                // Ran to its end on its own; the pool entry is still locked until it is released.
+                if (bendLoop.IsValid && !bendLoop.IsPlaying) StopCreak();
+                return;
+            }
+
+            fadeTimer -= Time.deltaTime;
+            if (fadeTimer <= 0f) StopCreak();
+            else bendLoop.SetVolume(bendVolume * (fadeTimer / fadeDuration));
+        }
+
+        void HandleLanded()
+        {
+            float bendDeg = PredictedBendDeg();
+            if (bendDeg < config.minBendDeg) return;
+
+            float t = Mathf.InverseLerp(config.minBendDeg,
+                                        Mathf.Max(config.largeBendDeg, config.minBendDeg + 0.01f), bendDeg);
+            Vector2 position = bamboo.LastRiderWorldPos;
+
+            StopCreak();
+            bendVolume = Mathf.Lerp(config.volumeAtMinBend, config.volumeAtLargeBend, t);
+            bendLoop = SoundService.PlayLooping(config.bendSound, null, bendVolume);
+            bendLoop.SetLoop(false);
+            bendLoop.SetPosition(position);
+            bendLoop.SetPitch(Mathf.Lerp(config.pitchAtMinBend, config.pitchAtLargeBend, t));
+
             SpawnPuffs(position, t);
         }
 
+        void BeginFade()
+        {
+            fadeDuration = Mathf.Max(config.fadeOutSeconds, 0.001f);
+            fadeTimer = fadeDuration;
+        }
+
+        void StopCreak()
+        {
+            SoundService.StopLoop(bendLoop);
+            bendLoop = default;
+            fadeTimer = 0f;
+        }
+
         // Kind 1 = landing kick; any other kind means no impulse this frame, so sag alone.
-        float PredictedBendDeg(BambooPlatformV3 bamboo)
+        float PredictedBendDeg()
         {
             float bend = Mathf.Abs(bamboo.CurrentDeflectionDeg);
             if (bamboo.LastRiderImpulseKind != 1) return bend;
@@ -88,16 +130,16 @@ namespace SlimeJumping.Effects
 
         void SpawnPuffs(Vector2 position, float t)
         {
-            if (dustPuffPrefab == null) return;
+            if (config.dustPuffPrefab == null) return;
 
-            int count = Mathf.RoundToInt(Mathf.Lerp(puffsAtMinBend, puffsAtLargeBend, t));
-            float scale = Mathf.Lerp(puffScaleAtMinBend, puffScaleAtLargeBend, t);
+            int count = Mathf.RoundToInt(Mathf.Lerp(config.puffsAtMinBend, config.puffsAtLargeBend, t));
+            float scale = Mathf.Lerp(config.puffScaleAtMinBend, config.puffScaleAtLargeBend, t);
 
             for (int i = 0; i < count; i++)
             {
-                Vector2 spawn = position + (i == 0 ? Vector2.zero : Random.insideUnitCircle * puffSpread);
-                var go = Instantiate(dustPuffPrefab, spawn, Quaternion.identity);
-                go.transform.localScale = dustPuffPrefab.transform.localScale * scale;
+                Vector2 spawn = position + (i == 0 ? Vector2.zero : Random.insideUnitCircle * config.puffSpread);
+                var go = Instantiate(config.dustPuffPrefab, spawn, Quaternion.identity);
+                go.transform.localScale = config.dustPuffPrefab.transform.localScale * scale;
                 var ps = go.GetComponent<ParticleSystem>();
                 if (ps != null) ps.Play();
             }

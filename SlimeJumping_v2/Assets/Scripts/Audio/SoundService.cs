@@ -14,7 +14,12 @@ namespace SlimeJumping.Audio
         public static SoundService Instance { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStatics() => Instance = null;
+        private static void ResetStatics()
+        {
+            Instance = null;
+            // Survives a no-domain-reload Play entry otherwise, gating against the previous run's clock.
+            cooldownUntil.Clear();
+        }
 
         [SerializeField] private SoundSettings settings;
 
@@ -182,16 +187,27 @@ namespace SlimeJumping.Audio
         /// site can make one impact louder without owning the sound's level.
         public static void Play(SoundDef def, Vector3 worldPos, float volumeScale = 1f, float pitchScale = 1f)
         {
-            if (def == null) return;
+            if (def == null || !ConsumeCooldown(def)) return;
             PlayAt(def.PickClip(), worldPos, def.category,
                    def.PickVolume() * volumeScale, def.PickPitch() * pitchScale);
         }
 
         public static void Play2D(SoundDef def, float volumeScale = 1f, float pitchScale = 1f)
         {
-            if (def == null) return;
+            if (def == null || !ConsumeCooldown(def)) return;
             Play2D(def.PickClip(), def.category,
                    def.PickVolume() * volumeScale, def.PickPitch() * pitchScale);
+        }
+
+        // Not stored on the asset: a serialized timestamp outlives Play mode, whose clock restarts at 0.
+        private static readonly Dictionary<SoundDef, float> cooldownUntil = new Dictionary<SoundDef, float>();
+
+        private static bool ConsumeCooldown(SoundDef def)
+        {
+            if (def.cooldownSeconds <= 0f) return true;
+            if (cooldownUntil.TryGetValue(def, out float until) && Time.time < until) return false;
+            cooldownUntil[def] = Time.time + def.cooldownSeconds;
+            return true;
         }
 
         public static SoundHandle PlayLooping(SoundDef def, Transform follow, float volumeScale = 1f)

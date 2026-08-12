@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 10943b20a89f36a44ba061e58e89f099, type: 3}
+  m_Name: Sound_SteelBeamCreak
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
+  clips:
+  - {fileID: 8300000, guid: d1fc70ea34305a94a977722c2ba4d59f, type: 3}
+  - {fileID: 8300000, guid: fca588a17283eed449e6d77776c9ba98, type: 3}
+  - {fileID: 8300000, guid: 4baeef1e100fed547af413a24012b585, type: 3}
+  - {fileID: 8300000, guid: f1ece93338247344281321c408a4f67a, type: 3}
+  clipOrder: 0
+  category: 3
+  volumeRange: {x: 1, y: 1}
+  pitchRange: {x: 0.96, y: 1.04}
+  cooldownSeconds: 0
+  spatial3D: 1
+  minDistance: -1
+  maxDistance: -1

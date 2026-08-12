@@ -25,6 +25,10 @@ namespace SlimeJumping.Audio
         [Tooltip("x = min, y = max. Equal values mean no randomisation.")]
         public Vector2 pitchRange = Vector2.one;
 
+        [Tooltip("Minimum seconds between plays; a play inside the window is dropped. A creaky " +
+                 "surface retriggering on every quick re-landing sounds broken. 0 = no gate.")]
+        [Min(0f)] public float cooldownSeconds = 0f;
+
         [Header("3D")]
         public bool spatial3D = true;
         [Tooltip("Full volume within this distance. Negative keeps the SoundSettings default.")]

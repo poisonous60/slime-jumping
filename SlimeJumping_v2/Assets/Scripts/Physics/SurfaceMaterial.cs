@@ -76,6 +76,10 @@ namespace SlimeJumping.Physics
         public float launchInertiaPNorm = 2f;
 
         [Header("Audio")]
+        [Tooltip("ON = the sounds below play ON TOP of the slime's own land / launch / hop sound " +
+                 "instead of replacing it (slime body + surface, two layers). Applies to every " +
+                 "slot on this material.")]
+        public bool layerOverSlimeSound = false;
         [Tooltip("Hard landing override. Null → SlimeLocomotionAudio's own hard landing sound plays.")]
         public SlimeJumping.Audio.SoundDef landHardSound;
         [Tooltip("Soft landing override. Null → SlimeLocomotionAudio's own soft landing sound plays.")]

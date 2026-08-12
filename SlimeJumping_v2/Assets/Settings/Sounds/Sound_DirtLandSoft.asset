@@ -13,13 +13,11 @@ MonoBehaviour:
   m_Name: Sound_DirtLandSoft
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
   clips:
-  - {fileID: 8300000, guid: 0afaa0bdc00ce124e86efd417fb54784, type: 3}
-  - {fileID: 8300000, guid: a7f0466172c8ac54cbb37b4c1367c508, type: 3}
-  - {fileID: 8300000, guid: ad1456e432df8394abb0b5a3732a22a5, type: 3}
-  - {fileID: 8300000, guid: c2db703d0ee1fbf49b1229dd3f440d02, type: 3}
+  - {fileID: 8300000, guid: 9f9a5cc6bbebceb4082a3e33a5e6c173, type: 3}
+  - {fileID: 8300000, guid: 6b718e1f6bb082041874d434e4db01db, type: 3}
   clipOrder: 0
   category: 1
-  volumeRange: {x: 1, y: 1}
+  volumeRange: {x: 0.5, y: 0.5}
   pitchRange: {x: 0.94, y: 1.06}
   spatial3D: 1
   minDistance: -1

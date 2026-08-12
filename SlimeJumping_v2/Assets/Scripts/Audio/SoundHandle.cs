@@ -22,6 +22,20 @@ namespace SlimeJumping.Audio
             source.volume = volume;
         }
 
+        /// A sound borrowed through PlayLooping but meant to run once; the owner still has to
+        /// StopLoop it when it ends, or the pool entry stays locked.
+        public void SetLoop(bool loop)
+        {
+            if (!IsValid) return;
+            source.loop = loop;
+        }
+
+        public void SetPitch(float pitch)
+        {
+            if (!IsValid) return;
+            source.pitch = pitch;
+        }
+
         public void SetPosition(Vector3 worldPos)
         {
             if (!IsValid) return;

@@ -60,7 +60,11 @@ namespace SlimeJumping.Audio
             if (mat != null)
             {
                 SoundDef surfaceDef = hard ? mat.landHardSound : mat.landSoftSound;
-                if (surfaceDef != null) def = surfaceDef;
+                if (surfaceDef != null)
+                {
+                    if (mat.layerOverSlimeSound) SoundService.Play(surfaceDef, position);
+                    else def = surfaceDef;
+                }
             }
             SoundService.Play(def, position);
         }
@@ -74,7 +78,11 @@ namespace SlimeJumping.Audio
             if (mat != null)
             {
                 SoundDef surfaceDef = wasHop ? mat.hopSound : mat.launchSound;
-                if (surfaceDef != null) def = surfaceDef;
+                if (surfaceDef != null)
+                {
+                    if (mat.layerOverSlimeSound) SoundService.Play(surfaceDef, position);
+                    else def = surfaceDef;
+                }
             }
             SoundService.Play(def, position);
         }

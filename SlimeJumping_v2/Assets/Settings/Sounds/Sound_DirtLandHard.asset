@@ -13,8 +13,10 @@ MonoBehaviour:
   m_Name: Sound_DirtLandHard
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
   clips:
-  - {fileID: 8300000, guid: 18d004241a42aeb4fa2110fc0eec9e68, type: 3}
-  - {fileID: 8300000, guid: 67b272746b834ab4ba1e748d23caa726, type: 3}
+  - {fileID: 8300000, guid: b7860e2f4e1965f45a1c799645bc5f87, type: 3}
+  - {fileID: 8300000, guid: 009c6e09fd9a80f4e8c2f862ec9d5f7f, type: 3}
+  - {fileID: 8300000, guid: fa77b97ba6ac90f46acda1b1526cff79, type: 3}
+  - {fileID: 8300000, guid: 8c41e471fceb77c4f9f106dc65ffe4fd, type: 3}
   clipOrder: 0
   category: 1
   volumeRange: {x: 0.7, y: 0.7}
