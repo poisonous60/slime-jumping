@@ -452,7 +452,7 @@ namespace SlimeJumping.Platforms
             }
 
             var corpseMotor = corpse.AddComponent<FallingBambooCorpseMotor>();
-            corpseMotor.InitShape(bendDeg, length, bamboo.SegmentRadius);
+            corpseMotor.InitShape(bendDeg, bamboo.AngularVelocity, length, bamboo.SegmentRadius);
             corpseMotor.bambooMass = config.bambooMass;
             corpseMotor.ridingSlimeMass = config.ridingSlimeMass;
             corpseMotor.landingDebounce = config.landingDebounceSeconds;
@@ -658,20 +658,80 @@ namespace SlimeJumping.Platforms
         /// World-space point on the frozen bent centerline, t = 0 (base) .. 1 (tip).
         public Vector2 CenterlineWorldPoint(float t) => transform.TransformPoint(CenterlinePoint(t));
 
-        /// Frozen bent-pose shape, captured from the live stalk at collapse.
-        public void InitShape(float bendDeg, float length, float radius)
+        /// Bent pose and swing rate carried over from the live stalk at collapse.
+        public void InitShape(float bendDeg, float bendRate, float length, float radius)
         {
             bendAngleDeg = bendDeg;
+            bendRateDeg = bendRate;
             stalkLength = Mathf.Max(0.01f, length);
             stalkRadius = Mathf.Max(0.001f, radius);
+        }
+
+        // --- Bend spring ----------------------------------------------------------
+
+        // Drives bendAngleDeg, which CenterlinePoint and the anchor are built from, so physics whips too.
+        float bendRateDeg;
+        Transform[] bendSegments;
+        float[] bendSegmentT;
+        MeshRenderer bendVisual;
+        MaterialPropertyBlock bendMpb;
+        static readonly int CorpseBendAngleId = Shader.PropertyToID("_BendAngleDeg");
+
+        void TickBendSpring(float dt)
+        {
+            if (bambooSettings == null) return;
+            if (bendSegments == null) CaptureBendRig();
+
+            float omega = 2f * Mathf.PI * bambooSettings.naturalFreqHz;
+            if (omega < 1e-4f) return;
+
+            float accel = -omega * omega * bendAngleDeg
+                          - 2f * bambooSettings.dampingRatio * omega * bendRateDeg;
+            bendRateDeg += accel * dt;
+            bendAngleDeg += bendRateDeg * dt;
+
+            if (bendVisual != null)
+            {
+                bendVisual.GetPropertyBlock(bendMpb);
+                bendMpb.SetFloat(CorpseBendAngleId, bendAngleDeg);
+                bendVisual.SetPropertyBlock(bendMpb);
+            }
+
+            for (int i = 0; i < bendSegments.Length; i++)
+            {
+                if (bendSegments[i] == null) continue;
+                bendSegments[i].position = transform.TransformPoint(CenterlinePoint(bendSegmentT[i]));
+                Vector2 tan = CenterlineTangent(bendSegmentT[i]);
+                bendSegments[i].rotation = transform.rotation *
+                    Quaternion.FromToRotation(Vector3.up, new Vector3(tan.x, tan.y, 0f));
+            }
+        }
+
+        // Runs before the first integration step, so each t is read off the handed-over pose.
+        void CaptureBendRig()
+        {
+            bendMpb = new MaterialPropertyBlock();
+
+            var visualTf = transform.Find("Visual");
+            if (visualTf != null) bendVisual = visualTf.GetComponent<MeshRenderer>();
+
+            var cols = GetComponentsInChildren<Collider2D>();
+            bendSegments = new Transform[cols.Length];
+            bendSegmentT = new float[cols.Length];
+            for (int i = 0; i < cols.Length; i++)
+            {
+                bendSegments[i] = cols[i].transform;
+                bendSegmentT[i] = ClosestCenterlineT(transform.InverseTransformPoint(cols[i].transform.position));
+            }
         }
 
         // Hides PlatformMotor.FixedUpdate (Unity calls only the most-derived): the base tick
         // MovePositions a Dynamic body, stomping integrated velocity so it never sleeps.
         void FixedUpdate()
         {
+            TickBendSpring(Time.fixedDeltaTime);
             TickRiderCollisionIgnore();
-            // throwCapable: false — a fallen pole has no spring, so the cling window is the only way down.
+            // throwCapable: false — a fallen pole cannot throw, so the cling window is the only way down.
             if (bambooSettings != null)
                 underhang.Tick(cachedSlime, transform, bambooSettings.underhangClingTime,
                     bambooSettings.relandLockoutTime, false, Time.fixedDeltaTime);

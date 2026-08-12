@@ -177,19 +177,22 @@ namespace SlimeJumping.Platforms
         /// <summary>Will this swing end in a throw? Predicts both CheckSpringThrow gates from the
         /// undamped SHO state, including the pending landing ramp — reading angularVel alone calls a
         /// hard hit unthrowable for its first frames. Damping ignored so it decays false on its own.</summary>
-        public bool ThrowCapable
+        /// <summary>Speed this stalk would throw its rider with if the swing ran its course; 0 when
+        /// it would throw nothing at all. Landing feedback grades itself on this, so the sound and
+        /// the throw cannot disagree.</summary>
+        public float PredictedEjectSpeed
         {
             get
             {
-                if (backgroundOnly) return false;
-                if (settings.ejectBendDeg <= 0f || ejectLockoutTimer > 0f) return false;
+                if (backgroundOnly) return 0f;
+                if (settings.ejectBendDeg <= 0f || ejectLockoutTimer > 0f) return 0f;
 
                 // Arm from the SLIME, not the shared rider slot: a fallen pole resting here writes
                 // lastRiderWorldPos too, so that would predict a throw for a non-slime contact.
-                if (!TryGetSlimeArm(out Vector2 arm)) return false;
+                if (!TryGetSlimeArm(out Vector2 arm)) return 0f;
 
                 float omegaN = 2f * Mathf.PI * settings.naturalFreqHz;
-                if (omegaN < 1e-4f) return false;
+                if (omegaN < 1e-4f) return 0f;
 
                 var (stiffness, _, _) = ComputeSpringCoeffs();
                 float eqDeg = stiffness > 1e-4f ? (lastWeightTorque / stiffness) * Mathf.Rad2Deg : 0f;
@@ -198,12 +201,13 @@ namespace SlimeJumping.Platforms
                 float ampDeg = Mathf.Sqrt(offsetDeg * offsetDeg + rateDeg * rateDeg);
 
                 // The real gate measures |currentAngle| against zero, not against equilibrium.
-                if (Mathf.Abs(eqDeg) + ampDeg < settings.ejectBendDeg) return false;
+                if (Mathf.Abs(eqDeg) + ampDeg < settings.ejectBendDeg) return 0f;
 
-                float ejectSpeed = ampDeg * Mathf.Deg2Rad * omegaN * HalfReturnOmegaFraction * arm.magnitude;
-                return ejectSpeed >= MinEjectSpeed;
+                return ampDeg * Mathf.Deg2Rad * omegaN * HalfReturnOmegaFraction * arm.magnitude;
             }
         }
+
+        public bool ThrowCapable => PredictedEjectSpeed >= MinEjectSpeed;
 
         /// <summary>Moment arm of the SLIME, or false if it is not riding this stalk. The rider slot
         /// holds whatever touched last (e.g. a fallen pole), so slime-targeted math must re-measure.</summary>
@@ -221,6 +225,8 @@ namespace SlimeJumping.Platforms
         public float EjectBendDeg => settings != null ? settings.ejectBendDeg : 0f;
         public float NaturalFreqHz => settings != null ? settings.naturalFreqHz : 0f;
         public float DampingRatio => settings != null ? settings.dampingRatio : 0f;
+        public float MaxDeflectionDeg => settings != null ? settings.maxDeflectionDeg : 0f;
+        public float MaxTipSpeed => settings != null ? settings.maxTipSpeed : 0f;
         public bool HasSettingsAsset => settings != null;
         public bool BackgroundOnly => backgroundOnly;
         /// <summary>Rotational inertia of the stalk alone — decides how much an impact bends it.</summary>

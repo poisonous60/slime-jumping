@@ -4,10 +4,12 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Effects
 {
-    /// Creak + dust when the slime lands on this stalk, graded by how far that landing will bend it.
-    /// The bend is predicted, not measured: the spring only reaches its peak ~a quarter period later,
-    /// and a sound that late reads as a separate event. Landing amplitude of an undamped spring is
-    /// dOmega / omega_n, and BambooPlatformV3 publishes both terms on the attach frame.
+    /// Creak + dust when the slime lands on this stalk, graded by the jump the stalk is about to
+    /// throw — that is what the player hears the creak against, not the impact that caused it.
+    /// The figure comes from the stalk's own PredictedEjectSpeed rather than a formula of its own:
+    /// a copy drifted, promising a launch off the tip while the slime landed low and off a throw
+    /// the eject lockout had already ruled out. It reads 0 for a landing that throws nothing, and
+    /// silence is right there — the sound is a promise about a jump that is not coming.
     /// The creak plays once and is cut short only when the rider leaves, so it never outlives what
     /// is on screen — a stalk still holding a slime is not creaking, and a clip stopped at the bend
     /// peak reads as a sound someone interrupted.
@@ -87,11 +89,12 @@ namespace SlimeJumping.Effects
 
         void HandleLanded()
         {
-            float bendDeg = PredictedBendDeg();
-            if (bendDeg < config.minBendDeg) return;
+            float launchSpeed = bamboo.PredictedEjectSpeed;
+            if (launchSpeed < config.minLaunchSpeed) return;
 
-            float t = Mathf.InverseLerp(config.minBendDeg,
-                                        Mathf.Max(config.largeBendDeg, config.minBendDeg + 0.01f), bendDeg);
+            float t = Mathf.InverseLerp(config.minLaunchSpeed,
+                                        Mathf.Max(config.largeLaunchSpeed, config.minLaunchSpeed + 0.01f),
+                                        launchSpeed);
             Vector2 position = bamboo.LastRiderWorldPos;
 
             StopCreak();
@@ -115,17 +118,6 @@ namespace SlimeJumping.Effects
             SoundService.StopLoop(bendLoop);
             bendLoop = default;
             fadeTimer = 0f;
-        }
-
-        // Kind 1 = landing kick; any other kind means no impulse this frame, so sag alone.
-        float PredictedBendDeg()
-        {
-            float bend = Mathf.Abs(bamboo.CurrentDeflectionDeg);
-            if (bamboo.LastRiderImpulseKind != 1) return bend;
-
-            float omega = 2f * Mathf.PI * bamboo.NaturalFreqHz;
-            if (omega < 1e-4f) return bend;
-            return bend + Mathf.Abs(bamboo.LastRiderImpulseDeg) / omega;
         }
 
         void SpawnPuffs(Vector2 position, float t)

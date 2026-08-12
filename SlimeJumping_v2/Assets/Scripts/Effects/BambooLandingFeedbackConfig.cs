@@ -28,11 +28,14 @@ namespace SlimeJumping.Effects
                  "to end the creak sooner, lower it to let small motion still sound.")]
         [Min(0f)] public float settleSpeedDegPerSec = 25f;
 
-        [Header("Bend grading")]
-        [Tooltip("Predicted bend below this plays nothing — a graze must not creak.")]
-        [Min(0f)] public float minBendDeg = 2f;
-        [Tooltip("Predicted bend at or above this uses the lowest pitch and the full dust burst.")]
-        [Min(0f)] public float largeBendDeg = 20f;
+        [Header("Launch grading")]
+        [Tooltip("Predicted launch tip speed below which nothing plays — a landing that throws " +
+                 "nothing must not creak.")]
+        [Min(0f)] public float minLaunchSpeed = 5f;
+        [Tooltip("Predicted launch tip speed at or above which it is full volume and the full dust " +
+                 "burst. Measured over 24 stage2 landings: grazes under 1, soft re-landings 4-12, " +
+                 "mid 16-23, slams pinned at the stalk's own 90deg / maxTipSpeed clamp.")]
+        [Min(0f)] public float largeLaunchSpeed = 38f;
 
         [Header("Dust")]
         [Tooltip("Puff spawned at the contact point. playOnAwake must be OFF; Play() is called explicitly.")]

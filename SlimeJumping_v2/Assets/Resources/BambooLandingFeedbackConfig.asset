@@ -13,14 +13,14 @@ MonoBehaviour:
   m_Name: BambooLandingFeedbackConfig
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Effects.BambooLandingFeedbackConfig
   bendSound: {fileID: 11400000, guid: b1758b1539206d742abbdc16105b3e6b, type: 2}
-  volumeAtMinBend: 0.35
+  volumeAtMinBend: 0.5
   volumeAtLargeBend: 1
   pitchAtMinBend: 1
   pitchAtLargeBend: 1
   fadeOutSeconds: 0.25
   settleSpeedDegPerSec: 25
-  minBendDeg: 2
-  largeBendDeg: 20
+  minLaunchSpeed: 4
+  largeLaunchSpeed: 38
   dustPuffPrefab: {fileID: 5911743663151647118, guid: 614a977c154d7be4fae12b257a550a03, type: 3}
   puffsAtMinBend: 1
   puffsAtLargeBend: 3

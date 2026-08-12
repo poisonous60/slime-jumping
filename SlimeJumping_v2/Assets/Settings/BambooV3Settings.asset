@@ -23,4 +23,4 @@ MonoBehaviour:
   boostFalloffStartSpeed: 12
   boostFalloffEndSpeed: 18
   relandLockoutTime: 0.3
-  underhangClingTime: 0.2
+  underhangClingTime: 0.1

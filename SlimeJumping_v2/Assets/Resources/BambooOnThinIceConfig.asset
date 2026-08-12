@@ -21,7 +21,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: a289d704cfc6ac145bd69df9f06a1d1c, type: 2}
   - {fileID: 11400000, guid: e2a6cafb1f9899640af0cfd0a6bcfc1c, type: 2}
   crackStageDebrisBurst: 10
-  shatterFuseSeconds: 0.2
+  shatterFuseSeconds: 0.05
   shatterMaxHoldSeconds: 3
   slimeMass: 8
   corpseGravityScale: 2.5
@@ -30,7 +30,7 @@ MonoBehaviour:
   corpseRecoilImpulse: 1
   bambooMass: 2
   ridingSlimeMass: 1
-  respawnDelaySeconds: 2
-  corpseMaxLifeSeconds: 2
-  corpseRestPoofSeconds: 2
+  respawnDelaySeconds: 1.5
+  corpseMaxLifeSeconds: 1.5
+  corpseRestPoofSeconds: 1.5
   corpsePoofPrefab: {fileID: 5911743663151647118, guid: 614a977c154d7be4fae12b257a550a03, type: 3}
