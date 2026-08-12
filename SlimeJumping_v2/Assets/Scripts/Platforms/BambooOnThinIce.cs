@@ -9,8 +9,11 @@ using SlimeJumping.Platforms.ThinIceV2;
 namespace SlimeJumping.Platforms
 {
     /// Couples a BambooPlatformV3 stalk to the ThinIcePlatformV2 it stands on: each
-    /// landing on the stalk advances the ice's cracks by 1/jumpsToShatter; on Shattered
-    /// the stalk is swapped for a physics "corpse" clone that topples, and restored on regen.
+    /// landing on the stalk advances the ice's cracks by 1/jumpsToShatter (own sound and
+    /// debris burst per stage), and the final landing lights a fuse instead of breaking
+    /// under the slime — the ice gives way shatterFuseSeconds after it leaves the stalk;
+    /// on Shattered the stalk is swapped for a physics "corpse" clone that topples, and
+    /// restored on regen.
     /// Zero-touch: public surfaces + reflection (EnterShattered / timer) + CheckSpringThrow's slime-arm guard.
     /// Attach to the ICE, never the bamboo (it deactivates on collapse → polling stops).
     public class BambooOnThinIce : MonoBehaviour
@@ -42,7 +45,13 @@ namespace SlimeJumping.Platforms
         static FieldInfo timerField;
         static bool timerFieldSearched;
 
+        // Reflection into ThinIcePlatformV2.debrisVFX — the tile emits only off its own timer.
+        static FieldInfo debrisField;
+        static bool debrisFieldSearched;
+
         int landingCount;
+        bool fuseArmed;      // final landing done, ice waiting to give way
+        float fuseArmedAt;
         float offStalkSeconds = float.MaxValue;
         bool collapsed;
         float collapsedAt;   // Time.time of the topple — drives the respawn timer
@@ -110,8 +119,13 @@ namespace SlimeJumping.Platforms
             if (!collapsed)
             {
                 CountLandings();
-                MaybeResetCracksOnSlimeLeft();
-                MaybeHealCracks();
+                // A lit fuse outranks healing: the ice is already fully cracked.
+                if (!fuseArmed)
+                {
+                    MaybeResetCracksOnSlimeLeft();
+                    MaybeHealCracks();
+                }
+                TickShatterFuse();
                 // Covers every shatter cause, not just our Nth landing.
                 if (ice.State == ThinIcePlatformV2.IceState.Shattered) Collapse();
             }
@@ -176,6 +190,7 @@ namespace SlimeJumping.Platforms
             Debug.Log($"[BambooOnThinIce {name}] {reason} — cracks reset " +
                       $"({landingCount}/{config.jumpsToShatter} dropped)", this);
             landingCount = 0;
+            fuseArmed = false;
             // MaxValue, not 0: else the landing debounce eats the next contact.
             offStalkSeconds = float.MaxValue;
             if (ice.State == ThinIcePlatformV2.IceState.Idle && iceRenderer != null)
@@ -208,7 +223,7 @@ namespace SlimeJumping.Platforms
         {
             if (IsSlimeOnStalk())
             {
-                if (offStalkSeconds >= config.landingDebounceSeconds) OnStalkLanding();
+                if (!fuseArmed && offStalkSeconds >= config.landingDebounceSeconds) OnStalkLanding();
                 offStalkSeconds = 0f;
             }
             else
@@ -230,13 +245,7 @@ namespace SlimeJumping.Platforms
             landingCount++;
             Debug.Log($"[BambooOnThinIce {name}] stalk landing {landingCount}/{config.jumpsToShatter} (ice {ice.State})", this);
 
-            if (landingCount >= config.jumpsToShatter)
-            {
-                ShatterIce();
-                return;
-            }
-
-            PlayCrackSound();
+            PlayCrackStage(landingCount);
 
             if (ice.State == ThinIcePlatformV2.IceState.Idle && iceRenderer != null)
             {
@@ -252,6 +261,29 @@ namespace SlimeJumping.Platforms
                 // out of its timer so both damage paths share the pool.
                 ReduceTimer(CrackingDuration() / Mathf.Max(1, config.jumpsToShatter));
             }
+
+            if (landingCount >= config.jumpsToShatter)
+            {
+                fuseArmed = true;
+                fuseArmedAt = Time.time;
+                Debug.Log($"[BambooOnThinIce {name}] final landing — fuse lit " +
+                          $"({config.shatterFuseSeconds}s after the slime leaves the stalk)", this);
+            }
+        }
+
+        // Known limitation: ice already Cracking from a direct touch keeps its own rule and wins.
+        void TickShatterFuse()
+        {
+            if (!fuseArmed) return;
+
+            bool leftTheStalk = offStalkSeconds >= config.shatterFuseSeconds;
+            bool heldTooLong = config.shatterMaxHoldSeconds > 0f &&
+                               Time.time - fuseArmedAt >= config.shatterMaxHoldSeconds;
+            if (!leftTheStalk && !heldTooLong) return;
+
+            Debug.Log($"[BambooOnThinIce {name}] fuse burned out " +
+                      $"({(leftTheStalk ? "slime left the stalk" : "max hold")}) — shattering", this);
+            ShatterIce();
         }
 
         void ShatterIce()
@@ -322,13 +354,40 @@ namespace SlimeJumping.Platforms
             timerField.SetValue(ice, current - amount);
         }
 
-        // Known limitation: shared config only — a platform with overrideAudio on still cracks
-        // with the config's clips; honoring it needs more reflection, not worth it for a sound.
-        void PlayCrackSound()
+        // --- Per-landing crack feedback --------------------------------------------
+
+        // Stage index clamps, so a list shorter than jumpsToShatter repeats its last entry.
+        void PlayCrackStage(int stage)
         {
-            var config = ice.ResolvedConfig;
-            if (config == null) return;
-            SoundService.Play(config.crackSound, ice.transform.position);
+            var sounds = config.crackStageSounds;
+            if (sounds != null && sounds.Length > 0)
+            {
+                int i = Mathf.Clamp(stage - 1, 0, sounds.Length - 1);
+                SoundService.Play(sounds[i], ice.transform.position);
+            }
+            EmitIceDebris();
+        }
+
+        void EmitIceDebris()
+        {
+            if (config.crackStageDebrisBurst <= 0) return;
+
+            if (!debrisFieldSearched)
+            {
+                debrisFieldSearched = true;
+                debrisField = typeof(ThinIcePlatformV2).GetField(
+                    "debrisVFX", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (debrisField == null)
+                {
+                    Debug.LogError("[BambooOnThinIce] Reflection target ThinIcePlatformV2.debrisVFX " +
+                                   "not found — was it renamed? Crack debris bursts are disabled.", this);
+                }
+            }
+            if (debrisField == null) return;
+
+            var ps = debrisField.GetValue(ice) as ParticleSystem;
+            if (ps == null) return;
+            ps.Emit(config.crackStageDebrisBurst);
         }
 
         // --- Collapse: hide the original, drop a physics corpse --------------------
@@ -339,6 +398,7 @@ namespace SlimeJumping.Platforms
             if (corpse != null) PoofCorpse("replaced by a new fall");
 
             collapsed = true;
+            fuseArmed = false;
             collapsedAt = Time.time;
 
             // Detach before the surface disappears; ForceAirborneWithVelocity's launch
@@ -431,6 +491,7 @@ namespace SlimeJumping.Platforms
             Debug.Log($"[BambooOnThinIce {name}] restore: stalk reactivated (ice {ice.State})", this);
 
             landingCount = 0;
+            fuseArmed = false;
             offStalkSeconds = float.MaxValue;
             collapsed = false;
         }

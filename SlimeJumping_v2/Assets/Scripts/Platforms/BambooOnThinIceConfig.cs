@@ -21,6 +21,23 @@ namespace SlimeJumping.Platforms
                  "resets them immediately, whichever comes first. 0 = never heal on its own.")]
         [Min(0f)] public float crackHealSeconds = 2f;
 
+        [Tooltip("One sound per landing, index 0 = first landing. Shorter than Jumps To Shatter " +
+                 "means the last entry repeats; empty = no crack sound.")]
+        public SlimeJumping.Audio.SoundDef[] crackStageSounds;
+
+        [Tooltip("Ice debris particles burst out of the tile's own debris VFX on each landing. " +
+                 "0 = no burst.")]
+        [Min(0)] public int crackStageDebrisBurst = 10;
+
+        [Header("Shatter fuse")]
+        [Tooltip("Seconds between the slime leaving the stalk and the ice giving way, once the " +
+                 "final landing has cracked it. 0 = shatters the moment the slime is off.")]
+        [Min(0f)] public float shatterFuseSeconds = 0.2f;
+
+        [Tooltip("Seconds the cracked ice holds while the slime just stays on the stalk, before " +
+                 "it gives way anyway. Keeps a camper from freezing the fuse. 0 = holds forever.")]
+        [Min(0f)] public float shatterMaxHoldSeconds = 3f;
+
         [Header("Corpse fall")]
         [Tooltip("Mass the SLIME feels (rigidbody mass: shove resistance, launch recoil " +
                  "response). No effect on fall speed, no effect on stalk shake (bambooMass).")]

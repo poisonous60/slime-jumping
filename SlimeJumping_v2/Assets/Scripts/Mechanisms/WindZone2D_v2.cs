@@ -34,6 +34,18 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Optional BoxCollider2D marking where stripes are drawn — resize it with the collider handles. None = whole zone. Physics push and the snow ForceField always use the zone collider. Kept disabled so it never touches physics.")]
         [SerializeField] private BoxCollider2D stripeBounds;
 
+        [Tooltip("Ribbon length as a fraction of particle lifetime. 0 = no trail (straight stretched stripes).")]
+        [Range(0f, 1f)]
+        [SerializeField] private float ribbonLength = 0.5f;
+
+        [Tooltip("Sideways curl as a fraction of particleSpeed. Above ~0.25 the ribbons read as swirling insects instead of wind.")]
+        [Range(0f, 0.5f)]
+        [SerializeField] private float curlStrength = 0.15f;
+
+        [Tooltip("Curl noise frequency. Low = long lazy arcs, high = tight wiggle.")]
+        [Range(0.05f, 2f)]
+        [SerializeField] private float curlFrequency = 0.4f;
+
         [Header("Visual — Snow Force Field")]
         [Tooltip("Box ParticleSystemForceField that pushes snow (and any other ExternalForces-enabled PS on the WindForceField layer). Auto-synced from BoxCollider2D bounds + windAcceleration. Box-only.")]
         [SerializeField] private ParticleSystemForceField snowForceField;
@@ -118,6 +130,41 @@ namespace SlimeJumping.Mechanisms
 
             var emis = windParticles.emission;
             emis.rateOverTime = acrossWind * 12f;
+
+            SyncRibbon();
+        }
+
+        // The stretched head quad can only be straight; curvature lives in the trail behind it.
+        void SyncRibbon()
+        {
+            var noise = windParticles.noise;
+            noise.enabled = curlStrength > 0f;
+            noise.strength = particleSpeed * curlStrength;
+            noise.frequency = curlFrequency;
+            noise.damping = false;
+
+            var trails = windParticles.trails;
+            trails.enabled = ribbonLength > 0f;
+            trails.mode = ParticleSystemTrailMode.PerParticle;
+            trails.ratio = 1f;
+            trails.lifetime = ribbonLength;
+            trails.minVertexDistance = 0.05f;
+            trails.textureMode = ParticleSystemTrailTextureMode.Stretch;
+            trails.sizeAffectsWidth = true;
+            trails.inheritParticleColor = true;
+            trails.dieWithParticles = false;
+
+            var psr = windParticles.GetComponent<ParticleSystemRenderer>();
+            if (psr == null) return;
+
+            // Trails render from their own material slot; unset it draws pink over the whole zone.
+            if (psr.trailMaterial != psr.sharedMaterial)
+                psr.trailMaterial = psr.sharedMaterial;
+
+            // The head quad is a straight slab that juts out of every curve, so the ribbon renders alone.
+            var wanted = trails.enabled ? ParticleSystemRenderMode.None : ParticleSystemRenderMode.Stretch;
+            if (psr.renderMode != wanted)
+                psr.renderMode = wanted;
         }
 
         // Stripe-only rect, mapped into zone local space. Box rotation is ignored.

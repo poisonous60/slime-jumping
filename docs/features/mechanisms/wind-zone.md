@@ -43,7 +43,20 @@ slime.AddExternalVelocity(deltaV)
 - additive → 알파 블렌드 전환만: 0.3 두 겹 = 0.51 로 여전히 진해짐.
 - 불투명(알파 1) + RGB 로 밝기 보정: 겹침은 평탄해지지만 색 자체가 바뀜.
 
-비트 마스킹이라 IceLake 가 쓰는 stencil 40 을 건드리지 않는다 (40 에 16 비트 없음, 게다가 얼음은 Geometry 큐라 줄무늬보다 먼저 끝난다). `_BaseMap` 없음 — 줄무늬는 단색 사각형, 페이드는 sizeOverLifetime.
+비트 마스킹이라 IceLake 가 쓰는 stencil 40 을 건드리지 않는다 (40 에 16 비트 없음, 게다가 얼음은 Geometry 큐라 줄무늬보다 먼저 끝난다).
+
+### 곡선 리본 전환 (2026-08-12)
+등속 직선 사각형 → 노이즈 필드를 통과하며 휘는 리본. `SyncRibbon` 이 Trails(PerParticle) + Noise 를 세팅하고 트레일 머티리얼을 렌더러 머티리얼로 물린다 (트레일 슬롯이 비면 존 전체가 핑크로 뜬다). Stretch 헤드 쿼드는 원리상 직선이라 곡률은 트레일이 담당.
+
+| 노브 | 기본 | 설명 |
+|---|---|---|
+| `ribbonLength` | 0.5 | 입자 수명 대비 리본 길이. 0 = 트레일 없음(예전 직선 줄무늬) |
+| `curlStrength` | 0.15 | `particleSpeed` 대비 옆흔들림. 0.25 넘으면 바람이 아니라 벌레떼로 읽힌다 |
+| `curlFrequency` | 0.4 | 낮으면 긴 호, 높으면 잔떨림 |
+
+noise `scrollSpeed` 는 안 건드린다 — 정적 필드를 입자가 지나가는 것만으로 경로가 휘고, 필드까지 흐르면 리본 전체가 같은 위상으로 요동친다. 리본 길이 편차는 `startLifetime` 이 이미 0.85~1.0 범위라 자동으로 따라온다.
+
+셰이더가 리본 모양을 UV 로 만든다 (텍스처 에셋 없음). `_EdgeSoftness` = 폭 방향 바깥쪽 페이드 비율(기본 0.35), `_EndFade` = 양 끝 테이퍼(기본 0.15). **코어는 불투명하게 남겨야 한다** — 스텐실 컷은 이분법이라 코어까지 반투명하면 리본이 교차할 때 잘린 자국이 그대로 드러난다. 페이드가 UV 로 오면서 sizeOverLifetime 은 더 이상 페이드 담당이 아니다.
 
 ## 관련 파일
 - [WindZone2D.cs](../../../SlimeJumping_v2/Assets/Scripts/Mechanisms/WindZone2D.cs)

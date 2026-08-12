@@ -15,6 +15,14 @@ MonoBehaviour:
   jumpsToShatter: 4
   landingDebounceSeconds: 0.1
   crackHealSeconds: 3
+  crackStageSounds:
+  - {fileID: 11400000, guid: f8a53dcd8c953fe48ab3921991986d1d, type: 2}
+  - {fileID: 11400000, guid: b5a53442339e9c445ad5a56aaa39d126, type: 2}
+  - {fileID: 11400000, guid: a289d704cfc6ac145bd69df9f06a1d1c, type: 2}
+  - {fileID: 11400000, guid: e2a6cafb1f9899640af0cfd0a6bcfc1c, type: 2}
+  crackStageDebrisBurst: 10
+  shatterFuseSeconds: 0.2
+  shatterMaxHoldSeconds: 3
   slimeMass: 8
   corpseGravityScale: 2.5
   corpseLinearDamping: 0.05
