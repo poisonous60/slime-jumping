@@ -90,9 +90,9 @@ MonoBehaviour:
   launchInertiaPNorm: 2
   layerOverSlimeSound: 1
   landHardSound: {fileID: 11400000, guid: 0637f1b2b733e6c4aa86d0b3186f6e54, type: 2}
-  landSoftSound: {fileID: 11400000, guid: 0637f1b2b733e6c4aa86d0b3186f6e54, type: 2}
-  launchSound: {fileID: 0}
-  hopSound: {fileID: 0}
+  landSoftSound: {fileID: 11400000, guid: 52833e61f6d750b479b0cac71051d802, type: 2}
+  launchSound: {fileID: 11400000, guid: d0a4498315b76284c9781374d14dfa95, type: 2}
+  hopSound: {fileID: 11400000, guid: 7ae085f374762a34f9a29b5995f16c56, type: 2}
   overrideCeilingAngle: 0
   ceilingAngle: 107
   ceilingReattachAngle: 101

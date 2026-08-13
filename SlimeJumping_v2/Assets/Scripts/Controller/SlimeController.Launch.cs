@@ -101,10 +101,7 @@ namespace SlimeJumping.Controller
             Vector2 inheritedVec = lastSurfaceTangent * Mathf.Sign(preLaunchCrawl) * excess * settings.tangentInheritanceFactor;
             velocity = BlendLaunchInertia(velocity, inheritedVec, surfaceMod);
             if (carrier != null)
-            {
                 velocity += carrier.GetLaunchVelocity() * surfaceMod.carrierFriction.Evaluate(GetSurfaceAngle());
-                carrier.Detach();
-            }
 
             // Rope owns its bonus formula (IRopePlatform.GetLaunchBonus); every impl clamps internally.
             if (currentRope != null)
@@ -128,6 +125,8 @@ namespace SlimeJumping.Controller
             // Fire before FinalizeAirborneExit while ActiveSurfaceMaterial is still resolved —
             // audio needs it to pick the surface-correct launch clip.
             OnLaunch?.Invoke(rb.position, velocity, false);
+            // After the event: Detach pops the platform's SurfaceMaterial override.
+            if (carrier != null) carrier.Detach();
             FinalizeAirborneExit();
             postLaunchAirControlLockTimer = settings.postLaunchAirControlLockTime;
         }

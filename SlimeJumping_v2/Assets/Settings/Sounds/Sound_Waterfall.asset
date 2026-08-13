@@ -13,11 +13,12 @@ MonoBehaviour:
   m_Name: Sound_Waterfall
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
   clips:
-  - {fileID: 8300000, guid: 803bbedece976f645b8cef5e6c888151, type: 3}
+  - {fileID: 8300000, guid: b95b34a4468d38e47a4acabd3beb57f4, type: 3}
   clipOrder: 0
-  category: 2
-  volumeRange: {x: 0.2, y: 0.2}
+  category: 0
+  volumeRange: {x: 0.07, y: 0.07}
   pitchRange: {x: 1, y: 1}
-  spatial3D: 1
+  cooldownSeconds: 0
+  spatial3D: 0
   minDistance: 46.23461
   maxDistance: 82.93085

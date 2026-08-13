@@ -42,11 +42,6 @@ namespace SlimeJumping.UI.Panels
         [SerializeField] private Button backgroundCameraNextButton;
         [SerializeField] private BumpableLabel backgroundCameraValueLabel;
 
-        [Header("Gameplay")]
-        [SerializeField] private Button chargeVisualPrevButton;
-        [SerializeField] private Button chargeVisualNextButton;
-        [SerializeField] private BumpableLabel chargeVisualValueLabel;
-
         [Header("Actions")]
         [SerializeField] private Button resumeButton;
         [SerializeField] private Button quitButton;
@@ -56,7 +51,6 @@ namespace SlimeJumping.UI.Panels
         private int windowModeIndex;
         private int backgroundCameraIndex;
         private int vsyncIndex;
-        private int chargeVisualIndex;
         private static readonly WindowMode[] WindowModes = { WindowMode.Windowed, WindowMode.Borderless, WindowMode.Fullscreen };
         private static readonly bool[] ToggleStates = { false, true };
 
@@ -109,11 +103,6 @@ namespace SlimeJumping.UI.Panels
             if (backgroundCameraPrevButton != null) backgroundCameraPrevButton.onClick.AddListener(() => CycleBackgroundCamera(-1));
             if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.AddListener(() => CycleBackgroundCamera(+1));
 
-            chargeVisualIndex = GameOptions.ChargeVisualEnabled ? 1 : 0;
-            UpdateChargeVisualLabel();
-            if (chargeVisualPrevButton != null) chargeVisualPrevButton.onClick.AddListener(() => CycleChargeVisual(-1));
-            if (chargeVisualNextButton != null) chargeVisualNextButton.onClick.AddListener(() => CycleChargeVisual(+1));
-
             if (resumeButton != null) resumeButton.onClick.AddListener(HandleResume);
             if (quitButton != null)
             {
@@ -146,8 +135,6 @@ namespace SlimeJumping.UI.Panels
             if (resolutionDropdown != null) resolutionDropdown.onValueChanged.RemoveAllListeners();
             if (backgroundCameraPrevButton != null) backgroundCameraPrevButton.onClick.RemoveAllListeners();
             if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.RemoveAllListeners();
-            if (chargeVisualPrevButton != null) chargeVisualPrevButton.onClick.RemoveAllListeners();
-            if (chargeVisualNextButton != null) chargeVisualNextButton.onClick.RemoveAllListeners();
             if (resumeButton != null) resumeButton.onClick.RemoveAllListeners();
             if (quitButton != null) quitButton.onClick.RemoveAllListeners();
             if (newGameButton != null) newGameButton.onClick.RemoveAllListeners();
@@ -219,14 +206,6 @@ namespace SlimeJumping.UI.Panels
             UpdateVSyncLabel();
         }
 
-        private void CycleChargeVisual(int dir)
-        {
-            int len = ToggleStates.Length;
-            chargeVisualIndex = ((chargeVisualIndex + dir) % len + len) % len;
-            GameOptions.SetChargeVisualEnabled(ToggleStates[chargeVisualIndex]);
-            UpdateChargeVisualLabel();
-        }
-
         private void OnResolutionDropdownChanged(int index)
         {
             int clamped = Mathf.Clamp(index, 0, GameOptions.ResolutionOptions.Length - 1);
@@ -269,12 +248,6 @@ namespace SlimeJumping.UI.Panels
         {
             if (vsyncValueLabel == null) return;
             vsyncValueLabel.Set(ToggleStates[vsyncIndex] ? "On" : "Off");
-        }
-
-        private void UpdateChargeVisualLabel()
-        {
-            if (chargeVisualValueLabel == null) return;
-            chargeVisualValueLabel.Set(ToggleStates[chargeVisualIndex] ? "On" : "Off");
         }
 
         private static int IndexOfFrameLimit(int fps)

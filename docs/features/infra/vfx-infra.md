@@ -130,8 +130,9 @@ ESC로 열고 닫되 `Time.timeScale`은 건드리지 않아 게임 진행 유�
 - UI (`UIVolume` 파라미터 → UI 버스). `UIClickSoundInstaller`가 Canvas 하위 버튼 클릭음에 적용.
 - Window Mode (Windowed/Borderless/Fullscreen — `Screen.fullScreenMode`에 `Windowed` / `FullScreenWindow` / `ExclusiveFullScreen`).
 - Background Camera (On/Off — `BackgroundCameraEnabledChanged` 이벤트로 `BackgroundCameraOption`이 BG 카메라 + TranslucentImageSource 비활성화 + Main Camera Overlay→Base 전환. Off 시 블러/BG 스택이 꺼지며 `MainScene_성능_프로파일_2026-04-24.md`의 ~0.55 ms 렌더 비용 제거).
-- Charge Ring (On/Off — `ChargeVisualEnabledChanged` 이벤트로 `SlimeChargeVisual`이 차징 판정원 링 + 조준선 표시 토글. 기본 Off).
 - CLOSE + QUIT 버튼.
+
+차징 판정원(`SlimeChargeVisual` 링 + 조준선)은 `GameOptions.ChargeVisualEnabled` 기본 **false** 로 항상 꺼진 상태. 옵션 행은 한 번 만들었다가 걷어냈다 — 복구는 `git revert 5a9d76c`.
 
 **영속화**: `GameOptions.cs`가 PlayerPrefs에 저장.
 - `BeforeSceneLoad`: `Application.targetFrameRate` + `Screen.fullScreenMode` + `BackgroundCameraEnabled` 로드 (카메라 토글은 씬의 `BackgroundCameraOption.OnEnable`에서 현재 값 적용).

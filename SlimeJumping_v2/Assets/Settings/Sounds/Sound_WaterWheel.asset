@@ -10,13 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 10943b20a89f36a44ba061e58e89f099, type: 3}
-  m_Name: Sound_BranchLand
+  m_Name: Sound_WaterWheel
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
-  clips: []
+  clips:
+  - {fileID: 8300000, guid: 558cdc012f141d247ac569ccf733419b, type: 3}
   clipOrder: 0
-  category: 3
-  volumeRange: {x: 1, y: 1}
-  pitchRange: {x: 0.96, y: 1.04}
+  category: 0
+  volumeRange: {x: 0.7, y: 0.7}
+  pitchRange: {x: 1, y: 1}
+  cooldownSeconds: 0
   spatial3D: 1
-  minDistance: -1
-  maxDistance: -1
+  minDistance: 9.5
+  maxDistance: 22.1

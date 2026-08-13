@@ -15,7 +15,7 @@ namespace SlimeJumping.EditorTools.UI
         public const string PrefabPath = UISetupCommon.PanelPrefabRoot + "/OptionsPanel.prefab";
 
         private const float BoxWidth = 900f;
-        private const float BoxHeight = 946f;
+        private const float BoxHeight = 880f;
         private const float RowHeight = 56f;
         private const float LabelWidth = 340f;
         private const float ControlWidth = 430f;
@@ -85,10 +85,6 @@ namespace SlimeJumping.EditorTools.UI
                 out Button bgCameraPrev, out Button bgCameraNext, out TextMeshProUGUI bgCameraValue);
             UISetupCommon.TagSlot(bgCameraRow, UISlotType.Row_BackgroundCamera);
 
-            var chargeVisualRow = CreateCyclerRow(box.transform, "ChargeVisualRow", "Charge Ring",
-                out Button chargeVisualPrev, out Button chargeVisualNext, out TextMeshProUGUI chargeVisualValue);
-            UISetupCommon.TagSlot(chargeVisualRow, UISlotType.Row_ChargeVisual);
-
             var bgmRow = CreateSliderRow(box.transform, "BgmRow", "BGM",
                 out Slider bgmSlider, out TextMeshProUGUI bgmValue);
             UISetupCommon.TagSlot(bgmRow, UISlotType.Row_Bgm);
@@ -153,9 +149,6 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("backgroundCameraPrevButton").objectReferenceValue = bgCameraPrev;
             so.FindProperty("backgroundCameraNextButton").objectReferenceValue = bgCameraNext;
             so.FindProperty("backgroundCameraValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(bgCameraValue);
-            so.FindProperty("chargeVisualPrevButton").objectReferenceValue = chargeVisualPrev;
-            so.FindProperty("chargeVisualNextButton").objectReferenceValue = chargeVisualNext;
-            so.FindProperty("chargeVisualValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(chargeVisualValue);
 
             so.FindProperty("resumeButton").objectReferenceValue = resumeBtn;
             so.FindProperty("quitButton").objectReferenceValue = quitBtn;

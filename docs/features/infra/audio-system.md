@@ -23,7 +23,7 @@ SoundService.Play(cfg.impactSound, worldPos, DistanceFalloff(worldPos));
 
 4. **`SoundCategory` 선택 기준**:
    - `SFX_Slime` — 슬라임 자체가 내는 소리 (착지/발사/슬라이드) → Player SFX 슬라이더
-   - `SFX_Environment` — 환경 앰비언스/루프 (물, 바람, 폭포) → World SFX 슬라이더
+   - `SFX_Environment` — 환경 앰비언스/루프 (바람, 기계) → World SFX 슬라이더. 단 상시 깔리는 물·비 앰비언트는 BGM(아래 참조)
    - `SFX_Object` — 월드 오브젝트 이벤트 (고드름, 얇은 얼음, 포탑, 폭발) → World SFX 슬라이더
    - `UI` — 버튼 클릭, 씬 전환 → UI 슬라이더
    - `BGM` — 배경음악 → BGM 슬라이더
@@ -31,6 +31,8 @@ SoundService.Play(cfg.impactSound, worldPos, DistanceFalloff(worldPos));
 5. **AudioSource 를 직접 드는 것은 예외뿐.** SoundService 풀이 표현 못 하는 것만: 피아노 보이스풀(88건반 동시 발음), 축음기·TV·세탁기(재생/정지/트랙 전환), `Snowball`(구르기/날기 루프를 자체 AudioSource 로 전환 — 클립·볼륨이 아직 raw). 폐기 상태인 `SwingingBell`(V1)도 타격 세기로 클립 인덱스를 고르는 구조라 이관하지 않았다. 이들도 그룹은 `SoundCategory` 에서 받아온다(`SoundService.GetGroup`). `AudioSourceMixerGroupValidator` 가 저장 시 그룹 null 을 경고.
 
 6. **BGM 은 `StageBgmPlayer`.** 씬에 빈 GameObject + 컴포넌트 + `SoundDef` 하나.
+
+7. **상시 앰비언트는 BGM 카테고리.** `AmbientSound` / `RectAmbienceZone` 으로 계속 깔아두는 소리는 곡이 아니어도 BGM 슬라이더를 따른다(2026-08-13, World SFX → BGM: `Sound_Waterfall` / `Sound_RainAmbient` / `Sound_WaterWheel`). 카테고리는 버스만 바꾸므로 3D 감쇠는 `SoundDef` 가 그대로 들고 있고 거리감은 유지된다. 일회성 물소리(`Sound_WaterEnter*` / `Sound_WaterExit`)와 잠수 루프(`Sound_WaterUnderwaterLoop`)는 슬라임 행동에 붙은 반응이라 World SFX 에 남긴다.
 
 ## 믹서 계층
 
@@ -56,7 +58,8 @@ MainMixer
 | `SoundSettings` (ScriptableObject) | [SlimeJumping_v2/Assets/Settings/SoundSettings.asset](../../../SlimeJumping_v2/Assets/Settings/SoundSettings.asset) | 믹서 에셋 + 그룹 참조 + 노출 파라미터 이름 보관. |
 | `StageBgmPlayer` | [SlimeJumping_v2/Assets/Scripts/Audio/StageBgmPlayer.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/StageBgmPlayer.cs) | 씬 로컬 BGM 트리거. Start에서 `PlayBgm` 호출. |
 | `UIClickSoundInstaller` | [SlimeJumping_v2/Assets/Scripts/UI/UIClickSoundInstaller.cs](../../../SlimeJumping_v2/Assets/Scripts/UI/UIClickSoundInstaller.cs) | Canvas 하위 모든 Button의 onClick에 UI 버스 SFX 자동 부착. `Play2D(UI)` 경유 (2026-08-10). |
-| `AmbientSound` | [SlimeJumping_v2/Assets/Scripts/Audio/AmbientSound.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/AmbientSound.cs) | 루프 환경음. `OnEnable` 에서 `PlayLooping`, `OnDisable` 에서 `StopLoop`. 자체 감쇠 거리(`minDistance`/`maxDistance`)를 들고 있어 풀 기본값(3/20)보다 멀리 들리는 앰비언스를 표현. |
+| `AmbientSound` | [SlimeJumping_v2/Assets/Scripts/Audio/AmbientSound.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/AmbientSound.cs) | 루프 환경음. `OnEnable` 에서 `PlayLooping`, `OnDisable` 에서 `StopLoop`. 자체 감쇠 거리(`minDistance`/`maxDistance`)를 들고 있어 풀 기본값(3/20)보다 멀리 들리는 앰비언스를 표현. 선택하면 그 두 거리를 와이어 구 2개로 그린다(초록=전볼륨, 주황=무음). |
+| `RectAmbienceZone` | [SlimeJumping_v2/Assets/Scripts/Audio/RectAmbienceZone.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/RectAmbienceZone.cs) | 루프 환경음을 **사각 영역**으로. 루프를 2D 로 틀고 리스너 XY 로 볼륨을 직접 몰아 넣는다 — 3D AudioSource 는 반경 감쇠뿐이라 넓고 낮은(또는 좁고 높은) 구역을 표현 못 한다. 안쪽 사각(full) + 바깥 사각(silence) 둘 다 기즈모라 들리는 범위가 씬에 보인다. 축별 falloff(`falloffSides`/`Up`/`Down`) 독립. |
 | `SoundInventoryWindow` | [SlimeJumping_v2/Assets/Scripts/Editor/SoundInventoryWindow.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/SoundInventoryWindow.cs) | `Tools/Sound Inventory`. 아래 별도 섹션. |
 | `AudioSourceMixerGroupValidator` | [SlimeJumping_v2/Assets/Scripts/Editor/AudioSourceMixerGroupValidator.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/AudioSourceMixerGroupValidator.cs) | 에디터 저장 시 `outputAudioMixerGroup == null` AudioSource 경고. |
 | `GameOptions` | [SlimeJumping_v2/Assets/Scripts/Settings/GameOptions.cs](../../../SlimeJumping_v2/Assets/Scripts/Settings/GameOptions.cs) | PlayerPrefs 영속화 + dB 변환 + 부팅 시 적용. |
@@ -102,7 +105,7 @@ PlayerPrefs 키는 전부 `opt.*` 접두사. 레거시 단일 `opt.sfxVolume`은
 
 끝. 볼륨을 호출부에 쓰지 않는다 — 크기가 상황에 따라 달라져야 하면 `volumeScale` 배율만 넘긴다.
 
-**루프/앰비언스**: 오브젝트에 `AmbientSound` 컴포넌트 + `SoundDef` 하나. 감쇠 거리도 에셋이 들고 있다.
+**루프/앰비언스**: 오브젝트에 `AmbientSound` 컴포넌트 + `SoundDef` 하나. 감쇠 거리도 에셋이 들고 있다. 들리는 구역을 씬에서 보고 축별로 잡아야 하면 `RectAmbienceZone` 쪽 — 그때 `SoundDef.spatial3D` 는 꺼야 한다(존이 볼륨을 직접 몰기 때문에 반경 감쇠가 겹치면 이중 적용).
 
 **여러 인스턴스에 같은 소리 일괄 주입**(`WaterZoneAudioManager` 등): 매니저가 `SoundDef` 참조만 브로드캐스트한다.
 
@@ -138,7 +141,7 @@ PlayerPrefs 키는 전부 `opt.*` 접두사. 레거시 단일 `opt.sfxVolume`은
 
 - `SceneTransitionController.cs` — 직렬화 `audioSource` 제거, `PlayOneShot` 6곳 → `Play2D(UI)` + `sfxVolume` 노브. `Resources/SceneTransition.prefab` 의 AudioSource 제거.
 - `UIClickSoundInstaller.cs` — 런타임 `AddComponent<AudioSource>` 와 드래그 `outputGroup` 필드 제거, `Play2D(UI)` 경유. 대가: SoundService 없는 씬에서 UI 소리가 안 난다(모든 씬에 서비스 인스턴스 필요).
-- `WaterfallAmbient` (`stage1_floor2/wheel set/WaterfallImpactVFX_Test/`) — 스크립트 없는 생 AudioSource → `AmbientSound`(min 46.23 / max 82.93 이식).
+- `WaterfallAmbient` (`stage1_floor2/wheel set/WaterfallImpactVFX_Test/`) — 스크립트 없는 생 AudioSource → `AmbientSound`(min 46.23 / max 82.93 이식). 2026-08-13 에 `RectAmbienceZone`(size 92.46², falloff 36.7 = 같은 반경을 사각으로 이식) 으로 재이관.
 - KEEP 3종(`ApplianceInteractable_Washing` / `MediaInteractable_Phonograph` / `MediaInteractable_TV`)은 AudioSource 유지하되 드래그 그룹 → `[SerializeField] SoundCategory` + `SoundService.GetGroup()`.
 
 ### 적발된 오배선 (2026-08-10)
