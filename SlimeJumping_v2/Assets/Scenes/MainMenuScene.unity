@@ -238,6 +238,7 @@ GameObject:
   - component: {fileID: 222351310}
   - component: {fileID: 222351309}
   - component: {fileID: 222351308}
+  - component: {fileID: 222351311}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -319,6 +320,33 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &222351311
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 222351307}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e83fd8bb56c5764aa817f60d4934ab6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Camera.BackgroundBlurSource
+  blurConfig: {fileID: 11400000, guid: a7b3c21de8f04c4bab11d9e6f7a58403, type: 2}
+  downsample: 1
+  blurRegion:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  maxUpdateRate: Infinity
+  cullPadding: 0
+  preview: 0
+  backgroundFill:
+    mode: 0
+    color: {r: 1, g: 1, b: 1, a: 1}
+  skipCulling: 1
 --- !u!1001 &559516125
 PrefabInstance:
   m_ObjectHideFlags: 0

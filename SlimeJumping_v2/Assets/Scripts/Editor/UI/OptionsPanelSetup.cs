@@ -2,23 +2,24 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using LeTai.Asset.TranslucentImage;
 using SlimeJumping.UI.Framework;
 using SlimeJumping.UI.Panels;
 
 namespace SlimeJumping.EditorTools.UI
 {
-    /// Builds OptionsPanel.prefab: centered box of Cycler/Slider/Dropdown rows, refs wired via SerializedProperty.
+    /// Builds OptionsPanel.prefab: single flat list over the dimmed screen — right-aligned
+    /// label column, left-aligned control column around a center gutter, action buttons below.
     public static class OptionsPanelSetup
     {
         public const string PrefabPath = UISetupCommon.PanelPrefabRoot + "/OptionsPanel.prefab";
 
-        private const float BoxWidth = 820f;
-        private const float BoxHeight = 720f;
-        private const float TabHeight = 56f;
+        private const float BoxWidth = 900f;
+        private const float BoxHeight = 880f;
         private const float RowHeight = 56f;
-        private const float LabelWidth = 240f;
+        private const float LabelWidth = 340f;
+        private const float ControlWidth = 430f;
         private const float CycleButtonWidth = 60f;
-        private const float ValueWidth = 160f;
 
         [MenuItem("Tools/SlimeJumping/UI/Build or Rebuild OptionsPanel Prefab")]
         public static void BuildMenu()
@@ -37,12 +38,25 @@ namespace SlimeJumping.EditorTools.UI
             var backdrop = UISetupCommon.CreateChild(root.transform, "Backdrop",
                 typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
             UISetupCommon.FillParent(backdrop);
-            backdrop.GetComponent<Image>().color = UISetupCommon.ColorBackdropDim;
+            // Darker than the shared dim so menu-layer UI outside the plate stays muted.
+            backdrop.GetComponent<Image>().color = new Color(0f, 0.06f, 0.04f, 0.75f);
 
-            var box = UISetupCommon.CreateCenteredBox(root.transform, "Box", new Vector2(BoxWidth, BoxHeight));
+            // Frosted plate — blur source auto-acquired at Start; alpha 1 blocks menu-layer UI bleed.
+            var box = UISetupCommon.CreateChild(root.transform, "Box", typeof(RectTransform), typeof(CanvasRenderer));
+            var boxImg = box.AddComponent<TranslucentImage>();
+            boxImg.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+            boxImg.type = Image.Type.Sliced;
+            boxImg.color = new Color(0.04f, 0.11f, 0.09f, 1f);
+            boxImg.foregroundOpacity = 0.5f;
+            boxImg.vibrancy = 1f;
+            var boxRT = box.GetComponent<RectTransform>();
+            boxRT.anchorMin = new Vector2(0.5f, 0.5f);
+            boxRT.anchorMax = new Vector2(0.5f, 0.5f);
+            boxRT.pivot = new Vector2(0.5f, 0.5f);
+            boxRT.sizeDelta = new Vector2(BoxWidth, BoxHeight);
+            boxRT.anchoredPosition = Vector2.zero;
             UISetupCommon.AddVerticalLayout(box, padding: 32, spacing: 10, childAlign: TextAnchor.UpperCenter);
             UISetupCommon.TagSlot(box, UISlotType.ContentRoot);
-            UISetupCommon.AddContainerStagger(box);
 
             var title = UISetupCommon.CreateText(box.transform, "Title", "Options",
                 UISetupCommon.FontTitle, TextAlignmentOptions.Center);
@@ -51,94 +65,41 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.AddLayoutElement(title.gameObject, minHeight: 88f, preferredHeight: 96f);
             UISetupCommon.TagSlot(title.gameObject, UISlotType.Title);
 
-            var tabs = UISetupCommon.CreateChild(box.transform, "Tabs", typeof(RectTransform));
-            UISetupCommon.AddHorizontalLayout(tabs, padding: 0, spacing: 12, childAlign: TextAnchor.MiddleCenter, expandWidth: false);
-            UISetupCommon.AddLayoutElement(tabs, minHeight: TabHeight, preferredHeight: TabHeight);
-            var graphicsTabBtn = CreateTabButton(tabs.transform, "GraphicsTabButton", "Graphics", out TextMeshProUGUI graphicsTabText);
-            UISetupCommon.TagSlot(graphicsTabBtn.gameObject, UISlotType.Tab_Graphics);
-            var audioTabBtn = CreateTabButton(tabs.transform, "AudioTabButton", "Audio", out TextMeshProUGUI audioTabText);
-            UISetupCommon.TagSlot(audioTabBtn.gameObject, UISlotType.Tab_Audio);
-            var displayTabBtn = CreateTabButton(tabs.transform, "DisplayTabButton", "Display", out TextMeshProUGUI displayTabText);
-            UISetupCommon.TagSlot(displayTabBtn.gameObject, UISlotType.Tab_Display);
-            var debugTabBtn = CreateTabButton(tabs.transform, "DebugTabButton", "Debug", out TextMeshProUGUI debugTabText);
-            UISetupCommon.TagSlot(debugTabBtn.gameObject, UISlotType.Tab_Debug);
-
-            // Only one page is active at a time; SelectTab toggles them at runtime.
-            var graphicsPage = UISetupCommon.CreateChild(box.transform, "GraphicsPage", typeof(RectTransform));
-            UISetupCommon.AddVerticalLayout(graphicsPage, padding: 0, spacing: 10, childAlign: TextAnchor.UpperCenter);
-            UISetupCommon.TagSlot(graphicsPage, UISlotType.Page_Graphics);
-
-            var audioPage = UISetupCommon.CreateChild(box.transform, "AudioPage", typeof(RectTransform));
-            UISetupCommon.AddVerticalLayout(audioPage, padding: 0, spacing: 10, childAlign: TextAnchor.UpperCenter);
-            UISetupCommon.TagSlot(audioPage, UISlotType.Page_Audio);
-
-            var displayPage = UISetupCommon.CreateChild(box.transform, "DisplayPage", typeof(RectTransform));
-            UISetupCommon.AddVerticalLayout(displayPage, padding: 0, spacing: 10, childAlign: TextAnchor.UpperCenter);
-            UISetupCommon.TagSlot(displayPage, UISlotType.Page_Display);
-
-            var debugPage = UISetupCommon.CreateChild(box.transform, "DebugPage", typeof(RectTransform));
-            UISetupCommon.AddVerticalLayout(debugPage, padding: 0, spacing: 10, childAlign: TextAnchor.UpperCenter);
-            UISetupCommon.TagSlot(debugPage, UISlotType.Page_Debug);
-
-            // --- GRAPHICS PAGE ---
-            AddSectionHeader(graphicsPage.transform, "Graphics");
-
-            var frameLimitRow = CreateCyclerRow(graphicsPage.transform, "FrameLimitRow", "Frame Limit",
-                out Button frameLimitPrev, out Button frameLimitNext, out TextMeshProUGUI frameLimitValue);
-            UISetupCommon.TagSlot(frameLimitRow, UISlotType.Row_FrameLimit);
-
-            var vsyncRow = CreateCyclerRow(graphicsPage.transform, "VSyncRow", "VSync",
-                out Button vsyncPrev, out Button vsyncNext, out TextMeshProUGUI vsyncValue);
-            UISetupCommon.TagSlot(vsyncRow, UISlotType.Row_VSync);
-
-            // --- AUDIO PAGE ---
-            AddSectionHeader(audioPage.transform, "Audio");
-
-            var playerSfxRow = CreateSliderRow(audioPage.transform, "PlayerSfxRow", "Player SFX",
-                out Slider playerSfxSlider, out TextMeshProUGUI playerSfxValue);
-            UISetupCommon.TagSlot(playerSfxRow, UISlotType.Row_PlayerSfx);
-
-            var worldSfxRow = CreateSliderRow(audioPage.transform, "WorldSfxRow", "World SFX",
-                out Slider worldSfxSlider, out TextMeshProUGUI worldSfxValue);
-            UISetupCommon.TagSlot(worldSfxRow, UISlotType.Row_WorldSfx);
-
-            var bgmRow = CreateSliderRow(audioPage.transform, "BgmRow", "BGM",
-                out Slider bgmSlider, out TextMeshProUGUI bgmValue);
-            UISetupCommon.TagSlot(bgmRow, UISlotType.Row_Bgm);
-
-            var uiRow = CreateSliderRow(audioPage.transform, "UiRow", "UI",
-                out Slider uiSlider, out TextMeshProUGUI uiValue);
-            UISetupCommon.TagSlot(uiRow, UISlotType.Row_Ui);
-
-            // --- DISPLAY PAGE ---
-            AddSectionHeader(displayPage.transform, "Display");
-
-            var windowModeRow = CreateCyclerRow(displayPage.transform, "WindowModeRow", "Window Mode",
-                out Button windowModePrev, out Button windowModeNext, out TextMeshProUGUI windowModeValue);
-            UISetupCommon.TagSlot(windowModeRow, UISlotType.Row_WindowMode);
-
-            var resolutionRow = CreateDropdownRow(displayPage.transform, "ResolutionRow", "Resolution",
+            var resolutionRow = CreateDropdownRow(box.transform, "ResolutionRow", "Resolution",
                 out TMP_Dropdown resolutionDropdown);
             UISetupCommon.TagSlot(resolutionRow, UISlotType.Row_Resolution);
 
-            var bgCameraRow = CreateCyclerRow(displayPage.transform, "BackgroundCameraRow", "Background Camera",
+            var windowModeRow = CreateCyclerRow(box.transform, "WindowModeRow", "Window Mode",
+                out Button windowModePrev, out Button windowModeNext, out TextMeshProUGUI windowModeValue);
+            UISetupCommon.TagSlot(windowModeRow, UISlotType.Row_WindowMode);
+
+            var frameLimitRow = CreateCyclerRow(box.transform, "FrameLimitRow", "Frame Limit",
+                out Button frameLimitPrev, out Button frameLimitNext, out TextMeshProUGUI frameLimitValue);
+            UISetupCommon.TagSlot(frameLimitRow, UISlotType.Row_FrameLimit);
+
+            var vsyncRow = CreateCyclerRow(box.transform, "VSyncRow", "VSync",
+                out Button vsyncPrev, out Button vsyncNext, out TextMeshProUGUI vsyncValue);
+            UISetupCommon.TagSlot(vsyncRow, UISlotType.Row_VSync);
+
+            var bgCameraRow = CreateCyclerRow(box.transform, "BackgroundCameraRow", "Background Camera",
                 out Button bgCameraPrev, out Button bgCameraNext, out TextMeshProUGUI bgCameraValue);
             UISetupCommon.TagSlot(bgCameraRow, UISlotType.Row_BackgroundCamera);
 
-            // --- DEBUG PAGE ---
-            AddSectionHeader(debugPage.transform, "Debug");
+            var bgmRow = CreateSliderRow(box.transform, "BgmRow", "BGM",
+                out Slider bgmSlider, out TextMeshProUGUI bgmValue);
+            UISetupCommon.TagSlot(bgmRow, UISlotType.Row_Bgm);
 
-            var chargeVisualRow = CreateCyclerRow(debugPage.transform, "ChargeVisualRow", "Charge Visual",
-                out Button chargeVisualPrev, out Button chargeVisualNext, out TextMeshProUGUI chargeVisualValue);
-            UISetupCommon.TagSlot(chargeVisualRow, UISlotType.Row_ChargeVisual);
+            var playerSfxRow = CreateSliderRow(box.transform, "PlayerSfxRow", "Player SFX",
+                out Slider playerSfxSlider, out TextMeshProUGUI playerSfxValue);
+            UISetupCommon.TagSlot(playerSfxRow, UISlotType.Row_PlayerSfx);
 
-            var mouseTeleportRow = CreateCyclerRow(debugPage.transform, "MouseTeleportDebugRow", "Mouse Teleport",
-                out Button mouseTeleportPrev, out Button mouseTeleportNext, out TextMeshProUGUI mouseTeleportValue);
-            UISetupCommon.TagSlot(mouseTeleportRow, UISlotType.Row_MouseTeleportDebug);
+            var worldSfxRow = CreateSliderRow(box.transform, "WorldSfxRow", "World SFX",
+                out Slider worldSfxSlider, out TextMeshProUGUI worldSfxValue);
+            UISetupCommon.TagSlot(worldSfxRow, UISlotType.Row_WorldSfx);
 
-            var clearTrailRow = CreateActionRow(debugPage.transform, "ClearTrailRow", "Clear Trail", "Clear",
-                out Button clearTrailBtn);
-            UISetupCommon.TagSlot(clearTrailRow, UISlotType.Row_ClearTrail);
+            var uiRow = CreateSliderRow(box.transform, "UiRow", "UI",
+                out Slider uiSlider, out TextMeshProUGUI uiValue);
+            UISetupCommon.TagSlot(uiRow, UISlotType.Row_Ui);
 
             var spacer = UISetupCommon.CreateChild(box.transform, "Spacer", typeof(RectTransform));
             UISetupCommon.AddLayoutElement(spacer, minHeight: 12f, preferredHeight: 16f);
@@ -160,6 +121,7 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("isModal").boolValue = true;
             so.FindProperty("openOnStart").boolValue = false;
             so.FindProperty("openOnEscape").boolValue = true;
+            so.FindProperty("instantTransitions").boolValue = true;
             so.FindProperty("juiceProfile").objectReferenceValue = UISetupCommon.LoadOrCreateDefaultJuiceProfile();
 
             so.FindProperty("frameLimitPrevButton").objectReferenceValue = frameLimitPrev;
@@ -187,29 +149,6 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("backgroundCameraNextButton").objectReferenceValue = bgCameraNext;
             so.FindProperty("backgroundCameraValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(bgCameraValue);
 
-            so.FindProperty("chargeVisualPrevButton").objectReferenceValue = chargeVisualPrev;
-            so.FindProperty("chargeVisualNextButton").objectReferenceValue = chargeVisualNext;
-            so.FindProperty("chargeVisualValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(chargeVisualValue);
-
-            so.FindProperty("mouseTeleportDebugPrevButton").objectReferenceValue = mouseTeleportPrev;
-            so.FindProperty("mouseTeleportDebugNextButton").objectReferenceValue = mouseTeleportNext;
-            so.FindProperty("mouseTeleportDebugValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(mouseTeleportValue);
-
-            so.FindProperty("clearTrailButton").objectReferenceValue = clearTrailBtn;
-
-            so.FindProperty("graphicsTabButton").objectReferenceValue = graphicsTabBtn;
-            so.FindProperty("audioTabButton").objectReferenceValue = audioTabBtn;
-            so.FindProperty("displayTabButton").objectReferenceValue = displayTabBtn;
-            so.FindProperty("debugTabButton").objectReferenceValue = debugTabBtn;
-            so.FindProperty("graphicsPage").objectReferenceValue = graphicsPage;
-            so.FindProperty("audioPage").objectReferenceValue = audioPage;
-            so.FindProperty("displayPage").objectReferenceValue = displayPage;
-            so.FindProperty("debugPage").objectReferenceValue = debugPage;
-            so.FindProperty("graphicsTabLabel").objectReferenceValue = graphicsTabText;
-            so.FindProperty("audioTabLabel").objectReferenceValue = audioTabText;
-            so.FindProperty("displayTabLabel").objectReferenceValue = displayTabText;
-            so.FindProperty("debugTabLabel").objectReferenceValue = debugTabText;
-
             so.FindProperty("closeButton").objectReferenceValue = closeBtn;
             so.FindProperty("menuButton").objectReferenceValue = menuBtn;
             so.ApplyModifiedPropertiesWithoutUndo();
@@ -217,100 +156,42 @@ namespace SlimeJumping.EditorTools.UI
             return UISetupCommon.SavePanelPrefab(root, "OptionsPanel");
         }
 
-        private static void AddSectionHeader(Transform parent, string text)
+        // Reference layout: label right-aligned to the center gutter, control column left-aligned after it.
+        private static GameObject CreateRowShell(Transform parent, string name, string labelText, out GameObject controlArea)
         {
-            var header = UISetupCommon.CreateText(parent, "Section_" + text, text.ToUpper(),
-                UISetupCommon.FontSection, TextAlignmentOptions.Left);
-            header.color = UISetupCommon.ColorSection;
-            header.fontStyle = TMPro.FontStyles.Bold;
-            UISetupCommon.AddLayoutElement(header.gameObject, minHeight: 44f, preferredHeight: 48f);
+            var row = UISetupCommon.CreateChild(parent, name, typeof(RectTransform));
+            UISetupCommon.AddHorizontalLayout(row, padding: 0, spacing: 24, childAlign: TextAnchor.MiddleCenter);
+            UISetupCommon.AddLayoutElement(row, minHeight: RowHeight, preferredHeight: RowHeight);
+
+            var label = UISetupCommon.CreateText(row.transform, "Label", labelText,
+                UISetupCommon.FontRowLabel, TextAlignmentOptions.MidlineRight);
+            label.color = UISetupCommon.ColorRowLabel;
+            UISetupCommon.AddLayoutElement(label.gameObject, preferredWidth: LabelWidth, flexibleWidth: 0f);
+
+            controlArea = UISetupCommon.CreateChild(row.transform, "Control", typeof(RectTransform));
+            UISetupCommon.AddHorizontalLayout(controlArea, padding: 0, spacing: 8, childAlign: TextAnchor.MiddleLeft);
+            UISetupCommon.AddLayoutElement(controlArea, preferredWidth: ControlWidth, flexibleWidth: 0f);
+            return row;
         }
 
         private static GameObject CreateCyclerRow(Transform parent, string name, string labelText,
             out Button prev, out Button next, out TextMeshProUGUI valueLabel)
         {
-            var row = UISetupCommon.CreateChild(parent, name, typeof(RectTransform));
-            UISetupCommon.AddHorizontalLayout(row, padding: 0, spacing: 8, childAlign: TextAnchor.MiddleLeft);
-            UISetupCommon.AddLayoutElement(row, minHeight: RowHeight, preferredHeight: RowHeight);
+            var row = CreateRowShell(parent, name, labelText, out GameObject control);
 
-            var label = UISetupCommon.CreateText(row.transform, "Label", labelText,
-                UISetupCommon.FontRowLabel, TextAlignmentOptions.MidlineLeft);
-            label.color = UISetupCommon.ColorRowLabel;
-            UISetupCommon.AddLayoutElement(label.gameObject, preferredWidth: LabelWidth, flexibleWidth: 0f);
-
-            prev = UISetupCommon.CreateButton(row.transform, "PrevButton", "<");
+            prev = UISetupCommon.CreateButton(control.transform, "PrevButton", "<");
             UISetupCommon.AddLayoutElement(prev.gameObject, preferredWidth: CycleButtonWidth, preferredHeight: RowHeight, flexibleWidth: 0f);
             UISetupCommon.TagSlot(prev.gameObject, UISlotType.PrevButton);
 
-            valueLabel = UISetupCommon.CreateText(row.transform, "Value", "--",
+            valueLabel = UISetupCommon.CreateText(control.transform, "Value", "--",
                 UISetupCommon.FontRowValue, TextAlignmentOptions.Center);
             valueLabel.color = UISetupCommon.ColorSection;
-            UISetupCommon.AddLayoutElement(valueLabel.gameObject, preferredWidth: ValueWidth, flexibleWidth: 1f);
+            UISetupCommon.AddLayoutElement(valueLabel.gameObject, flexibleWidth: 1f);
             UISetupCommon.TagSlot(valueLabel.gameObject, UISlotType.ValueLabel);
 
-            next = UISetupCommon.CreateButton(row.transform, "NextButton", ">");
+            next = UISetupCommon.CreateButton(control.transform, "NextButton", ">");
             UISetupCommon.AddLayoutElement(next.gameObject, preferredWidth: CycleButtonWidth, preferredHeight: RowHeight, flexibleWidth: 0f);
             UISetupCommon.TagSlot(next.gameObject, UISlotType.NextButton);
-
-            return row;
-        }
-
-        private static Button CreateTabButton(Transform parent, string name, string text, out TextMeshProUGUI label)
-        {
-            var go = UISetupCommon.CreateChild(parent, name,
-                typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            var img = go.GetComponent<Image>();
-            img.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
-            img.type = Image.Type.Sliced;
-            img.color = UISetupCommon.ColorButtonBG;
-            var btn = go.AddComponent<Button>();
-            btn.targetGraphic = img;
-
-            var le = go.AddComponent<LayoutElement>();
-            le.minWidth = 150f;
-            le.preferredWidth = 170f;
-            le.minHeight = TabHeight;
-            le.preferredHeight = TabHeight;
-            le.flexibleWidth = 0f;
-
-            var labelGo = UISetupCommon.CreateChild(go.transform, "Label", typeof(RectTransform));
-            label = labelGo.AddComponent<TextMeshProUGUI>();
-            label.text = text;
-            label.fontSize = UISetupCommon.FontButton;
-            label.alignment = TextAlignmentOptions.Center;
-            label.fontStyle = FontStyles.Bold;
-            label.enableAutoSizing = false;
-            label.textWrappingMode = TextWrappingModes.NoWrap;
-            label.overflowMode = TextOverflowModes.Overflow;
-            var font = UISetupCommon.LoadSharedFont();
-            if (font != null) label.font = font;
-
-            // RectTransform must be set AFTER AddComponent<TextMeshProUGUI> — TMP resets
-            // the rect to preferred text size and clobbers earlier anchors/offsets.
-            var rt = label.rectTransform;
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = Vector2.zero;
-            rt.offsetMin = new Vector2(12f, 4f);
-            rt.offsetMax = new Vector2(-12f, -4f);
-            return btn;
-        }
-
-        private static GameObject CreateActionRow(Transform parent, string name, string labelText,
-            string buttonText, out Button button)
-        {
-            var row = UISetupCommon.CreateChild(parent, name, typeof(RectTransform));
-            UISetupCommon.AddHorizontalLayout(row, padding: 0, spacing: 8, childAlign: TextAnchor.MiddleLeft);
-            UISetupCommon.AddLayoutElement(row, minHeight: RowHeight, preferredHeight: RowHeight);
-
-            var label = UISetupCommon.CreateText(row.transform, "Label", labelText,
-                UISetupCommon.FontRowLabel, TextAlignmentOptions.MidlineLeft);
-            label.color = UISetupCommon.ColorRowLabel;
-            UISetupCommon.AddLayoutElement(label.gameObject, preferredWidth: LabelWidth, flexibleWidth: 0f);
-
-            button = UISetupCommon.CreateButton(row.transform, "ActionButton", buttonText);
-            UISetupCommon.AddLayoutElement(button.gameObject, minWidth: 200f, flexibleWidth: 1f, preferredHeight: RowHeight);
 
             return row;
         }
@@ -318,20 +199,13 @@ namespace SlimeJumping.EditorTools.UI
         private static GameObject CreateSliderRow(Transform parent, string name, string labelText,
             out Slider slider, out TextMeshProUGUI valueLabel)
         {
-            var row = UISetupCommon.CreateChild(parent, name, typeof(RectTransform));
-            UISetupCommon.AddHorizontalLayout(row, padding: 0, spacing: 8, childAlign: TextAnchor.MiddleLeft);
-            UISetupCommon.AddLayoutElement(row, minHeight: RowHeight, preferredHeight: RowHeight);
+            var row = CreateRowShell(parent, name, labelText, out GameObject control);
 
-            var label = UISetupCommon.CreateText(row.transform, "Label", labelText,
-                UISetupCommon.FontRowLabel, TextAlignmentOptions.MidlineLeft);
-            label.color = UISetupCommon.ColorRowLabel;
-            UISetupCommon.AddLayoutElement(label.gameObject, preferredWidth: LabelWidth, flexibleWidth: 0f);
-
-            slider = BuildSlider(row.transform, "Slider");
+            slider = BuildSlider(control.transform, "Slider");
             UISetupCommon.AddLayoutElement(slider.gameObject, minWidth: 260f, flexibleWidth: 1f, preferredHeight: 32f);
             UISetupCommon.TagSlot(slider.gameObject, UISlotType.Slider);
 
-            valueLabel = UISetupCommon.CreateText(row.transform, "Value", "0%",
+            valueLabel = UISetupCommon.CreateText(control.transform, "Value", "0%",
                 UISetupCommon.FontRowValue, TextAlignmentOptions.Right);
             valueLabel.color = UISetupCommon.ColorSection;
             UISetupCommon.AddLayoutElement(valueLabel.gameObject, preferredWidth: 90f, flexibleWidth: 0f);
@@ -343,16 +217,9 @@ namespace SlimeJumping.EditorTools.UI
         private static GameObject CreateDropdownRow(Transform parent, string name, string labelText,
             out TMP_Dropdown dropdown)
         {
-            var row = UISetupCommon.CreateChild(parent, name, typeof(RectTransform));
-            UISetupCommon.AddHorizontalLayout(row, padding: 0, spacing: 8, childAlign: TextAnchor.MiddleLeft);
-            UISetupCommon.AddLayoutElement(row, minHeight: RowHeight, preferredHeight: RowHeight);
+            var row = CreateRowShell(parent, name, labelText, out GameObject control);
 
-            var label = UISetupCommon.CreateText(row.transform, "Label", labelText,
-                UISetupCommon.FontRowLabel, TextAlignmentOptions.MidlineLeft);
-            label.color = UISetupCommon.ColorRowLabel;
-            UISetupCommon.AddLayoutElement(label.gameObject, preferredWidth: LabelWidth, flexibleWidth: 0f);
-
-            dropdown = BuildDropdown(row.transform, "Dropdown");
+            dropdown = BuildDropdown(control.transform, "Dropdown");
             UISetupCommon.AddLayoutElement(dropdown.gameObject, minWidth: 260f, flexibleWidth: 1f, preferredHeight: 44f);
             UISetupCommon.TagSlot(dropdown.gameObject, UISlotType.Dropdown);
 

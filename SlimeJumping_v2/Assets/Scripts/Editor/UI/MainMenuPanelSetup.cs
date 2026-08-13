@@ -35,7 +35,6 @@ namespace SlimeJumping.EditorTools.UI
             crt.anchoredPosition = new Vector2(0f, -40f);
             UISetupCommon.AddVerticalLayout(content, padding: 24, spacing: 22, childAlign: TextAnchor.MiddleCenter);
             UISetupCommon.TagSlot(content, UISlotType.ContentRoot);
-            UISetupCommon.AddContainerStagger(content);
 
             var title = UISetupCommon.CreateText(content.transform, "Title", "Slime Jumping", UISetupCommon.FontTitle,
                 TextAlignmentOptions.Center);
@@ -68,6 +67,7 @@ namespace SlimeJumping.EditorTools.UI
             panelSO.FindProperty("isModal").boolValue = false;
             panelSO.FindProperty("openOnStart").boolValue = true;
             panelSO.FindProperty("openOnEscape").boolValue = false;
+            panelSO.FindProperty("instantTransitions").boolValue = true;
             panelSO.FindProperty("juiceProfile").objectReferenceValue = UISetupCommon.LoadOrCreateDefaultJuiceProfile();
             panelSO.ApplyModifiedPropertiesWithoutUndo();
 

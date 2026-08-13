@@ -17,6 +17,8 @@ namespace SlimeJumping.UI.Framework
         [SerializeField] protected bool openOnStart = false;
         [Tooltip("If true, UIManager opens this panel when ESC is pressed with an empty modal stack.")]
         [SerializeField] protected bool openOnEscape = false;
+        [Tooltip("If true, the panel shows and hides at once — no fade/scale/stagger.")]
+        [SerializeField] protected bool instantTransitions = false;
         [SerializeField] protected JuiceProfile juiceProfile;
 
         private Sequence openSequence;
@@ -97,8 +99,15 @@ namespace SlimeJumping.UI.Framework
             IsOpen = true;
             gameObject.SetActive(true);
             OnBeforeOpen();
-            PlayOpenAnimation();
-            TriggerStaggers();
+            if (instantTransitions)
+            {
+                ShowInstant();
+            }
+            else
+            {
+                PlayOpenAnimation();
+                TriggerStaggers();
+            }
             OnAfterOpen();
         }
 
@@ -121,7 +130,8 @@ namespace SlimeJumping.UI.Framework
             OnBeforeClose();
             canvasGroup.interactable = false;
             canvasGroup.blocksRaycasts = false;
-            PlayCloseAnimation();
+            if (instantTransitions) HideInstant();
+            else PlayCloseAnimation();
             OnAfterClose();
         }
 
@@ -129,6 +139,23 @@ namespace SlimeJumping.UI.Framework
         {
             if (IsOpen) Close();
             else Open();
+        }
+
+        private void ShowInstant()
+        {
+            openSequence.Stop();
+            if (contentRect != null) contentRect.localScale = Vector3.one;
+            canvasGroup.alpha = 1f;
+            canvasGroup.interactable = true;
+            canvasGroup.blocksRaycasts = true;
+        }
+
+        private void HideInstant()
+        {
+            openSequence.Stop();
+            canvasGroup.alpha = 0f;
+            if (contentRect != null) contentRect.localScale = Vector3.one;
+            gameObject.SetActive(false);
         }
 
         private void PlayOpenAnimation()
