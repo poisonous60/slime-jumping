@@ -12,8 +12,8 @@ Screen-space UI 는 전부 `UIRoot` 프리팹 위에서 돌아간다. 월드 스
 
 ### Panels (`Assets/Scripts/UI/Panels/`)
 - `MainMenuPanel` — Menu 레이어, `Start New Game/Load Game/Options/Quit` 버튼. UISlot 기반. Load Game 은 `LoadSaveManager.HasSave` 일 때만 켜지고, Start New Game 은 누를 때 세이브를 지운다. 앱 종료는 이 패널의 Quit 뿐. `instantTransitions=true` 로 연출 없이 즉시 표시.
-- `OptionsPanel` — Modal 레이어, `openOnEscape=true`. GameOptions 로 모든 설정 영속화 (PlayerSfx/WorldSfx/Bgm/Ui 볼륨, FrameLimit, WindowMode, Resolution, BackgroundCamera). 기존 `OptionsPanelController` 로직 그대로 이식. 레이아웃(2026-08-13)은 탭 없는 단일 리스트 — 행마다 라벨(우측정렬) | 컨트롤(좌측정렬)이 중앙 거터를 공유. Box = `TranslucentImage` frosted 판(alpha 1 = 뒤 UI 차단, `foregroundOpacity` 0.5 로 BG 카메라 블러가 비침, 소스는 Start 자동 획득), Backdrop 딤 0.75. Debug 설정(Charge Visual/Mouse Teleport/Clear Trail)은 UI 미노출. `instantTransitions=true` 로 오픈/클로즈 연출 없이 즉시 표시. Actions 행은 `Close` + `Return to Menu`(`menuButton`, 자동저장 후 `GameFlow.LoadMainMenu`) — 메인 메뉴 씬에서 열렸을 땐 같은 씬 재로드라 숨긴다.
-- `EndPanel` — Menu 레이어, 데모 종료 후 아무 키 → `GameFlow.LoadMainMenu`.
+- `OptionsPanel` — Modal 레이어, `openOnEscape=true`. GameOptions 로 모든 설정 영속화 (PlayerSfx/WorldSfx/Bgm/Ui 볼륨, FrameLimit, WindowMode, Resolution, BackgroundCamera). 기존 `OptionsPanelController` 로직 그대로 이식. 레이아웃(2026-08-13)은 탭 없는 단일 리스트 — 행마다 라벨(우측정렬) | 컨트롤(좌측정렬)이 중앙 거터를 공유. Box = `TranslucentImage` frosted 판(alpha 1 = 뒤 UI 차단, `foregroundOpacity` 0.5 로 BG 카메라 블러가 비침, 소스는 Start 자동 획득), Backdrop 딤 0.75. Debug 설정(Charge Visual/Mouse Teleport/Clear Trail)은 UI 미노출. `instantTransitions=true` 로 오픈/클로즈 연출 없이 즉시 표시. Actions 행(2026-08-13)은 `Resume`(닫기) + `Quit`(`GameFlow.LoadMainMenu` = 메인 메뉴 복귀, 메뉴 씬에선 같은 씬 재로드라 숨김) + `New Game`(`GameFlow.NewGame` = 세이브·Trail 삭제 후 MainScene 재시작) — 220×52 알약형(sliced corner 확대), flexible spacer 로 양끝·중앙 벌림. 앱 종료는 메인 메뉴 Quit 뿐.
+- `EndPanel` — Menu 레이어, 데모 종료 후 아무 키 → `GameFlow.LoadMainMenu`. AsciiEndingSceneSetup 이 EndScene 에서 비활성화한 상태.
 
 ### Editor setup (`Assets/Scripts/Editor/UI/`)
 메뉴: `Tools → SlimeJumping → UI → ...`

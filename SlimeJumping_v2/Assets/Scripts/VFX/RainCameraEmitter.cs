@@ -4,7 +4,7 @@ using UnityCamera = UnityEngine.Camera;
 namespace SlimeJumping.VFX
 {
     /// <summary>
-    /// Parks a rain layer's spawn box on the camera at a fixed world Z and thins emission outside an altitude band.
+    /// Parks a rain layer's spawn box on the camera at a fixed world Z and thins emission outside a RainZone rect.
     /// The box is measured against the viewport on that Z plane, so layers at different Z get parallax from real
     /// perspective instead of a faked scroll rate. Rate is per unit of box area so every layer reads at one density.
     /// </summary>
@@ -25,16 +25,13 @@ namespace SlimeJumping.VFX
         [Tooltip("Drops per second per square world unit of spawn box.")]
         [Min(0f)][SerializeField] private float dropsPerSquareUnit = 1.77f;
 
-        [Header("Altitude Band")]
-        [SerializeField] private float fadeInStartY = 252f;
-        [SerializeField] private float fadeInEndY = 278f;
-        [SerializeField] private float fadeOutStartY = 352f;
-        [SerializeField] private float fadeOutEndY = 372f;
+        [Tooltip("Rect where it rains. Left empty the layer rains everywhere.")]
+        [SerializeField] private RainZone zone;
 
         private ParticleSystem _ps;
         private UnityCamera _cam;
 
-        /// <summary>Altitude band factor the rain is emitting at right now, 0 outside the band.</summary>
+        /// <summary>Zone keep factor the rain is emitting at right now, 0 outside the zone.</summary>
         public float BandFactor { get; private set; }
 
         private void OnEnable()
@@ -89,7 +86,7 @@ namespace SlimeJumping.VFX
             var shape = _ps.shape;
             shape.scale = new Vector3(w, h, 0f);
 
-            BandFactor = BandKeep(transform.position.y, h);
+            BandFactor = BandKeep(transform.position, w, h);
 
             var emission = _ps.emission;
             emission.rateOverTime = new ParticleSystem.MinMaxCurve(dropsPerSquareUnit * w * h * BandFactor);
@@ -103,20 +100,15 @@ namespace SlimeJumping.VFX
             return Mathf.Tan(_cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * Mathf.Max(dist, 0.01f);
         }
 
-        // Averaged across the box: center sampling makes a box taller than a ramp jump between full and dead.
-        private float BandKeep(float centerY, float boxHeight)
+        // Averaged over a 5×5 grid: center sampling makes a box larger than a ramp jump between full and dead.
+        private float BandKeep(Vector2 center, float boxWidth, float boxHeight)
         {
+            if (zone == null) return 1f;
             float sum = 0f;
-            for (int i = 0; i < 5; i++)
-                sum += KeepAt(centerY + boxHeight * (i * 0.25f - 0.5f));
-            return sum * 0.2f;
-        }
-
-        private float KeepAt(float worldY)
-        {
-            float rise = Mathf.InverseLerp(fadeInStartY, fadeInEndY, worldY);
-            float fall = 1f - Mathf.InverseLerp(fadeOutStartY, fadeOutEndY, worldY);
-            return Mathf.Min(rise, fall);
+            for (int ix = 0; ix < 5; ix++)
+                for (int iy = 0; iy < 5; iy++)
+                    sum += zone.Keep(center + new Vector2(boxWidth * (ix * 0.25f - 0.5f), boxHeight * (iy * 0.25f - 0.5f)));
+            return sum * 0.04f;
         }
 
         private void OnDrawGizmosSelected()
@@ -129,18 +121,6 @@ namespace SlimeJumping.VFX
 
             Gizmos.color = new Color(0.5f, 0.8f, 1f, 0.8f);
             DrawRect(c, halfW * 2f * widthMultiplier, halfH * 2f * heightMultiplier);
-
-            float spanX = halfW * 2f * widthMultiplier;
-            DrawBandLine(c.x, spanX, fadeInStartY, new Color(1f, 0.4f, 0.35f, 0.9f));
-            DrawBandLine(c.x, spanX, fadeInEndY, new Color(0.4f, 1f, 0.6f, 0.9f));
-            DrawBandLine(c.x, spanX, fadeOutStartY, new Color(0.4f, 1f, 0.6f, 0.9f));
-            DrawBandLine(c.x, spanX, fadeOutEndY, new Color(1f, 0.4f, 0.35f, 0.9f));
-        }
-
-        private static void DrawBandLine(float centerX, float span, float y, Color color)
-        {
-            Gizmos.color = color;
-            Gizmos.DrawLine(new Vector3(centerX - span * 0.5f, y, 0f), new Vector3(centerX + span * 0.5f, y, 0f));
         }
 
         private static void DrawRect(Vector3 center, float w, float h)

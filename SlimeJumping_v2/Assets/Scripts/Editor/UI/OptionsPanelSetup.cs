@@ -39,14 +39,14 @@ namespace SlimeJumping.EditorTools.UI
                 typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
             UISetupCommon.FillParent(backdrop);
             // Darker than the shared dim so menu-layer UI outside the plate stays muted.
-            backdrop.GetComponent<Image>().color = new Color(0f, 0.06f, 0.04f, 0.75f);
+            backdrop.GetComponent<Image>().color = new Color(0f, 0.06f, 0.04f, 0.6f);
 
-            // Frosted plate — blur source auto-acquired at Start; alpha 1 blocks menu-layer UI bleed.
+            // Frosted plate — blur source auto-acquired at Start; alpha < 1 lets the paused scene peek through.
             var box = UISetupCommon.CreateChild(root.transform, "Box", typeof(RectTransform), typeof(CanvasRenderer));
             var boxImg = box.AddComponent<TranslucentImage>();
             boxImg.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
             boxImg.type = Image.Type.Sliced;
-            boxImg.color = new Color(0.04f, 0.11f, 0.09f, 1f);
+            boxImg.color = new Color(0.04f, 0.11f, 0.09f, 0.75f);
             boxImg.foregroundOpacity = 0.5f;
             boxImg.vibrancy = 1f;
             var boxRT = box.GetComponent<RectTransform>();
@@ -105,14 +105,15 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.AddLayoutElement(spacer, minHeight: 12f, preferredHeight: 16f);
 
             var actions = UISetupCommon.CreateChild(box.transform, "Actions", typeof(RectTransform));
-            UISetupCommon.AddHorizontalLayout(actions, padding: 0, spacing: 16, childAlign: TextAnchor.MiddleCenter, expandWidth: true);
+            // 레퍼런스 룩: 알약형 버튼을 양끝·중앙에 벌림, 좌우 padding 21 로 위 행들(794 컬럼)과 정렬.
+            var actionsLayout = UISetupCommon.AddHorizontalLayout(actions, padding: 0, spacing: 0, childAlign: TextAnchor.MiddleCenter);
+            actionsLayout.padding = new RectOffset(21, 21, 0, 0);
             UISetupCommon.AddLayoutElement(actions, minHeight: 56f, preferredHeight: 60f);
-            var closeBtn = UISetupCommon.CreateButton(actions.transform, "CloseButton", "Close");
-            UISetupCommon.TagSlot(closeBtn.gameObject, UISlotType.CloseButton);
-            UISetupCommon.AddLayoutElement(closeBtn.gameObject, preferredWidth: 300f);
-            var menuBtn = UISetupCommon.CreateButton(actions.transform, "MenuButton", "Return to Menu");
-            UISetupCommon.TagSlot(menuBtn.gameObject, UISlotType.ReturnButton);
-            UISetupCommon.AddLayoutElement(menuBtn.gameObject, preferredWidth: 300f);
+            var resumeBtn = CreateActionButton(actions.transform, "ResumeButton", "Resume", UISlotType.CloseButton);
+            AddFlexibleSpacer(actions.transform);
+            var quitBtn = CreateActionButton(actions.transform, "QuitButton", "Quit", UISlotType.QuitButton);
+            AddFlexibleSpacer(actions.transform);
+            var newGameBtn = CreateActionButton(actions.transform, "NewGameButton", "New Game", UISlotType.StartButton);
 
             // Wire OptionsPanel's [SerializeField] fields
             var so = new SerializedObject(panel);
@@ -149,11 +150,28 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("backgroundCameraNextButton").objectReferenceValue = bgCameraNext;
             so.FindProperty("backgroundCameraValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(bgCameraValue);
 
-            so.FindProperty("closeButton").objectReferenceValue = closeBtn;
-            so.FindProperty("menuButton").objectReferenceValue = menuBtn;
+            so.FindProperty("resumeButton").objectReferenceValue = resumeBtn;
+            so.FindProperty("quitButton").objectReferenceValue = quitBtn;
+            so.FindProperty("newGameButton").objectReferenceValue = newGameBtn;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             return UISetupCommon.SavePanelPrefab(root, "OptionsPanel");
+        }
+
+        private static Button CreateActionButton(Transform parent, string name, string label, UISlotType slot)
+        {
+            var btn = UISetupCommon.CreateButton(parent, name, label);
+            UISetupCommon.TagSlot(btn.gameObject, slot);
+            UISetupCommon.AddLayoutElement(btn.gameObject, minHeight: 52f, preferredWidth: 220f, preferredHeight: 52f, flexibleWidth: 0f);
+            // Sliced corner radius scales inversely with the PPU multiplier — 0.35 makes the default sprite pill-shaped.
+            btn.GetComponent<Image>().pixelsPerUnitMultiplier = 0.35f;
+            return btn;
+        }
+
+        private static void AddFlexibleSpacer(Transform parent)
+        {
+            var spacer = UISetupCommon.CreateChild(parent, "Spacer", typeof(RectTransform));
+            UISetupCommon.AddLayoutElement(spacer, flexibleWidth: 1f);
         }
 
         // Reference layout: label right-aligned to the center gutter, control column left-aligned after it.

@@ -13,6 +13,5 @@ MonoBehaviour:
   m_Name: PlatformCreakConfig
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.PlatformCreakConfig
   creakSound: {fileID: 11400000, guid: 1b5b2f3b0d7f70649abbf6b7f92199c3, type: 2}
-  triggerSpeed: 20
+  triggerSpeed: 16
   rearmSpeed: 8
-  logSpeed: 1

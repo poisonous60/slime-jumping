@@ -8,8 +8,7 @@ namespace SlimeJumping.UI
         public const string MainMenuScene = "MainMenuScene";
         public const string GameplayScene = "MainScene";
 
-        // SlimeStartStateManager reads this so the start interaction is skipped when
-        // MainScene is played directly from the editor instead of via the menu.
+        // SlimeStartStateManager gate: false on direct editor play → start interaction skipped.
         public static bool WasStartedFromMenu { get; private set; }
 
         // LoadSaveManager consumes this once in Start.
@@ -36,6 +35,13 @@ namespace SlimeJumping.UI
             WasStartedFromMenu = true;
             PendingLoad = false;
             SceneTransitionController.Play(GameplayScene);
+        }
+
+        /// 새 게임은 지난 진행을 남기지 않는다 — 세이브와 Trail 파일을 지우고 시작한다.
+        public static void NewGame()
+        {
+            LoadSaveManager.DeleteSave();
+            StartGame();
         }
 
         /// WasStartedFromMenu 를 세우지 않는다 — 시작 인터랙션이 복원된 위치를 덮으면 안 된다.

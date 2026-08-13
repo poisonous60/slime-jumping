@@ -29,12 +29,7 @@ namespace SlimeJumping.UI.Panels
             if (quitButton != null) quitButton.onClick.AddListener(HandleQuit);
         }
 
-        /// 새 게임은 지난 진행을 남기지 않는다 — 세이브와 Trail 파일을 지우고 시작한다.
-        private static void HandleStart()
-        {
-            LoadSaveManager.DeleteSave();
-            GameFlow.StartGame();
-        }
+        private static void HandleStart() => GameFlow.NewGame();
 
         private static void HandleLoad() => GameFlow.LoadGame();
         private static void HandleQuit() => GameFlow.QuitGame();

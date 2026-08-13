@@ -43,8 +43,9 @@ namespace SlimeJumping.UI.Panels
         [SerializeField] private BumpableLabel backgroundCameraValueLabel;
 
         [Header("Actions")]
-        [SerializeField] private Button closeButton;
-        [SerializeField] private Button menuButton;
+        [SerializeField] private Button resumeButton;
+        [SerializeField] private Button quitButton;
+        [SerializeField] private Button newGameButton;
 
         private int frameLimitIndex;
         private int windowModeIndex;
@@ -103,16 +104,17 @@ namespace SlimeJumping.UI.Panels
             if (backgroundCameraPrevButton != null) backgroundCameraPrevButton.onClick.AddListener(() => CycleBackgroundCamera(-1));
             if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.AddListener(() => CycleBackgroundCamera(+1));
 
-            if (closeButton != null) closeButton.onClick.AddListener(HandleClose);
-            if (menuButton != null)
+            if (resumeButton != null) resumeButton.onClick.AddListener(HandleResume);
+            if (quitButton != null)
             {
-                // 메인 메뉴에서 연 옵션창엔 무의미한 같은 씬 재로드다. 앱 종료는 MainMenuPanel 의 Quit 담당.
-                menuButton.gameObject.SetActive(SceneManager.GetActiveScene().name != GameFlow.MainMenuScene);
-                menuButton.onClick.AddListener(GameFlow.LoadMainMenu);
+                // 메인 메뉴에서 연 옵션창엔 무의미한 같은 씬 재로드다.
+                quitButton.gameObject.SetActive(SceneManager.GetActiveScene().name != GameFlow.MainMenuScene);
+                quitButton.onClick.AddListener(GameFlow.LoadMainMenu);
             }
+            if (newGameButton != null) newGameButton.onClick.AddListener(GameFlow.NewGame);
         }
 
-        private void HandleClose()
+        private void HandleResume()
         {
             if (UIManager.Instance != null) UIManager.Instance.Close(this);
             else Close();
@@ -134,8 +136,9 @@ namespace SlimeJumping.UI.Panels
             if (resolutionDropdown != null) resolutionDropdown.onValueChanged.RemoveAllListeners();
             if (backgroundCameraPrevButton != null) backgroundCameraPrevButton.onClick.RemoveAllListeners();
             if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.RemoveAllListeners();
-            if (closeButton != null) closeButton.onClick.RemoveAllListeners();
-            if (menuButton != null) menuButton.onClick.RemoveAllListeners();
+            if (resumeButton != null) resumeButton.onClick.RemoveAllListeners();
+            if (quitButton != null) quitButton.onClick.RemoveAllListeners();
+            if (newGameButton != null) newGameButton.onClick.RemoveAllListeners();
             base.OnDestroy();
         }
 
