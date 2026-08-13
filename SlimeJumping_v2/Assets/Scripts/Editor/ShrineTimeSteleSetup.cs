@@ -2,35 +2,35 @@ using TMPro;
 using UnityEditor;
 using UnityEngine;
 using SlimeJumping.UI;
+using SlimeJumping.VFX;
 
 namespace SlimeJumping.Editor
 {
-    /// 신전 왼쪽에 기록 석판을 세운다: 콘크리트 큐브 한 장 + 앞면에 각인 TMP.
-    /// 각인은 TMP SDF 셰이더의 Inner Bevel 이 만든다 — 파인 것처럼 보이려면
-    /// 글자가 얹힐 면이 있어야 해서 판때기가 필요하다.
-    /// 슬라임이 다가오면 기록이 굴러 올라가 멈춘다. 루트 삭제 = 완전 롤백.
+    /// 신전 옆에 기록 비석을 세운다: 울퉁불퉁한 바위 메시 + 각인 라벨.
+    /// 각인은 RockEngraving 이 라벨을 마스크 RT 로 구워 바위 셰이더
+    /// ("Quibli/Stylized Lit (Rock Engraving)")에 투영한다 — 바위 픽셀 자체가
+    /// 파이므로 라벨 렌더러는 화면에 안 나온다. 슬라임이 존에 들어오면 기록 확정.
+    /// 루트 삭제 = 완전 롤백.
     public static class ShrineTimeSteleSetup
     {
         const string SceneName = "MainScene";
         const string RootName = "ShrineTimeStele";
-        const string SlabMaterialPath = "Assets/ThirdParty/YughuesFreeConcreteMaterials/Materials/M_YFCM_Slab1x1.mat";
-        const string EngravedMaterialPath = "Assets/Materials/M_ShrineTimeEngraved.mat";
-        // Surface 변형은 빌트인 서피스 셰이더라 URP 에서 패스가 안 돈다 — 자체 광원각을 가진 평범한 SDF 를 쓴다.
-        const string EngravedShader = "TextMeshPro/Distance Field";
+        const string RockMeshPath = "Assets/ThirdParty/Synty/PolygonGeneric/Models/SM_Gen_Env_Rock_09.fbx";
+        const string RockSourceMaterialPath = "Assets/Art/Materials/Stage4_sky/Mat_pillor.mat";
+        const string EngraveMaterialPath = "Assets/Materials/M_ShrineRockEngraved.mat";
+        const string EngraveShaderName = "Quibli/Stylized Lit (Rock Engraving)";
 
-        // 신전은 x 80.2~82.8 / y 495.3~498.0 (stage4 정상 상단면 495.3).
-        static readonly Vector3 SlabCenter = new Vector3(78.3f, 496.15f, 0f);
-        static readonly Vector3 SlabScale = new Vector3(3.0f, 1.7f, 0.3f);
-        const float TextDepth = 0.02f;   // 앞면에서 앞으로 띄우는 거리.
+        // 씬 실측값 (2026-08-13, 유저 배치).
+        static readonly Vector3 RootPosition = new Vector3(77.55f, 496.15f, 1.34f);
+        static readonly Vector3 RockOffset = new Vector3(0.01f, -0.96f, -0.13f);
+        static readonly Vector3 RockScale = new Vector3(1.5f, 1f, 1f);
+        static readonly Vector3 LabelOffset = new Vector3(0.31f, 0.73f, -0.71f);
+        static readonly Vector2 LabelSize = new Vector2(3.0f, 1.7f);
         const float TextFontSize = 7.5f;
         const string LabelPrefix = "<size=55%>YOUR TIME</size>\n";
 
         const int ZoneLayer = 2; // Ignore Raycast — Environment 마스크 밖이면 뭐든 된다.
         static readonly Vector2 ZoneSize = new Vector2(12f, 8f);
-
-        // 판 알베도가 0.56 이라 각인은 그 그늘만큼 어두워야 읽힌다.
-        static readonly Color FaceColor = new Color(0.11f, 0.105f, 0.10f);
-        static readonly Color OutlineColor = new Color(0.04f, 0.04f, 0.04f);
 
         [MenuItem("SlimeJumping/Mechanism/Create Shrine Time Stele (MainScene)")]
         public static void Setup()
@@ -48,21 +48,14 @@ namespace SlimeJumping.Editor
             }
 
             var root = new GameObject(RootName);
-            root.transform.position = SlabCenter;
+            root.transform.position = RootPosition;
             Undo.RegisterCreatedObjectUndo(root, "Create Shrine Time Stele");
 
-            var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            slab.name = "Slab";
-            Object.DestroyImmediate(slab.GetComponent<BoxCollider>());
-            slab.transform.SetParent(root.transform, false);
-            slab.transform.localScale = SlabScale;
-            var slabMat = AssetDatabase.LoadAssetAtPath<Material>(SlabMaterialPath);
-            if (slabMat != null) slab.GetComponent<MeshRenderer>().sharedMaterial = slabMat;
-            else Debug.LogWarning($"[TimeStele] 판 머티리얼 없음: {SlabMaterialPath} — 기본 머티리얼로 둔다.");
+            var rockGo = CreateRock(root.transform);
 
             var labelGo = new GameObject("Engraving");
             labelGo.transform.SetParent(root.transform, false);
-            labelGo.transform.localPosition = new Vector3(0f, 0f, -(SlabScale.z * 0.5f + TextDepth));
+            labelGo.transform.localPosition = LabelOffset;
             var tmp = labelGo.AddComponent<TextMeshPro>();
             tmp.autoSizeTextContainer = false;
             tmp.textWrappingMode = TextWrappingModes.NoWrap;
@@ -70,22 +63,42 @@ namespace SlimeJumping.Editor
             tmp.fontSize = TextFontSize;
             tmp.text = LabelPrefix + "--:--";
             tmp.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-            tmp.rectTransform.sizeDelta = new Vector2(SlabScale.x, SlabScale.y);
-            tmp.fontSharedMaterial = EnsureEngravedMaterial(tmp.fontSharedMaterial);
+            tmp.rectTransform.sizeDelta = LabelSize;
 
             var zone = CreateCaptureZone(root.transform);
 
             var display = root.AddComponent<EndingTimeDisplay>();
-            var so = new SerializedObject(display);
-            so.FindProperty("label").objectReferenceValue = tmp;
-            so.FindProperty("prefix").stringValue = LabelPrefix;
-            so.FindProperty("captureZone").objectReferenceValue = zone;
-            so.ApplyModifiedPropertiesWithoutUndo();
+            var displaySo = new SerializedObject(display);
+            displaySo.FindProperty("label").objectReferenceValue = tmp;
+            displaySo.FindProperty("prefix").stringValue = LabelPrefix;
+            displaySo.FindProperty("captureZone").objectReferenceValue = zone;
+            displaySo.ApplyModifiedPropertiesWithoutUndo();
+
+            var engraving = root.AddComponent<RockEngraving>();
+            var engravingSo = new SerializedObject(engraving);
+            engravingSo.FindProperty("label").objectReferenceValue = tmp;
+            engravingSo.FindProperty("rock").objectReferenceValue = rockGo.GetComponent<MeshRenderer>();
+            engravingSo.ApplyModifiedPropertiesWithoutUndo();
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
             Selection.activeGameObject = root;
-            Debug.Log($"[TimeStele] 석판 배치: 중심 {SlabCenter}, 크기 {SlabScale}. " +
-                      $"각인 머티리얼 {EngravedMaterialPath} — Bevel 이 볼록해 보이면 _ShaderFlags 를 0/1 로 뒤집어라.", root);
+            Debug.Log($"[TimeStele] 비석 배치: 루트 {RootPosition}. 각인은 Engraving 사각형을 " +
+                      "옮기고 늘려서 자리를 잡는다. 튜닝은 RockEngravingConfig.asset.", root);
+        }
+
+        static GameObject CreateRock(Transform parent)
+        {
+            var go = new GameObject("SM_Gen_Env_Rock_09");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = RockOffset;
+            go.transform.localScale = RockScale;
+
+            var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(RockMeshPath);
+            if (mesh == null) Debug.LogError($"[TimeStele] 바위 메시 없음: {RockMeshPath}");
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            go.AddComponent<MeshRenderer>().sharedMaterial = EnsureEngraveMaterial();
+            go.AddComponent<MeshCollider>().sharedMesh = mesh;
+            return go;
         }
 
         /// 도착 판정 존. Environment(7) 밖 레이어라 슬라임 표면 탐색이 안 집는다.
@@ -99,39 +112,21 @@ namespace SlimeJumping.Editor
             return box;
         }
 
-        /// 폰트 머티리얼을 복제해 Inner Bevel + 위쪽 광원각을 박은 에셋. 획 윗변이 그늘,
-        /// 아랫변이 하이라이트가 되면서 파인 것처럼 읽힌다.
-        static Material EnsureEngravedMaterial(Material fontMaterial)
+        /// 바위 원본 머티리얼을 복제해 각인 셰이더를 입힌 에셋.
+        static Material EnsureEngraveMaterial()
         {
-            var existing = AssetDatabase.LoadAssetAtPath<Material>(EngravedMaterialPath);
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(EngraveMaterialPath);
             if (existing != null) return existing;
 
-            var shader = Shader.Find(EngravedShader);
-            if (shader == null)
+            var source = AssetDatabase.LoadAssetAtPath<Material>(RockSourceMaterialPath);
+            var shader = Shader.Find(EngraveShaderName);
+            if (source == null || shader == null)
             {
-                Debug.LogWarning($"[TimeStele] '{EngravedShader}' 못 찾음 — 폰트 기본 머티리얼로 둔다.");
-                return fontMaterial;
+                Debug.LogError($"[TimeStele] 원본 머티리얼({source}) 또는 셰이더({EngraveShaderName}) 없음.");
+                return source;
             }
-            var mat = new Material(fontMaterial) { shader = shader };
-            // Bevel·Outline 은 shader_feature 라 키워드를 켜야 값이 먹는다.
-            mat.EnableKeyword("BEVEL_ON");
-            mat.EnableKeyword("OUTLINE_ON");
-            mat.SetColor("_FaceColor", FaceColor);
-            mat.SetFloat("_FaceDilate", 0.1f);
-            mat.SetColor("_OutlineColor", OutlineColor);
-            mat.SetFloat("_OutlineWidth", 0.08f);
-            mat.SetFloat("_Bevel", 0.6f);
-            mat.SetFloat("_BevelOffset", -0.05f);
-            mat.SetFloat("_BevelWidth", 0.2f);
-            mat.SetFloat("_BevelRoundness", 0.2f);
-            mat.SetFloat("_BevelClamp", 0.8f);
-            mat.SetFloat("_LightAngle", Mathf.PI); // 위에서 비추는 가짜 광원.
-            mat.SetFloat("_Diffuse", 0.6f);
-            mat.SetFloat("_Ambient", 0.4f);
-            mat.SetFloat("_SpecularPower", 2f);
-            mat.SetColor("_SpecularColor", new Color(0.7f, 0.7f, 0.68f));
-            mat.SetFloat("_ShaderFlags", 1f); // Bevel Type = Inner.
-            AssetDatabase.CreateAsset(mat, EngravedMaterialPath);
+            var mat = new Material(source) { shader = shader };
+            AssetDatabase.CreateAsset(mat, EngraveMaterialPath);
             AssetDatabase.SaveAssets();
             return mat;
         }
