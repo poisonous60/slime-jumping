@@ -225,6 +225,9 @@ namespace SlimeJumping.Platforms
         public float EjectBendDeg => settings != null ? settings.ejectBendDeg : 0f;
         public float NaturalFreqHz => settings != null ? settings.naturalFreqHz : 0f;
         public float DampingRatio => settings != null ? settings.dampingRatio : 0f;
+        /// Bend speed including the landing impulse still ramping in — angularVel alone reads ~0 for
+        /// the first frames after a landing, which is the loudest part of the swing.
+        public float BendSpeedDeg => Mathf.Abs(angularVel + rampOmegaRemainingDeg);
         public float MaxDeflectionDeg => settings != null ? settings.maxDeflectionDeg : 0f;
         public float MaxTipSpeed => settings != null ? settings.maxTipSpeed : 0f;
         public bool HasSettingsAsset => settings != null;

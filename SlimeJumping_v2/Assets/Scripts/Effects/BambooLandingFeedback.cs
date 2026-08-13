@@ -69,7 +69,7 @@ namespace SlimeJumping.Effects
             if (attached && !wasAttached) HandleLanded();
             wasAttached = attached;
 
-            bool barelyMoving = Mathf.Abs(bamboo.AngularVelocity) < config.settleSpeedDegPerSec;
+            bool barelyMoving = bamboo.BendSpeedDeg < config.settleSpeedDegPerSec;
             if (fadeTimer <= 0f && bendLoop.IsPlaying && (!attached || barelyMoving)) BeginFade();
         }
 
@@ -98,11 +98,14 @@ namespace SlimeJumping.Effects
             Vector2 position = bamboo.LastRiderWorldPos;
 
             StopCreak();
-            bendVolume = Mathf.Lerp(config.volumeAtMinBend, config.volumeAtLargeBend, t);
-            bendLoop = SoundService.PlayLooping(config.bendSound, null, bendVolume);
+            float bendScale = Mathf.Lerp(config.volumeAtMinBend, config.volumeAtLargeBend, t);
+            bendLoop = SoundService.PlayLooping(config.bendSound, null, bendScale);
             bendLoop.SetLoop(false);
             bendLoop.SetPosition(position);
             bendLoop.SetPitch(Mathf.Lerp(config.pitchAtMinBend, config.pitchAtLargeBend, t));
+
+            // Read back rather than reuse bendScale: the SoundDef's own volume is folded in here.
+            bendVolume = bendLoop.Volume;
 
             SpawnPuffs(position, t);
         }

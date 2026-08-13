@@ -10,6 +10,10 @@ namespace SlimeJumping.Audio
         public bool IsValid => source != null && source.gameObject != null;
         public bool IsPlaying => IsValid && source.isPlaying;
 
+        /// Level actually on the source — the SoundDef's own volume times whatever scale was passed.
+        /// A fade has to ramp from this, not from the caller's scale alone.
+        public float Volume => IsValid ? source.volume : 0f;
+
         public void Stop()
         {
             if (!IsValid) return;

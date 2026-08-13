@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e553959eed09134a8e2130e42315806, type: 3}
+  m_Name: ConfettiFanfareConfig
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.VFX.ConfettiFanfareConfig
+  pieceCountPerPopper: 40
+  speedMin: 6
+  speedMax: 15
+  coneAngle: 20
+  nozzleRadius: 0.1
+  sizeXMin: 0.1
+  sizeXMax: 0.3
+  sizeYMin: 0.1
+  sizeYMax: 0.5
+  startRotationMaxDeg: 180
+  palette:
+  - {r: 1, g: 0, b: 0, a: 1}
+  - {r: 0, g: 1, b: 0, a: 1}
+  - {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  - {r: 1, g: 0.4, b: 0.7, a: 1}
+  - {r: 0, g: 0, b: 1, a: 1}
+  gravityScale: 1
+  slowdownCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.6102451
+      value: 0.12127642
+      inSlope: -0.29693374
+      outSlope: -0.29693374
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.13009377
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  slowdownDampen: 0.36
+  shrinkCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: -1
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: -1
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  popSoundLeft: {fileID: 11400000, guid: baf6313322889e940982318efaf33171, type: 2}
+  popSoundRight: {fileID: 11400000, guid: 344c9fc56a838314393e9fc7a71ebe8e, type: 2}
+  fanfareSound: {fileID: 11400000, guid: e4716970ced50b142b38bac9eb22aa38, type: 2}
+  lifetime: 2
+  duration: 2
