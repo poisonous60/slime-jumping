@@ -1,4 +1,5 @@
 using System.Collections;
+using Unity.Cinemachine;
 using UnityEngine;
 using SlimeJumping.Controller;
 using SlimeJumping.Interaction;
@@ -45,7 +46,10 @@ namespace SlimeJumping.UI
             if (slime.HasOverride) yield break;
 
             // Interact() bypasses CanInteract; at scene start the slime isn't inside the trigger yet.
+            Vector2 before = slime.Position;
             startInteraction.Interact(slime);
+            // 카메라도 즉시 워프 — 없으면 씬 저장 위치에서 시작 지점까지 댐핑 팬이 도중 존들을 지난다.
+            CinemachineCore.OnTargetObjectWarped(slime.transform, (Vector3)(slime.Position - before));
         }
 
         private bool ShouldTrigger()

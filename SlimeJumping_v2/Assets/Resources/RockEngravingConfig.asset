@@ -19,3 +19,4 @@ MonoBehaviour:
   innerShadow: 0.421
   innerShadowLength: 0.05
   projectionDepth: 2.86
+  maskShader: {fileID: 4800000, guid: 175294f1ee894244d8d3a0f4e3fa87dd, type: 3}

@@ -102,10 +102,12 @@ namespace SlimeJumping.VFX
                 mask.Create();
             }
             if (maskMaterial == null)
-                maskMaterial = new Material(Shader.Find("Hidden/SlimeJumping/EngraveTextMask"))
-                {
-                    hideFlags = HideFlags.HideAndDontSave
-                };
+            {
+                Shader shader = cfg.maskShader;
+                if (shader == null) shader = Shader.Find("Hidden/SlimeJumping/EngraveTextMask");
+                if (shader == null) return;
+                maskMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+            }
             if (commands == null) commands = new CommandBuffer { name = "RockEngraving" };
 
             commands.Clear();

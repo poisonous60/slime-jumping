@@ -28,6 +28,9 @@ namespace SlimeJumping.VFX
         [Tooltip("라벨 평면에서 앞뒤로 각인이 닿는 거리 (월드 단위).")]
         [Min(0.01f)] public float projectionDepth = 1.5f;
 
+        [Tooltip("마스크 굽기 셰이더. 에셋 참조라야 빌드에 포함된다 — Shader.Find 는 빌드에서 스트립돼 null.")]
+        public Shader maskShader;
+
         const string ResourcesPath = "RockEngravingConfig";
         static RockEngravingConfig fallback;
 

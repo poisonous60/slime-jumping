@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using Unity.Cinemachine;
 using UnityEngine;
 using SlimeJumping.Controller;
 
@@ -83,7 +84,10 @@ namespace SlimeJumping.UI
             }
             if (data == null) return;
 
+            Vector2 before = slime.Position;
             slime.TeleportTo(new Vector2(data.posX, data.posY), Vector2.zero);
+            // 카메라도 즉시 워프 — 없으면 씬 저장 위치에서 복원 지점까지 댐핑 팬이 도중 존들을 지난다.
+            CinemachineCore.OnTargetObjectWarped(slime.transform, (Vector3)(slime.Position - before));
         }
 
         private void WriteSave()
