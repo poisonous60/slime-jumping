@@ -42,6 +42,11 @@ namespace SlimeJumping.UI.Panels
         [SerializeField] private Button backgroundCameraNextButton;
         [SerializeField] private BumpableLabel backgroundCameraValueLabel;
 
+        [Header("Gameplay")]
+        [SerializeField] private Button chargeVisualPrevButton;
+        [SerializeField] private Button chargeVisualNextButton;
+        [SerializeField] private BumpableLabel chargeVisualValueLabel;
+
         [Header("Actions")]
         [SerializeField] private Button resumeButton;
         [SerializeField] private Button quitButton;
@@ -51,9 +56,9 @@ namespace SlimeJumping.UI.Panels
         private int windowModeIndex;
         private int backgroundCameraIndex;
         private int vsyncIndex;
+        private int chargeVisualIndex;
         private static readonly WindowMode[] WindowModes = { WindowMode.Windowed, WindowMode.Borderless, WindowMode.Fullscreen };
-        private static readonly bool[] BackgroundCameraStates = { false, true };
-        private static readonly bool[] VSyncStates = { false, true };
+        private static readonly bool[] ToggleStates = { false, true };
 
         protected override void OnAfterAwake()
         {
@@ -62,7 +67,7 @@ namespace SlimeJumping.UI.Panels
             if (frameLimitPrevButton != null) frameLimitPrevButton.onClick.AddListener(() => CycleFrameLimit(-1));
             if (frameLimitNextButton != null) frameLimitNextButton.onClick.AddListener(() => CycleFrameLimit(+1));
 
-            vsyncIndex = IndexOfVSync(GameOptions.VSyncEnabled);
+            vsyncIndex = GameOptions.VSyncEnabled ? 1 : 0;
             UpdateVSyncLabel();
             if (vsyncPrevButton != null) vsyncPrevButton.onClick.AddListener(() => CycleVSync(-1));
             if (vsyncNextButton != null) vsyncNextButton.onClick.AddListener(() => CycleVSync(+1));
@@ -99,10 +104,15 @@ namespace SlimeJumping.UI.Panels
                 resolutionDropdown.onValueChanged.AddListener(OnResolutionDropdownChanged);
             }
 
-            backgroundCameraIndex = IndexOfBackgroundCamera(GameOptions.BackgroundCameraEnabled);
+            backgroundCameraIndex = GameOptions.BackgroundCameraEnabled ? 1 : 0;
             UpdateBackgroundCameraLabel();
             if (backgroundCameraPrevButton != null) backgroundCameraPrevButton.onClick.AddListener(() => CycleBackgroundCamera(-1));
             if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.AddListener(() => CycleBackgroundCamera(+1));
+
+            chargeVisualIndex = GameOptions.ChargeVisualEnabled ? 1 : 0;
+            UpdateChargeVisualLabel();
+            if (chargeVisualPrevButton != null) chargeVisualPrevButton.onClick.AddListener(() => CycleChargeVisual(-1));
+            if (chargeVisualNextButton != null) chargeVisualNextButton.onClick.AddListener(() => CycleChargeVisual(+1));
 
             if (resumeButton != null) resumeButton.onClick.AddListener(HandleResume);
             if (quitButton != null)
@@ -136,6 +146,8 @@ namespace SlimeJumping.UI.Panels
             if (resolutionDropdown != null) resolutionDropdown.onValueChanged.RemoveAllListeners();
             if (backgroundCameraPrevButton != null) backgroundCameraPrevButton.onClick.RemoveAllListeners();
             if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.RemoveAllListeners();
+            if (chargeVisualPrevButton != null) chargeVisualPrevButton.onClick.RemoveAllListeners();
+            if (chargeVisualNextButton != null) chargeVisualNextButton.onClick.RemoveAllListeners();
             if (resumeButton != null) resumeButton.onClick.RemoveAllListeners();
             if (quitButton != null) quitButton.onClick.RemoveAllListeners();
             if (newGameButton != null) newGameButton.onClick.RemoveAllListeners();
@@ -193,18 +205,26 @@ namespace SlimeJumping.UI.Panels
 
         private void CycleBackgroundCamera(int dir)
         {
-            int len = BackgroundCameraStates.Length;
+            int len = ToggleStates.Length;
             backgroundCameraIndex = ((backgroundCameraIndex + dir) % len + len) % len;
-            GameOptions.SetBackgroundCameraEnabled(BackgroundCameraStates[backgroundCameraIndex]);
+            GameOptions.SetBackgroundCameraEnabled(ToggleStates[backgroundCameraIndex]);
             UpdateBackgroundCameraLabel();
         }
 
         private void CycleVSync(int dir)
         {
-            int len = VSyncStates.Length;
+            int len = ToggleStates.Length;
             vsyncIndex = ((vsyncIndex + dir) % len + len) % len;
-            GameOptions.SetVSyncEnabled(VSyncStates[vsyncIndex]);
+            GameOptions.SetVSyncEnabled(ToggleStates[vsyncIndex]);
             UpdateVSyncLabel();
+        }
+
+        private void CycleChargeVisual(int dir)
+        {
+            int len = ToggleStates.Length;
+            chargeVisualIndex = ((chargeVisualIndex + dir) % len + len) % len;
+            GameOptions.SetChargeVisualEnabled(ToggleStates[chargeVisualIndex]);
+            UpdateChargeVisualLabel();
         }
 
         private void OnResolutionDropdownChanged(int index)
@@ -242,13 +262,19 @@ namespace SlimeJumping.UI.Panels
         private void UpdateBackgroundCameraLabel()
         {
             if (backgroundCameraValueLabel == null) return;
-            backgroundCameraValueLabel.Set(BackgroundCameraStates[backgroundCameraIndex] ? "On" : "Off");
+            backgroundCameraValueLabel.Set(ToggleStates[backgroundCameraIndex] ? "On" : "Off");
         }
 
         private void UpdateVSyncLabel()
         {
             if (vsyncValueLabel == null) return;
-            vsyncValueLabel.Set(VSyncStates[vsyncIndex] ? "On" : "Off");
+            vsyncValueLabel.Set(ToggleStates[vsyncIndex] ? "On" : "Off");
+        }
+
+        private void UpdateChargeVisualLabel()
+        {
+            if (chargeVisualValueLabel == null) return;
+            chargeVisualValueLabel.Set(ToggleStates[chargeVisualIndex] ? "On" : "Off");
         }
 
         private static int IndexOfFrameLimit(int fps)
@@ -262,20 +288,6 @@ namespace SlimeJumping.UI.Panels
         {
             for (int i = 0; i < WindowModes.Length; i++)
                 if (WindowModes[i] == m) return i;
-            return 1;
-        }
-
-        private static int IndexOfBackgroundCamera(bool on)
-        {
-            for (int i = 0; i < BackgroundCameraStates.Length; i++)
-                if (BackgroundCameraStates[i] == on) return i;
-            return 1;
-        }
-
-        private static int IndexOfVSync(bool on)
-        {
-            for (int i = 0; i < VSyncStates.Length; i++)
-                if (VSyncStates[i] == on) return i;
             return 1;
         }
     }

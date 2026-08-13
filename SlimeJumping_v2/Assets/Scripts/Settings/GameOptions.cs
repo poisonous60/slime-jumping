@@ -32,7 +32,7 @@ namespace SlimeJumping.Settings
         public const WindowMode DefaultWindowMode            = WindowMode.Fullscreen;
         public const bool       DefaultBackgroundCameraOn    = true;
         public const bool       DefaultVSyncOn               = true;
-        public const bool       DefaultChargeVisualOn        = true;
+        public const bool       DefaultChargeVisualOn        = false;
         public const bool       DefaultMouseTeleportDebugOn  = true;
 
         // -1 = Unlimited (Application.targetFrameRate = -1)
