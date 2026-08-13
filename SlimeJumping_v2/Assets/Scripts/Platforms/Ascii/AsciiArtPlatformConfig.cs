@@ -41,6 +41,12 @@ namespace SlimeJumping.Platforms
         public float waveQuantizeCells = 0.25f;    // 글자 이동 격자 스텝(셀 배수). 0 = 부드러운 연속.
         public float restEpsilonCells = 0.01f;     // 이하 진폭이면 완전 휴면.
 
+        [Header("출렁임 사운드 — 착지·발사음은 SurfaceTag/SurfaceMaterial 몫")]
+        public SlimeJumping.Audio.SoundDef wobbleSound;      // 출렁이는 동안 이어지는 소리.
+        public float wobbleFullAmplitudeCells = 2f;          // 최대 음량이 되는 윤곽 변위(셀 세로 배수).
+        public float wobblePitchAtRest = 0.9f;
+        public float wobblePitchAtFull = 1.15f;
+
         const string ResourcesPath = "AsciiArtPlatformConfig";
         static AsciiArtPlatformConfig cached;
 

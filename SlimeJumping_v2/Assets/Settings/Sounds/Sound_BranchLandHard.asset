@@ -13,11 +13,13 @@ MonoBehaviour:
   m_Name: Sound_BranchLandHard
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
   clips:
-  - {fileID: 8300000, guid: 39e945f683b6c7c46b718023b80eccf5, type: 3}
+  - {fileID: 8300000, guid: 1d9daf476a56a84458ed05879e173e6d, type: 3}
+  - {fileID: 8300000, guid: 426bbb9fc39a3dc419d0f0257b0c9cd5, type: 3}
+  - {fileID: 8300000, guid: 8eabe8a971427a443a0474b675ac0fce, type: 3}
   clipOrder: 0
   category: 3
   volumeRange: {x: 1, y: 1}
-  pitchRange: {x: 0.95, y: 1.05}
+  pitchRange: {x: 0.6, y: 0.8}
   cooldownSeconds: 0
   spatial3D: 1
   minDistance: -1

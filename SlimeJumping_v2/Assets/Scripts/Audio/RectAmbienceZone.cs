@@ -29,19 +29,73 @@ namespace SlimeJumping.Audio
         [Tooltip("Listener to measure against. Falls back to Camera.main.")]
         [SerializeField] private UnityCamera listener;
 
+        [Tooltip("Name it and the whole group shares ONE loop, driven by whichever member is loudest. " +
+                 "Seven saw blades in earshot would otherwise stack into a wall of noise and hold " +
+                 "seven of the category's eight pooled sources.")]
+        [SerializeField] private string exclusiveGroup;
+
+        private static readonly System.Collections.Generic.List<RectAmbienceZone> live =
+            new System.Collections.Generic.List<RectAmbienceZone>();
+
+        /// One loop per group, owned by the group rather than by whichever zone is currently
+        /// nearest. Handing the same running source between members is what makes the crossover
+        /// silent: stopping one loop and starting another restarts the clip at sample 0 (a click),
+        /// and re-rolls its level (a step). The holder only decides who computes the volume.
+        private sealed class GroupLoop
+        {
+            public SoundHandle handle;
+            public SoundDef def;
+            public float volumeRoll;
+            public RectAmbienceZone holder;
+        }
+
+        private static readonly System.Collections.Generic.Dictionary<string, GroupLoop> groupLoops =
+            new System.Collections.Generic.Dictionary<string, GroupLoop>();
+
+        // Incumbent's edge in the loudness contest — without it two zones straddling the listener trade the loop every frame.
+        private const float HolderBias = 0.05f;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            // Handles here outlive a no-domain-reload Play entry, pointing at last run's sources.
+            live.Clear();
+            groupLoops.Clear();
+        }
+
         private SoundHandle handle;
         private float volumeRoll;
 
         // Keep the roll, not the volume: re-rolling per frame would make a randomised range flicker.
         private void OnEnable()
         {
-            if (sound == null) return;
             volumeRoll = Random.value;
+            live.Add(this);
+            if (string.IsNullOrEmpty(exclusiveGroup)) StartLoop();
+        }
+
+        private void OnDisable()
+        {
+            live.Remove(this);
+            StopLoop();
+
+            if (!string.IsNullOrEmpty(exclusiveGroup)
+                && groupLoops.TryGetValue(exclusiveGroup, out var gl) && gl.holder == this)
+            {
+                // The next winner inherits the running source; the last member out strands it.
+                if (GroupHasMember(exclusiveGroup)) gl.holder = null;
+                else StopGroupLoop(gl);
+            }
+        }
+
+        private void StartLoop()
+        {
+            if (sound == null || handle.IsPlaying) return;
             handle = SoundService.PlayLooping(sound, transform);
             handle.SetVolume(0f);
         }
 
-        private void OnDisable()
+        private void StopLoop()
         {
             SoundService.StopLoop(handle);
             handle = default;
@@ -49,11 +103,102 @@ namespace SlimeJumping.Audio
 
         private void Update()
         {
-            if (!handle.IsValid) return;
+            if (sound == null) return;
+
+            if (!string.IsNullOrEmpty(exclusiveGroup)) { DriveGroup(); return; }
+
             if (listener == null) listener = UnityCamera.main;
-            if (listener == null || sound == null) return;
-            float defVolume = Mathf.Lerp(sound.volumeRange.x, sound.volumeRange.y, volumeRoll);
-            handle.SetVolume(defVolume * Attenuation(listener.transform.position));
+            if (listener == null || !handle.IsValid) return;
+            handle.SetVolume(Mathf.Lerp(sound.volumeRange.x, sound.volumeRange.y, volumeRoll)
+                             * Attenuation(listener.transform.position));
+        }
+
+        private void DriveGroup()
+        {
+            var groupListener = GroupListener(exclusiveGroup);
+            if (groupListener == null) return;
+
+            if (!groupLoops.TryGetValue(exclusiveGroup, out var gl))
+                groupLoops[exclusiveGroup] = gl = new GroupLoop();
+
+            // Every member runs the same scan off the same listener, so exactly one drives.
+            var winner = PickWinner(exclusiveGroup, groupListener.transform.position,
+                                    gl.holder, out float loudest);
+            if (winner != this) return;
+
+            if (loudest <= 0f) { StopGroupLoop(gl); return; }
+
+            // A different SoundDef is different content, so that crossover does restart the clip.
+            if (!gl.handle.IsPlaying || gl.def != sound)
+            {
+                StopGroupLoop(gl);
+                gl.def = sound;
+                gl.volumeRoll = Random.value;
+                gl.handle = SoundService.PlayLooping(sound, null);
+            }
+
+            gl.holder = this;
+            gl.handle.SetPosition(transform.position);
+            // Level tracks the group's loudest RAW attenuation, so the holder bias never steps it.
+            gl.handle.SetVolume(Mathf.Lerp(sound.volumeRange.x, sound.volumeRange.y, gl.volumeRoll) * loudest);
+        }
+
+        // Holder goes with the source: a bias for an incumbent that stopped protects nothing.
+        private static void StopGroupLoop(GroupLoop gl)
+        {
+            SoundService.StopLoop(gl.handle);
+            gl.handle = default;
+            gl.def = null;
+            gl.holder = null;
+        }
+
+        // ponytail: every member rescans its group each frame — a group is a handful of blades.
+        private static RectAmbienceZone PickWinner(string group, Vector3 listenerPos,
+                                                   RectAmbienceZone holder, out float loudest)
+        {
+            RectAmbienceZone best = null;
+            float bestScore = float.NegativeInfinity;
+            loudest = 0f;
+            for (int i = 0; i < live.Count; i++)
+            {
+                var z = live[i];
+                if (z == null || z.sound == null || z.exclusiveGroup != group) continue;
+                float raw = z.Attenuation(listenerPos);
+                if (raw > loudest) loudest = raw;
+                // A silent holder must not out-score an audible member, or the group goes quiet.
+                float score = raw + (z == holder && raw > 0f ? HolderBias : 0f);
+                // Instance id breaks exact ties, so all members agree on the same single winner.
+                if (score > bestScore || (score == bestScore && best != null
+                                          && z.GetInstanceID() < best.GetInstanceID()))
+                {
+                    bestScore = score;
+                    best = z;
+                }
+            }
+            return best;
+        }
+
+        // One listener for the whole group: two members disagreeing would both claim the loop.
+        private static UnityCamera GroupListener(string group)
+        {
+            for (int i = 0; i < live.Count; i++)
+            {
+                var z = live[i];
+                if (z != null && z.sound != null && z.exclusiveGroup == group && z.listener != null)
+                    return z.listener;
+            }
+            return UnityCamera.main;
+        }
+
+        // Soundless members never reach DriveGroup, so they cannot inherit the loop or stop it.
+        private static bool GroupHasMember(string group)
+        {
+            for (int i = 0; i < live.Count; i++)
+            {
+                var z = live[i];
+                if (z != null && z.sound != null && z.exclusiveGroup == group) return true;
+            }
+            return false;
         }
 
         // Each axis normalises by its own falloff before combining, else the longest ramp drags the corners.

@@ -109,6 +109,25 @@ PlayerPrefs 키는 전부 `opt.*` 접두사. 레거시 단일 `opt.sfxVolume`은
 
 **여러 인스턴스에 같은 소리 일괄 주입**(`WaterZoneAudioManager` 등): 매니저가 `SoundDef` 참조만 브로드캐스트한다.
 
+**같은 소리를 내는 오브젝트가 여럿일 때** (톱날 7, 바람 존 12): `RectAmbienceZone.exclusiveGroup` 에 이름을 넣으면 **그룹이 루프 하나를 공유**한다. 두 이유 — 같은 소리 7개가 겹치면 벽처럼 뭉치고, 카테고리당 풀이 8개뿐이라 상시 루프가 풀을 굶는다. 현재 그룹: `saw`(톱날 6 + fan), `wind`(WindZone2D 10 + WindZone2D_v2 2).
+
+루프를 **존이 아니라 그룹이 소유**하는 게 핵심이다. 존마다 자기 루프를 켜고 끄면 겹친 두 존을 오갈 때마다 클립이 0초부터 다시 시작해 클릭이 나고, 존별 volumeRoll 이 달라 음량이 계단으로 튄다. 그래서 승자가 바뀌어도 **같은 소스를 그대로 넘겨받고**, 승자는 위치와 클립만 정한다. 음량은 승자 것이 아니라 **그룹 최대 raw 감쇠**라서 히스테리시스(`HolderBias` 0.05, 현 소유자 가산점)가 음량에 계단을 만들지 않는다 — 가산점은 경계에서 매 프레임 주인이 뒤집히는 것만 막는다. 소유자가 무음(감쇠 0)이면 가산점을 안 받는다(안 그러면 들리는 이웃을 이기고 그룹이 조용해진다). 그룹 안에서 `SoundDef` 가 다르면(톱날 vs fan) 그때는 내용이 바뀌는 거라 재시작이 맞다. 소유자가 disable 되면 루프는 살려두고 소유권만 놓는다 — 남은 멤버가 다음 프레임에 이어받고, 아무도 안 남았을 때만 정지한다. 판정 기준 리스너는 그룹 하나로 통일(`GroupListener`) — 멤버마다 다른 카메라를 보면 둘이 동시에 같은 루프를 몬다. `sound` 가 비어 있는 멤버는 승자 판정·리스너·잔존 판정 **셋 다에서 제외**된다(안 그러면 루프가 주인 없이 남는다).
+
+## 오브젝트 변형량 사운드 (2026-08-14)
+
+착지·발사음은 표면(`SurfaceTag` → `SurfaceMaterial`) 몫이고, **지금 얼마나 변형돼 있는지**를 따라가는 소리는 오브젝트가 직접 몬다. 공용 배관은 [StrainLoop.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/StrainLoop.cs) — 매 틱 0..1 값을 주면 음량·피치를 몰고, 0 이 되면 루프를 멈춰 풀 슬롯을 반납한다(잦아든 발판은 슬롯을 안 문다).
+
+| 오브젝트 | 슬롯 위치 | 구동값 |
+|---|---|---|
+| 로프(TautLine) | `RopeStretchAudioConfig.stretchSound` | `TautLine.DebugDipDepth` — 끌려 내려간 깊이. 컴포넌트 = `RopeStretchAudio`(실행순서 300, TautLine 200 뒤) |
+| 아스키 발판 | `AsciiArtPlatformConfig.wobbleSound` | 윤곽 변위 `disp` 의 최대 절대값 |
+| 구름 | `CloudPlatformConfig.popSound` | 변형량 아님 — `DoPop` 한 방 |
+| 나무 물레바퀴 | `WaterWheel.asset`(SurfaceMaterial) 의 land/launch 슬롯 | 표면 경로 그대로. `water_wheel` / `(2)` / `(4)` / `rotating` 은 아직 `SurfaceTag` 없음 |
+
+착지·발사음 쪽 `SurfaceTag` 배선도 끝나 있다 — MainScene 구름 21개 → `Cloud_Surface.asset`, EndScene 아스키 발판 20개 → `Ascii_Surface.asset`. 새로 만든 `SurfaceMaterial` 은 전부 기본값이라 `SurfaceModifiers.Default` 와 물리적으로 동일하다(`launchInertiaLerpFactor`/`PNorm` 만 다른데 `Sum` 모드에선 안 읽힘) — 태그를 달아도 마찰·슬라이드는 그대로고 오디오 슬롯만 생긴다.
+
+로프 착지·발사음은 `TautLine.ropeSurfaceMaterial` 에 꽂은 `SurfaceMaterial` 이 담당한다 — `RopeStretchAudio` 는 늘어남만 울어서 착지 순간에 두 번 울지 않는다.
+
 ## 표면별 슬라임 사운드 (2026-04-30)
 
 슬라임 착지 / 점프 사운드를 닿는 표면별로 다르게 재생. `SlimeLocomotionAudio` 의 4 `SoundDef`(landHard / landSoft / launch / hop)는 **fallback** 이고, 표면이 자기 것을 들고 있으면 그쪽이 이긴다.

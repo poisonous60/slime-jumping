@@ -387,6 +387,8 @@ namespace SlimeJumping.Platforms
 
             var ps = debrisField.GetValue(ice) as ParticleSystem;
             if (ps == null) return;
+            // The tile only plays this on its own Cracking ramp; a stopped system never simulates the burst.
+            if (!ps.isPlaying) ps.Play(true);
             ps.Emit(config.crackStageDebrisBurst);
         }
 

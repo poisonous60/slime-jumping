@@ -231,6 +231,7 @@ namespace SlimeJumping.Platforms
         {
             var s = rider;
             RiderPopped?.Invoke(dir, speed);
+            SlimeJumping.Audio.SoundService.Play(cfg.popSound, rb.position);
             // 라이더를 먼저 정리해야 ForceAirborneWithVelocity 의 OnSlimeDetach 재진입이 no-op 이 된다.
             if (cfg.vanishOnUse) Consume();
             else ReleaseRider();

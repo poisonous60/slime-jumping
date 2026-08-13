@@ -52,6 +52,8 @@ namespace SlimeJumping.Platforms
         bool rebuilding;
         float nextSlimeSearch;
 
+        readonly SlimeJumping.Audio.StrainLoop wobbleLoop = new SlimeJumping.Audio.StrainLoop();
+
         void Awake()
         {
             platform = GetComponent<AsciiArtPlatform>();
@@ -235,7 +237,22 @@ namespace SlimeJumping.Platforms
             StepWave(rider, dt);
             ApplyToCollider();
             ApplyMesh();
+            DriveWobbleSound();
             TrySleep(rider);
+        }
+
+        // 진폭을 따라가는 이어지는 소리 — 착지 한 방이 아니라 잦아드는 동안 같이 잦아든다.
+        void DriveWobbleSound()
+        {
+            float peak = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float a = Mathf.Abs(disp[i]);
+                if (a > peak) peak = a;
+            }
+            float full = Mathf.Max(0.001f, cfg.wobbleFullAmplitudeCells * cellH);
+            wobbleLoop.Drive(cfg.wobbleSound, transform.TransformPoint(lastFootLocal),
+                             peak / full, cfg.wobblePitchAtRest, cfg.wobblePitchAtFull);
         }
 
         SlimeController ContactRider()
@@ -440,6 +457,7 @@ namespace SlimeJumping.Platforms
 
         void ResetDeformation()
         {
+            wobbleLoop.Stop();
             if (n == 0) return;
             System.Array.Clear(disp, 0, n);
             System.Array.Clear(vel, 0, n);

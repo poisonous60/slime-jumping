@@ -9,7 +9,7 @@ namespace SlimeJumping.UI
     /// <summary>
     /// MainScene 세이브 주체. 저장 대상은 슬라임 월드 위치 하나뿐이고, 씬의 나머지는 로드 시 초기 상태로 온다.
     /// Trail 은 TrailPersistence 오토세이브가 이미 실행 간 유지하므로 여기서 다시 직렬화하지 않는다.
-    /// 저장 시점은 세 곳: 앱 종료, GameFlow.LoadMainMenu, SceneTransitionController.PlayReverse.
+    /// 저장 시점은 두 곳: 앱 종료, GameFlow.LoadMainMenu. 엔딩 진입은 저장 대신 삭제한다.
     /// OnDestroy 는 쓰지 않는다 — 씬 언로드 파괴 순서가 미정이라 그 시점의 씬 상태를 믿을 수 없다.
     /// </summary>
     public class LoadSaveManager : MonoBehaviour
@@ -40,7 +40,7 @@ namespace SlimeJumping.UI
             if (instance != null) instance.WriteSave();
         }
 
-        /// Start New Game 전용. Trail 은 파일이 남아 있으면 TryLoad 가 되살리므로 하나도 남기지 않는다.
+        /// Start New Game 과 엔딩 진입용. Trail 은 파일이 남아 있으면 TryLoad 가 되살리므로 하나도 남기지 않는다.
         public static void DeleteSave()
         {
             try { if (File.Exists(SavePath)) File.Delete(SavePath); }

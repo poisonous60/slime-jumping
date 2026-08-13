@@ -131,6 +131,7 @@ GameObject:
   - component: {fileID: 32405747}
   - component: {fileID: 32405746}
   - component: {fileID: 32405745}
+  - component: {fileID: 32405748}
   m_Layer: 7
   m_Name: Letter_P
   m_TagString: Untagged
@@ -247,6 +248,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &32405748
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 32405743}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &53869492
 GameObject:
   m_ObjectHideFlags: 0
@@ -349,6 +363,7 @@ GameObject:
   - component: {fileID: 91356658}
   - component: {fileID: 91356657}
   - component: {fileID: 91356656}
+  - component: {fileID: 91356659}
   m_Layer: 7
   m_Name: Letter_A
   m_TagString: Untagged
@@ -471,6 +486,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &91356659
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 91356654}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &102899720
 GameObject:
   m_ObjectHideFlags: 0
@@ -675,6 +703,7 @@ GameObject:
   - component: {fileID: 104088250}
   - component: {fileID: 104088249}
   - component: {fileID: 104088248}
+  - component: {fileID: 104088251}
   m_Layer: 7
   m_Name: Letter_H
   m_TagString: Untagged
@@ -789,6 +818,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &104088251
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 104088246}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &142138798
 GameObject:
   m_ObjectHideFlags: 0
@@ -879,6 +921,7 @@ GameObject:
   - component: {fileID: 174703541}
   - component: {fileID: 174703540}
   - component: {fileID: 174703539}
+  - component: {fileID: 174703542}
   m_Layer: 7
   m_Name: Letter_G
   m_TagString: Untagged
@@ -999,6 +1042,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &174703542
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 174703537}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &185705648
 GameObject:
   m_ObjectHideFlags: 0
@@ -2508,6 +2564,7 @@ GameObject:
   - component: {fileID: 359138907}
   - component: {fileID: 359138906}
   - component: {fileID: 359138905}
+  - component: {fileID: 359138908}
   m_Layer: 7
   m_Name: Ground
   m_TagString: Untagged
@@ -2614,6 +2671,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 120
   rows: 2
+--- !u!114 &359138908
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 359138903}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &374806877
 GameObject:
   m_ObjectHideFlags: 0
@@ -3036,6 +3106,7 @@ GameObject:
   - component: {fileID: 487486992}
   - component: {fileID: 487486991}
   - component: {fileID: 487486990}
+  - component: {fileID: 487486993}
   m_Layer: 7
   m_Name: Letter_L
   m_TagString: Untagged
@@ -3144,6 +3215,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 7
   rows: 6
+--- !u!114 &487486993
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 487486988}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &527080288
 GameObject:
   m_ObjectHideFlags: 0
@@ -3156,6 +3240,7 @@ GameObject:
   - component: {fileID: 527080292}
   - component: {fileID: 527080291}
   - component: {fileID: 527080290}
+  - component: {fileID: 527080293}
   m_Layer: 7
   m_Name: Letter_O
   m_TagString: Untagged
@@ -3274,6 +3359,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &527080293
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 527080288}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &538612008
 GameObject:
   m_ObjectHideFlags: 0
@@ -3559,6 +3657,7 @@ GameObject:
   - component: {fileID: 642491855}
   - component: {fileID: 642491854}
   - component: {fileID: 642491853}
+  - component: {fileID: 642491856}
   m_Layer: 7
   m_Name: Letter_F
   m_TagString: Untagged
@@ -3671,6 +3770,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &642491856
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 642491851}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &694005546
 GameObject:
   m_ObjectHideFlags: 0
@@ -3920,6 +4032,7 @@ GameObject:
   - component: {fileID: 794360835}
   - component: {fileID: 794360834}
   - component: {fileID: 794360833}
+  - component: {fileID: 794360836}
   m_Layer: 7
   m_Name: Letter_T
   m_TagString: Untagged
@@ -4030,6 +4143,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &794360836
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 794360831}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &804835325
 GameObject:
   m_ObjectHideFlags: 0
@@ -4042,6 +4168,7 @@ GameObject:
   - component: {fileID: 804835329}
   - component: {fileID: 804835328}
   - component: {fileID: 804835327}
+  - component: {fileID: 804835330}
   m_Layer: 7
   m_Name: Letter_I
   m_TagString: Untagged
@@ -4156,6 +4283,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 6
   rows: 6
+--- !u!114 &804835330
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 804835325}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &821191968
 GameObject:
   m_ObjectHideFlags: 0
@@ -4462,6 +4602,7 @@ GameObject:
   - component: {fileID: 902789153}
   - component: {fileID: 902789152}
   - component: {fileID: 902789151}
+  - component: {fileID: 902789155}
   m_Layer: 7
   m_Name: ReturnButton
   m_TagString: Untagged
@@ -4594,6 +4735,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 9
   rows: 3
+--- !u!114 &902789155
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 902789149}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &948265571
 GameObject:
   m_ObjectHideFlags: 0
@@ -4606,6 +4760,7 @@ GameObject:
   - component: {fileID: 948265575}
   - component: {fileID: 948265574}
   - component: {fileID: 948265573}
+  - component: {fileID: 948265576}
   m_Layer: 7
   m_Name: Letter_Y
   m_TagString: Untagged
@@ -4728,6 +4883,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &948265576
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 948265571}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &988932344
 GameObject:
   m_ObjectHideFlags: 0
@@ -4740,6 +4908,7 @@ GameObject:
   - component: {fileID: 988932348}
   - component: {fileID: 988932347}
   - component: {fileID: 988932346}
+  - component: {fileID: 988932349}
   m_Layer: 7
   m_Name: Letter_K
   m_TagString: Untagged
@@ -4868,6 +5037,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &988932349
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 988932344}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &991230027
 GameObject:
   m_ObjectHideFlags: 0
@@ -5223,6 +5405,7 @@ GameObject:
   - component: {fileID: 1024430799}
   - component: {fileID: 1024430798}
   - component: {fileID: 1024430797}
+  - component: {fileID: 1024430800}
   m_Layer: 7
   m_Name: Letter_S
   m_TagString: Untagged
@@ -5345,6 +5528,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &1024430800
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1024430795}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &1027159114
 GameObject:
   m_ObjectHideFlags: 0
@@ -5540,6 +5736,7 @@ GameObject:
   - component: {fileID: 1068268795}
   - component: {fileID: 1068268794}
   - component: {fileID: 1068268793}
+  - component: {fileID: 1068268796}
   m_Layer: 7
   m_Name: Letter_N
   m_TagString: Untagged
@@ -5664,6 +5861,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &1068268796
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1068268791}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &1105386910
 GameObject:
   m_ObjectHideFlags: 0
@@ -6056,6 +6266,7 @@ GameObject:
   - component: {fileID: 1207591889}
   - component: {fileID: 1207591888}
   - component: {fileID: 1207591887}
+  - component: {fileID: 1207591890}
   m_Layer: 7
   m_Name: Letter_N
   m_TagString: Untagged
@@ -6180,6 +6391,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &1207591890
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1207591885}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &1296081958
 GameObject:
   m_ObjectHideFlags: 0
@@ -6192,6 +6416,7 @@ GameObject:
   - component: {fileID: 1296081962}
   - component: {fileID: 1296081961}
   - component: {fileID: 1296081960}
+  - component: {fileID: 1296081963}
   m_Layer: 7
   m_Name: WallRight
   m_TagString: Untagged
@@ -6298,6 +6523,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 2
   rows: 40
+--- !u!114 &1296081963
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1296081958}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &1381602055
 GameObject:
   m_ObjectHideFlags: 0
@@ -11794,6 +12032,7 @@ GameObject:
   - component: {fileID: 2077527537}
   - component: {fileID: 2077527536}
   - component: {fileID: 2077527535}
+  - component: {fileID: 2077527538}
   m_Layer: 7
   m_Name: WallLeft
   m_TagString: Untagged
@@ -11900,6 +12139,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 2
   rows: 40
+--- !u!114 &2077527538
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2077527533}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &2103732571
 GameObject:
   m_ObjectHideFlags: 0
@@ -11912,6 +12164,7 @@ GameObject:
   - component: {fileID: 2103732575}
   - component: {fileID: 2103732574}
   - component: {fileID: 2103732573}
+  - component: {fileID: 2103732576}
   m_Layer: 7
   m_Name: Letter_A
   m_TagString: Untagged
@@ -12034,6 +12287,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &2103732576
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2103732571}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1 &2103869955
 GameObject:
   m_ObjectHideFlags: 0
@@ -12231,6 +12497,7 @@ GameObject:
   - component: {fileID: 2126025338}
   - component: {fileID: 2126025337}
   - component: {fileID: 2126025336}
+  - component: {fileID: 2126025339}
   m_Layer: 7
   m_Name: Letter_R
   m_TagString: Untagged
@@ -12359,6 +12626,19 @@ MonoBehaviour:
   cellHeight: 0.34497067
   columns: 8
   rows: 6
+--- !u!114 &2126025339
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2126025334}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c01abaeddd26fe4e8e9bde234f95c5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Physics.SurfaceTag
+  material: {fileID: 11400000, guid: 56966826eddb1c84dad9eb44d8c624f0, type: 2}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

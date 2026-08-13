@@ -496,15 +496,15 @@ namespace SlimeJumping.Platforms.ThinIceV2
             visualRenderer.SetPropertyBlock(mpb);
         }
 
-        // ParticleSystem.shape.scale ignores parent lossyScale and acts in world units
-        // relative to the PS transform, so feed it world bounds, not collider-local size.
+        // shape.position/scale are PS-local, so the emitter is parked unrotated on the collider centre.
         void ConfigureDebrisShape()
         {
             if (debrisVFX == null || platformCollider == null) return;
             Bounds w = platformCollider.bounds;
+            debrisVFX.transform.SetPositionAndRotation(w.center, Quaternion.identity);
             var shape = debrisVFX.shape;
             shape.shapeType = ParticleSystemShapeType.Box;
-            shape.position  = w.center - debrisVFX.transform.position;
+            shape.position  = Vector3.zero;
             shape.scale     = new Vector3(
                 Mathf.Max(0.01f, w.size.x),
                 Mathf.Max(0.01f, w.size.y),
