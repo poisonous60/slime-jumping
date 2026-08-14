@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: PlanetBody
+  m_Shader: {fileID: 4800000, guid: 07c9839b8a9bc3a4cb6c7df88d3039a4, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _DitherAmount: 1
+    - _EdgeIntensity: 0.01381875
+    - _EdgeWidth: 0.08
+    - _LimbDarkening: 0.3
+    - _SunIntensity: 1
+    - _SunPitch: 25
+    - _SunYaw: -20
+    - _Terminator: 0.15
+    m_Colors:
+    - _BodyColor: {r: 0.3, g: 0.35, b: 0.5, a: 1}
+    - _EdgeColor: {r: 0.1, g: 0.16, b: 0.28, a: 1}
+    - _ShadowColor: {r: 0.0021, g: 0.0069, b: 0.0243, a: 1}
+    - _SunColor: {r: 0.93, g: 0.96, b: 1, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
