@@ -37,4 +37,5 @@ MonoBehaviour:
   stagger: 0.25
   spin: 220
   popScale: 1.25
-  popSound: {fileID: 11400000, guid: 8a47ccdd6c8aa524bb67232ce1da43bb, type: 2}
+  popSound: {fileID: 11400000, guid: 7072a0517dc8f0e43a7aa4352b4e234a, type: 2}
+  respawnSound: {fileID: 11400000, guid: d99669c7d7a448a4ebddb97c2a49d54e, type: 2}

@@ -34,6 +34,14 @@ namespace SlimeJumping.Platforms
         public float maxTotalDisplacement = 0.45f; // 정점당 합성 변위 상한.
         public float maxSurfaceSpeed = 3f;         // 표면 최대 이동 속도(world u/s) — probe 가 추적 가능해야 함.
 
+        [Header("출렁임 사운드 — 착지·발사음은 SurfaceTag/SurfaceMaterial 몫")]
+        public SlimeJumping.Audio.SoundDef wobbleSound;   // 출렁이는 동안 이어지는 소리.
+        public float wobbleFullContourDisp = 0.15f;       // 최대 음량이 되는 윤곽 변위(구름 높이 비율).
+        public float wobbleFullBodyComp = 0.2f;           // 최대 음량이 되는 전신 눌림(구름 높이 비율).
+        public float wobblePitchAtRest = 0.9f;
+        public float wobblePitchAtFull = 1.15f;
+        public float wobbleFadeOutSeconds = 0.35f;   // 구름이 흩어져 변형이 사라질 때 꼬리를 남기는 시간.
+
         [Header("Perf")]
         public float restEpsilon = 0.0015f;   // 이하 진폭이면 완전 휴면.
 

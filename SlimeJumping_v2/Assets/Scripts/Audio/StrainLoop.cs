@@ -34,9 +34,9 @@ namespace SlimeJumping.Audio
             handle.SetPitch(Mathf.Lerp(pitchAtRest, pitchAtFull, strain01));
         }
 
-        public void Stop()
+        public void Stop(float fadeSeconds = 0f)
         {
-            SoundService.StopLoop(handle);
+            SoundService.StopLoop(handle, fadeSeconds);
             handle = default;
             playing = null;
         }

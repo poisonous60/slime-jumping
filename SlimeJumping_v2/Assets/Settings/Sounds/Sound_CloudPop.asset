@@ -12,12 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 10943b20a89f36a44ba061e58e89f099, type: 3}
   m_Name: Sound_CloudPop
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
-  clips: []
+  clips:
+  - {fileID: 8300000, guid: 63f45c20100da9c47acd7c440498cc80, type: 3}
   clipOrder: 0
   category: 3
-  volumeRange: {x: 1, y: 1}
-  pitchRange: {x: 1, y: 1}
-  cooldownSeconds: 0
+  volumeRange: {x: 0.9, y: 1}
+  pitchRange: {x: 0.6, y: 0.9}
+  cooldownSeconds: 0.2
   spatial3D: 1
   minDistance: -1
   maxDistance: -1

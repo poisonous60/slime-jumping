@@ -12,10 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 10943b20a89f36a44ba061e58e89f099, type: 3}
   m_Name: Sound_SawBlade
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
-  clips: []
+  clips:
+  - {fileID: 0}
   clipOrder: 0
   category: 0
-  volumeRange: {x: 1, y: 1}
+  volumeRange: {x: 0.3, y: 0.3}
   pitchRange: {x: 1, y: 1}
   cooldownSeconds: 0
   spatial3D: 0

@@ -89,8 +89,8 @@ MonoBehaviour:
   launchInertiaLerpFactor: 0.5
   launchInertiaPNorm: 2
   layerOverSlimeSound: 0
-  landHardSound: {fileID: 11400000, guid: 3ca5d2bc949fff641b046bac6555a226, type: 2}
-  landSoftSound: {fileID: 11400000, guid: f235a88218334374787c87e0e9964562, type: 2}
+  landHardSound: {fileID: 0}
+  landSoftSound: {fileID: 0}
   launchSound: {fileID: 0}
   hopSound: {fileID: 0}
   overrideCeilingAngle: 0

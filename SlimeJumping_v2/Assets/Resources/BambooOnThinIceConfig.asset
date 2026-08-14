@@ -31,6 +31,6 @@ MonoBehaviour:
   bambooMass: 2
   ridingSlimeMass: 1
   respawnDelaySeconds: 1.5
-  corpseMaxLifeSeconds: 1.5
+  corpseMaxLifeSeconds: 3
   corpseRestPoofSeconds: 1.5
   corpsePoofPrefab: {fileID: 5911743663151647118, guid: 614a977c154d7be4fae12b257a550a03, type: 3}

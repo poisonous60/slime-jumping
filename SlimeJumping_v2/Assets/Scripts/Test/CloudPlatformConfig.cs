@@ -46,11 +46,6 @@ namespace SlimeJumping.Platforms
         public float spin = 220f;         // deg/s 빠른 회전.
         [Range(1f, 1.6f)] public float popScale = 1.25f; // 초반 살짝 부풀기.
 
-        [Header("사운드")]
-        // 착지음은 발판의 SurfaceTag/SurfaceMaterial 몫. 여기는 구름이 슬라임을 튕겨내며 흩어지는 순간.
-        public SlimeJumping.Audio.SoundDef popSound;
-
-
         const string ResourcesPath = "CloudPlatformConfig";
         static CloudPlatformConfig fallback;
 

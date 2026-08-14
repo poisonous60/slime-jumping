@@ -35,6 +35,9 @@ namespace SlimeJumping.Audio
         private readonly Dictionary<SoundCategory, List<PooledSource>> pools =
             new Dictionary<SoundCategory, List<PooledSource>>();
 
+        // Loops mid-fade. A second StopLoop on the same source must not start a second ramp.
+        private readonly HashSet<AudioSource> fadingLoops = new HashSet<AudioSource>();
+
         // Two BGM sources so a crossfade can overlap; only one plays otherwise.
         private AudioSource bgmA;
         private AudioSource bgmB;
@@ -296,19 +299,46 @@ namespace SlimeJumping.Audio
             return new SoundHandle { source = src };
         }
 
-        public static void StopLoop(SoundHandle handle)
+        /// fadeSeconds > 0 ramps the level down before releasing. The pool entry stays locked for
+        /// the whole ramp, so nothing borrows a source that is still audible.
+        public static void StopLoop(SoundHandle handle, float fadeSeconds = 0f)
         {
             if (!handle.IsValid) return;
-            handle.source.Stop();
-            handle.source.clip = null;
-            handle.source.loop = false;
-            if (Instance != null) Instance.RestorePoolDefaults(handle.source);
+            var svc = Instance;
+            if (fadeSeconds > 0f && svc != null && svc.isActiveAndEnabled
+                && svc.fadingLoops.Add(handle.source))
+            {
+                svc.StartCoroutine(svc.FadeOutLoop(handle.source, fadeSeconds));
+                return;
+            }
+            ReleaseLoop(handle.source);
+        }
 
-            var list = Instance != null ? Instance.FindPoolContaining(handle.source) : null;
+        private IEnumerator FadeOutLoop(AudioSource src, float seconds)
+        {
+            float from = src.volume;
+            for (float t = 0f; t < seconds && src != null; t += Time.unscaledDeltaTime)
+            {
+                src.volume = Mathf.Lerp(from, 0f, t / seconds);
+                yield return null;
+            }
+            fadingLoops.Remove(src);
+            ReleaseLoop(src);
+        }
+
+        private static void ReleaseLoop(AudioSource src)
+        {
+            if (src == null) return;
+            src.Stop();
+            src.clip = null;
+            src.loop = false;
+            if (Instance != null) Instance.RestorePoolDefaults(src);
+
+            var list = Instance != null ? Instance.FindPoolContaining(src) : null;
             if (list != null)
             {
                 for (int i = 0; i < list.Count; i++)
-                    if (list[i].source == handle.source)
+                    if (list[i].source == src)
                     {
                         list[i].locked = false;
                         list[i].follow = null;

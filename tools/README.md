@@ -9,6 +9,7 @@ repo files directly (Python).
 
 | File | Purpose |
 |---|---|
+| [`add_songs.py`](add_songs.py) | Imports solo piano audio into the auto-play set: transkun transcription → `Assets/Audio/Music/<Name>.mp3` + `<Name>_score.json`, then runs `extract_preview.py`. Needs the transkun venv (Python 3.11). `--selftest`. |
 | [`extract_preview.py`](extract_preview.py) | Bakes each piano song's opening chord loop + accompaniment figure (`preview` field) into `Assets/Audio/Music/*_score.json` — HarmAn-style chord extraction, stdlib only. `--dry-run` report / `--selftest`. See `docs/features/platforms/piano-keyboard.md`. |
 
 ## Invocation

@@ -12,10 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 10943b20a89f36a44ba061e58e89f099, type: 3}
   m_Name: Sound_RopeStretch
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
-  clips: []
+  clips:
+  - {fileID: 8300000, guid: a2123e4e2e53adb468da52a743631c3d, type: 3}
+  - {fileID: 8300000, guid: 1db901d9f49e82843aab09038a74e1d6, type: 3}
+  - {fileID: 8300000, guid: 1136f54b1c7e40341b67b39f2b04b358, type: 3}
   clipOrder: 0
   category: 3
-  volumeRange: {x: 1, y: 1}
+  volumeRange: {x: 0.35, y: 0.35}
   pitchRange: {x: 1, y: 1}
   cooldownSeconds: 0
   spatial3D: 1

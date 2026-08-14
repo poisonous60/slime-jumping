@@ -130,8 +130,9 @@ sensor(`BoxCollider2D`)는 정적 자식 GO, dip 애니는 건반 mesh transform
 
 | 단계 | 도구 | 비고 |
 |---|---|---|
-| audio → MIDI | **[transkun](https://github.com/yujia-yan/transkun) 2.0.1** (MIT, ISMIR 2024) | MAESTRO V3 note+offset+velocity **F1 0.9505**, 벨로시티·서스테인 페달 출력 |
-| MIDI → score JSON | `midi_to_score.py` (scratchpad) | pretty_midi 파싱 + librosa로 키/코드 추정 |
+| audio → MIDI → score JSON | **`tools/add_songs.py`** (repo) | transkun 호출 + pretty_midi 파싱 + 키 추정을 한 번에. mp3 를 `Assets/Audio/Music/` 과 `sound/music/` 에 복사하고 마지막에 `extract_preview.py` 까지 돌린다. `--selftest` |
+| ↳ audio → MIDI | **[transkun](https://github.com/yujia-yan/transkun) 2.0.1** (MIT, ISMIR 2024) | MAESTRO V3 note+offset+velocity **F1 0.9505**, 벨로시티·서스테인 페달 출력 |
+| ↳ 키 추정 | Krumhansl-Kessler (add_songs.py 내장) | 전사된 MIDI 의 **피치클래스 지속시간** 히스토그램 상관. 오디오(librosa) 크로마를 쓰던 옛 경로를 대체 — 같은 노트 데이터에서 뽑으니 건반과 조성이 어긋나지 않는다. `confidence` = 최고 상관계수 |
 | score JSON → `preview` 필드 | **`tools/extract_preview.py`** (repo, stdlib only) | 도입부를 **타건 단위**로 추출(아래 "곡별 미리보기" 참조). `--dry-run` 리포트만 / `--selftest` 자체 검증(블록·브로큰·셈여림·페달 4종 합성곡) |
 
 - **Windows 설치 함정**: `transkun` 의존성 `ncls`는 최신(0.0.70)에 win_amd64 wheel이 없어 MSVC 빌드로 넘어가 실패한다. Python **3.11** venv + **`ncls==0.0.39` 핀**을 같은 resolve에 넣어야 함 (`uv pip install transkun "ncls==0.0.39"`). 3.13에서는 어느 조합으로도 안 됨.
@@ -226,7 +227,7 @@ sensor(`BoxCollider2D`)는 정적 자식 GO, dip 애니는 건반 mesh transform
 
 `scale`은 그 경로에서 **Major로 강제**한다. tonic이 이미 나란한장조라 그 위의 장조 펜타토닉 = 곡 으뜸음의 단조 펜타토닉(같은 음집합, 위 하모나이즈 항목의 "C장조 펜타 = A단조 펜타"와 같은 근거). Minor로 두면 B♭단조 펜타가 되어 곡에 없는 음이 나온다.
 
-실측(현재 로테이션 42곡, 19개 조성):
+실측(현재 로테이션 75곡, 19개 조성):
 ```
 C  /Am  -> 60 (C)     C# /B♭m -> 61 (C#)    D  /Bm  -> 62 (D)     E♭ /Cm  -> 63 (E♭)
 E  /C#m -> 64 (E)     F  /Dm  -> 65 (F)     F# /E♭m -> 66 (F#)    G       -> 67 (G)
@@ -242,7 +243,16 @@ tonic은 항상 `[60,71]`에 놓는다 — authored 보이싱 최저 오프셋�
 `HarmonyMath`와 `PianoKeyboard.Harmonize.cs`의 **모든** 읽기가 프로퍼티로 전환됐다 — 한 곳이라도 raw 필드로 남으면 멜로디와 화음이 서로 다른 조성으로 갈린다(Codex가 잔여 raw read 0건 확인).
 
 ### 곡 추가 방법
-`sound/music/` 에 솔로 피아노 오디오를 넣고 배치 스크립트를 돌리면 `Assets/Audio/Music/` 에 `<Name>.mp3` + `<Name>_score.json` 쌍이 생긴다. 그 다음 Unity에서 `PianoConfig.autoPlay.songs` 에 등록.
+솔로 피아노 오디오를 모아둔 폴더를 `tools/add_songs.py` 에 넘기면 `Assets/Audio/Music/` 에 `<Name>.mp3` + `<Name>_score.json` 쌍이 생기고 원본이 `sound/music/` 에 보관된다. 그 다음 Unity에서 `PianoConfig.autoPlay.songs` 에 등록(라벨=에셋 이름, `tonicMidi=-1`, 장식은 곡 성격 보고 손으로).
+
+```sh
+uv venv --python 3.11 amt311
+uv pip install --python amt311/Scripts/python.exe --index-url https://download.pytorch.org/whl/cpu torch torchaudio
+uv pip install --python amt311/Scripts/python.exe transkun "ncls==0.0.39" pretty_midi
+amt311/Scripts/python tools/add_songs.py "C:/Downloads/Selected Tracks"
+```
+
+파일명은 라이브러리 표기(`03-A-Clover-Green-Piano-30-SM391`)에서 선두 번호와 길이·카탈로그 꼬리를 떼고 CamelCase 로 바뀐다 → `ACloverGreenPiano`. 이미 같은 이름의 `_score.json` 이 있으면 건너뛴다(`--force` 로 덮어쓰기). 전사한 MIDI 는 임시 폴더에 캐시되므로 중간에 끊겨도 재실행이 싸다.
 
 판정 기준(스크립트가 표로 출력): **key confidence ≥ 0.6** + 노트 수가 귀로 들은 것과 맞을 것. n/s가 비정상적으로 높은데 confidence가 낮으면 솔로 피아노가 아니었다는 뜻.
 
@@ -256,7 +266,8 @@ tonic은 항상 `[60,71]`에 놓는다 — authored 보이싱 최저 오프셋�
 - **`PianoVoicePool.PlayExpressive(midi, vol, hold, fall, delay, velocity)`** — `Play`(4인자)는 예전대로 delay 의미라 장식 경로 무수정.
 - **`PianoConfig.PianoSong`** (신규) — `label`/`clip`/`scoreJson`/`tonicMidi`(-1=자동)/`scale`/`ornaments`.
 - **`PianoConfig.AutoPlaySettings`** — `enabled`/`songs`/`minPresses`/`idleSeconds`/`cooldownSeconds`/`volume`/`loop`/`fadeInSeconds`/`fadeOutSeconds`/`visualDepthScale`.
-- **에셋**: `Assets/Audio/Music/` 에 42곡 (30~39초 41곡 + 167초 1곡), 각각 mp3 + `_score.json`. `Assets/Audio/`는 gitignore이므로 리포에 안 들어간다 — 원본은 `sound/music/`.
+- **에셋**: `Assets/Audio/Music/` 에 75곡(2026-08-14 33곡 추가), 각각 mp3 + `_score.json`. `Assets/Audio/`도 `sound/`도 gitignore라 리포에 안 들어간다 — 원본 보관은 `sound/music/`.
+- 2026-08-14 추가분 중 손봐야 할 수 있는 3곡: `LittleNellAndTheTrainTracks`(키 conf 0.37) / `SinisterPursuit`(0.49)는 반음계적이라 KS 상관이 낮지만 preview 가 잡혀서(cov 1.00 / 0.98) 조성은 preview 에서 온다. `DarknessDescending`은 35초에 19노트뿐이라 preview 가 FALLBACK(도입부 9노트) — 스키마 진행으로 돈다.
 
 ### 하드 게인 — 두 번의 적대적 리뷰에서 나온 것
 Claude 워크플로우(5렌즈) + Codex 리뷰가 잡은 실제 결함들. 재발 방지용으로 기록:
@@ -280,5 +291,5 @@ Claude 워크플로우(5렌즈) + Codex 리뷰가 잡은 실제 결함들. 재�
 - 검은 건반은 **밟을 수 없음**(콜라이더 없음, 의도) — 단 2026-07-23부터 소리에 맞춰 **시각적으로는 눌림**(차용화음 A♭/B♭ 등).
 - `Assets/Audio/Perc/vcsl_*.wav` 3개는 폐기된 자동 반주용으로 받아둔 것 — 현재 미사용.
 - **자동 연주 곡의 라이선스** — 현재 곡은 AudioHero 싱크권이라 "mp3 재생 + 건반 싱크"까지만 가능하고 샘플러 재연주는 불가. AI 전사 조항도 문자상 걸림(위 참조). 상용 전 confirm 또는 PD 곡 교체 필요.
-- **전사 스크립트가 repo에 없음** — `add_songs.py`(배치) / `midi_to_score.py`(MIDI→score JSON) / `build_artifact.py`(score JSON→테스트 HTML)는 전부 scratchpad에만 있다. transkun venv(`amt311`, Python 3.11 + `ncls==0.0.39`)와 librosa venv(`amt`)도 같은 자리. 이 셋 중 하나라도 지워지면 곡을 더 못 넣는다 — repo로 옮기려면 별도 요청 필요. `extract_preview.py`(score JSON→preview)는 2026-07-25부터 `tools/`에 있음.
+- **~~전사 스크립트가 repo에 없음~~** — 해소(2026-08-14). scratchpad 에만 있던 `add_songs.py`/`midi_to_score.py` 는 실제로 청소되어 사라졌고, 둘을 합친 `tools/add_songs.py` 로 다시 썼다. venv 는 여전히 일회성이지만 위 3줄로 다시 만든다. `build_artifact.py`(score JSON→테스트 HTML)는 복구 안 함.
 - 자동 연주 중 `harmonize.enabled`가 켜져 있고 슬라임이 착지하면 두 시스템이 같은 건반 시각을 겹쳐 누를 수 있다 — `PianoKeyVisual.Press`가 깊이·시간 모두 `max` 누적이라 깨지진 않지만, 복귀 직후 ~fadeOut 동안 자동 연주가 누른 건반이 남아 있다(의도: 급정지로 지우면 슬라임이 방금 친 건반의 dip까지 지워짐).

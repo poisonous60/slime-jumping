@@ -59,6 +59,8 @@ namespace SlimeJumping.Platforms
         Matrix4x4 rootToChildVec;
         float bottomY, heightLocal, centerX;
 
+        readonly SlimeJumping.Audio.StrainLoop wobbleLoop = new SlimeJumping.Audio.StrainLoop();
+
         Vector2 lastFootLocal;
         Vector2 lastPushLocal = Vector2.down;
         bool asleep = true;
@@ -95,6 +97,7 @@ namespace SlimeJumping.Platforms
                 cloud.RiderPopped -= OnRiderPopped;
                 cloud.RiderReleased -= OnRiderReleased;
             }
+            wobbleLoop.Stop(cfg != null ? cfg.wobbleFadeOutSeconds : 0f);
             ResetDeformation();
         }
 
@@ -286,12 +289,14 @@ namespace SlimeJumping.Platforms
             if (DisperserBusy())
             {
                 if (!resetDone) ResetDeformation();
+                // 흩어지는 순간의 출렁임은 최대 진폭이라 즉시 끊으면 소리가 잘린다.
+                wobbleLoop.Stop(cfg.wobbleFadeOutSeconds);
                 return;
             }
             resetDone = false;
 
             SlimeController rider = ContactRider();
-            if (asleep && rider == null) return;
+            if (asleep && rider == null) { wobbleLoop.Stop(cfg.wobbleFadeOutSeconds); return; }
 
             float dt = Time.fixedDeltaTime;
             StepWave(rider, dt);
@@ -299,6 +304,22 @@ namespace SlimeJumping.Platforms
             ApplyToCollider();
             ApplyMesh();
             TrySleep(rider);
+            DriveWobbleSound();
+        }
+
+        // 두 변형 채널의 세기 중 큰 쪽이 음량을 몬다. 잔동이 잦아들면 0 이 되어 루프가 풀을 반납한다.
+        void DriveWobbleSound()
+        {
+            float peak = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float a = Mathf.Abs(disp[i]);
+                if (a > peak) peak = a;
+            }
+            float contour01 = peak / Mathf.Max(0.001f, cfg.wobbleFullContourDisp * heightLocal);
+            float body01 = Mathf.Abs(bodyComp) / Mathf.Max(0.001f, cfg.wobbleFullBodyComp * heightLocal);
+            wobbleLoop.Drive(cfg.wobbleSound, transform.TransformPoint(lastFootLocal),
+                             Mathf.Max(contour01, body01), cfg.wobblePitchAtRest, cfg.wobblePitchAtFull);
         }
 
         // 콜라이더도 같은 필드를 따른다 — 비주얼만 내려가면 슬라임이 떠 보인다.

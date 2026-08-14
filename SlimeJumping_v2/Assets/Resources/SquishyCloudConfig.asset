@@ -28,5 +28,12 @@ MonoBehaviour:
   waveSpring: 35
   waveDamping: 5
   visualInfluenceRadius: 0.2
+  mappingArcWindow: 8
   maxTotalDisplacement: 0.45
+  maxSurfaceSpeed: 3
+  wobbleSound: {fileID: 11400000, guid: 6d237d4b38a4fa64dae11445a5771367, type: 2}
+  wobbleFullContourDisp: 0.15
+  wobbleFullBodyComp: 0.2
+  wobblePitchAtRest: 0.9
+  wobblePitchAtFull: 1.15
   restEpsilon: 0.0015

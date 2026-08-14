@@ -32,7 +32,7 @@ SoundService.Play(cfg.impactSound, worldPos, DistanceFalloff(worldPos));
 
 6. **BGM 은 `StageBgmPlayer`.** 씬에 빈 GameObject + 컴포넌트 + `SoundDef` 하나.
 
-7. **상시 앰비언트는 BGM 카테고리.** `AmbientSound` / `RectAmbienceZone` 으로 계속 깔아두는 소리는 곡이 아니어도 BGM 슬라이더를 따른다(2026-08-13, World SFX → BGM: `Sound_Waterfall` / `Sound_RainAmbient` / `Sound_WaterWheel`). 카테고리는 버스만 바꾸므로 3D 감쇠는 `SoundDef` 가 그대로 들고 있고 거리감은 유지된다. 일회성 물소리(`Sound_WaterEnter*` / `Sound_WaterExit`)와 잠수 루프(`Sound_WaterUnderwaterLoop`)는 슬라임 행동에 붙은 반응이라 World SFX 에 남긴다.
+7. **상시 앰비언트는 BGM 카테고리.** `AmbientSound` / `RectAmbienceZone` 으로 계속 깔아두는 소리는 곡이 아니어도 BGM 슬라이더를 따른다(2026-08-13 World SFX → BGM 전환). 카테고리는 버스만 바꾸므로 3D 감쇠는 `SoundDef` 가 그대로 들고 있고 거리감은 유지된다. 일회성 물소리(`Sound_WaterEnter*` / `Sound_WaterExit`)와 잠수 루프(`Sound_WaterUnderwaterLoop`)는 슬라임 행동에 붙은 반응이라 World SFX 에 남긴다.
 
 ## 믹서 계층
 
@@ -58,7 +58,7 @@ MainMixer
 | `SoundSettings` (ScriptableObject) | [SlimeJumping_v2/Assets/Settings/SoundSettings.asset](../../../SlimeJumping_v2/Assets/Settings/SoundSettings.asset) | 믹서 에셋 + 그룹 참조 + 노출 파라미터 이름 보관. |
 | `StageBgmPlayer` | [SlimeJumping_v2/Assets/Scripts/Audio/StageBgmPlayer.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/StageBgmPlayer.cs) | 씬 로컬 BGM 트리거. Start에서 `PlayBgm` 호출. |
 | `UIClickSoundInstaller` | [SlimeJumping_v2/Assets/Scripts/UI/UIClickSoundInstaller.cs](../../../SlimeJumping_v2/Assets/Scripts/UI/UIClickSoundInstaller.cs) | Canvas 하위 모든 Button의 onClick에 UI 버스 SFX 자동 부착. `Play2D(UI)` 경유 (2026-08-10). |
-| `AmbientSound` | [SlimeJumping_v2/Assets/Scripts/Audio/AmbientSound.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/AmbientSound.cs) | 루프 환경음. `OnEnable` 에서 `PlayLooping`, `OnDisable` 에서 `StopLoop`. 자체 감쇠 거리(`minDistance`/`maxDistance`)를 들고 있어 풀 기본값(3/20)보다 멀리 들리는 앰비언스를 표현. 선택하면 그 두 거리를 와이어 구 2개로 그린다(초록=전볼륨, 주황=무음). |
+| `AmbientSound` | [SlimeJumping_v2/Assets/Scripts/Audio/AmbientSound.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/AmbientSound.cs) | 루프 환경음. `OnEnable` 에서 `PlayLooping`, `OnDisable` 에서 `StopLoop`. 자체 감쇠 거리(`minDistance`/`maxDistance`)를 들고 있어 풀 기본값보다 멀리 들리는 앰비언스를 표현. 선택하면 그 두 거리를 와이어 구 2개로 그린다(초록=전볼륨, 주황=무음). |
 | `RectAmbienceZone` | [SlimeJumping_v2/Assets/Scripts/Audio/RectAmbienceZone.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/RectAmbienceZone.cs) | 루프 환경음을 **사각 영역**으로. 루프를 2D 로 틀고 리스너 XY 로 볼륨을 직접 몰아 넣는다 — 3D AudioSource 는 반경 감쇠뿐이라 넓고 낮은(또는 좁고 높은) 구역을 표현 못 한다. 안쪽 사각(full) + 바깥 사각(silence) 둘 다 기즈모라 들리는 범위가 씬에 보인다. 축별 falloff(`falloffSides`/`Up`/`Down`) 독립. |
 | `SoundInventoryWindow` | [SlimeJumping_v2/Assets/Scripts/Editor/SoundInventoryWindow.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/SoundInventoryWindow.cs) | `Tools/Sound Inventory`. 아래 별도 섹션. |
 | `AudioSourceMixerGroupValidator` | [SlimeJumping_v2/Assets/Scripts/Editor/AudioSourceMixerGroupValidator.cs](../../../SlimeJumping_v2/Assets/Scripts/Editor/AudioSourceMixerGroupValidator.cs) | 에디터 저장 시 `outputAudioMixerGroup == null` AudioSource 경고. |
@@ -101,7 +101,7 @@ PlayerPrefs 키는 전부 `opt.*` 접두사. 레거시 단일 `opt.sfxVolume`은
 2. 에셋에 클립·카테고리·볼륨 입력. 클립 여러 개 넣으면 Random 또는 Sequential 로 골라 재생
 3. 쓰는 쪽에 `[SerializeField] SoundDef xxxSound;` + `SoundService.Play(xxxSound, pos)`
 
-`clipOrder = Sequential` 의 커서는 **에셋에 있다** — 같은 SoundDef 를 여러 오브젝트가 물면 사이클을 공유한다(종 두 개가 번갈아 b1,b2 를 나눠 가짐). 개별 사이클이 필요하면 에셋을 복제해라.
+`clipOrder = Sequential` 의 커서는 **에셋에 있다** — 같은 SoundDef 를 여러 오브젝트가 물면 사이클을 공유한다(종 두 개가 클립 두 개를 번갈아 나눠 가짐). 개별 사이클이 필요하면 에셋을 복제해라.
 
 끝. 볼륨을 호출부에 쓰지 않는다 — 크기가 상황에 따라 달라져야 하면 `volumeScale` 배율만 넘긴다.
 
@@ -109,31 +109,33 @@ PlayerPrefs 키는 전부 `opt.*` 접두사. 레거시 단일 `opt.sfxVolume`은
 
 **여러 인스턴스에 같은 소리 일괄 주입**(`WaterZoneAudioManager` 등): 매니저가 `SoundDef` 참조만 브로드캐스트한다.
 
-**같은 소리를 내는 오브젝트가 여럿일 때** (톱날 7, 바람 존 12): `RectAmbienceZone.exclusiveGroup` 에 이름을 넣으면 **그룹이 루프 하나를 공유**한다. 두 이유 — 같은 소리 7개가 겹치면 벽처럼 뭉치고, 카테고리당 풀이 8개뿐이라 상시 루프가 풀을 굶는다. 현재 그룹: `saw`(톱날 6, `Sound_SawBlade`), `fan`(fan 1, `Sound_Fan`), `wind`(WindZone2D 10 + WindZone2D_v2 2, `Sound_Wind`). fan 을 `saw` 에 넣지 않은 건 클립이 달라서다 — 한 그룹 안에서 `SoundDef` 가 바뀌면 그 교차만은 재시작한다.
+**같은 소리를 내는 오브젝트가 여럿일 때**: `RectAmbienceZone.exclusiveGroup` 에 이름을 넣으면 **그룹이 루프 하나를 공유**한다. 두 이유 — 같은 소리 7개가 겹치면 벽처럼 뭉치고, 카테고리당 풀 크기가 유한해서 상시 루프가 풀을 굶는다. fan 을 `saw` 그룹에 넣지 않은 건 클립이 달라서다 — 한 그룹 안에서 `SoundDef` 가 바뀌면 그 교차만은 재시작한다.
 
 루프를 **존이 아니라 그룹이 소유**하는 게 핵심이다. 존마다 자기 루프를 켜고 끄면 겹친 두 존을 오갈 때마다 클립이 0초부터 다시 시작해 클릭이 나고, 존별 volumeRoll 이 달라 음량이 계단으로 튄다. 그래서 승자가 바뀌어도 **같은 소스를 그대로 넘겨받고**, 승자는 위치와 클립만 정한다. 음량은 승자 것이 아니라 **그룹 최대 raw 감쇠**라서 히스테리시스(`HolderBias` 0.05, 현 소유자 가산점)가 음량에 계단을 만들지 않는다 — 가산점은 경계에서 매 프레임 주인이 뒤집히는 것만 막는다. 소유자가 무음(감쇠 0)이면 가산점을 안 받는다(안 그러면 들리는 이웃을 이기고 그룹이 조용해진다). 그룹 안에서 `SoundDef` 가 다르면(톱날 vs fan) 그때는 내용이 바뀌는 거라 재시작이 맞다. 소유자가 disable 되면 루프는 살려두고 소유권만 놓는다 — 남은 멤버가 다음 프레임에 이어받고, 아무도 안 남았을 때만 정지한다. 판정 기준 리스너는 그룹 하나로 통일(`GroupListener`) — 멤버마다 다른 카메라를 보면 둘이 동시에 같은 루프를 몬다. `sound` 가 비어 있는 멤버는 승자 판정·리스너·잔존 판정 **셋 다에서 제외**된다(안 그러면 루프가 주인 없이 남는다).
 
 ## 오브젝트 변형량 사운드 (2026-08-14)
 
-착지·발사음은 표면(`SurfaceTag` → `SurfaceMaterial`) 몫이고, **지금 얼마나 변형돼 있는지**를 따라가는 소리는 오브젝트가 직접 몬다. 공용 배관은 [StrainLoop.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/StrainLoop.cs) — 매 틱 0..1 값을 주면 음량·피치를 몰고, 0 이 되면 루프를 멈춰 풀 슬롯을 반납한다(잦아든 발판은 슬롯을 안 문다).
+착지·발사음은 표면(`SurfaceTag` → `SurfaceMaterial`) 몫이고, **지금 얼마나 변형돼 있는지**를 따라가는 소리는 오브젝트가 직접 몬다. 공용 배관은 [StrainLoop.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/StrainLoop.cs) — 매 틱 0..1 값을 주면 음량·피치를 몰고, 0 이 되면 루프를 멈춰 풀 슬롯을 반납한다(잦아든 발판은 슬롯을 안 문다). 스스로 잦아들어 0 이 된 게 아니라 **발판이 사라져서** 끊어야 할 때는 `Stop(fadeSeconds)` — 최대 진폭에서 즉시 끊으면 소리가 잘린다. 램프가 도는 동안 풀 엔트리는 계속 잠겨 있어서 아직 들리는 소스를 남이 빌려가지 않는다.
 
 | 오브젝트 | 슬롯 위치 | 구동값 |
 |---|---|---|
 | 로프(TautLine) | `RopeStretchAudioConfig.stretchSound` | `TautLine.DebugDipDepth` — 끌려 내려간 깊이. 컴포넌트 = `RopeStretchAudio`(실행순서 300, TautLine 200 뒤) |
 | 아스키 발판 | `AsciiArtPlatformConfig.wobbleSound` | 윤곽 변위 `disp` 의 최대 절대값 |
-| 구름 | `CloudPlatformConfig.popSound` | 변형량 아님 — `DoPop` 한 방 |
-| 나무 물레바퀴 | `WaterWheel.asset`(SurfaceMaterial) 의 land/launch 슬롯 | 표면 경로 그대로. `water_wheel` / `(2)` / `(4)` / `rotating` 은 아직 `SurfaceTag` 없음 |
+| 구름 | `SquishyCloudConfig.wobbleSound` | 윤곽 변위 `disp` 최대 절대값과 전신 눌림 `bodyComp` 중 큰 쪽 |
+| 나무 물레바퀴 | `WaterWheel.asset`(SurfaceMaterial) 의 land/launch 슬롯 | 표면 경로 그대로 |
 
-착지·발사음 쪽 `SurfaceTag` 배선도 끝나 있다 — MainScene 구름 21개 → `Cloud_Surface.asset`, EndScene 아스키 발판 20개 → `Ascii_Surface.asset`. 새로 만든 `SurfaceMaterial` 은 전부 기본값이라 `SurfaceModifiers.Default` 와 물리적으로 동일하다(`launchInertiaLerpFactor`/`PNorm` 만 다른데 `Sum` 모드에선 안 읽힘) — 태그를 달아도 마찰·슬라이드는 그대로고 오디오 슬롯만 생긴다.
+착지·발사음 쪽 `SurfaceTag` 배선도 끝나 있다 . 파이프는 태그를 파이프마다 달지 않고 부모에만 단다 — 해석이 콜라이더에서 부모로 올라가므로 컴포넌트 수가 크게 준다. 콜라이더 없는 배경 파이프는 밟히지 않아 제외. 새로 만든 `SurfaceMaterial` 은 전부 기본값이라 `SurfaceModifiers.Default` 와 물리적으로 동일하다(`launchInertiaLerpFactor`/`PNorm` 만 다른데 `Sum` 모드에선 안 읽힘) — 태그를 달아도 마찰·슬라이드는 그대로고 오디오 슬롯만 생긴다.
 
 로프 착지·발사음은 `TautLine.ropeSurfaceMaterial` 에 꽂은 `SurfaceMaterial` 이 담당한다 — `RopeStretchAudio` 는 늘어남만 울어서 착지 순간에 두 번 울지 않는다.
+
+구름은 원샷을 하나도 갖지 않는다 — 팝·리젠·착지 슬롯을 전부 비우고 `SquishyCloud` 의 출렁임 루프 하나로만 운다. `Cloud_Surface` 도 표면 오버라이드 없이 fallback 을 쓴다.
 
 ## 표면별 슬라임 사운드 (2026-04-30)
 
 슬라임 착지 / 점프 사운드를 닿는 표면별로 다르게 재생. `SlimeLocomotionAudio` 의 4 `SoundDef`(landHard / landSoft / launch / hop)는 **fallback** 이고, 표면이 자기 것을 들고 있으면 그쪽이 이긴다.
 
-- **데이터**: `SurfaceMaterial` 에 `SoundDef` 4개 (landHardSound / landSoftSound / launchSound / hopSound). 비워두면 fallback. **2026-08-10 이전의 "볼륨 0 = 상속" 규칙은 사라졌다** — 오버라이드 여부는 에셋이 있냐 없냐로만 갈린다. 현재 채워진 것은 Snow 뿐(landHard/landSoft/hop).
-- **눈 브리지**: `SnowField` 는 `SurfaceTag` 가 없지만 `SnowSettings.snowSurfaceMaterial` 에 이미 `SurfaceMaterial` 참조가 있음 (Snow.asset 사용 중). 따라서 눈 사운드는 Snow.asset 의 audio 필드만 채우면 됨 — `SnowSettings` 자체에는 audio 필드 추가하지 않음.
+- **데이터**: `SurfaceMaterial` 에 `SoundDef` 4개 (landHardSound / landSoftSound / launchSound / hopSound). 비워두면 fallback. **2026-08-10 이전의 "볼륨 0 = 상속" 규칙은 사라졌다** — 오버라이드 여부는 에셋이 있냐 없냐로만 갈린다.
+- **눈 브리지**: `SnowField` 는 `SurfaceTag` 가 없지만 `SnowSettings.snowSurfaceMaterial` 에 이미 `SurfaceMaterial` 참조가 있음. 따라서 눈 사운드는 그 `SurfaceMaterial` 의 audio 필드만 채우면 됨 — `SnowSettings` 자체에는 audio 필드 추가하지 않음.
 - **해석**: [SurfaceAudioResolver.cs](../../../SlimeJumping_v2/Assets/Scripts/Audio/SurfaceAudioResolver.cs) — 정적 헬퍼. `(slimeController.SurfaceCollider, contactPoint)` 받아서 (1) **SnowField 우선**: `SnowFieldRegistry.TryGet` 성공 + `SampleDepthRatio01(contactPoint) ≥ 0.1` 이면 `snowSurfaceMaterial` 사용, (2) 그 외에는 host 의 `GetComponentInParent<SurfaceTag>()` 폴백, (3) 둘 다 없으면 false.
 - **왜 snow 우선?** SnowField 는 `[SnowField.cs:12]` 자기 설명대로 `SurfaceTag` 가 없는 visual layer. 슬라임은 항상 host 콜라이더 위에 서있고, host 가 자기 SurfaceTag 를 들고있음. 만약 SurfaceTag 를 먼저 검사하면 항상 host 의 tag 가 매칭되어 snow 분기까지 도달조차 못 함 → snow 클립 영원히 미재생. 게임플레이 측 `RefreshSnowBlend` 도 host tag + snowSurfaceMaterial 을 depth 비율로 블렌드하는데, audio 는 단발 SFX 라 임계값 분기로 단순화: depth ≥ 0.1 → snow 클립, 미만 (완전히 파인 트랙 / SnowField 미등록) → host 클립.
 - **소비**: `SlimeLocomotionAudio.HandleLanded / HandleLaunch` 가 이벤트마다 `position` 인자를 contactPoint 로 전달해 resolver 호출 → 매칭 클립 있으면 사용, 없으면(개별 슬롯이 null) fallback 클립으로. 재생 호출은 여전히 이벤트당 1회 (이중 재생 없음).
@@ -160,7 +162,7 @@ PlayerPrefs 키는 전부 `opt.*` 접두사. 레거시 단일 `opt.sfxVolume`은
 
 - `SceneTransitionController.cs` — 직렬화 `audioSource` 제거, `PlayOneShot` 6곳 → `Play2D(UI)` + `sfxVolume` 노브. `Resources/SceneTransition.prefab` 의 AudioSource 제거.
 - `UIClickSoundInstaller.cs` — 런타임 `AddComponent<AudioSource>` 와 드래그 `outputGroup` 필드 제거, `Play2D(UI)` 경유. 대가: SoundService 없는 씬에서 UI 소리가 안 난다(모든 씬에 서비스 인스턴스 필요).
-- `WaterfallAmbient` (`stage1_floor2/wheel set/WaterfallImpactVFX_Test/`) — 스크립트 없는 생 AudioSource → `AmbientSound`(min 46.23 / max 82.93 이식). 2026-08-13 에 `RectAmbienceZone`(size 92.46², falloff 36.7 = 같은 반경을 사각으로 이식) 으로 재이관.
+- `WaterfallAmbient` — 스크립트 없는 생 AudioSource → `AmbientSound`. 2026-08-13 에 `RectAmbienceZone`(같은 반경을 사각으로 이식) 으로 재이관.
 - KEEP 3종(`ApplianceInteractable_Washing` / `MediaInteractable_Phonograph` / `MediaInteractable_TV`)은 AudioSource 유지하되 드래그 그룹 → `[SerializeField] SoundCategory` + `SoundService.GetGroup()`.
 
 ### 적발된 오배선 (2026-08-10)
