@@ -23,6 +23,7 @@ MonoBehaviour:
   rollWavePerSpeedCells: 0.25
   popWaveDepthCells: 1
   maxTotalDisplacementCells: 3
+  waveResolutionCells: 2
   dentRadius: 5
   waveSpread: 160
   waveSpring: 35
@@ -32,3 +33,7 @@ MonoBehaviour:
   mappingArcWindow: 16
   waveQuantizeCells: 0.25
   restEpsilonCells: 0.01
+  wobbleSound: {fileID: 11400000, guid: a1a321568246a6544bb3ec777ee2dd59, type: 2}
+  wobbleFullAmplitudeCells: 2
+  wobblePitchAtRest: 0.9
+  wobblePitchAtFull: 1.15

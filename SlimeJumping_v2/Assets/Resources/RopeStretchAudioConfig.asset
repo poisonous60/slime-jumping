@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 921bbede8a45e7a4298946ddc6c88659, type: 3}
   m_Name: RopeStretchAudioConfig
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Effects.RopeStretchAudioConfig
-  stretchSound: {fileID: 0}
+  stretchSound: {fileID: 11400000, guid: aeb4360194558a64e8de9753217d77a6, type: 2}
   startDepth: 0.05
   fullDepth: 0.6
   pitchAtStart: 0.9

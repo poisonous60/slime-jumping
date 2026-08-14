@@ -24,6 +24,7 @@ MonoBehaviour:
   chargeMaxPopSpeed: 15
   riseVisualHeight: 1.1
   riseVisualTime: 0.9
+  vanishOnUse: 1
   respawn: 1
   respawnDelay: 1.5
   regenTime: 0.4
@@ -36,3 +37,4 @@ MonoBehaviour:
   stagger: 0.25
   spin: 220
   popScale: 1.25
+  popSound: {fileID: 11400000, guid: 8a47ccdd6c8aa524bb67232ce1da43bb, type: 2}
