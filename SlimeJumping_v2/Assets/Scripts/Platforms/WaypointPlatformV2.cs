@@ -50,6 +50,10 @@ namespace SlimeJumping.Platforms
 
         [Header("Feature 1 — mount trigger + range hold")]
         [SerializeField] bool mountTriggered = true;
+        [Tooltip("Seconds the slime must sit on the deck's TOP face before the trip starts. Leaving the top face resets it. 0 = depart the moment it lands.")]
+        [Min(0f)] [SerializeField] float mountDwellTime;
+        [Tooltip("How far the deck-surface→rider direction must lean along the deck's up axis to read as the top face. 1 = straight above, 0 = flush with a side.")]
+        [Range(0f, 1f)] [SerializeField] float topFaceMinDot = 0.5f;
         [Tooltip("Radius around the destination. A slime within → hold; once none in range → return + rearm.")]
         [SerializeField] float holdRange = 2.5f;
         [Tooltip("Layers the hold-range proximity check looks for the slime on. Set to the slime's layer.")]
@@ -111,12 +115,14 @@ namespace SlimeJumping.Platforms
         // consumed in ComputeMotion (motor, order -100) the same FixedUpdate.
         bool riderInfluencedThisStep;
         bool riderOnTop;       // attached AND standing on the top face
-        bool prevRiderOnTop;
+        bool prevMountArmed;   // dwell already met last step, so one stay departs the deck once
+        float topDwell;
         Vector2 riderPos;
         float riderMass = 1f;
         Vector2 riderVel;
 
         BoxCollider2D box;
+        Collider2D deck;       // any shape, for the top-face test — a mesh-derived deck has no box
         Vector2 boxHalf = new Vector2(1f, 0.25f);
         bool triggeredByPartner;
         SlimeController cachedSlime;
@@ -145,6 +151,7 @@ namespace SlimeJumping.Platforms
             curSmoothTime = followSmoothTime;
 
             box = GetComponentInChildren<BoxCollider2D>();
+            deck = box != null ? (Collider2D)box : GetComponentInChildren<Collider2D>();
             if (box != null)
             {
                 Vector3 ls = box.transform.lossyScale;
@@ -189,7 +196,8 @@ namespace SlimeJumping.Platforms
 
             riderInfluencedThisStep = false;
             riderOnTop = false;
-            prevRiderOnTop = false;
+            prevMountArmed = false;
+            topDwell = 0f;
 
             rb.position = worldWaypoints[0];
             rb.rotation = baseRotation;
@@ -199,6 +207,12 @@ namespace SlimeJumping.Platforms
         }
 
         bool HasPath => worldWaypoints != null && worldWaypoints.Length >= 2;
+
+        /// <summary>True while the deck is running a leg, either direction. Parked and Holding are false.</summary>
+        public bool IsMoving => phase == Phase.Departing || phase == Phase.Returning;
+
+        /// <summary>True while a slime is attached to the deck's top face this step.</summary>
+        public bool HasRiderOnTop => riderOnTop;
 
         public override void ApplyRiderInfluence(Vector2 riderWorldPos, float mass, Vector2 riderVelocity, bool isCharging)
         {
@@ -249,14 +263,14 @@ namespace SlimeJumping.Platforms
             return lx / Mathf.Max(0.0001f, box.size.x * 0.5f);
         }
 
-        // True only when the slime sits on the TOP face (upper half of the box, within the deck span).
+        // Top-face only: a slime clinging to a side or the underside must not read as mounted.
         bool IsRiderOnTop()
         {
-            if (box == null) return true; // no box to test against → allow
-            Vector2 bl = box.transform.InverseTransformPoint(riderPos);
-            float ry = bl.y / Mathf.Max(0.0001f, box.size.y * 0.5f);
-            float rx = bl.x / Mathf.Max(0.0001f, box.size.x * 0.5f);
-            return ry > 0f && Mathf.Abs(rx) <= 1.15f;
+            if (deck == null) return true; // nothing to test against → allow
+            Vector2 n = riderPos - deck.ClosestPoint(riderPos);
+            float len = n.magnitude;
+            if (len < 1e-4f) return false; // rider centre inside the deck
+            return Vector2.Dot(n / len, deck.transform.up) >= topFaceMinDot;
         }
 
         protected override (Vector2, float) ComputeMotion(float dt)
@@ -264,7 +278,9 @@ namespace SlimeJumping.Platforms
             bool influenced = riderInfluencedThisStep;
             riderInfluencedThisStep = false;
             riderOnTop = influenced && IsRiderOnTop();
-            bool mountRisingEdge = riderOnTop && !prevRiderOnTop;
+            topDwell = riderOnTop ? topDwell + dt : 0f;
+            bool mountArmed = riderOnTop && topDwell >= mountDwellTime;
+            bool mountRisingEdge = mountArmed && !prevMountArmed;
 
             UpdatePhase(mountRisingEdge);
             // Must run BEFORE the motion integration below so the reaction is fresh this frame.
@@ -310,7 +326,7 @@ namespace SlimeJumping.Platforms
             sandwichOpen += sandwichOpenVel * dt;
             sandwichOpen = Mathf.Clamp(sandwichOpen, -openTiltMax, openTiltMax);
 
-            prevRiderOnTop = riderOnTop;
+            prevMountArmed = mountArmed;
 
             Vector2 outPos = ClampPinchGap(smoothPos + new Vector2(0f, sagY));   // re-clamp so sag can't sink past the floor
             float outRot = baseRotation + (enableTilt ? currentTilt : 0f) + sandwichOpen;

@@ -5,7 +5,11 @@
 스크립트: `Assets/Scripts/Platforms/WaypointPlatformV2.cs`
 
 ## 라이더 감지 (신규 센서 없음)
-`PlatformCarrier`(order -200)가 부착 중 매 FixedUpdate `ApplyRiderInfluence(pos,mass,vel,charging)`, 이탈 시 `RemoveRider()` 호출. v2는 `ApplyRiderInfluence`에서 `riderInfluencedThisStep` 플래그 + `riderPos/riderMass/riderVel` 캐시 → 같은 프레임 `ComputeMotion`(order -100)에서 소비 후 클리어. `prevRiderPresent` 로 **탑승 rising-edge** 산출.
+`PlatformCarrier`(order -200)가 부착 중 매 FixedUpdate `ApplyRiderInfluence(pos,mass,vel,charging)`, 이탈 시 `RemoveRider()` 호출. v2는 `ApplyRiderInfluence`에서 `riderInfluencedThisStep` 플래그 + `riderPos/riderMass/riderVel` 캐시 → 같은 프레임 `ComputeMotion`(order -100)에서 소비 후 클리어.
+
+**윗면 판정 (`IsRiderOnTop`)**: 데크 콜라이더의 `ClosestPoint(riderPos)` → 라이더 방향 벡터가 데크 up축과 이루는 dot ≥ `topFaceMinDot`(0.5) 일 때만 탑승. 콜라이더 종류를 안 가리므로 메시에서 뽑은 `PolygonCollider2D` 데크(엘레베이터)도 옆면·아랫면 접촉을 거른다. 예전 판정은 `BoxCollider2D` 로컬좌표(`ry>0`)였고 box 가 없으면 무조건 `true` 를 반환해서, 박스 없는 데크는 옆면만 스쳐도 출발했다.
+
+**체류 게이트 (`mountDwellTime`, 초)**: 윗면에 연속으로 그 시간만큼 있어야 `mountArmed`. 윗면을 벗어나면 `topDwell` 0 리셋. `prevMountArmed` 로 **rising-edge** 산출 → 한 번 올라타 있는 동안 출발은 1회. 기본 0(즉시 출발), 엘레베이터 인스턴스는 0.5.
 
 ## 연출 (매 FixedUpdate `ComputeMotion` 합성)
 1. **Rigid path target** — `localWaypoints` 폴리라인을 `travelSpeed`로 진행, `easeCurve` per-leg 이징. Phase가 방향 결정. waypoint <2 개 또는 `mountTriggered` off → 정지(틸트/얼음 전용).
@@ -20,7 +24,7 @@
 
 ## Feature 1 — 탑승 트리거 + 범위 유지 (상태기계)
 `Phase { Parked, Departing, Holding, Returning }`, `mountTriggered` 토글.
-- **Parked**(target=wp0): 탑승 rising-edge(또는 `TriggerFromPartner()`) → Departing.
+- **Parked**(target=wp0): 탑승 rising-edge(윗면 + `mountDwellTime` 충족, 또는 `TriggerFromPartner()`) → Departing.
 - **Departing**: wp[last]까지 진행, 도착(`pathParam≈last` && smoothPos 근접) → Holding.
 - **Holding**(target=wp[last]): `remountAtDestinationReturns`(기본 **off**) 켠 데크만 탑승 rising-edge → 즉시 Returning + `partner.RequestReturn()` (도착지에 서 있는 데크를 다시 밟으면 왕복이 역방향으로 재시작 — 샌드위치 페어면 zone 밖으로 나갔다 올 필요 없이 **그 자리에서 재교차**). off면 도착 후 다시 밟아도 안 움직임(zone/holdRange 만 복귀 명령). rising-edge 없으면 매 프레임 `Physics2D.OverlapCircle(wp[last], holdRange, riderLayers)`, 범위 내 슬라임 없으면 → Returning. (부착이 아닌 **근접** — 슬라임이 공중이어도 근처면 유지. `ThinIceRespawnZone` exit 패턴과 동일.)
 - **Returning**: wp0 복귀 → Parked(재무장).
@@ -58,6 +62,12 @@
 - **공통/F1**: Rigidbody2D(Kinematic) + BoxCollider2D + `WaypointPlatformV2`, waypoint 2개. 탑승 → 흔들림+sag+댐핑 이동→도착, `holdRange` 밖으로 점프 → 복귀+재무장.
 - **틸트/얼음**: `iceMaterial`=Ice.asset, `enableTilt`, `idleTipBias>0`. 가만히 있는 슬라임 → 플랫폼 기울어 미끄러져 떨어짐 → 재점프 강제.
 - **샌드위치**: v2 2개, 한쪽 `partner`=상대(반대 링크 자동), 그 쪽에 `isLeader` 체크, waypoints 반대(위/아래). 아무 쪽 탑승 → 둘이 수렴 → 슬라임이 `pinchSqueezeGapMin`에서 데크를 멈추고(reaction-stall) 압축비례 속도로 열린 옆으로 압출, 데크는 탈출 쪽으로 벌어짐(reaction torque). 비주얼은 풀사이즈 그대로 gap에 평면 clamp(납작). `riderLayers`는 슬라임 레이어로. `SurfaceProbeModeOverride(Multi)`는 자동 부착됨.
+
+## 사운드 (`ElevatorAudio`, 별도 컴포넌트)
+`Assets/Scripts/Mechanisms/ElevatorAudio.cs`. 같은 GameObject 의 `WaypointPlatformV2.IsMoving`(= Departing/Returning)을 `Update` 에서 폴링해 전이만 잡는다 — 플랫폼은 오디오를 모르고, 컴포넌트를 떼면 기능이 통째로 사라진다.
+- 슬롯: `startSound`(출발 1회) / `movingLoopSound`(이동 중 루프, `SoundService.PlayLooping` + `loopVolumeScale`) / `stopSound`(정지 1회). 정지 시 루프는 `loopFadeOutSeconds`(0.15) 로 페이드.
+- **무탑승 구간 무음**: 이동 시작 순간 `HasRiderOnTop` 이 false 면 그 leg 은 끝까지 소리를 안 낸다(`ridden` 래치). 슬라임이 내린 뒤 빈 채로 복귀하는 왕복이 여기 해당. 래치라서 도중에 뛰어내려도 그 leg 의 소리는 도착까지 이어진다 — 움직이는 중에 정지음이 터지는 게 더 어색.
+- 에셋: `Settings/Sounds/Sound_ElevatorStart/Loop/Stop.asset` (clip 슬롯 비어 있음 — `Tools/Sound Inventory` 에서 지정). 후보 wav: `ThirdParty/Universal Sound FX/ELEVATORS_LIFTS/ELEVATOR_Sequence_0N_{Start,Movement_loop,Stop}`.
 
 ## 기존 `WaypointPlatform` 과 차이
 | | v1 (`WaypointPlatform`) | v2 (`WaypointPlatformV2`) |

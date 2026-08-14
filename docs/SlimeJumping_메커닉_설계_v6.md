@@ -41,7 +41,7 @@ WASD + Space 키로 조작. 모든 시간 단위는 **초(seconds)** 기준.
 ## 플랫폼
 
 - [Common (PlatformMotor / Carrier)](features/platforms/common-platform.md)
-- [Waypoint v2](features/platforms/waypoint-v2.md) — 사각형. SmoothDamp 댐핑 follow(탑승 시 더 묵직, smoothTime 은 `smoothTimeBlendTime` 동안 블렌드 — 즉시 전환하면 발사/착지마다 위치 지연 빚을 몰아 갚아 데크가 튀고 멈칫) + 수직 sag 흔들림/반동 + 가장자리 틸트 + 얼음(`OverrideSurfaceMaterial`) + idle-tip로 중심 불안정화해 가만히 있으면 미끄러져 떨어짐(재점프 강제). F1 = 탑승 트리거 1회 왕복 + 도착 범위 유지/이탈 시 복귀(ThinIce식). F2 = leader/partner 샌드위치, 압착 시 기존 depenetration + `AddExternalVelocity`로 슬라임을 옆으로 부드럽게 압출(SlimeController 미수정).
+- [Waypoint v2](features/platforms/waypoint-v2.md) — 사각형. SmoothDamp 댐핑 follow(탑승 시 더 묵직, smoothTime 은 `smoothTimeBlendTime` 동안 블렌드 — 즉시 전환하면 발사/착지마다 위치 지연 빚을 몰아 갚아 데크가 튀고 멈칫) + 수직 sag 흔들림/반동 + 가장자리 틸트 + 얼음(`OverrideSurfaceMaterial`) + idle-tip로 중심 불안정화해 가만히 있으면 미끄러져 떨어짐(재점프 강제). F1 = 탑승 트리거 1회 왕복 + 도착 범위 유지/이탈 시 복귀(ThinIce식). F2 = leader/partner 샌드위치, 압착 시 기존 depenetration + `AddExternalVelocity`로 슬라임을 옆으로 부드럽게 압출(SlimeController 미수정). 탑승 판정은 콜라이더 모양 무관 윗면 전용(`ClosestPoint` 방향 × 데크 up축) + `mountDwellTime` 연속 체류 게이트. 사운드는 별도 `ElevatorAudio`(시작/이동 루프/정지 SoundDef 슬롯, `IsMoving` 폴링).
 - [Crumbling](features/platforms/crumbling.md) — 무너지는 플랫폼
 - [Thin Ice](features/platforms/thin-ice.md) — Crumbling 확장 (SFX + 파티클 + 부드러운 재생성)
 - [Thin Ice v2](features/platforms/thin-ice-v2.md) — Quibli toon lighting + 절차적 Voronoi 크랙 셰이더 + 공유 generic shard 라이브러리 + `ThinIceV2Config` 단일 설정 자산 (Resources auto-load) + 점프-즉시-shatter + 그룹 단위 respawn zone(Box 또는 Polygon collider — 판정 전부 실제 모양 기준). U자처럼 여러 ThinIce child collider로 만든 표면도 별도 guide anchor 없이 기존 `SurfaceProbe` snap을 사용한다.
