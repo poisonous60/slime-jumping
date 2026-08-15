@@ -8,6 +8,7 @@ namespace SlimeJumping.Background
     /// crossfade. Reveal is a plain function of the current height, so one altitude
     /// always shows one sky, and it grows the star *count* (the shader gates each
     /// star on its own hashed birth threshold) instead of dimming the whole field.
+    /// revealCurve shapes that ramp across the band; its default is the SmoothStep it replaced.
     /// Below fadeStartY nothing is drawn at all. The quad only has to cover the view;
     /// the shader samples in screen space, so the FOV that sizes it stays out of
     /// which stars come out. Star look
@@ -26,6 +27,8 @@ namespace SlimeJumping.Background
         [SerializeField] private float fadeStartY = 420f;
         [Tooltip("Camera height where every star is out.")]
         [SerializeField] private float fadeEndY = 470f;
+        [Tooltip("Shapes the reveal across the fade band: x = 0 at fadeStartY to 1 at fadeEndY, y = fraction of stars out. Default matches the old SmoothStep.")]
+        [SerializeField] private AnimationCurve revealCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [Header("Placement")]
         [Tooltip("Quad distance in front of the camera. Keep beyond the farthest background decor (~256).")]
@@ -38,6 +41,7 @@ namespace SlimeJumping.Background
         private UnityEngine.Camera cam;
         private MeshRenderer rend;
         private Transform quad;
+        private Mesh quadMesh;
         private MaterialPropertyBlock mpb;
         private float reveal;
 
@@ -52,7 +56,7 @@ namespace SlimeJumping.Background
                 return;
             }
 
-            var mesh = new Mesh
+            quadMesh = new Mesh
             {
                 vertices = new[]
                 {
@@ -63,11 +67,12 @@ namespace SlimeJumping.Background
             };
 
             var go = new GameObject("StarFieldQuad");
-            go.layer = LayerMask.NameToLayer("BackgroundBlur");
+            // StarFieldBloom's private camera owns this layer; its target is composited back over the background.
+            go.layer = LayerMask.NameToLayer("StarField");
             quad = go.transform;
             quad.SetParent(cam.transform, false);
             quad.localPosition = new Vector3(0f, 0f, distance);
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            go.AddComponent<MeshFilter>().sharedMesh = quadMesh;
             rend = go.AddComponent<MeshRenderer>();
             rend.sharedMaterial = material;
             rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -79,8 +84,9 @@ namespace SlimeJumping.Background
 
         private void LateUpdate()
         {
-            reveal = Mathf.SmoothStep(0f, 1f,
-                Mathf.InverseLerp(fadeStartY, fadeEndY, cam.transform.position.y));
+            float band = Mathf.InverseLerp(fadeStartY, fadeEndY, cam.transform.position.y);
+            // Clamped because curve tangents overshoot, and the shader reads _Reveal as a 0..1 fraction.
+            reveal = Mathf.Clamp01(revealCurve.Evaluate(band));
             if (reveal <= 0.0005f)
             {
                 if (rend.enabled) rend.enabled = false;
@@ -100,7 +106,9 @@ namespace SlimeJumping.Background
         private void OnDisable()
         {
             if (quad != null) Destroy(quad.gameObject);
+            if (quadMesh != null) Destroy(quadMesh);
             quad = null;
+            quadMesh = null;
             rend = null;
         }
 

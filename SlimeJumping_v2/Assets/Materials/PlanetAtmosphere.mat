@@ -28,7 +28,7 @@ Material:
     - _ArcDimMin: 0.25
     - _ArcWidthMin: 0.35
     - _AtmoStrength: 1.1344894
-    - _BandDrift: 0.04
+    - _BandDrift: 0.3
     - _ColorFlow: 1
     - _ColorTurn: 0.45
     - _CoreBoost: 4.714492

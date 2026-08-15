@@ -3,7 +3,12 @@ Shader "SlimeJumping/Star Field Overlay"
     // Binary Lunar starfield (youtube wSM-l2T8wOk): two gradient-noise fields
     // counter-scrolled over time, saturate+power each, multiplied together,
     // tinted by a vertical HDR color gradient. Rendered additively on a
-    // camera-facing quad. The two fields sit at a fixed domain offset: same domain
+    // camera-facing quad. The glow around each star is URP's own Bloom, run by
+    // StarFieldBloom on a private camera: light spill is a spatial effect, so no
+    // per-pixel reshaping of this noise can stand in for it, and the main camera cannot
+    // supply it because TranslucentImageBlurSource drops its color buffer to 8-bit.
+    // Keep the HDR colors well above 1 or nothing clears the bloom threshold.
+    // The two fields sit at a fixed domain offset: same domain
     // means they coincide while the scroll is still near zero, and the whole field
     // lights up for the first ~100s of play. Every noise cell hashes to its own birth threshold, so
     // raising _Reveal lights up more stars instead of brightening the same ones.
@@ -91,17 +96,18 @@ Shader "SlimeJumping/Star Field Overlay"
                 return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            float4 frag(v2f i) : SV_Target
             {
                 float2 s = i.screen.xy / i.screen.w;
                 float2 uv = float2(s.x * (_ScreenParams.x / _ScreenParams.y), s.y);
                 float2 t = _Time.y * _BlinkSpeed;
-                float f1 = pow(saturate(gradient_noise((uv + t) * _StarsScale)), _StarsPower);
-                float f2 = pow(saturate(gradient_noise((uv - t) * _StarsScale + float2(37.3, 91.7))), _StarsPower);
+                float n1 = saturate(gradient_noise((uv + t) * _StarsScale));
+                float n2 = saturate(gradient_noise((uv - t) * _StarsScale + float2(37.3, 91.7)));
+                float core = pow(n1, _StarsPower) * pow(n2, _StarsPower);
                 float birth = hash21(floor(uv * _StarsScale));
                 float gate = smoothstep(birth, birth + _RevealFade, _Reveal * (1 + _RevealFade));
                 float3 tint = lerp(_ColorBottom.rgb, _ColorTop.rgb, s.y);
-                return fixed4(f1 * f2 * gate * tint * _MasterAlpha, 1);
+                return float4(core * gate * tint * _MasterAlpha, 1);
             }
             ENDCG
         }

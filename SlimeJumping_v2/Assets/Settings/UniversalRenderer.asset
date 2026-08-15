@@ -31,6 +31,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Rendering.SpaceWarpSourceFeature
   m_Active: 1
   injectionPoint: 500
+  layerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
 --- !u!114 &-1519943674095479027
 MonoBehaviour:
   m_ObjectHideFlags: 1

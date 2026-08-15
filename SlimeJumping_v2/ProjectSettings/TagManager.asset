@@ -19,8 +19,8 @@ TagManager:
   - InteractionSensor
   - BackgroundBlur
   - WindForceField
-  - 
-  - 
+  - StarField
+  - StarFieldVolume
   - 
   - 
   - 
