@@ -5,22 +5,59 @@ using SlimeJumping.Audio;
 using SlimeJumping.Background;
 using SlimeJumping.Controller;
 using SlimeJumping.Interfaces;
+using SlimeJumping.Platforms;
 using SlimeJumping.UI;
 
 namespace SlimeJumping.Interaction
 {
-    /// On interact: the camera leaves the slime for the background planet (VCam priority plus a
-    /// Brain blend, the BellRevealCamera mechanism), the planet transitions to its luminous phase,
-    /// then a wisp appears at wispAnchor (on the planet's rim) and the reverse iris transition
-    /// closes on it into EndScene. Takes slime override so movement is frozen for the whole
-    /// sequence; the camera never comes back — the scene ends first.
+    /// On interact: a wisp appears beside the shrine, blinks, then rides the authored flight
+    /// path around the background planet while the camera cuts to the planet shot (VCam
+    /// priority plus a Brain blend, the BellRevealCamera mechanism). Route progress drives the
+    /// planet's transition to the luminous phase and the camera depart/return points; the
+    /// reverse iris then closes on the wisp into EndScene. Takes slime override so movement is
+    /// frozen for the whole sequence.
     public class ShrineInteractable : InteractableBase, IExternalController
     {
         [Header("Wisp")]
         [SerializeField] private GameObject wispPrefab;
-        [SerializeField] private Transform wispAnchor;
-        [Tooltip("Uniform scale applied to the spawned wisp root. Lets you tune size per scene without editing the prefab.")]
+        [Tooltip("Where the wisp spawns — beside the shrine. Empty = this transform.")]
+        [SerializeField] private Transform spawnAnchor;
+        [Tooltip("Uniform scale applied to the spawned wisp root.")]
         [SerializeField] private float wispScale = 1f;
+        [Tooltip("How much distance shrink is compensated: 0 = pure perspective, 1 = on-screen size held at spawn size, between = partial.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float sizeCompensation = 0.4f;
+        [Tooltip("Seconds the wisp sits at the shrine before the camera and flight begin.")]
+        [SerializeField] private float spawnHold = 0.8f;
+        [Tooltip("Seconds of the double light-blink right before departure. 0 = skip.")]
+        [SerializeField] private float departBlinkSeconds = 1.3f;
+        [Tooltip("Seconds of stillness between the blink and take-off.")]
+        [SerializeField] private float postBlinkHold = 0.7f;
+        [Tooltip("Up-down bob of the traveling wisp, world units. 0 = off.")]
+        [SerializeField] private float bobAmplitude = 0.5f;
+        [Tooltip("Bob cycles per second.")]
+        [SerializeField] private float bobFrequency = 1.2f;
+
+        [Header("Flight")]
+        [Tooltip("Authored full route (WaypointSnakePath): shrine, around the planet, down to the final rest point. Route progress drives the planet transition.")]
+        [SerializeField] private WaypointSnakePath flightPath;
+        [Tooltip("Top travel speed (world units/s). The speed curve scales it.")]
+        [SerializeField] private float pathSpeed = 110f;
+        [Tooltip("Speed over the whole route: x = route progress 0~1, y = multiplier of pathSpeed.")]
+        [SerializeField] private AnimationCurve speedCurve = new AnimationCurve(
+            new Keyframe(0f, 0.15f), new Keyframe(0.25f, 1f), new Keyframe(0.85f, 1f), new Keyframe(1f, 0.3f));
+        [Tooltip("Route progress where the camera departs for the planet shot. 0 = as the flight begins.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float cameraDepartProgress = 0f;
+        [Tooltip("Route progress where the camera blends back to the gameplay camera. 1 = right at the route's end.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float cameraReturnProgress = 1f;
+        [Tooltip("Route progress where the planet phase transition starts.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float transitionStart = 0.25f;
+        [Tooltip("Route progress where the planet phase transition completes.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float transitionEnd = 0.9f;
 
         [Header("Planet Reveal")]
         [Tooltip("Camera framing the planet. Its priority is raised for the rest of the sequence.")]
@@ -31,11 +68,9 @@ namespace SlimeJumping.Interaction
         [SerializeField] private float regionPadding = 1f;
         [Tooltip("Brain whose default blend carries the move. Empty = first one in the scene.")]
         [SerializeField] private CinemachineBrain brain;
-        [Tooltip("Seconds for the camera to travel from the slime to the planet.")]
+        [Tooltip("Seconds for the camera to travel to the planet shot.")]
         [SerializeField] private float cameraBlendSeconds = 2.5f;
-        [Tooltip("Extra seconds parked on the planet after the blend, before the wisp may appear.")]
-        [SerializeField] private float arriveHold = 0.5f;
-        [Tooltip("Planet look transition played once the camera has arrived.")]
+        [Tooltip("Planet look transition, driven by the wisp's orbit progress.")]
         [SerializeField] private PlanetPhaseTransition planetTransition;
         [Tooltip("Priority while revealing. Must beat every other VCam (RainWorldZone's active room uses 100).")]
         [SerializeField] private int revealPriority = 200;
@@ -55,6 +90,12 @@ namespace SlimeJumping.Interaction
 
         [Header("Audio")]
         [SerializeField] private SlimeJumping.Audio.SoundDef wispAppearSound;
+        [Tooltip("Played when the blink light turns on.")]
+        [SerializeField] private SlimeJumping.Audio.SoundDef blinkOnSound;
+        [Tooltip("Played when the blink light turns off.")]
+        [SerializeField] private SlimeJumping.Audio.SoundDef blinkOffSound;
+        [Tooltip("Played once when the planet phase transition starts.")]
+        [SerializeField] private SlimeJumping.Audio.SoundDef planetTransitionSound;
 
         private bool isFiring;
 
@@ -70,37 +111,57 @@ namespace SlimeJumping.Interaction
 
         private IEnumerator Sequence(SlimeController slime)
         {
-            Vector3 spawnPos = wispAnchor != null ? wispAnchor.position : transform.position;
-
-            // Face look-toward-anchor (damped). Visible while the camera is still leaving the slime.
-            if (faceLookOffset > 0f && wispAnchor != null)
-            {
-                var visual = slime.GetComponentInChildren<SlimeVisual>();
-                if (visual != null)
-                    StartCoroutine(FaceTrackRoutine(visual, slime.transform, wispAnchor));
-            }
-
-            // 행성 전환은 카메라 이동과 동시에 시작 — 이동 중에도 행성이 변해 간다.
-            BeginPlanetReveal();
-            float wait = planetVCam != null ? cameraBlendSeconds + arriveHold : 0f;
-            if (planetTransition != null)
-            {
-                planetTransition.Play();
-                wait = Mathf.Max(wait, planetTransition.Duration);
-            }
-            if (wait > 0f)
-                yield return new WaitForSeconds(wait);
+            Vector3 startPos = spawnAnchor != null ? spawnAnchor.position : transform.position;
 
             GameObject wispInstance = null;
             if (wispPrefab != null)
             {
-                wispInstance = Instantiate(wispPrefab, spawnPos, Quaternion.identity);
+                wispInstance = Instantiate(wispPrefab, startPos, Quaternion.identity);
                 if (wispScale > 0f && !Mathf.Approximately(wispScale, 1f))
                     wispInstance.transform.localScale = Vector3.one * wispScale;
+                foreach (var light in wispInstance.GetComponentsInChildren<Light>())
+                    light.enabled = false;
             }
 
-            // 리스너는 카메라를 타고 행성까지 가 있다 — 3D 재생은 거리감쇠로 묻힌다.
+            // 보정 기준 거리 = 스폰 순간의 카메라 거리.
+            UnityEngine.Camera cam0 = brain != null ? brain.OutputCamera : UnityEngine.Camera.main;
+            float spawnDist = cam0 != null ? Vector3.Distance(cam0.transform.position, startPos) : 0f;
+
+            // 리스너는 곧 카메라를 타고 행성으로 떠난다 — 3D 재생은 거리감쇠로 묻힌다.
             SoundService.Play2D(wispAppearSound);
+
+            // Face look-toward-wisp (damped). Visible while the camera is still on the slime.
+            if (faceLookOffset > 0f && wispInstance != null)
+            {
+                var visual = slime.GetComponentInChildren<SlimeVisual>();
+                if (visual != null)
+                    StartCoroutine(FaceTrackRoutine(visual, slime.transform, wispInstance.transform));
+            }
+
+            if (spawnHold > 0f)
+                yield return new WaitForSeconds(spawnHold);
+
+            if (wispInstance != null && departBlinkSeconds > 0f)
+                yield return BlinkRoutine(wispInstance);
+
+            if (postBlinkHold > 0f)
+                yield return new WaitForSeconds(postBlinkHold);
+
+            bool pathMode = flightPath != null && flightPath.TotalArcLen > 0.01f;
+            if (!pathMode || cameraDepartProgress <= 0f)
+                BeginPlanetReveal();
+
+            if (wispInstance != null)
+            {
+                yield return FlightRoutine(wispInstance.transform, spawnDist);
+            }
+            else
+            {
+                // 딸기가 없어도 카메라와 씬 전환은 진행한다.
+                if (planetVCam != null && cameraBlendSeconds > 0f)
+                    yield return new WaitForSeconds(cameraBlendSeconds);
+                if (planetTransition != null) planetTransition.ApplyProgress(1f);
+            }
 
             if (appearHold > 0f)
                 yield return new WaitForSeconds(appearHold);
@@ -108,8 +169,97 @@ namespace SlimeJumping.Interaction
             // 엔딩 진입 = 진행 종료. 세이브를 남기면 Load 가 신전 앞으로 복원한다.
             LoadSaveManager.DeleteSave();
 
-            Vector3 transitionCenter = wispInstance != null ? wispInstance.transform.position : spawnPos;
+            Vector3 transitionCenter = wispInstance != null ? wispInstance.transform.position : startPos;
             SceneTransitionController.PlayReverse(endSceneName, transitionCenter);
+        }
+
+        // 경로가 비행·선회·정착 전부. 속도 = pathSpeed × speedCurve(진행도), 거리 비율 = 전환 진행도.
+        private IEnumerator FlightRoutine(Transform wisp, float spawnDist)
+        {
+            if (flightPath == null || flightPath.TotalArcLen <= 0.01f)
+                yield break;
+
+            float len = flightPath.TotalArcLen;
+            bool cameraDeparted = cameraDepartProgress <= 0f;
+            bool cameraReturned = false;
+            bool transitionSoundPlayed = false;
+            for (float arc = 0f; arc < len; )
+            {
+                float speed = pathSpeed * Mathf.Max(0.02f, speedCurve.Evaluate(arc / len));
+                arc = Mathf.Min(len, arc + speed * Time.deltaTime);
+                float u = arc / len;
+                flightPath.SampleWorld(arc, out Vector3 pos, out _);
+                wisp.position = pos + BobOffset(Mathf.Clamp01(u * 10f) * Mathf.Clamp01((1f - u) * 10f));
+                ApplySizeCompensation(wisp, spawnDist);
+                if (planetTransition != null) planetTransition.ApplyProgress(MapTransition(u));
+                if (!transitionSoundPlayed && MapTransition(u) > 0f)
+                {
+                    transitionSoundPlayed = true;
+                    SoundService.Play2D(planetTransitionSound);
+                }
+                if (!cameraDeparted && u >= cameraDepartProgress)
+                {
+                    cameraDeparted = true;
+                    BeginPlanetReveal();
+                }
+                if (cameraDeparted && !cameraReturned && u >= cameraReturnProgress)
+                {
+                    cameraReturned = true;
+                    ReturnCameraToGameplay();
+                }
+                yield return null;
+            }
+            if (planetTransition != null) planetTransition.ApplyProgress(1f);
+            if (!cameraReturned) ReturnCameraToGameplay();
+        }
+
+        // 출발 신호: 꺼둔 픽업 라이트를 2회 점멸.
+        private IEnumerator BlinkRoutine(GameObject wisp)
+        {
+            var lights = wisp.GetComponentsInChildren<Light>(true);
+            float quarter = departBlinkSeconds * 0.25f;
+            for (int i = 0; i < 2; i++)
+            {
+                foreach (var l in lights) l.enabled = true;
+                SoundService.Play2D(blinkOnSound);
+                yield return new WaitForSeconds(quarter);
+                foreach (var l in lights) l.enabled = false;
+                SoundService.Play2D(blinkOffSound);
+                yield return new WaitForSeconds(quarter);
+            }
+        }
+
+        private Vector3 BobOffset(float envelope)
+        {
+            if (bobAmplitude <= 0f || envelope <= 0f) return Vector3.zero;
+            return Vector3.up * (bobAmplitude * envelope
+                * Mathf.Sin(Time.time * bobFrequency * 2f * Mathf.PI));
+        }
+
+        private void ReturnCameraToGameplay()
+        {
+            if (planetVCam == null) return;
+            if (brain != null)
+                brain.DefaultBlend = new CinemachineBlendDefinition(
+                    CinemachineBlendDefinition.Styles.EaseInOut, cameraBlendSeconds);
+            planetVCam.Priority = -100;
+        }
+
+        // 루트 진행도를 [transitionStart, transitionEnd] 창으로 재매핑 — 창 밖은 0/1 로 고정.
+        private float MapTransition(float u)
+        {
+            if (u >= transitionEnd) return 1f;
+            return Mathf.InverseLerp(transitionStart, Mathf.Max(transitionStart + 0.0001f, transitionEnd), u);
+        }
+
+        // 원근 축소를 sizeCompensation 지수만큼 상쇄: scale = wispScale × (d/스폰거리)^k.
+        private void ApplySizeCompensation(Transform wisp, float spawnDist)
+        {
+            if (sizeCompensation <= 0f || wispScale <= 0f || spawnDist <= 0f) return;
+            UnityEngine.Camera cam = brain != null ? brain.OutputCamera : UnityEngine.Camera.main;
+            if (cam == null) return;
+            float d = Vector3.Distance(cam.transform.position, wisp.position);
+            wisp.localScale = Vector3.one * (wispScale * Mathf.Pow(d / spawnDist, sizeCompensation));
         }
 
         // 복귀가 없는 편도 이동이라 Brain 블렌드 스냅샷 복원이 필요 없다 — 씬이 먼저 끝난다.
@@ -190,7 +340,7 @@ namespace SlimeJumping.Interaction
 
         private void OnDrawGizmosSelected()
         {
-            Vector3 p = wispAnchor != null ? wispAnchor.position : transform.position;
+            Vector3 p = spawnAnchor != null ? spawnAnchor.position : transform.position;
             Gizmos.color = new Color(0.3f, 1f, 0.7f, 0.9f);
             Gizmos.DrawSphere(p, 0.25f);
 

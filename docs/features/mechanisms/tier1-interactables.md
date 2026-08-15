@@ -60,12 +60,11 @@ Stage 3 용 다발 폭죽. E 한 번에 `shells` 배열의 모든 셸이 각자 
 - 셋업: `SlimeJumping/Interaction/Setup Firework V3 Test` (앵커 마커 구체 + 로켓 템플릿 + stage1 SFX/임펄스 배선). 검증 기준: 폭발이 앵커 마커에 얹히는지, 발판 위에서 첫 폭발에 떨어져 나가고 이후 2발이 공중에서 밀어주는지.
 
 ### ShrineInteractable (IExternalController)
-일본 신사 앞에서 E로 데모 엔딩 진입 (2026-08-15 행성 리빌 개편).
-- 시퀀스: 슬라임 동결 → `ShrinePlanetVCam` priority 200 + Brain DefaultBlend push(EaseInOut, `cameraBlendSeconds`)로 카메라가 stage4 배경 행성으로 이동(BellRevealCamera 와 같은 메커니즘, 복귀 없음 — 씬이 먼저 끝나 블렌드 스냅샷 복원 불필요) → 이동과 **동시에** `PlanetPhaseTransition.Play()`(행성이 역광 남색에서 회전하며 글로우로 서서히 발광 청색 달로 — 태양 채널은 planet1 과 동일 고정이라 명암 스윕 없음) → max(블렌드+`arriveHold`, 전환 duration) 대기 → 딸기 스폰 → reverse iris.
+일본 신사 앞에서 E로 데모 엔딩 진입 (2026-08-15 행성 리빌 개편 — 딸기가 연출 캐리어).
+- 시퀀스: 슬라임 동결 → `spawnAnchor`(신사 옆)에 딸기 스폰 + 등장음 → `spawnHold` → `ShrinePlanetVCam` priority 200 + Brain DefaultBlend push(EaseInOut, `cameraBlendSeconds`)로 카메라 이동(BellRevealCamera 메커니즘, 복귀 없음 — 씬이 먼저 끝나 블렌드 스냅샷 복원 불필요)과 **동시에 딸기가 행성으로 비행**(같은 시간, 베지어 아치 `flightArc`) → **행성 궤도 `orbitTurns`바퀴(`orbitSeconds`)** — 궤도 진행도가 곧 `PlanetPhaseTransition.ApplyProgress()`(행성이 역광 남색에서 회전하며 글로우로 서서히 발광 청색 달로 — 태양 채널은 planet1 과 동일 고정이라 명암 스윕 없음) → 림 `wispAnchor` 로 `settleSeconds` 정착 → `appearHold` 강조 → reverse iris.
+- 궤도 = 행성 중심 기준 반경 `orbitRadius`, 평면은 `orbitFlatten`(y 진폭)과 나머지를 깊이(z)로 — 뒤편 통과 시 불투명 본체 z-테스트가 딸기를 가려 "도는" 입체감이 공짜. **화면상 크기 유지**: 매 프레임 `wispScale × (카메라~딸기 거리 / VCam~정착앵커 거리)` 보정이라 원근으로 작아지지 않고, 정착 순간 정확히 `wispScale`. WispFlicker 는 자식 `Fruit` 로컬만 만지므로 루트 구동과 안 싸운다.
 - 구도는 벨과 같은 존 방식: `ShrinePlanetRegion`(BoxCollider2D)을 화면에 담을 영역 위에 끌어 놓으면 `FitVCamToRegion()`(인터랙트 시 자동 + 인스펙터 컨텍스트 메뉴)이 VCam 을 박스 중심으로 두고 맞을 때까지 뒤로 뺀다. 박스의 z 가 초점 깊이(현재 딸기 앵커 깊이 87.5).
-- `wispAnchor`(= `Planet/StrawberryAnchor`, 행성 림)에 픽업 프리팹 (기본 `Assets/Prebs/VFX/StrawberryPickup.prefab` — 딸기 스프라이트) 인스턴스화 (스폰 시 `wispScale` 필드로 루트 스케일 적용 — 원거리 샷이라 6).
-- `appearHold`초 홀드 → `SceneTransitionController.PlayReverse(endSceneName, wispPos)` 호출 → 인트로 아이리스의 대칭 역전(수축 → 블랙 → 다음 씬 로드 → 페이드인). 아이리스 중심은 `Camera.main` viewport 투영이라 리빌 샷에서 그대로 맞는다.
-- 등장음은 `Play2D` — 리스너가 카메라를 타고 행성까지 가 있어 3D 재생은 거리감쇠로 묻힌다. 얼굴 glance 는 `wispAnchor` 방향(카메라가 떠나기 전 잠깐 보임).
+- 아이리스 중심 = 정착한 딸기, `Camera.main` viewport 투영이라 리빌 샷에서 그대로 맞는다. 등장음은 `Play2D`(리스너가 곧 카메라를 타고 떠남), 얼굴 glance 는 나는 딸기를 추적.
 - 연출 동안 슬라임은 `SetOverride(self)`로 동결 (no-op ExternalController) — 씬 전환과 함께 자연 소멸.
 - 픽업 프리팹: `SpriteRenderer` + `WispFlicker` + 3D `Point Light` 자식. `WispFlicker`가 스폰 연출(scale 0 → overshoot → settle, alpha fade-in, `spawnDuration` 0.9s)을 구동하면서 idle bob/drift/scale-wobble/alpha-flicker blend. 같은 ramp로 링크된 `Light.intensity` 펄스 (URP 2D Renderer 아닌 3D Point Light — 신사 3D 메쉬 직접 조명).
 

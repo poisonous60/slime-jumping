@@ -15,6 +15,9 @@ namespace SlimeJumping.Platforms
             public Vector3 localPos;
             [Tooltip("Head speed (m/s) while traveling from this waypoint to the next.")]
             public float speedAfter;
+            [Tooltip("Curvature at this waypoint: -1 = extra round (double tangent), 0 = rounded (Catmull-Rom), 1 = sharp corner.")]
+            [Range(-1f, 1f)]
+            public float tension;
         }
 
         [SerializeField] List<PathWaypoint> waypoints = new List<PathWaypoint>();
@@ -127,15 +130,15 @@ namespace SlimeJumping.Platforms
                 p3 = (segIndex + 2 >= n) ? (2f * p2 - p1) : waypoints[segIndex + 2].localPos;
             }
 
-            // Standard Catmull-Rom (tension 0.5).
+            // Hermite 형 Catmull-Rom — 접선을 웨이포인트별 tension 으로 줄여 곡률을 점 단위로 잡는다.
+            Vector3 m1 = 0.5f * (p2 - p0) * (1f - Mathf.Clamp(waypoints[segIndex].tension, -1f, 1f));
+            Vector3 m2 = 0.5f * (p3 - p1) * (1f - Mathf.Clamp(waypoints[(segIndex + 1) % n].tension, -1f, 1f));
             float t2 = t * t;
             float t3 = t2 * t;
-            return 0.5f * (
-                (2f * p1) +
-                (-p0 + p2) * t +
-                (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
-                (-p0 + 3f * p1 - 3f * p2 + p3) * t3
-            );
+            return (2f * t3 - 3f * t2 + 1f) * p1
+                 + (t3 - 2f * t2 + t) * m1
+                 + (-2f * t3 + 3f * t2) * p2
+                 + (t3 - t2) * m2;
         }
 
         public void SampleWorld(float arcLen, out Vector3 position, out Vector3 tangent)

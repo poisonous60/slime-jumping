@@ -1,4 +1,3 @@
-using System.Collections;
 using UnityEngine;
 
 namespace SlimeJumping.Background
@@ -7,8 +6,9 @@ namespace SlimeJumping.Background
     /// to a target material of the same shader — every float/color property is lerped into a
     /// MaterialPropertyBlock, so neither material asset is touched. Textures are not lerped:
     /// the target's textures are bound outright, and the source material is expected to keep
-    /// them invisible at t=0 (e.g. _SurfaceStrength 0). The editor preview slider scrubs the
-    /// whole transition without entering Play mode.
+    /// them invisible at t=0 (e.g. _SurfaceStrength 0). Progress is driven externally via
+    /// ApplyProgress (the shrine sequence ties it to the strawberry orbit); the editor preview
+    /// slider scrubs the whole transition without entering Play mode.
     public class PlanetPhaseTransition : MonoBehaviour
     {
         [SerializeField] private Renderer bodyRenderer;
@@ -16,10 +16,8 @@ namespace SlimeJumping.Background
         [SerializeField] private Material bodyTarget;
         [SerializeField] private Material atmosphereTarget;
 
-        [Header("Timing")]
-        [Tooltip("Seconds from the current look to the target look.")]
-        [SerializeField] private float duration = 4f;
-        [Tooltip("Blend progress over normalized time.")]
+        [Header("Blend")]
+        [Tooltip("Blend progress over normalized external progress.")]
         [SerializeField] private AnimationCurve ease = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [Header("Editor Preview")]
@@ -27,26 +25,18 @@ namespace SlimeJumping.Background
         [Tooltip("Scrub the transition in edit mode. Leave at 0 — runtime playback starts from here.")]
         [SerializeField] private float preview;
 
-        public float Duration => duration;
-
         private MaterialPropertyBlock bodyBlock;
         private MaterialPropertyBlock atmosphereBlock;
 
-        public void Play()
+        // 에디터 프리뷰 MPB 가 플레이에 새어 들어오지 않게 시작 상태를 소스 룩으로 되돌린다.
+        private void Awake()
         {
-            StartCoroutine(PlayRoutine());
+            if (Application.isPlaying) ApplyBlend(0f);
         }
 
-        private IEnumerator PlayRoutine()
+        public void ApplyProgress(float t)
         {
-            float t = 0f;
-            while (t < duration)
-            {
-                t += Time.deltaTime;
-                ApplyBlend(ease.Evaluate(Mathf.Clamp01(t / duration)));
-                yield return null;
-            }
-            ApplyBlend(1f);
+            ApplyBlend(ease.Evaluate(Mathf.Clamp01(t)));
         }
 
         private void ApplyBlend(float t)
