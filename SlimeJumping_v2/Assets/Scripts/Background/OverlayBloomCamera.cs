@@ -4,32 +4,39 @@ using UnityEngine.Rendering.Universal;
 
 namespace SlimeJumping.Background
 {
-    /// <summary>Gives the starfield the glow URP Bloom would normally provide, without
-    /// letting bloom touch anything else. The scene camera cannot supply it: its renderer
-    /// carries TranslucentImageBlurSource, which drops the color buffer to 8 bits, so a
-    /// star at 32 reads back as 1.0 and no threshold can separate it from the white
-    /// shrine — and turning post on there dims every stage. So the starfield quad moves to
-    /// its own layer and a private camera draws it on a feature-free renderer, where HDR
-    /// survives, with Bloom coming from a profile on a volume layer nothing else reads.
-    /// That target is composited back additively. Bloom settings live on the profile
-    /// asset; this component only owns the rig. Removing it (and putting
-    /// StarFieldOverlay's quad back on BackgroundBlur) is a full rollback.</summary>
-    [RequireComponent(typeof(StarFieldOverlay))]
-    public class StarFieldBloom : MonoBehaviour
+    /// <summary>Runs URP Bloom over one background overlay layer and nothing else. The scene
+    /// camera cannot supply it: its renderer carries TranslucentImageBlurSource, which drops
+    /// the color buffer to 8 bits, so a star at 32 reads back as 1.0 and no threshold can
+    /// separate it from the white shrine — and turning post on there dims every stage. So the
+    /// overlay quad moves to its own layer and a private camera draws it on a feature-free
+    /// renderer, where HDR survives, with Bloom coming from a profile on a volume layer
+    /// nothing else reads. That target is composited back additively. One instance per
+    /// overlay: stars want a sharp full-res target and a low threshold, the nebula wants a
+    /// cheap downscaled one and a high threshold, and sharing a profile would force the same
+    /// glow on both. Bloom settings live on the profile asset; this component only owns the
+    /// rig. Removing it (and putting the overlay quad back on a scene-camera layer) is a full
+    /// rollback.</summary>
+    public class OverlayBloomCamera : MonoBehaviour
     {
-        [Tooltip("Camera the starfield quad follows. Must match StarFieldOverlay's. Empty = Camera.main.")]
+        [Tooltip("Camera the overlay quad follows. Must match the overlay component's. Empty = Camera.main.")]
         [SerializeField] private UnityEngine.Camera targetCamera;
         [Tooltip("Camera that draws the composite back into the scene, i.e. the one rendering BackgroundBlur.")]
         [SerializeField] private UnityEngine.Camera compositeCamera;
-        [Tooltip("Composite material (SlimeJumping/Star Field Composite).")]
+        [Tooltip("Composite material (SlimeJumping/Star Field Composite). Use a separate material per instance.")]
         [SerializeField] private Material compositeMaterial;
         [Tooltip("Volume profile holding the Bloom override. This is where the glow is tuned.")]
         [SerializeField] private VolumeProfile bloomProfile;
 
+        [Header("Layers")]
+        [Tooltip("Layer holding the overlay quad. Only this camera renders it.")]
+        [SerializeField] private string overlayLayerName = "StarField";
+        [Tooltip("Layer the private Volume sits on. Must not be read by any other camera.")]
+        [SerializeField] private string volumeLayerName = "StarFieldVolume";
+
         [Header("Rig")]
         [Tooltip("Index of the renderer without TranslucentImageBlurSource in the URP asset list.")]
         [SerializeField] private int rendererIndex = 4;
-        [Tooltip("Star target size = screen / this. 1 keeps the cores pixel sharp.")]
+        [Tooltip("Target size = screen / this. 1 keeps cores pixel sharp; raise it for low-frequency overlays.")]
         [SerializeField] private int downscale = 1;
         [Tooltip("Distance of the composite quad in front of the composite camera.")]
         [SerializeField] private float compositeDistance = 100f;
@@ -51,14 +58,14 @@ namespace SlimeJumping.Background
         private void OnEnable()
         {
             if (targetCamera == null) targetCamera = UnityEngine.Camera.main;
-            starLayer = LayerMask.NameToLayer("StarField");
-            volumeLayer = LayerMask.NameToLayer("StarFieldVolume");
+            starLayer = LayerMask.NameToLayer(overlayLayerName);
+            volumeLayer = LayerMask.NameToLayer(volumeLayerName);
             var pipeline = UniversalRenderPipeline.asset;
             bool rendererOk = pipeline != null && rendererIndex >= 0 && rendererIndex < pipeline.rendererDataList.Length;
             if (targetCamera == null || compositeCamera == null || compositeMaterial == null
                 || starLayer < 0 || volumeLayer < 0 || !rendererOk)
             {
-                Debug.LogWarning("StarFieldBloom disabled: missing camera/material, StarField layers, or renderer index.", this);
+                Debug.LogWarning("OverlayBloomCamera disabled: missing camera/material, layers, or renderer index.", this);
                 enabled = false;
                 return;
             }
@@ -107,7 +114,7 @@ namespace SlimeJumping.Background
 
         private void BuildStarCamera()
         {
-            var go = new GameObject("StarFieldBloomCamera") { hideFlags = HideFlags.DontSave };
+            var go = new GameObject(overlayLayerName + "BloomCamera") { hideFlags = HideFlags.DontSave };
             go.transform.SetParent(targetCamera.transform, false);
             starCam = go.AddComponent<UnityEngine.Camera>();
             starCam.clearFlags = CameraClearFlags.SolidColor;
@@ -130,7 +137,7 @@ namespace SlimeJumping.Background
             data.volumeLayerMask = 1 << volumeLayer;
 
             // The volume rides the camera so its profile reaches this camera and no other.
-            var volGO = new GameObject("StarFieldBloomVolume") { hideFlags = HideFlags.DontSave };
+            var volGO = new GameObject(overlayLayerName + "BloomVolume") { hideFlags = HideFlags.DontSave };
             volGO.layer = volumeLayer;
             volGO.transform.SetParent(go.transform, false);
             var vol = volGO.AddComponent<Volume>();
@@ -144,7 +151,7 @@ namespace SlimeJumping.Background
         {
             compositeMesh = new Mesh
             {
-                name = "StarFieldCompositeQuad",
+                name = overlayLayerName + "CompositeQuad",
                 hideFlags = HideFlags.DontSave,
                 vertices = new[]
                 {
@@ -155,7 +162,7 @@ namespace SlimeJumping.Background
             };
             compositeMesh.RecalculateBounds();
 
-            var go = new GameObject("StarFieldComposite") { hideFlags = HideFlags.DontSave };
+            var go = new GameObject(overlayLayerName + "Composite") { hideFlags = HideFlags.DontSave };
             go.layer = LayerMask.NameToLayer("BackgroundBlur");
             compositeQuad = go.transform;
             compositeQuad.SetParent(compositeCamera.transform, false);
@@ -182,7 +189,7 @@ namespace SlimeJumping.Background
                 ReleaseTarget();
                 starRT = new RenderTexture(w, h, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear)
                 {
-                    name = "StarFieldBloomTarget",
+                    name = overlayLayerName + "BloomTarget",
                     hideFlags = HideFlags.DontSave,
                     filterMode = FilterMode.Bilinear,
                     wrapMode = TextureWrapMode.Clamp
