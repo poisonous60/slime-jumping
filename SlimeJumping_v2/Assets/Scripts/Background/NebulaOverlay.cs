@@ -10,12 +10,17 @@ namespace SlimeJumping.Background
     /// per height as four HDR gradients,
     /// one per layer of the shader's composition, evaluated at the camera's position in the
     /// band — the alpha key doubles as that layer's strength, so a layer can fade out
-    /// entirely at some altitudes. On top of that the two cubemap rotations advance with
-    /// height at different rates, so climbing both re-tints the cloud and travels through it,
-    /// and the layers shear apart instead of sliding as one sheet. Look knobs live on the
-    /// material; height, gradients and travel live here and are pushed through a
-    /// MaterialPropertyBlock, so the material asset is never mutated. Removing the object is
+    /// entirely at some altitudes. Height decides colour and nothing else: the two cubemap
+    /// rotations drift on a clock instead, at different rates so the layers shear apart rather
+    /// than sliding as one sheet. Driving them from height made the cloud swim backwards
+    /// whenever the player fell, which reads as the sky moving rather than the player.
+    /// Look knobs live on the
+    /// material; height, gradients and drift live here and are pushed through a
+    /// MaterialPropertyBlock, so the material asset is never mutated. Runs in edit mode so the
+    /// gradients can be authored against the real bloom rig; everything it spawns is DontSave,
+    /// so the scene file never picks it up. Removing the object is
     /// a full rollback.</summary>
+    [ExecuteAlways]
     public class NebulaOverlay : MonoBehaviour
     {
         [Tooltip("Camera the quad follows. Empty = Camera.main.")]
@@ -41,11 +46,11 @@ namespace SlimeJumping.Background
         [Tooltip("Second ripple pass.")]
         [GradientUsage(true)] [SerializeField] private Gradient ripples2OverHeight = new Gradient();
 
-        [Header("Travel")]
-        [Tooltip("Degrees the density cubemap turns across the whole band.")]
-        [SerializeField] private float densityTravelDegrees = 50f;
-        [Tooltip("Degrees the diffusion cubemap turns across the whole band. Differ from density or the layers move as one sheet.")]
-        [SerializeField] private float diffusionTravelDegrees = 22f;
+        [Header("Drift (time, not height)")]
+        [Tooltip("Degrees the density cubemap turns per second.")]
+        [SerializeField] private float densityDriftPerSecond = 0.4f;
+        [Tooltip("Degrees the diffusion cubemap turns per second. Differ from density or the layers move as one sheet.")]
+        [SerializeField] private float diffusionDriftPerSecond = 0.18f;
         [Tooltip("Axis the cloud turns about, in world space.")]
         [SerializeField] private Vector3 travelAxis = new Vector3(0.2f, 1f, 0.1f);
 
@@ -81,6 +86,7 @@ namespace SlimeJumping.Background
 
             quadMesh = new Mesh
             {
+                hideFlags = HideFlags.DontSave,
                 vertices = new[]
                 {
                     new Vector3(-0.5f, -0.5f), new Vector3(0.5f, -0.5f),
@@ -89,7 +95,7 @@ namespace SlimeJumping.Background
                 triangles = new[] { 0, 2, 1, 1, 2, 3 }
             };
 
-            var go = new GameObject("NebulaQuad");
+            var go = new GameObject("NebulaQuad") { hideFlags = HideFlags.DontSave };
             go.layer = layer;
             quad = go.transform;
             quad.SetParent(cam.transform, false);
@@ -100,6 +106,8 @@ namespace SlimeJumping.Background
             rend.receiveShadows = false;
             rend.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
             mpb = new MaterialPropertyBlock();
+            // Edit mode only ticks the player loop on demand, so size and tint the quad up front.
+            LateUpdate();
         }
 
         private void LateUpdate()
@@ -121,18 +129,27 @@ namespace SlimeJumping.Background
             mpb.SetColor(BasementTint, basementOverHeight.Evaluate(t));
             mpb.SetColor(RipplesTint1, ripples1OverHeight.Evaluate(t));
             mpb.SetColor(RipplesTint2, ripples2OverHeight.Evaluate(t));
-            mpb.SetMatrix(DensityRotation, Matrix4x4.Rotate(Quaternion.AngleAxis(t * densityTravelDegrees, axis)));
-            mpb.SetMatrix(DiffusionRotation, Matrix4x4.Rotate(Quaternion.AngleAxis(t * diffusionTravelDegrees, axis)));
+            // Monotonic, so falling never rewinds the cloud the way a height-driven angle did.
+            float clock = Time.time;
+            mpb.SetMatrix(DensityRotation, Matrix4x4.Rotate(Quaternion.AngleAxis(clock * densityDriftPerSecond, axis)));
+            mpb.SetMatrix(DiffusionRotation, Matrix4x4.Rotate(Quaternion.AngleAxis(clock * diffusionDriftPerSecond, axis)));
             rend.SetPropertyBlock(mpb);
         }
 
         private void OnDisable()
         {
-            if (quad != null) Destroy(quad.gameObject);
-            if (quadMesh != null) Destroy(quadMesh);
+            if (quad != null) SafeDestroy(quad.gameObject);
+            if (quadMesh != null) SafeDestroy(quadMesh);
             quad = null;
             quadMesh = null;
             rend = null;
+        }
+
+        /// <summary>Deferred Destroy is the only legal call during play, and illegal outside it.</summary>
+        private static void SafeDestroy(Object o)
+        {
+            if (Application.isPlaying) Destroy(o);
+            else DestroyImmediate(o);
         }
     }
 }

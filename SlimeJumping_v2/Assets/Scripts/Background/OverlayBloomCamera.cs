@@ -14,8 +14,11 @@ namespace SlimeJumping.Background
     /// overlay: stars want a sharp full-res target and a low threshold, the nebula wants a
     /// cheap downscaled one and a high threshold, and sharing a profile would force the same
     /// glow on both. Bloom settings live on the profile asset; this component only owns the
-    /// rig. Removing it (and putting the overlay quad back on a scene-camera layer) is a full
+    /// rig. Runs in edit mode so the overlay is tuned through the same path it ships on; the
+    /// scene cameras must already have the overlay layer unticked, or every domain reload
+    /// dirties the scene. Removing it (and putting the overlay quad back on a scene-camera layer) is a full
     /// rollback.</summary>
+    [ExecuteAlways]
     public class OverlayBloomCamera : MonoBehaviour
     {
         [Tooltip("Camera the overlay quad follows. Must match the overlay component's. Empty = Camera.main.")]
@@ -42,6 +45,8 @@ namespace SlimeJumping.Background
         [SerializeField] private float compositeDistance = 100f;
 
         private UnityEngine.Camera starCam;
+        // Resolved separately so the Camera.main fallback never writes back into the serialized field.
+        private UnityEngine.Camera target;
         private RenderTexture starRT;
         private Transform compositeQuad;
         private MeshRenderer compositeRend;
@@ -57,12 +62,12 @@ namespace SlimeJumping.Background
 
         private void OnEnable()
         {
-            if (targetCamera == null) targetCamera = UnityEngine.Camera.main;
+            target = targetCamera != null ? targetCamera : UnityEngine.Camera.main;
             starLayer = LayerMask.NameToLayer(overlayLayerName);
             volumeLayer = LayerMask.NameToLayer(volumeLayerName);
             var pipeline = UniversalRenderPipeline.asset;
             bool rendererOk = pipeline != null && rendererIndex >= 0 && rendererIndex < pipeline.rendererDataList.Length;
-            if (targetCamera == null || compositeCamera == null || compositeMaterial == null
+            if (target == null || compositeCamera == null || compositeMaterial == null
                 || starLayer < 0 || volumeLayer < 0 || !rendererOk)
             {
                 Debug.LogWarning("OverlayBloomCamera disabled: missing camera/material, layers, or renderer index.", this);
@@ -71,7 +76,7 @@ namespace SlimeJumping.Background
             }
 
             // Scene cameras must not draw the starfield too, or the clamped copy doubles the bloomed one.
-            patchedTarget = targetCamera;
+            patchedTarget = target;
             patchedComposite = compositeCamera;
             int starBit = 1 << starLayer;
             // Only this bit is remembered: BackgroundCameraOption rewrites these masks at runtime.
@@ -82,6 +87,8 @@ namespace SlimeJumping.Background
 
             BuildStarCamera();
             BuildCompositeQuad();
+            // Edit mode only ticks the player loop on demand, so build the target before the first render.
+            LateUpdate();
         }
 
         private void OnDisable()
@@ -115,7 +122,7 @@ namespace SlimeJumping.Background
         private void BuildStarCamera()
         {
             var go = new GameObject(overlayLayerName + "BloomCamera") { hideFlags = HideFlags.DontSave };
-            go.transform.SetParent(targetCamera.transform, false);
+            go.transform.SetParent(target.transform, false);
             starCam = go.AddComponent<UnityEngine.Camera>();
             starCam.clearFlags = CameraClearFlags.SolidColor;
             starCam.backgroundColor = Color.clear;
@@ -123,9 +130,9 @@ namespace SlimeJumping.Background
             starCam.allowHDR = true;
             starCam.allowMSAA = false;
             // Must finish before whichever scene camera samples the target.
-            starCam.depth = Mathf.Min(targetCamera.depth, compositeCamera.depth) - 10f;
-            starCam.nearClipPlane = targetCamera.nearClipPlane;
-            starCam.farClipPlane = targetCamera.farClipPlane;
+            starCam.depth = Mathf.Min(target.depth, compositeCamera.depth) - 10f;
+            starCam.nearClipPlane = target.nearClipPlane;
+            starCam.farClipPlane = target.farClipPlane;
 
             var data = starCam.GetUniversalAdditionalCameraData();
             data.renderType = CameraRenderType.Base;
@@ -176,11 +183,12 @@ namespace SlimeJumping.Background
 
         private void LateUpdate()
         {
-            if (starCam == null || compositeQuad == null) return;
+            if (starCam == null || compositeQuad == null || compositeRend == null
+                || target == null || compositeCamera == null) return;
 
-            starCam.fieldOfView = targetCamera.fieldOfView;
-            starCam.orthographic = targetCamera.orthographic;
-            starCam.orthographicSize = targetCamera.orthographicSize;
+            starCam.fieldOfView = target.fieldOfView;
+            starCam.orthographic = target.orthographic;
+            starCam.orthographicSize = target.orthographicSize;
 
             int w = Mathf.Max(1, compositeCamera.pixelWidth / Mathf.Max(1, downscale));
             int h = Mathf.Max(1, compositeCamera.pixelHeight / Mathf.Max(1, downscale));
