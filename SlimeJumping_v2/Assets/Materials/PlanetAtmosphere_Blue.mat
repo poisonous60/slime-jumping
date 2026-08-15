@@ -1,0 +1,68 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: PlanetAtmosphere_Blue
+  m_Shader: {fileID: 4800000, guid: 07646634ea85e9a4ea8befb5d8519aea, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _ArcDimMin: 0.7
+    - _ArcWidthMin: 0.7
+    - _AtmoStrength: 1.1344894
+    - _BandDrift: 0.3
+    - _ColorFlow: 1
+    - _ColorTurn: 0.45
+    - _CoreBoost: 6
+    - _CoreWidth: 0.049999997
+    - _DitherAmount: 1
+    - _Extinction: 0.35
+    - _HM: 0.006
+    - _HR: 0.02
+    - _HaloShoulder: 0.06
+    - _InsideAmount: 1.5
+    - _InsideDepth: 1.5
+    - _InsideFade: 1
+    - _MieAbsorption: 0.11
+    - _MieG: 0.76
+    - _RimFade: 0.7
+    - _RimIntensity: 0.5
+    - _RimReach: 0.85
+    - _RimSoftness: 8
+    - _RimWidth: 0.12
+    - _ShellScaleHeights: 8
+    - _SunIntensity: 6
+    - _SunPitch: 25
+    - _SunSteps: 6
+    - _SunYaw: -20
+    - _SunwardFocus: 0.4
+    - _TauMie: 0.0252
+    - _ViewFlow: 0.35
+    - _ViewSteps: 48
+    m_Colors:
+    - _CoreColor: {r: 0.85, g: 0.95, b: 1.05, a: 1}
+    - _RimColor: {r: 0.35, g: 0.65, b: 1.1, a: 1}
+    - _SunColor: {r: 0.93, g: 0.96, b: 1, a: 1}
+    - _TauRayleigh: {r: 0.0464, g: 0.108, b: 0.265, a: 0}
+    - _ThickColor: {r: 0.45, g: 0.7, b: 1.05, a: 1}
+    - _ThinColor: {r: 0.62, g: 0.82, b: 1.1, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

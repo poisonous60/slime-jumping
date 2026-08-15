@@ -3,6 +3,8 @@
 // 태양은 씬 라이트와 무관한 자체 방향 노브다. 배경 연출이라 게임플레이 조명에 끌려다니면 안 된다.
 // 역광으로 두면 본체는 통째로 어두워지고 윤곽만 남는다. 대기 셸이 그 윤곽에 림을 얹는다.
 // Edge 노브는 실루엣 안쪽 밴드를 태양과 무관하게 밝혀, 원반이 우주와 같은 색일 때도 형태를 남긴다.
+// Surface 는 equirect 맵을 오브젝트 좌표로 구면 매핑한다(메시에 UV 가 없다). 랩 경계는 뒷면에 둔다.
+// Glow 는 태양 명암과 독립인 본체 자체발광 — 발광 달 국면용. 기본값 0 이면 기존 룩 그대로다.
 Shader "SlimeJumping/Planet Body"
 {
     Properties
@@ -16,6 +18,18 @@ Shader "SlimeJumping/Planet Body"
         [HDR] _EdgeColor ("Edge Colour", Color) = (0.10, 0.16, 0.28, 1)
         _EdgeWidth ("Edge Width (x radius)", Range(0.005, 0.5)) = 0.08
         _EdgeIntensity ("Edge Intensity", Range(0, 4)) = 0
+
+        [Header(Surface)]
+        [NoScaleOffset] _SurfaceTex ("Surface Map (equirect)", 2D) = "white" {}
+        _SurfaceStrength ("Surface Strength", Range(0, 1)) = 0
+        _SurfaceContrast ("Surface Contrast", Range(0.2, 4)) = 1
+        _SurfaceYaw ("Surface Yaw (deg)", Range(0, 360)) = 0
+        _SurfaceTilt ("Surface Tilt (deg)", Range(-60, 60)) = 0
+
+        [Header(Body Glow)]
+        [HDR] _GlowColor ("Glow Colour", Color) = (0, 0, 0, 1)
+        _GlowIntensity ("Glow Intensity", Range(0, 20)) = 0
+        _GlowTexAmount ("Glow Surface Modulation", Range(0, 1)) = 0
 
         [Header(Night Limb)]
         [HDR] _NightGlowColor ("Night Edge Colour", Color) = (0.25, 0.55, 1, 1)
@@ -64,11 +78,21 @@ Shader "SlimeJumping/Planet Body"
                 float3 positionWS : TEXCOORD1;
             };
 
+            TEXTURE2D(_SurfaceTex);
+            SAMPLER(sampler_SurfaceTex);
+
             CBUFFER_START(UnityPerMaterial)
                 half4 _BodyColor;
                 half4 _ShadowColor;
                 float _LimbDarkening;
                 float _Terminator;
+                float _SurfaceStrength;
+                float _SurfaceContrast;
+                float _SurfaceYaw;
+                float _SurfaceTilt;
+                half4 _GlowColor;
+                float _GlowIntensity;
+                float _GlowTexAmount;
                 half4 _EdgeColor;
                 float _EdgeWidth;
                 float _EdgeIntensity;
@@ -115,9 +139,23 @@ Shader "SlimeJumping/Planet Body"
                 float lit = smoothstep(-_Terminator, _Terminator, ndl);
                 float darkening = 1.0 - _LimbDarkening * (1.0 - saturate(dot(N, V)));
 
+                // 반지름 1 메시라 오브젝트 좌표가 곧 법선. atan2 랩 경계는 -z 매핑으로 뒷면에 보낸다.
+                // Yaw 는 3D 회전이 아니라 u 오프셋 — Repeat 샘플러가 감아줘 경계 밉 아티팩트가 없다.
+                float3 p = normalize(TransformWorldToObject(IN.positionWS));
+                float st, ct;
+                sincos(radians(_SurfaceTilt), st, ct);
+                p = float3(p.x, p.y * ct - p.z * st, p.y * st + p.z * ct);
+                float2 uv = float2(atan2(p.x, -p.z) / 6.28318530718 + 0.5 + _SurfaceYaw / 360.0,
+                                   asin(clamp(p.y, -1.0, 1.0)) / 3.14159265359 + 0.5);
+                float3 surf = saturate((SAMPLE_TEXTURE2D(_SurfaceTex, sampler_SurfaceTex, uv).rgb - 0.5)
+                                       * _SurfaceContrast + 0.5);
+                float3 surfMod = lerp(1.0, surf, _SurfaceStrength);
+
                 float3 col = lerp(_ShadowColor.rgb,
-                                  _BodyColor.rgb * _SunColor.rgb * (_SunIntensity / 3.14159265359) * darkening,
+                                  _BodyColor.rgb * _SunColor.rgb * (_SunIntensity / 3.14159265359) * darkening * surfMod,
                                   lit);
+
+                col += _GlowColor.rgb * _GlowIntensity * darkening * lerp(1.0, surf, _GlowTexAmount);
 
                 // 실루엣에서 반지름의 _EdgeWidth 배만큼 안쪽까지 걸치는 밴드. 명암과 독립 채널이다.
                 float ndv = saturate(dot(N, V));

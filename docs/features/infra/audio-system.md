@@ -148,7 +148,7 @@ PlayerPrefs 키는 전부 `opt.*` 접두사. 레거시 단일 `opt.sfxVolume`은
 
 - `SliceEffect.cs` → `SoundService.PlayAt(SFX_Object)` (`Slice_Hit.prefab` AudioSource 제거)
 - `FireworkInteractable.cs` → `PlayAt(SFX_Object)` (`Firework_Radial.prefab` 포함 인스턴스 AudioSource 전부 제거)
-- `ShrineInteractable.cs` → `PlayAt(SFX_Object)`
+- `ShrineInteractable.cs` → `PlayAt(SFX_Object)` (2026-08-15 부터 `Play2D` — 행성 리빌 중 리스너가 카메라를 타고 멀어져 3D 는 묻힘)
 - `CameraFlashHazard.cs` → `PlayAt(SFX_Object)` (`shutterAudio` 필드 → `shutterClip`+`shutterVolume`만)
 - `JumpscareCanvasController.cs` → `Play2D(UI)`. `FullscreenOverlayCanvas` base class의 `audioSource` 필드도 같이 제거 (유일 사용자였음)
 
