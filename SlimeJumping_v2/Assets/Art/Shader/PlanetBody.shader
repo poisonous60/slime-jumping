@@ -17,6 +17,11 @@ Shader "SlimeJumping/Planet Body"
         _EdgeWidth ("Edge Width (x radius)", Range(0.005, 0.5)) = 0.08
         _EdgeIntensity ("Edge Intensity", Range(0, 4)) = 0
 
+        [Header(Night Limb)]
+        [HDR] _NightGlowColor ("Night Edge Colour", Color) = (0.25, 0.55, 1, 1)
+        _NightGlowWidth ("Night Edge Width", Range(0.002, 0.3)) = 0.014
+        _NightGlowLift ("Night Edge Brightness", Range(0, 0.2)) = 0
+
         [Header(Sun)]
         [HDR] _SunColor ("Sun Color", Color) = (0.93, 0.96, 1, 1)
         _SunIntensity ("Sun Intensity", Range(0, 200)) = 9.5
@@ -67,6 +72,9 @@ Shader "SlimeJumping/Planet Body"
                 half4 _EdgeColor;
                 float _EdgeWidth;
                 float _EdgeIntensity;
+                half4 _NightGlowColor;
+                float _NightGlowWidth;
+                float _NightGlowLift;
                 half4 _SunColor;
                 float _SunIntensity;
                 float _SunYaw;
@@ -115,6 +123,12 @@ Shader "SlimeJumping/Planet Body"
                 float ndv = saturate(dot(N, V));
                 float radial = sqrt(saturate(1.0 - ndv * ndv));
                 col += _EdgeColor.rgb * _EdgeIntensity * smoothstep(1.0 - _EdgeWidth, 1.0, radial);
+
+                // 태양이 지평선 아래로 내려가도 높은 대기는 아직 빛을 본다. sec(δ)−1 ≈ δ²/2 에서 나오는
+                // 가우시안 띠를 명암경계에 얹고 밤쪽으로 치우치게 해 낮쪽에서는 저절로 사라지게 한다.
+                float nw = max(_NightGlowWidth, 1e-4);
+                float night = exp(-0.5 * (ndl * ndl) / (nw * nw)) * smoothstep(nw, -nw, ndl);
+                col += _NightGlowColor.rgb * (_NightGlowLift * night);
 
                 return half4(Dither(col, IN.positionHCS.xy), 1);
             }

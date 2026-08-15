@@ -31,6 +31,23 @@ Shader "SlimeJumping/Planet Atmosphere"
         _RimReach ("Arc Reach Past Terminator", Range(-1, 1)) = 0
         _ArcWidthMin ("Arc Thinning at Faint End", Range(0.05, 1)) = 0.35
         _ArcDimMin ("Arc Floor Brightness", Range(0, 1)) = 0.25
+        _SunwardFocus ("Sunward Focus", Range(0, 1)) = 0.4
+        _ViewFlow ("View Angle Flow", Range(0, 1)) = 0
+
+        [Header(Colour Flow)]
+        [HDR] _ThinColor ("Thin Side Colour", Color) = (0.80, 0.92, 1.12, 1)
+        [HDR] _ThickColor ("Thick Side Colour", Color) = (1, 1, 1, 1)
+        _ColorTurn ("Colour Turn Thickness", Range(0.02, 4)) = 0.45
+        _ColorFlow ("Colour Flow Amount", Range(0, 1)) = 0
+
+        [Header(Inside Disc)]
+        _InsideAmount ("Inside Glow Amount", Range(0, 20)) = 0
+        _InsideDepth ("Inside Spread Depth (x Halo Width)", Range(0.1, 20)) = 1
+        _InsideFade ("Inside Twilight Softness", Range(0.02, 2)) = 0.5
+
+        [Header(Detail)]
+        _BandDrift ("Band Thickness Drift", Range(0, 0.3)) = 0
+        _HaloShoulder ("Halo Glow Shoulder", Range(0, 1)) = 0
 
         _DitherAmount ("Dither (LSB)", Range(0, 4)) = 1
     }
@@ -86,6 +103,17 @@ Shader "SlimeJumping/Planet Atmosphere"
                 float _RimReach;
                 float _ArcWidthMin;
                 float _ArcDimMin;
+                float _SunwardFocus;
+                float _ViewFlow;
+                half4 _ThinColor;
+                half4 _ThickColor;
+                float _ColorTurn;
+                float _ColorFlow;
+                float _InsideAmount;
+                float _InsideDepth;
+                float _InsideFade;
+                float _BandDrift;
+                float _HaloShoulder;
                 float _DitherAmount;
             CBUFFER_END
 
@@ -121,6 +149,35 @@ Shader "SlimeJumping/Planet Atmosphere"
                 return (H / w) * (exp(-lo / H) - exp(-hi / H));
             }
 
+            // erfcx(z) = exp(z²)erfc(z). z=0 값·기울기와 z→∞ 점근을 맞춘 무리식, 전 구간 오차 1% 미만.
+            float Erfcx(float z)
+            {
+                return rcp(1.1283792 * z + sqrt(0.4149 * z * z + 1.0));
+            }
+
+            // 원반 안쪽은 뒤쪽 대기가 고체에 가리고 카메라 쪽 절반만 남는다. 림에서 접선값의 0.5 로 시작하는
+            // Chapman 절반 기둥 꼴을 쓰되, 인자를 깊이에 선형으로 둬 실측 감쇠(1/거리)에 맞춘다.
+            // cover 는 픽셀 중 원반 안쪽 비율이라 경계 한 픽셀이 저절로 안티에일리어싱된다.
+            float InsideColumn(float edge, float H, float w)
+            {
+                float cover = saturate(0.5 - edge / w);
+                if (cover <= 0.0) return 0.0;
+                return 0.5 * Erfcx(max(-edge, 0.0) / max(H * _InsideDepth, 1e-6)) * cover;
+            }
+
+            // Henyey-Greenstein 을 완전 전방(mu=1) 값으로 나눈 비라 항상 1 이하 — 피크를 못 올린다.
+            // 90도 기준으로 재고 상한을 거는 방식은 이 구도(태양이 거의 정후방)에서 전 구간이 상한에 붙어 평평해진다.
+            float PhaseRatio(float muViewSun)
+            {
+                float g = 0.5 * saturate(_SunwardFocus);
+                float gg = g * g;
+                float den = max(1e-4, 1.0 + gg - 2.0 * g * muViewSun);
+                float hg = (1.0 - gg) * rsqrt(den * den * den);
+                float denF = max(1e-4, (1.0 - g) * (1.0 - g));
+                float hgF = (1.0 - gg) * rsqrt(denF * denF * denF);
+                return saturate(hg / max(hgF, 1e-4));
+            }
+
             // Interleaved Gradient Noise (Jimenez 2014). 어두운 그라디언트의 8bit 밴딩용.
             float3 Dither(float3 col, float2 pixel)
             {
@@ -141,20 +198,43 @@ Shader "SlimeJumping/Planet Atmosphere"
 
                 float edge = b - 1.0;
                 float w = max(fwidth(edge), 1e-6);
-                float outside = smoothstep(-w, w, edge);
-                if (outside <= 0.0) return 0.0;
 
                 // 림 지점이 태양을 보는지가 아크를 따라 밝기와 두께를 함께 정한다 — 밝은 구간이 더 굵다.
+                // 분모 바닥은 안쪽 항이 중심 근처를 볼 때의 발산을 막는다. 바깥(b>=1)에는 영향 없다.
                 float3 L = SunDirection();
-                float lit = smoothstep(-_RimFade, _RimFade, dot(pc / max(b, 1e-6), L) + _RimReach);
+                float lit = smoothstep(-_RimFade, _RimFade, dot(pc / max(b, 0.95), L) + _RimReach);
                 float widthScale = lerp(_ArcWidthMin, 1.0, lit);
 
-                float broad = LimbColumn(edge, max(HBroad() * widthScale, 1e-6), w);
+                float H = max(HBroad() * widthScale, 1e-6);
+                float halo = LimbColumn(edge, H, w);
                 float core = LimbColumn(edge, max(HCore() * widthScale, 1e-6), w);
+                float inside = _InsideAmount * InsideColumn(edge, H, w);
+                if (halo + core + inside <= 0.0) return 0.0;
 
-                float T = exp(-_Extinction * broad);
-                float3 col = (_RimColor.rgb * broad * _RimIntensity
-                            + _CoreColor.rgb * core * _CoreBoost) * T * lerp(_ArcDimMin, 1.0, lit);
+                // 안쪽 기둥의 밝기는 시선이 닿는 지표점의 태양 노출로 정해진다. 그 위 대기는 지표가 그늘일 때도
+                // 빛을 보므로 경계를 _InsideFade 만큼 풀어준다 — 이 폭이 원반 안쪽 감쇠 거리를 정한다.
+                float3 ph = ro + rd * (tc - sqrt(max(1.0 - b * b, 0.0)));
+                float insideLit = smoothstep(-_InsideFade, _InsideFade, dot(ph, L) + _RimReach);
+
+                float T = exp(-_Extinction * halo);
+
+                // 방위각 저주파 성분으로 유효 스케일높이만 흔든다. 실루엣과 자기흡수는 그대로 둔다.
+                float phi = atan2(pc.y, pc.x);
+                float drift = max(0.9, 1.0 + _BandDrift * (0.65 * sin(2.0 * phi + 0.7) + 0.35 * sin(5.0 * phi - 1.1)));
+                halo *= exp((max(edge, 0.0) / H) * (1.0 - rcp(drift)));
+
+                // 포스트 블룸 없이 발광감만. 코어가 강한 픽셀에서는 꺼서 피크를 안 올린다.
+                halo *= 1.0 + _HaloShoulder * (1.0 - saturate(halo)) * (1.0 - saturate(core * 2.0));
+
+                float phase = lerp(1.0, PhaseRatio(dot(rd, L)), _ViewFlow);
+                float arc = lerp(_ArcDimMin, 1.0, lit) * phase;
+                float3 col = (_RimColor.rgb * (halo * arc + inside * insideLit * phase) * _RimIntensity
+                            + _CoreColor.rgb * core * _CoreBoost * arc) * T;
+
+                // 기둥이 두꺼울수록 얇은 쪽 색에서 두꺼운 쪽 색으로. peak guard 가 어느 채널도 못 올리게 막는다.
+                float3 tint = lerp(_ThinColor.rgb, _ThickColor.rgb, 1.0 - exp(-(halo + core + inside) / max(_ColorTurn, 1e-4)));
+                tint = lerp(1.0, tint, _ColorFlow);
+                col *= tint * rcp(max(1.0, max(tint.r, max(tint.g, tint.b))));
 
                 return half4(Dither(col, IN.positionHCS.xy), 1);
             }

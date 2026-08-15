@@ -29,13 +29,16 @@ Material:
     - _EdgeIntensity: 0.01381875
     - _EdgeWidth: 0.08
     - _LimbDarkening: 0.3
+    - _NightGlowLift: 0.006
+    - _NightGlowWidth: 0.014
     - _SunIntensity: 1
-    - _SunPitch: 25
-    - _SunYaw: -20
+    - _SunPitch: 23
+    - _SunYaw: 5
     - _Terminator: 0.15
     m_Colors:
     - _BodyColor: {r: 0.3, g: 0.35, b: 0.5, a: 1}
     - _EdgeColor: {r: 0.1, g: 0.16, b: 0.28, a: 1}
+    - _NightGlowColor: {r: 0.25, g: 0.55, b: 1, a: 1}
     - _ShadowColor: {r: 0.0021, g: 0.0069, b: 0.0243, a: 1}
     - _SunColor: {r: 0.93, g: 0.96, b: 1, a: 1}
   m_BuildTextureStacks: []

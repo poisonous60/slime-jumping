@@ -28,16 +28,23 @@ Material:
     - _ArcDimMin: 0.25
     - _ArcWidthMin: 0.35
     - _AtmoStrength: 1.1344894
-    - _CoreBoost: 3.0150907
+    - _BandDrift: 0.04
+    - _ColorFlow: 1
+    - _ColorTurn: 0.45
+    - _CoreBoost: 4.714492
     - _CoreWidth: 0.049999997
     - _DitherAmount: 1
     - _Extinction: 0.35
     - _HM: 0.006
     - _HR: 0.02
+    - _HaloShoulder: 0.06
+    - _InsideAmount: 4
+    - _InsideDepth: 1
+    - _InsideFade: 1
     - _MieAbsorption: 0.11
     - _MieG: 0.76
     - _RimFade: 0.7
-    - _RimIntensity: 0.1824837
+    - _RimIntensity: 0.23503901
     - _RimReach: 0.2
     - _RimSoftness: 12
     - _RimWidth: 0.02010395
@@ -46,12 +53,16 @@ Material:
     - _SunPitch: 25
     - _SunSteps: 6
     - _SunYaw: -20
+    - _SunwardFocus: 0.4
     - _TauMie: 0.0252
+    - _ViewFlow: 0.35
     - _ViewSteps: 48
     m_Colors:
     - _CoreColor: {r: 1, g: 1, b: 1, a: 1}
     - _RimColor: {r: 0.34, g: 0.56, b: 1, a: 1}
     - _SunColor: {r: 0.93, g: 0.96, b: 1, a: 1}
     - _TauRayleigh: {r: 0.0464, g: 0.108, b: 0.265, a: 0}
+    - _ThickColor: {r: 0.511, g: 0.648, b: 1, a: 1}
+    - _ThinColor: {r: 0.679, g: 0.75, b: 1, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
