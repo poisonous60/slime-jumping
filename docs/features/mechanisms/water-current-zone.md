@@ -91,6 +91,13 @@
 | `spreadNeighbors` | int | 2 | impulse 받는 양옆 정점 수 |
 | `spreadFalloff` | float | 0.5 | 인접 단계당 falloff |
 
+### Audio
+| 필드 | 타입 | 기본 | 설명 |
+|---|---|---|---|
+| `enterSound` | SoundDef | null | 슬라임이 존에 들어오는 순간 1회 재생 (`SoundService.Play`, 슬라임 위치). 멀티 콜라이더라도 `trackedSlime` 갱신 시점에만 발화 |
+
+**기본 자산**: [Settings/Sounds/Sound_WaterCurrentEnter.asset](../../../SlimeJumping_v2/Assets/Settings/Sounds/Sound_WaterCurrentEnter.asset) — SFX_Environment, pitch 0.92~1.08, `cooldownSeconds=0.15`(존 경계 재진입 연타 방지). `stage1_floor2/WaterCurrent_UpperHalf` 에 배선됨.
+
 ### Visual
 `flowMaterial`, `centerColor`, `edgeColor`, `visualFlowSpeed` (uv/sec), `noiseScale`. `visualFlowSpeed`/`noiseScale`은 `MaterialPropertyBlock`으로 인스턴스별 푸시.
 

@@ -200,8 +200,11 @@ namespace SlimeJumping.UI
         private Material GetLetterMaterial(TMP_Text text)
         {
             if (letterMaterial != null) return letterMaterial;
-            var shader = Shader.Find("SlimeJumping/UI/MenuGlyphJelly");
-            letterMaterial = new Material(shader);
+            // Shader.Find 는 빌드에 미포함 셰이더를 못 찾는다 — Resources 머티리얼이 셰이더를 빌드에 실어 나른다.
+            var source = Resources.Load<Material>("Mat_MenuGlyphJelly");
+            letterMaterial = source != null
+                ? new Material(source)
+                : new Material(Shader.Find("SlimeJumping/UI/MenuGlyphJelly"));
             letterMaterial.SetTexture("_MainTex", text.font.atlasTexture);
             letterMaterial.SetColor("_FaceColor", text.color);
             if (contours != null)

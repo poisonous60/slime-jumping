@@ -141,6 +141,8 @@ namespace SlimeJumping.Interaction
 
         private void StartFade(float targetAlpha, float duration)
         {
+            // Scene teardown fires OnTriggerExit2D after this object is already inactive.
+            if (!gameObject.activeInHierarchy) return;
             if (fadeRoutine != null) StopCoroutine(fadeRoutine);
             fadeRoutine = StartCoroutine(FadeRoutine(targetAlpha, duration));
         }

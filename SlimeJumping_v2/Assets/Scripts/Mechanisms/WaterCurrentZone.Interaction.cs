@@ -19,6 +19,10 @@ namespace SlimeJumping.Mechanisms
         [Tooltip("Per-step falloff for neighbor spread. 0.5 = each step halves the impulse weight.")]
         [Range(0f, 0.99f)] [SerializeField] float spreadFalloff = 0.5f;
 
+        [Header("Audio")]
+        [Tooltip("Played once when the slime enters the current. Empty = silent.")]
+        [SerializeField] SlimeJumping.Audio.SoundDef enterSound;
+
         /// <summary>
         /// Slime → ribbon impulse: project onto the centerline, split L/R by lateral offset, kick
         /// both channels. Open polyline — neighbors clamp at array bounds, no modulo wrap like v2.

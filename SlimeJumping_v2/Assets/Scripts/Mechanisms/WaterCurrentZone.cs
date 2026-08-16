@@ -152,6 +152,7 @@ namespace SlimeJumping.Mechanisms
                     overridePushed = true;
                 }
                 ApplySlimeImpulse(trackedSlime, Time.fixedDeltaTime, isEntry: true);
+                SlimeJumping.Audio.SoundService.Play(enterSound, s.Position);
             }
         }
 

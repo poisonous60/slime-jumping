@@ -492,7 +492,7 @@ MonoBehaviour:
   autoPlay:
     enabled: 1
     songs:
-    - enabled: 0
+    - enabled: 1
       label: ADarkBluePiano
       clip: {fileID: 8300000, guid: d3896a8fa6b71634eb1913c38d86cc26, type: 3}
       volume: 1
@@ -648,7 +648,7 @@ MonoBehaviour:
         glissMaxNotes: 5
         glissStepSeconds: 0.035
         glissVolume: 0.4
-    - enabled: 1
+    - enabled: 0
       label: APositiveMediumPianoFULL
       clip: {fileID: 8300000, guid: 066bfcdfd55bb2e45832059d1e85bcd1, type: 3}
       volume: 1
