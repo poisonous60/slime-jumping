@@ -172,7 +172,8 @@ namespace SlimeJumping.UI
                 {
                     int ci = vertInfluence[baseI + k];
                     if (ci < 0) continue;
-                    off += wave.OffsetAt(ci, maxOff) * vertWeight[baseI + k];
+                    off += (wave.OffsetAt(ci, maxOff) + wave.inwardNormal[ci] * expelPush[ci])
+                           * vertWeight[baseI + k];
                 }
                 off += BodyOffset(restVerts[v]);
                 if (off.sqrMagnitude > maxOff2) off *= maxOff / off.magnitude;

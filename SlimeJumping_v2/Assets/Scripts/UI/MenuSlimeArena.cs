@@ -29,7 +29,8 @@ namespace SlimeJumping.UI
         private MenuGlyphContours contours;
         private SlimeController slime;
         private Material letterMaterial;
-        private TMP_Text hiddenTitle;
+        private readonly System.Collections.Generic.List<TMP_Text> hiddenTitles =
+            new System.Collections.Generic.List<TMP_Text>();
 
         private IEnumerator Start()
         {
@@ -119,7 +120,25 @@ namespace SlimeJumping.UI
                 contours = null;
             }
 
+            // 프리플라이트 — 한 글자라도 젤리 불가면 타이틀 전체 강체 유지(TMP 계속 그림). 부분 젤리 = 빈 글자.
+            bool allJelly = contours != null;
+            if (allJelly)
+            {
+                for (int i = 0; i < info.characterCount; i++)
+                {
+                    var ch = info.characterInfo[i];
+                    if (!ch.isVisible) continue;
+                    if (ch.textElement.glyph.metrics.width <= 0f || contours.Find(ch.character) == null)
+                    {
+                        Debug.LogWarning($"MenuSlimeArena: '{ch.character}' 윤곽 없음 — 타이틀 전체 강체 폴백. 재베이크 필요.", this);
+                        allJelly = false;
+                        break;
+                    }
+                }
+            }
+
             bool anyJelly = false;
+            bool anyFallback = false;
             for (int i = 0; i < info.characterCount; i++)
             {
                 var ch = info.characterInfo[i];
@@ -138,8 +157,8 @@ namespace SlimeJumping.UI
                 Vector2 min = arenaCamera.ScreenToWorldPoint(minScreen);
                 Vector2 max = arenaCamera.ScreenToWorldPoint(maxScreen);
 
-                var entry = contours != null ? contours.Find(ch.character) : null;
-                if (entry == null || metrics.width <= 0f)
+                var entry = allJelly ? contours.Find(ch.character) : null;
+                if (entry == null)
                 {
                     CreateBox(bumperRoot, "Letter_" + ch.character, (min + max) * 0.5f, max - min);
                     continue;
@@ -165,14 +184,15 @@ namespace SlimeJumping.UI
                 if (jelly == null)
                 {
                     CreateBox(bumperRoot, "Letter_" + ch.character, (min + max) * 0.5f, max - min);
+                    anyFallback = true;
                     continue;
                 }
                 anyJelly = true;
             }
-            // alpha 0 은 TMP 글로우 패스에 안 먹어 잔상 띠가 남는다 — 컴포넌트를 꺼야 한다(레이아웃은 LayoutElement 몫).
-            if (anyJelly)
+            // alpha 0 은 글로우 패스에 안 먹어 잔상 띠 — 끄되, 폴백 글자가 있으면 켠 채(끄면 그 글자 소실).
+            if (anyJelly && !anyFallback)
             {
-                hiddenTitle = text;
+                hiddenTitles.Add(text);
                 text.enabled = false;
             }
         }
@@ -194,7 +214,8 @@ namespace SlimeJumping.UI
         private void OnDestroy()
         {
             if (letterMaterial != null) Destroy(letterMaterial);
-            if (hiddenTitle != null) hiddenTitle.enabled = true;
+            foreach (var title in hiddenTitles)
+                if (title != null) title.enabled = true;
         }
 
         /// 오버레이 캔버스의 월드 코너 = 스크린 픽셀 → ortho 역투영.

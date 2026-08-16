@@ -22,9 +22,11 @@ namespace SlimeJumping.UI
         protected float toLocal = 1f;
 
         SlimeController slime;
+        protected float[] expelPush;   // 클램프 이후 얹는 축출량 — maxDisplacement 에 잘리지 않는다.
         Vector2[][] pathScratch;
         Vector2 lastFootLocal;
         Vector2 lastPushLocal = Vector2.down;
+        float pressRadiusLocal;   // 0 = 라이더 없음
         float bodyComp;   // + = 위에서 아래로 눌린 양 (로컬 단위)
         float bodyVel;
         float bottomY;
@@ -52,6 +54,7 @@ namespace SlimeJumping.UI
                 if (p != null && p.Length >= 3) valid.Add(p);
             if (valid.Count == 0) return false;
             wave.Build(valid, cfg.waveResolution * toLocal);
+            expelPush = new float[wave.PointCount];
 
             float minY = float.MaxValue, maxY = float.MinValue, cx = 0f;
             foreach (var pt in wave.rest)
@@ -84,17 +87,21 @@ namespace SlimeJumping.UI
         {
             float h01 = Mathf.Clamp01((restPos.y - bottomY) / heightLocal);
             float compFrac = bodyComp / heightLocal;
-            return new Vector2(
+            var off = new Vector2(
                 (restPos.x - centerX) * (cfg.bulgeRatio * compFrac * 4f * h01 * (1f - h01)),
                 -bodyComp * h01);
+            // 접촉부 bulge 억제 — 오목부 양쪽 벽이 슬라임에서 도망가며 접점을 떨어뜨린다. 압축(y)은 유지.
+            if (pressRadiusLocal > 0f)
+                off.x *= 1f - MenuContourWave.Falloff(Vector2.Distance(restPos, lastFootLocal), pressRadiusLocal);
+            return off;
         }
 
-        /// 윤곽점 합성 변위 = 파동(법선) + 전신 압축, 합산 후 상한 클램프.
+        /// 윤곽점 합성 변위 = 파동(법선) + 전신 압축(클램프) + 축출(클램프 밖 — 항상 관철).
         protected Vector2 SurfaceOffsetAt(int idx, float maxOff)
         {
             Vector2 off = wave.OffsetAt(idx, maxOff) + BodyOffset(wave.rest[idx]);
             if (off.sqrMagnitude > maxOff * maxOff) off *= maxOff / off.magnitude;
-            return off;
+            return off + wave.inwardNormal[idx] * expelPush[idx];
         }
 
         void FixedUpdate()
@@ -110,11 +117,35 @@ namespace SlimeJumping.UI
             asleep = false;
 
             float dt = Time.fixedDeltaTime;
+            System.Array.Clear(expelPush, 0, expelPush.Length);
             StepWave(rider, dt);
             StepBody(rider, dt);
+            if (rider != null) ExpelFromSlime(rider);
             ApplyCollider();
             ApplyVisual(cfg.maxDisplacement * toLocal);
             TrySleep(rider);
+        }
+
+        // 침투 킥 차단 — 클램프된 실현 표면 기준으로 재야 축출이 클램프에 잘려 무효가 되지 않는다.
+        void ExpelFromSlime(SlimeController rider)
+        {
+            Vector2 c = transform.InverseTransformPoint(rider.Position);
+            float r = rider.SlimeRadius * 0.98f * toLocal;   // 2% 침투 유지 — 접촉 판정이 안 끊기게.
+            float r2 = r * r;
+            float maxOff = cfg.maxDisplacement * toLocal;
+            var rest = wave.rest;
+            var nrm = wave.inwardNormal;
+            for (int i = 0; i < rest.Length; i++)
+            {
+                Vector2 p = rest[i] + SurfaceOffsetAt(i, maxOff);   // expelPush 는 이 시점 0.
+                Vector2 dc = p - c;
+                float d2 = dc.sqrMagnitude;
+                if (d2 >= r2 || d2 < 1e-8f) continue;
+                float dist = Mathf.Sqrt(d2);
+                float push = (r - dist) * Vector2.Dot(dc / dist, nrm[i]);
+                expelPush[i] = push;
+                if (push > 0f && wave.vel[i] < 0f) wave.vel[i] = 0f;
+            }
         }
 
         SlimeController ContactRider()
@@ -168,10 +199,12 @@ namespace SlimeJumping.UI
         void StepWave(SlimeController rider, float dt)
         {
             float pressDepth = 0f, pressRadius = 0f;
+            pressRadiusLocal = 0f;
             if (rider != null)
             {
                 UpdateFoot(rider);
                 pressRadius = DentRadiusLocal(rider);
+                pressRadiusLocal = pressRadius;
                 Vector2 v = rider.Velocity;
                 float slide = (v - Vector2.Dot(v, rider.SurfaceNormal) * rider.SurfaceNormal).magnitude;
                 float roll = Mathf.Min(cfg.rollWavePerSpeed * slide, cfg.dentDepth);

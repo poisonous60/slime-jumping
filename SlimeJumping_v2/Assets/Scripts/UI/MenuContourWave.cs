@@ -15,6 +15,7 @@ namespace SlimeJumping.UI
         public Vector2[] inwardNormal;
         public float[] disp;
         public float[] vel;
+        float[] contactF;  // 이번 Step 의 접촉 falloff (0 = 자유 표면)
         int[] pathStart;   // pathCount+1 prefix offsets into the flat arrays
 
         public int PointCount => rest != null ? rest.Length : 0;
@@ -35,6 +36,7 @@ namespace SlimeJumping.UI
             inwardNormal = new Vector2[n];
             disp = new float[n];
             vel = new float[n];
+            contactF = new float[n];
             for (int p = 0; p < PathCount; p++)
             {
                 int s = pathStart[p], c = pathStart[p + 1] - s;
@@ -101,6 +103,10 @@ namespace SlimeJumping.UI
                 s *= f;
             }
 
+            bool pressing = pressRadius > 0f;
+            for (int i = 0; i < rest.Length; i++)
+                contactF[i] = pressing ? Falloff(Vector2.Distance(rest[i], foot), pressRadius) : 0f;
+
             for (int p = 0; p < PathCount; p++)
             {
                 int st = pathStart[p], c = pathStart[p + 1] - st;
@@ -110,16 +116,16 @@ namespace SlimeJumping.UI
                     float l = disp[st + (i - 1 + c) % c];
                     float r = disp[st + (i + 1) % c];
                     float accel = -s * (2f * disp[idx] - l - r) - k * disp[idx] - damping * vel[idx];
-                    if (pressDepth > 0f)
+                    float f = contactF[idx];
+                    if (f > 0f)
                     {
-                        float f = Falloff(Vector2.Distance(rest[idx], foot), pressRadius);
-                        if (f > 0f)
+                        if (pressDepth > 0f)
                         {
                             float align = Vector2.Dot(push, inwardNormal[idx]);
                             if (align > 0f) accel += pressDepth * k * f * align;   // 평형점 ≈ pressDepth.
-                            // 접촉부 추가 감쇠 — 발밑(측벽 포함)을 평형에 눌러 앉혀 슬라임과 싸우지 않게.
-                            accel -= contactDamping * f * vel[idx];
                         }
+                        // 접촉부 추가 감쇠 — 발밑(측벽 포함)을 평형에 눌러 앉혀 슬라임과 싸우지 않게.
+                        accel -= contactDamping * f * vel[idx];
                     }
                     vel[idx] += accel * dt;
                 }
@@ -127,16 +133,24 @@ namespace SlimeJumping.UI
             for (int i = 0; i < disp.Length; i++)
             {
                 vel[i] = Mathf.Clamp(vel[i], -maxVel, maxVel);
+                // 접촉부 후퇴 금지 — 표면이 슬라임에서 물러나는(바깥) 속도만 소거, 따라 눌리는 건 허용.
+                if (contactF[i] > 0f && vel[i] < 0f) vel[i] *= 1f - contactF[i];
                 disp[i] += vel[i] * dt;
             }
-            // path 별 제로평균 = 균일 수축 모드 제거 — 눌린 만큼 다른 곳이 부풀어 실루엣 면적 보존.
+            // 부피 보존: path 별 Σdisp=0. 재분배는 비접촉 표면에만 실어 슬라임 밑을 잡아빼지 않는다.
             for (int p = 0; p < PathCount; p++)
             {
                 int st = pathStart[p], c = pathStart[p + 1] - st;
-                float mean = 0f;
-                for (int i = 0; i < c; i++) mean += disp[st + i];
-                mean /= c;
-                for (int i = 0; i < c; i++) disp[st + i] -= mean;
+                float sum = 0f, freeW = 0f;
+                for (int i = 0; i < c; i++)
+                {
+                    sum += disp[st + i];
+                    freeW += 1f - contactF[st + i];
+                }
+                if (freeW < 0.5f) continue;   // path 전체가 발밑(구멍 링 등)이면 재분배 생략.
+                float shift = sum / freeW;
+                for (int i = 0; i < c; i++)
+                    disp[st + i] -= shift * (1f - contactF[st + i]);
             }
         }
 
@@ -210,7 +224,7 @@ namespace SlimeJumping.UI
         }
 
         // smoothstep — 중심 1, 반경 밖 0.
-        static float Falloff(float dist, float radius)
+        public static float Falloff(float dist, float radius)
         {
             if (radius <= 0f) return 0f;
             float t = 1f - Mathf.Clamp01(dist / radius);
