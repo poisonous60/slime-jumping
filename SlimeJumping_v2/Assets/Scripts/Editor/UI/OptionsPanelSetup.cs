@@ -153,6 +153,7 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("resumeButton").objectReferenceValue = resumeBtn;
             so.FindProperty("quitButton").objectReferenceValue = quitBtn;
             so.FindProperty("newGameButton").objectReferenceValue = newGameBtn;
+            so.FindProperty("boxGraphic").objectReferenceValue = boxImg;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             return UISetupCommon.SavePanelPrefab(root, "OptionsPanel");

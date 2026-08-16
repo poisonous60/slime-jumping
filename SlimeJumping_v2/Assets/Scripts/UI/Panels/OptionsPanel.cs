@@ -47,6 +47,9 @@ namespace SlimeJumping.UI.Panels
         [SerializeField] private Button quitButton;
         [SerializeField] private Button newGameButton;
 
+        [Header("Backdrop")]
+        [SerializeField] private Graphic boxGraphic;
+
         private int frameLimitIndex;
         private int windowModeIndex;
         private int backgroundCameraIndex;
@@ -103,14 +106,24 @@ namespace SlimeJumping.UI.Panels
             if (backgroundCameraPrevButton != null) backgroundCameraPrevButton.onClick.AddListener(() => CycleBackgroundCamera(-1));
             if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.AddListener(() => CycleBackgroundCamera(+1));
 
+            bool inMenuScene = SceneManager.GetActiveScene().name == GameFlow.MainMenuScene;
+
             if (resumeButton != null) resumeButton.onClick.AddListener(HandleResume);
             if (quitButton != null)
             {
                 // 메인 메뉴에서 연 옵션창엔 무의미한 같은 씬 재로드다.
-                quitButton.gameObject.SetActive(SceneManager.GetActiveScene().name != GameFlow.MainMenuScene);
+                quitButton.gameObject.SetActive(!inMenuScene);
                 quitButton.onClick.AddListener(GameFlow.LoadMainMenu);
             }
             if (newGameButton != null) newGameButton.onClick.AddListener(GameFlow.NewGame);
+
+            // 메뉴 씬은 판 뒤가 게임이 아니라 메뉴 버튼이라, 비치면 겹쳐 읽힌다.
+            if (inMenuScene && boxGraphic != null)
+            {
+                var c = boxGraphic.color;
+                c.a = 1f;
+                boxGraphic.color = c;
+            }
         }
 
         private void HandleResume()

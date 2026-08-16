@@ -38,7 +38,10 @@ namespace SlimeJumping.EditorTools.UI
 
             var title = UISetupCommon.CreateText(content.transform, "Title", "Slime Jumping", UISetupCommon.FontTitle,
                 TextAlignmentOptions.Center);
-            title.color = UISetupCommon.ColorTitle;
+            // 영상 배경 위라 공용 pale mint 는 떠 보인다 — 이 타이틀만 한 단계 어두운 민트.
+            title.color = new Color(0.45f, 0.72f, 0.58f, 1f);
+            var glowMat = LoadOrCreateTitleGlowMaterial(title);
+            if (glowMat != null) title.fontSharedMaterial = glowMat;
             title.fontStyle = TMPro.FontStyles.Bold;
             title.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
             title.overflowMode = TMPro.TextOverflowModes.Overflow;
@@ -72,6 +75,29 @@ namespace SlimeJumping.EditorTools.UI
             panelSO.ApplyModifiedPropertiesWithoutUndo();
 
             return UISetupCommon.SavePanelPrefab(root, "MainMenuPanel");
+        }
+
+        /// SDF Glow preset for the title — overlay canvases sit outside post-processing, so the
+        /// bloom look comes from the glyph shader itself. Existing asset = user tuning, untouched.
+        private static Material LoadOrCreateTitleGlowMaterial(TMPro.TextMeshProUGUI title)
+        {
+            const string path = UISetupCommon.SettingsRoot + "/TitleGlow.mat";
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (existing != null) return existing;
+            if (title.font == null) return null;
+
+            var mat = new Material(title.font.material);
+            // 폰트 기본은 Mobile 셰이더라 Glow 프로퍼티가 없다 — 풀 셰이더로 스왑(아틀라스 참조 유지).
+            var fullShader = Shader.Find("TextMeshPro/Distance Field");
+            if (fullShader != null) mat.shader = fullShader;
+            mat.EnableKeyword("GLOW_ON");
+            mat.SetColor("_GlowColor", new Color(0.45f, 0.9f, 0.65f, 0.85f));
+            mat.SetFloat("_GlowOuter", 0.35f);
+            mat.SetFloat("_GlowInner", 0.05f);
+            mat.SetFloat("_GlowPower", 0.75f);
+            AssetDatabase.CreateAsset(mat, path);
+            AssetDatabase.SaveAssets();
+            return mat;
         }
     }
 }
