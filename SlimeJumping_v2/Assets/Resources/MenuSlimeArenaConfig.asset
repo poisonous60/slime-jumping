@@ -13,7 +13,22 @@ MonoBehaviour:
   m_Name: MenuSlimeArenaConfig
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.UI.MenuSlimeArenaConfig
   wallThickness: 1
-  wobbleStiffness: 220
-  wobbleDamping: 12
-  impulseScale: 0.15
-  maxKick: 60
+  waveSpread: 400
+  waveSpring: 35
+  waveDamping: 3
+  waveResolution: 0.12
+  dentDepth: 0.15
+  dentDepthPerSpeed: 0.01
+  dentRadius: 2.5
+  restDentDepth: 0.08
+  rollWavePerSpeed: 0.02
+  popDepth: 0.07
+  maxDisplacement: 0.3
+  maxSurfaceSpeed: 3
+  restEpsilon: 0.002
+  skinGridStep: 0.05
+  visualInfluenceRadius: 0.35
+  mappingArcWindow: 10
+  letterZOffset: 0.5
+  buttonCornerRadius: 0.5
+  buttonStrips: 24

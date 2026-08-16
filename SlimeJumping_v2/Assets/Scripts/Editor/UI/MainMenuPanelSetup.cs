@@ -36,7 +36,8 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.AddVerticalLayout(content, padding: 24, spacing: 22, childAlign: TextAnchor.MiddleCenter);
             UISetupCommon.TagSlot(content, UISlotType.ContentRoot);
 
-            var title = UISetupCommon.CreateText(content.transform, "Title", "Slime Jumping", UISetupCommon.FontTitle,
+            // 공용 FontTitle(72)보다 확대 — 아레나 젤리 출렁임 가시성.
+            var title = UISetupCommon.CreateText(content.transform, "Title", "Slime Jumping", 132,
                 TextAlignmentOptions.Center);
             // 영상 배경 위라 공용 pale mint 는 떠 보인다 — 이 타이틀만 한 단계 어두운 민트.
             title.color = new Color(0.45f, 0.72f, 0.58f, 1f);
@@ -46,7 +47,7 @@ namespace SlimeJumping.EditorTools.UI
             title.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
             title.overflowMode = TMPro.TextOverflowModes.Overflow;
             UISetupCommon.TagSlot(title.gameObject, UISlotType.Title);
-            UISetupCommon.AddLayoutElement(title.gameObject, minHeight: 96f, preferredHeight: 110f);
+            UISetupCommon.AddLayoutElement(title.gameObject, minHeight: 180f, preferredHeight: 198f);
 
             var spacer = UISetupCommon.CreateChild(content.transform, "Spacer", typeof(RectTransform));
             UISetupCommon.AddLayoutElement(spacer, minHeight: 20f, preferredHeight: 24f);
