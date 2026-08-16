@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
+using SlimeJumping.Effects;
 using SlimeJumping.Settings;
 using SlimeJumping.UI.Animation;
 using SlimeJumping.UI.Framework;
@@ -11,6 +12,7 @@ namespace SlimeJumping.UI.Panels
 {
     /// Options UI. Every setting reads/writes through GameOptions; controls are
     /// direct [SerializeField] refs populated by the setup script.
+    /// In gameplay scenes it doubles as the pause menu, holding Time.timeScale at 0 while open.
     public class OptionsPanel : UIPanel
     {
         [Header("Frame Limit")]
@@ -54,6 +56,7 @@ namespace SlimeJumping.UI.Panels
         private int windowModeIndex;
         private int backgroundCameraIndex;
         private int vsyncIndex;
+        private bool pausesGame;
         private static readonly WindowMode[] WindowModes = { WindowMode.Windowed, WindowMode.Borderless, WindowMode.Fullscreen };
         private static readonly bool[] ToggleStates = { false, true };
 
@@ -107,6 +110,7 @@ namespace SlimeJumping.UI.Panels
             if (backgroundCameraNextButton != null) backgroundCameraNextButton.onClick.AddListener(() => CycleBackgroundCamera(+1));
 
             bool inMenuScene = SceneManager.GetActiveScene().name == GameFlow.MainMenuScene;
+            pausesGame = !inMenuScene;
 
             if (resumeButton != null) resumeButton.onClick.AddListener(HandleResume);
             if (quitButton != null)
@@ -126,6 +130,26 @@ namespace SlimeJumping.UI.Panels
             }
         }
 
+        protected override void OnAfterOpen()
+        {
+            if (!pausesGame) return;
+            // An in-flight hitstop would restore its own baseTimeScale mid-pause.
+            HitStopService.CancelFreeze();
+            Time.timeScale = 0f;
+        }
+
+        protected override void OnAfterClose()
+        {
+            if (pausesGame) Time.timeScale = 1f;
+        }
+
+        /// 패널이 열려 있는 동안만 도는 백스톱 — HitStopService 를 안 거치고 timeScale 을 되돌리는
+        /// 소유자(FallingTrainPlatform 자체 히트스톱 등)가 정지를 풀어버리는 걸 막는다.
+        private void Update()
+        {
+            if (pausesGame && IsOpen && Time.timeScale != 0f) Time.timeScale = 0f;
+        }
+
         private void HandleResume()
         {
             if (UIManager.Instance != null) UIManager.Instance.Close(this);
@@ -134,6 +158,8 @@ namespace SlimeJumping.UI.Panels
 
         protected override void OnDestroy()
         {
+            // Quit / New Game load a scene straight from the paused menu, so the panel dies while timeScale is 0.
+            if (pausesGame) Time.timeScale = 1f;
             // OnAfterAwake listeners are never cleared elsewhere; leaving them retains `this`.
             if (frameLimitPrevButton != null) frameLimitPrevButton.onClick.RemoveAllListeners();
             if (frameLimitNextButton != null) frameLimitNextButton.onClick.RemoveAllListeners();

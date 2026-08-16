@@ -36,7 +36,7 @@
 
 ## 인터랙션
 - **E 키** (Interact 액션, Gamepad: buttonWest): `IInteractable` 발동. 침대/TV/신사 등.
-- **ESC**: 옵션 패널 토글 (게임 진행은 계속).
+- **ESC**: 일시정지 (옵션 패널 토글 + `Time.timeScale = 0`). 메인메뉴 씬에서는 정지 없이 옵션창으로만 동작.
 
 ## 관련
 - [../slime/crawling.md](../slime/crawling.md), [../slime/hop.md](../slime/hop.md), [../slime/ground-dash.md](../slime/ground-dash.md)

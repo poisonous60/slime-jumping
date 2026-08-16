@@ -8,6 +8,7 @@ namespace SlimeJumping.UI.Animation
 {
     /// Hover squash+stretch+rotate + press punch. Neutralises the Selectable ColorBlock in
     /// Awake so Unity's color tint doesn't fight the tweens.
+    /// Unscaled clock throughout — buttons stay alive in the paused menu.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(RectTransform))]
     public class UIButtonJuice : MonoBehaviour,
@@ -63,7 +64,7 @@ namespace SlimeJumping.UI.Animation
         {
             if (profile == null) return;
             scaleTween.Stop();
-            scaleTween = Tween.Scale(rt, Vector3.one * profile.pressScale, profile.pressDuration, Ease.OutQuad);
+            scaleTween = Tween.Scale(rt, Vector3.one * profile.pressScale, profile.pressDuration, Ease.OutQuad, useUnscaledTime: true);
         }
 
         public void OnPointerUp(PointerEventData _)
@@ -94,7 +95,7 @@ namespace SlimeJumping.UI.Animation
                     // Slime landing: squash, then elastic settle back to (1,1).
                     float sx = Mathf.Lerp(1f, profile.hoverSquashX, power);
                     float sy = Mathf.Lerp(1f, profile.hoverSquashY, power);
-                    hoverSequence = Sequence.Create()
+                    hoverSequence = Sequence.Create(useUnscaledTime: true)
                         .Chain(Tween.Scale(rt, new Vector3(sx, sy, 1f),
                             profile.hoverSquashDuration, Ease.OutQuad))
                         .Chain(Tween.Scale(rt, Vector3.one,
@@ -106,7 +107,7 @@ namespace SlimeJumping.UI.Animation
                         Mathf.Lerp(1f, profile.hoverScaleX, power),
                         Mathf.Lerp(1f, profile.hoverScaleY, power),
                         1f);
-                    scaleTween = Tween.Scale(rt, target, profile.hoverDuration, profile.hoverEase);
+                    scaleTween = Tween.Scale(rt, target, profile.hoverDuration, profile.hoverEase, useUnscaledTime: true);
                 }
 
                 if (profile.hoverRotationMaxDeg > 0f)
@@ -114,7 +115,7 @@ namespace SlimeJumping.UI.Animation
                     float dir = Random.value < 0.5f ? -1f : 1f;
                     float amp = Random.Range(profile.hoverRotationMinDeg, profile.hoverRotationMaxDeg) * dir * power;
                     rotationTween = Tween.LocalRotation(rt, new Vector3(0f, 0f, amp),
-                        profile.hoverDuration, profile.hoverEase);
+                        profile.hoverDuration, profile.hoverEase, useUnscaledTime: true);
                 }
                 else
                 {
@@ -127,17 +128,17 @@ namespace SlimeJumping.UI.Animation
                 if (profile.hoverUseSlimeBoing)
                 {
                     // On exit, no boing — just smooth return.
-                    scaleTween = Tween.Scale(rt, Vector3.one, profile.hoverReturnDuration, profile.hoverReturnEase);
+                    scaleTween = Tween.Scale(rt, Vector3.one, profile.hoverReturnDuration, profile.hoverReturnEase, useUnscaledTime: true);
                 }
                 else
                 {
-                    scaleTween = Tween.Scale(rt, Vector3.one, profile.hoverReturnDuration, profile.hoverReturnEase);
+                    scaleTween = Tween.Scale(rt, Vector3.one, profile.hoverReturnDuration, profile.hoverReturnEase, useUnscaledTime: true);
                 }
 
                 if (profile.hoverRotationMaxDeg > 0f)
                 {
                     rotationTween = Tween.LocalRotation(rt, Vector3.zero,
-                        profile.hoverReturnDuration, profile.hoverReturnEase);
+                        profile.hoverReturnDuration, profile.hoverReturnEase, useUnscaledTime: true);
                 }
             }
         }

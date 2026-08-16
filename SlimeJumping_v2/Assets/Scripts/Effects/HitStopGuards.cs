@@ -5,7 +5,7 @@ using SlimeJumping.Controller;
 namespace SlimeJumping.Effects
 {
     /// Installs the two standard hitstop vetoes: slime charging (hitstop would warp an in-progress aim)
-    /// and options panel open (panel policy: never touch Time.timeScale). Unassigned field = that guard skipped.
+    /// and options panel open (it owns timeScale while paused). Unassigned field = that guard skipped.
     [DisallowMultipleComponent]
     public class HitStopGuards : MonoBehaviour
     {

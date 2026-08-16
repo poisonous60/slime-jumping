@@ -17,8 +17,10 @@ namespace SlimeJumping.EditorTools.UI
         private const float BoxWidth = 900f;
         private const float BoxHeight = 880f;
         private const float RowHeight = 56f;
-        private const float LabelWidth = 340f;
+        // 가장 긴 라벨("Background Camera") 실측 221.6 + 여유. 더 넓히면 라벨 컬럼 왼쪽이 빈 채 남아 행 전체가 오른쪽으로 쏠려 보인다.
+        private const float LabelWidth = 240f;
         private const float ControlWidth = 430f;
+        private const int RowSpacing = 24;
         private const float CycleButtonWidth = 60f;
 
         [MenuItem("Tools/SlimeJumping/UI/Build or Rebuild OptionsPanel Prefab")]
@@ -105,9 +107,10 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.AddLayoutElement(spacer, minHeight: 12f, preferredHeight: 16f);
 
             var actions = UISetupCommon.CreateChild(box.transform, "Actions", typeof(RectTransform));
-            // 레퍼런스 룩: 알약형 버튼을 양끝·중앙에 벌림, 좌우 padding 21 로 위 행들(794 컬럼)과 정렬.
+            // 레퍼런스 룩: 알약형 버튼을 양끝·중앙에 벌리되 좌우 padding 으로 위 행들의 컬럼 폭에 맞춘다.
             var actionsLayout = UISetupCommon.AddHorizontalLayout(actions, padding: 0, spacing: 0, childAlign: TextAnchor.MiddleCenter);
-            actionsLayout.padding = new RectOffset(21, 21, 0, 0);
+            int actionsPad = Mathf.RoundToInt((BoxWidth - 64f - (LabelWidth + RowSpacing + ControlWidth)) * 0.5f);
+            actionsLayout.padding = new RectOffset(actionsPad, actionsPad, 0, 0);
             UISetupCommon.AddLayoutElement(actions, minHeight: 56f, preferredHeight: 60f);
             var resumeBtn = CreateActionButton(actions.transform, "ResumeButton", "Resume", UISlotType.CloseButton);
             AddFlexibleSpacer(actions.transform);
@@ -179,7 +182,7 @@ namespace SlimeJumping.EditorTools.UI
         private static GameObject CreateRowShell(Transform parent, string name, string labelText, out GameObject controlArea)
         {
             var row = UISetupCommon.CreateChild(parent, name, typeof(RectTransform));
-            UISetupCommon.AddHorizontalLayout(row, padding: 0, spacing: 24, childAlign: TextAnchor.MiddleCenter);
+            UISetupCommon.AddHorizontalLayout(row, padding: 0, spacing: RowSpacing, childAlign: TextAnchor.MiddleCenter);
             UISetupCommon.AddLayoutElement(row, minHeight: RowHeight, preferredHeight: RowHeight);
 
             var label = UISetupCommon.CreateText(row.transform, "Label", labelText,

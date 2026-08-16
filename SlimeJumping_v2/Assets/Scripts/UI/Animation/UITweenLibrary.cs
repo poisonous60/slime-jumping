@@ -4,6 +4,7 @@ using UnityEngine;
 namespace SlimeJumping.UI.Animation
 {
     /// Reusable one-shot effects; the returned Sequence/Tween is chainable but safe to discard.
+    /// Roots run unscaled (a parent Sequence drives its children's clock) so they survive the paused menu.
     public static class UITweenLibrary
     {
         /// Pop a rect up to bumpScale + random-signed rotation, then settle.
@@ -20,7 +21,7 @@ namespace SlimeJumping.UI.Animation
             var down = Sequence.Create()
                 .Group(Tween.Scale(rt, Vector3.one, profile.bumpDuration * 0.55f, Ease.OutQuad))
                 .Group(Tween.LocalRotation(rt, Vector3.zero, profile.bumpDuration * 0.55f, Ease.OutQuad));
-            return Sequence.Create().Chain(up).Chain(down);
+            return Sequence.Create(useUnscaledTime: true).Chain(up).Chain(down);
         }
 
         /// Pure scale punch — no rotation.
@@ -28,7 +29,7 @@ namespace SlimeJumping.UI.Animation
         {
             if (rt == null) return default;
             rt.localScale = Vector3.one;
-            return Sequence.Create()
+            return Sequence.Create(useUnscaledTime: true)
                 .Chain(Tween.Scale(rt, Vector3.one * amplitude, duration * 0.4f, Ease.OutQuad))
                 .Chain(Tween.Scale(rt, Vector3.one, duration * 0.6f, Ease.OutBack));
         }
@@ -39,7 +40,7 @@ namespace SlimeJumping.UI.Animation
         {
             if (rt == null) return default;
             rt.anchoredPosition = originalAnchored + offset;
-            return Tween.UIAnchoredPosition(rt, originalAnchored, duration, ease, startDelay: delay);
+            return Tween.UIAnchoredPosition(rt, originalAnchored, duration, ease, startDelay: delay, useUnscaledTime: true);
         }
 
         /// Fade a CanvasGroup from 0 to 1 with optional delay.
@@ -47,7 +48,7 @@ namespace SlimeJumping.UI.Animation
         {
             if (cg == null) return default;
             cg.alpha = 0f;
-            return Tween.Alpha(cg, 0f, 1f, duration, startDelay: delay);
+            return Tween.Alpha(cg, 0f, 1f, duration, startDelay: delay, useUnscaledTime: true);
         }
     }
 }

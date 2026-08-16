@@ -6,6 +6,7 @@ using SlimeJumping.UI.Animation;
 namespace SlimeJumping.UI.Framework
 {
     /// Screen-space panel base: CanvasGroup fade + PrimeTween scale pop, raycast toggling, UIManager registration.
+    /// Open/close run on the unscaled clock — a panel that pauses the game would otherwise freeze its own fade-in and never turn interactable.
     [RequireComponent(typeof(CanvasGroup))]
     [RequireComponent(typeof(RectTransform))]
     public abstract class UIPanel : MonoBehaviour
@@ -171,7 +172,7 @@ namespace SlimeJumping.UI.Framework
             float dur = juiceProfile != null ? juiceProfile.panelOpenDuration : 0.22f;
             Ease ease = juiceProfile != null ? juiceProfile.panelOpenEase : Ease.OutBack;
 
-            var seq = Sequence.Create();
+            var seq = Sequence.Create(useUnscaledTime: true);
             seq.Group(Tween.Alpha(canvasGroup, 0f, 1f, dur));
             if (contentRect != null)
                 seq.Group(Tween.Scale(contentRect, Vector3.one, dur, ease));
@@ -191,7 +192,7 @@ namespace SlimeJumping.UI.Framework
             Ease ease = juiceProfile != null ? juiceProfile.panelCloseEase : Ease.InOutQuad;
             float scaleTo = juiceProfile != null ? juiceProfile.panelCloseScaleTo : 0.96f;
 
-            var seq = Sequence.Create();
+            var seq = Sequence.Create(useUnscaledTime: true);
             seq.Group(Tween.Alpha(canvasGroup, canvasGroup.alpha, 0f, dur));
             if (contentRect != null)
                 seq.Group(Tween.Scale(contentRect, Vector3.one * scaleTo, dur, ease));

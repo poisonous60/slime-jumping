@@ -67,20 +67,20 @@ namespace SlimeJumping.UI.Animation
                         // else the tween fights the layout group and never lands clean.
                         Vector2 originalPos = child.anchoredPosition;
                         child.anchoredPosition = originalPos + profile.staggerSlideOffset;
-                        seq = Sequence.Create()
+                        seq = Sequence.Create(useUnscaledTime: true)
                             .Group(Tween.Alpha(cg, 0f, 1f, profile.staggerChildDuration, startDelay: delay))
                             .Group(Tween.UIAnchoredPosition(child, originalPos, profile.staggerChildDuration,
                                 profile.staggerChildEase, startDelay: delay));
                         break;
                     case StaggerEffect.ScalePop:
                         child.localScale = Vector3.one * 0.7f;
-                        seq = Sequence.Create()
+                        seq = Sequence.Create(useUnscaledTime: true)
                             .Group(Tween.Alpha(cg, 0f, 1f, profile.staggerChildDuration, startDelay: delay))
                             .Group(Tween.Scale(child, Vector3.one, profile.staggerChildDuration,
                                 profile.staggerChildEase, startDelay: delay));
                         break;
                     default:
-                        seq = Sequence.Create()
+                        seq = Sequence.Create(useUnscaledTime: true)
                             .Group(Tween.Alpha(cg, 0f, 1f, profile.staggerChildDuration, startDelay: delay));
                         break;
                 }
@@ -124,20 +124,20 @@ namespace SlimeJumping.UI.Animation
                 {
                     case StaggerEffect.SlideUp:
                         rt.anchoredPosition = original + profile.staggerSlideOffset;
-                        seq = Sequence.Create()
+                        seq = Sequence.Create(useUnscaledTime: true)
                             .Group(Tween.Alpha(cg, 0f, 1f, profile.staggerChildDuration, startDelay: delay))
                             .Group(Tween.UIAnchoredPosition(rt, original, profile.staggerChildDuration,
                                 profile.staggerChildEase, startDelay: delay));
                         break;
                     case StaggerEffect.ScalePop:
                         rt.localScale = Vector3.one * 0.6f;
-                        seq = Sequence.Create()
+                        seq = Sequence.Create(useUnscaledTime: true)
                             .Group(Tween.Alpha(cg, 0f, 1f, profile.staggerChildDuration, startDelay: delay))
                             .Group(Tween.Scale(rt, Vector3.one, profile.staggerChildDuration,
                                 profile.staggerChildEase, startDelay: delay));
                         break;
                     default:
-                        seq = Sequence.Create()
+                        seq = Sequence.Create(useUnscaledTime: true)
                             .Group(Tween.Alpha(cg, 0f, 1f, profile.staggerChildDuration, startDelay: delay));
                         break;
                 }

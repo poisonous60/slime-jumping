@@ -14,7 +14,7 @@ Cinemachine 3.x `CinemachineImpulseSource` 래퍼. 카메라 셰이크.
 - **Guard 시스템**: `AddGuard(Func<bool>)` / `RemoveGuard`. 등록된 predicate 중 하나라도 true면 `Freeze` no-op.
   - `HitStopGuards` 컴포넌트: 씬 GO에 부착, `SlimeController` + options panel GO 드래그로 두 기본 guard 자동 설치 (`IsCharging` → 차징 중 히트스톱 금지, panel `activeSelf` → 메뉴 열린 중 금지).
   - 추가 veto가 필요하면 (컷씬, 스테이지 전환 등) `HitStopService.AddGuard(() => 조건)` 직접 호출 — 컴포넌트 없이 가능.
-- **정책 정합성**: 옵션 패널은 `Time.timeScale`을 건드리지 않는다는 기존 규칙(아래 "옵션 패널" 섹션)과 guard 시스템이 짝을 이룸. 차징 상태 guard는 slingshot aim 중 물리 왜곡을 방지.
+- **정책 정합성**: 옵션 패널이 열린 동안 `Time.timeScale`은 패널 소유(=0). guard 가 그 사이 freeze 를 막고, 패널은 여는 순간 `HitStopService.CancelFreeze()` 로 진행 중인 freeze 를 끊는다 — 안 끊으면 코루틴이 baseTimeScale 로 되돌려 일시정지가 풀린다. 차징 상태 guard는 slingshot aim 중 물리 왜곡을 방지.
 - **이벤트 훅 (2채널 분리)**:
   - `OnFreezeStarted` — `Freeze()` 호출 시 fires. *시간 동결*에 딸린 피드백 전용 (오디오 피치 덕, 럼블 등).
   - `OnImpactFrameStarted` — `PlayImpactFrame()` 호출 시 fires. *B&W 비주얼*에 딸린 피드백 전용 (`ImpactFrameVisual`이 이쪽에 구독).
@@ -120,7 +120,11 @@ c = lerp(SAMPLE(_GradientRamp, uv), SAMPLE(_GradientRampTop, uv),
 - 원본 `Assets/ThirdParty/Quibli/Shaders/*`는 절대 수정하지 않음.
 
 ## 옵션 패널 (2026-04-23, 데모용)
-ESC로 열고 닫되 `Time.timeScale`은 건드리지 않아 게임 진행 유지.
+ESC로 열고 닫는다. 게임플레이 씬에서는 일시정지 메뉴를 겸해 열린 동안 `Time.timeScale = 0` (2026-08-17). 메인메뉴 씬에서는 정지 없음. 제목은 두 씬 다 "Options".
+- 닫힐 때 / 파괴될 때(Quit·New Game 이 정지 상태에서 씬을 로드) `1f` 로 원복.
+- 정지 소유권 방어 2단: 열 때 `HitStopService.CancelFreeze()` + 열려 있는 동안만 도는 `Update` 백스톱. `FallingTrainPlatform.HitStopRoutine` 처럼 서비스를 안 거치고 `prev` 를 캡처했다가 realtime 대기 후 되돌리는 소유자가 있어서, 서비스 취소만으론 못 막는다.
+- UI 트윈은 전부 unscaled 클럭 (`UIPanel` open/close, `UIContainerStagger`, `UIButtonJuice`, `UITweenLibrary`) — 안 그러면 정지 중 버튼 호버가 죽고, `instantTransitions` 를 끄는 순간 패널 페이드인이 0 알파에서 멈춰 정지 메뉴가 투명 + 조작 불가로 박힌다. PrimeTween 은 부모 Sequence 가 자식 클럭을 지배하므로 루트에만 `useUnscaledTime: true`.
+- 라벨 컬럼 폭 = 240 (가장 긴 라벨 "Background Camera" 실측 221.6 + 여유). 340 이던 시절엔 컬럼 왼쪽 118 이 빈 채라 행 전체가 오른쪽으로 쏠려 보였다. Actions 행 좌우 padding 은 이 컬럼 폭에서 계산해 버튼 끝이 행 끝과 맞는다.
 
 **항목**:
 - Frame Limit (30/60/120/Unlimited — `<`/`>` 사이클러).

@@ -42,6 +42,14 @@ namespace SlimeJumping.Effects
                 active = null;
             }
 
+            public void Cancel()
+            {
+                if (active == null) return;
+                StopCoroutine(active);
+                active = null;
+                Time.timeScale = baseTimeScale;
+            }
+
             private void OnDisable()
             {
                 if (active != null) { Time.timeScale = baseTimeScale; active = null; }
@@ -72,6 +80,12 @@ namespace SlimeJumping.Effects
         public static void RemoveGuard(Func<bool> guard)
         {
             if (guard != null) guards.Remove(guard);
+        }
+
+        /// End any in-flight freeze now, restoring the base scale — callers about to own timeScale themselves.
+        public static void CancelFreeze()
+        {
+            if (runner != null) runner.Cancel();
         }
 
         /// Freeze timeScale for `duration` realtime seconds (typical 0.04-0.15s, frozenScale 0-0.05).
