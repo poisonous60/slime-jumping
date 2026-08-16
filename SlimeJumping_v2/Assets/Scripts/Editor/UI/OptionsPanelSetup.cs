@@ -15,7 +15,8 @@ namespace SlimeJumping.EditorTools.UI
         public const string PrefabPath = UISetupCommon.PanelPrefabRoot + "/OptionsPanel.prefab";
 
         private const float BoxWidth = 900f;
-        private const float BoxHeight = 880f;
+        // 행 하나당 66(RowHeight + spacing). 9행 → 11행이라 132 를 더해야 아래 여백이 유지된다.
+        private const float BoxHeight = 1012f;
         private const float RowHeight = 56f;
         // 가장 긴 라벨("Background Camera") 실측 221.6 + 여유. 더 넓히면 라벨 컬럼 왼쪽이 빈 채 남아 행 전체가 오른쪽으로 쏠려 보인다.
         private const float LabelWidth = 240f;
@@ -67,6 +68,10 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.AddLayoutElement(title.gameObject, minHeight: 88f, preferredHeight: 96f);
             UISetupCommon.TagSlot(title.gameObject, UISlotType.Title);
 
+            var playTimeRow = CreateReadoutRow(box.transform, "PlayTimeRow", "Play Time",
+                out TextMeshProUGUI playTimeValue);
+            UISetupCommon.TagSlot(playTimeRow, UISlotType.Row_PlayTime);
+
             var resolutionRow = CreateDropdownRow(box.transform, "ResolutionRow", "Resolution",
                 out TMP_Dropdown resolutionDropdown);
             UISetupCommon.TagSlot(resolutionRow, UISlotType.Row_Resolution);
@@ -102,6 +107,10 @@ namespace SlimeJumping.EditorTools.UI
             var uiRow = CreateSliderRow(box.transform, "UiRow", "UI",
                 out Slider uiSlider, out TextMeshProUGUI uiValue);
             UISetupCommon.TagSlot(uiRow, UISlotType.Row_Ui);
+
+            var gameSpeedRow = CreateSliderRow(box.transform, "GameSpeedRow", "Game Speed",
+                out Slider gameSpeedSlider, out TextMeshProUGUI gameSpeedValue);
+            UISetupCommon.TagSlot(gameSpeedRow, UISlotType.Row_GameSpeed);
 
             var spacer = UISetupCommon.CreateChild(box.transform, "Spacer", typeof(RectTransform));
             UISetupCommon.AddLayoutElement(spacer, minHeight: 12f, preferredHeight: 16f);
@@ -144,6 +153,10 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("bgmVolumeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(bgmValue);
             so.FindProperty("uiVolumeSlider").objectReferenceValue = uiSlider;
             so.FindProperty("uiVolumeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(uiValue);
+
+            so.FindProperty("gameSpeedSlider").objectReferenceValue = gameSpeedSlider;
+            so.FindProperty("gameSpeedValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(gameSpeedValue);
+            so.FindProperty("playTimeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(playTimeValue);
 
             so.FindProperty("windowModePrevButton").objectReferenceValue = windowModePrev;
             so.FindProperty("windowModeNextButton").objectReferenceValue = windowModeNext;
@@ -231,6 +244,21 @@ namespace SlimeJumping.EditorTools.UI
                 UISetupCommon.FontRowValue, TextAlignmentOptions.Right);
             valueLabel.color = UISetupCommon.ColorSection;
             UISetupCommon.AddLayoutElement(valueLabel.gameObject, preferredWidth: 90f, flexibleWidth: 0f);
+            UISetupCommon.TagSlot(valueLabel.gameObject, UISlotType.ValueLabel);
+
+            return row;
+        }
+
+        // 컨트롤 없이 값만 있는 행. 슬라이더 행의 값 컬럼과 폭이 달라 왼쪽 정렬로 붙인다.
+        private static GameObject CreateReadoutRow(Transform parent, string name, string labelText,
+            out TextMeshProUGUI valueLabel)
+        {
+            var row = CreateRowShell(parent, name, labelText, out GameObject control);
+
+            valueLabel = UISetupCommon.CreateText(control.transform, "Value", "--:--",
+                UISetupCommon.FontRowValue, TextAlignmentOptions.MidlineLeft);
+            valueLabel.color = UISetupCommon.ColorSection;
+            UISetupCommon.AddLayoutElement(valueLabel.gameObject, flexibleWidth: 1f);
             UISetupCommon.TagSlot(valueLabel.gameObject, UISlotType.ValueLabel);
 
             return row;

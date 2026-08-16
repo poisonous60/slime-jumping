@@ -20,6 +20,7 @@ namespace SlimeJumping.Settings
         private const string KeyVSyncOn               = "opt.vsyncEnabled";
         private const string KeyChargeVisualOn        = "opt.chargeVisualEnabled";
         private const string KeyMouseTeleportDebugOn  = "opt.mouseTeleportDebugEnabled";
+        private const string KeyGameSpeed             = "opt.gameSpeed";
 
         // Pre-split combined SFX slider; seeds both SFX volumes on first load.
         private const string KeyLegacySfxVolume       = "opt.sfxVolume";
@@ -34,6 +35,9 @@ namespace SlimeJumping.Settings
         public const bool       DefaultVSyncOn               = true;
         public const bool       DefaultChargeVisualOn        = false;
         public const bool       DefaultMouseTeleportDebugOn  = true;
+        public const float      DefaultGameSpeed             = 1f;
+        public const float      MinGameSpeed                 = 0.5f;
+        public const float      MaxGameSpeed                 = 2f;
 
         // -1 = Unlimited (Application.targetFrameRate = -1)
         public static readonly int[] FrameLimitOptions = { 30, 60, 120, -1 };
@@ -59,6 +63,7 @@ namespace SlimeJumping.Settings
         public static bool       VSyncEnabled            { get; private set; } = DefaultVSyncOn;
         public static bool       ChargeVisualEnabled     { get; private set; } = DefaultChargeVisualOn;
         public static bool       MouseTeleportDebugEnabled { get; private set; } = DefaultMouseTeleportDebugOn;
+        public static float      GameSpeed               { get; private set; } = DefaultGameSpeed;
 
         public static Vector2Int Resolution => ResolutionOptions[ResolutionIndex];
 
@@ -95,6 +100,9 @@ namespace SlimeJumping.Settings
             VSyncEnabled            = PlayerPrefs.GetInt(KeyVSyncOn, DefaultVSyncOn ? 1 : 0) != 0;
             ChargeVisualEnabled     = PlayerPrefs.GetInt(KeyChargeVisualOn, DefaultChargeVisualOn ? 1 : 0) != 0;
             MouseTeleportDebugEnabled = PlayerPrefs.GetInt(KeyMouseTeleportDebugOn, DefaultMouseTeleportDebugOn ? 1 : 0) != 0;
+            // Clamp01 아니다 — 여기 다른 float 들과 달리 상한이 1 을 넘는다.
+            GameSpeed              = Mathf.Clamp(PlayerPrefs.GetFloat(KeyGameSpeed, DefaultGameSpeed),
+                                                 MinGameSpeed, MaxGameSpeed);
             ApplyDisplayPacing();
             ApplyDisplay(ResolutionOptions[ResolutionIndex], WindowMode);
 
@@ -161,6 +169,15 @@ namespace SlimeJumping.Settings
             PlayerPrefs.SetFloat(KeyUiVolume, UiVolume);
             PlayerPrefs.Save();
             ApplyUiVolume(UiVolume);
+        }
+
+        /// 저장만 한다 — 적용은 OptionsPanel 이 정지를 푸는 시점. 창이 열려 있는 동안은
+        /// 그 백스톱이 매 프레임 timeScale 을 0 으로 되돌려서 즉시 적용이 의미가 없다.
+        public static void SetGameSpeed(float speed)
+        {
+            GameSpeed = Mathf.Clamp(speed, MinGameSpeed, MaxGameSpeed);
+            PlayerPrefs.SetFloat(KeyGameSpeed, GameSpeed);
+            PlayerPrefs.Save();
         }
 
         public static void SetWindowMode(WindowMode mode)

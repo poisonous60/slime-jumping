@@ -55,11 +55,12 @@ namespace SlimeJumping.Effects
 
         private static Runner runner;
 
-        public static void Freeze(float realtimeSeconds)
+        /// `seconds` is game time — the frozen window covers the same world distance at any game speed.
+        public static void Freeze(float seconds)
         {
-            if (realtimeSeconds <= 0f) return;
+            if (seconds <= 0f) return;
             EnsureRunner();
-            runner.Request(realtimeSeconds);
+            runner.Request(seconds / Mathf.Max(0.01f, HitStopService.BaseTimeScale));
         }
 
         private static void SetFrozen(bool frozen)

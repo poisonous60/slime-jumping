@@ -45,12 +45,22 @@ namespace SlimeJumping.UI
             }
             if (slime.HasOverride) yield break;
 
+            // 기록은 조작권을 넘겨받는 순간부터다 — 깨어나는 연출은 빼고 센다.
+            RunClock.IntroHold = true;
+
             // Interact() bypasses CanInteract; at scene start the slime isn't inside the trigger yet.
             Vector2 before = slime.Position;
             startInteraction.Interact(slime);
             // 카메라도 즉시 워프 — 없으면 씬 저장 위치에서 시작 지점까지 댐핑 팬이 도중 존들을 지난다.
             CinemachineCore.OnTargetObjectWarped(slime.transform, (Vector3)(slime.Position - before));
+
+            // 이 루프만 인트로 오버라이드를 본다 — 나중에 해저드가 잡는 오버라이드는 시계를 못 건드린다.
+            while (slime != null && slime.HasOverride) yield return null;
+            RunClock.IntroHold = false;
         }
+
+        // 연출 도중 꺼지면 hold 가 남아 시계가 영영 안 돈다.
+        private void OnDisable() => RunClock.IntroHold = false;
 
         private bool ShouldTrigger()
         {

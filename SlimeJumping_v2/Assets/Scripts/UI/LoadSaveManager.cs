@@ -7,7 +7,8 @@ using SlimeJumping.Controller;
 namespace SlimeJumping.UI
 {
     /// <summary>
-    /// MainScene 세이브 주체. 저장 대상은 슬라임 월드 위치 하나뿐이고, 씬의 나머지는 로드 시 초기 상태로 온다.
+    /// MainScene 세이브 주체. 저장 대상은 슬라임 월드 위치와 RunClock 경과뿐이고, 씬의 나머지는 로드 시 초기 상태로 온다.
+    /// RunClock 을 실시간으로 돌리는 것도 여기다 — MainScene 에만 있는 단일 인스턴스라 중복 틱이 없다.
     /// Trail 은 TrailPersistence 오토세이브가 이미 실행 간 유지하므로 여기서 다시 직렬화하지 않는다.
     /// 저장 시점은 두 곳: 앱 종료, GameFlow.LoadMainMenu. 엔딩 진입은 저장 대신 삭제한다.
     /// OnDestroy 는 쓰지 않는다 — 씬 언로드 파괴 순서가 미정이라 그 시점의 씬 상태를 믿을 수 없다.
@@ -19,6 +20,7 @@ namespace SlimeJumping.UI
         {
             public float posX;
             public float posY;
+            public float elapsed;
         }
 
         [Tooltip("비워두면 런타임에 씬에서 찾는다.")]
@@ -66,8 +68,12 @@ namespace SlimeJumping.UI
 
         private void OnApplicationQuit() => WriteSave();
 
+        private void Update() => RunClock.Tick(Time.unscaledDeltaTime);
+
         private void Start()
         {
+            // 씬 로드는 statics 를 안 지운다 — 되돌리지 않으면 지난 판 기록이 이어진다.
+            RunClock.Restart(0f);
             if (!GameFlow.ConsumePendingLoad()) return;
             if (!ResolveSlime()) return;
             if (!File.Exists(SavePath)) return;
@@ -84,6 +90,7 @@ namespace SlimeJumping.UI
             }
             if (data == null) return;
 
+            RunClock.Restart(data.elapsed);
             Vector2 before = slime.Position;
             slime.TeleportTo(new Vector2(data.posX, data.posY), Vector2.zero);
             // 카메라도 즉시 워프 — 없으면 씬 저장 위치에서 복원 지점까지 댐핑 팬이 도중 존들을 지난다.
@@ -96,7 +103,8 @@ namespace SlimeJumping.UI
             Vector2 pos = slime.Position;
             try
             {
-                File.WriteAllText(SavePath, JsonUtility.ToJson(new SaveData { posX = pos.x, posY = pos.y }));
+                File.WriteAllText(SavePath, JsonUtility.ToJson(
+                    new SaveData { posX = pos.x, posY = pos.y, elapsed = RunClock.Elapsed }));
             }
             catch (Exception e)
             {

@@ -282,7 +282,7 @@ public class SlimeVisual : MonoBehaviour
             }
             else
             {
-                float sdt = Mathf.Min(Time.deltaTime, 0.05f);
+                float sdt = Mathf.Min(Time.deltaTime, 0.05f * Time.timeScale);
                 bodyScaleSpringVel += (-splitSettings.bodyScaleSpringK * (displayedBodyScale - physScale)
                                        - splitSettings.bodyScaleSpringDamping * bodyScaleSpringVel) * sdt;
                 displayedBodyScale += bodyScaleSpringVel * sdt;

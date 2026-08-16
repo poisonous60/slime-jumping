@@ -221,7 +221,7 @@ namespace SlimeJumping.Effects
             if (recutTimer > 0f) recutTimer -= Time.deltaTime;
             if (!IsActive || slime == null) return;
             float dt = Time.deltaTime;
-            float sdt = Mathf.Min(dt, 0.05f);   // editor-hitch guard for the springs
+            float sdt = Mathf.Min(dt, 0.05f * Time.timeScale);   // editor-hitch guard for the springs
 
             quiverEnv *= Mathf.Exp(-settings.quiverDecay * dt);
             quiverPhase += dt * settings.quiverFreq * 2f * Mathf.PI;

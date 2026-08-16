@@ -110,9 +110,9 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] private float debrisSpawnJitter = 0.3f;
 
         [Header("Hit-Stop (impact freeze)")]
-        [Tooltip("Real-time duration of the global timeScale dip on impact. 80–120ms is the standard punch range.")]
+        [Tooltip("Game-seconds duration of the global timeScale dip on impact. 80–120ms is the standard punch range.")]
         [SerializeField] private float hitStopDuration = 0.08f;
-        [Tooltip("Time.timeScale during hit-stop. ~0.05 = near-freeze.")]
+        [Tooltip("Ratio of the base game speed during hit-stop. ~0.05 = near-freeze.")]
         [Range(0.01f, 1f)][SerializeField] private float hitStopTimeScale = 0.05f;
         [Tooltip("Velocity remaining after hit-stop release (0–1). Higher = visible bounce/slide after impact. Tremble from this is killed by the rest-snap below.")]
         [Range(0f, 1f)][SerializeField] private float postHitStopVelocityRetention = 0.4f;
@@ -531,8 +531,8 @@ namespace SlimeJumping.Mechanisms
         private IEnumerator HitStopRoutine()
         {
             float prev = Time.timeScale;
-            Time.timeScale = hitStopTimeScale;
-            yield return new WaitForSecondsRealtime(hitStopDuration);
+            Time.timeScale = prev * hitStopTimeScale;
+            yield return new WaitForSecondsRealtime(hitStopDuration / Mathf.Max(0.01f, prev));
             Time.timeScale = prev;
             if (state == TrainState.HitStop) EnterSettling();
         }

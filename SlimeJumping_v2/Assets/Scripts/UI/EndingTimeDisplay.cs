@@ -4,10 +4,9 @@ using SlimeJumping.Controller;
 
 namespace SlimeJumping.UI
 {
-    /// 플레이 타임을 굳혀 라벨에 쓴다. 재는 구간은 시작 연출에서 깨어난 순간부터
-    /// 슬라임이 captureZone 안에 처음 들어온 순간까지 — 잠들어 있는 동안은 안 센다.
-    /// 깨어남은 시작 오버라이드(BoxSleep 등)가 풀리는 시점으로 잡고, 오버라이드를 한 번도
-    /// 못 봤으면 씬 로드 시점부터 잰다(에디터에서 MainScene 을 바로 재생한 경우).
+    /// 슬라임이 captureZone 에 처음 들어온 순간 RunClock 을 굳혀 라벨에 쓴다. 재는 구간과
+    /// 시계는 전부 RunClock 소관이라 신전 비석과 EndScene 크레딧 방이 같은 숫자를 보여준다
+    /// (뒤에 오는 쪽은 이미 굳은 값을 되받는다).
     /// 확정 전에는 라벨을 아예 끈다 — 숫자가 바뀌는 과정이 보이면 안 되니 도착 판정 존은
     /// 라벨이 화면에 들어오기 전 위치에 둬야 한다.
     /// 존은 폴링으로만 읽는다(OnTrigger 미사용). 레이어도 Environment 밖에 둬서
@@ -22,13 +21,9 @@ namespace SlimeJumping.UI
         [SerializeField] private int previewSeconds = -1;
 
         private const float SlimeSearchInterval = 1f;
-        private const int OverflowSeconds = 100 * 3600;
 
         private SlimeController slime;
         private float nextSlimeSearch;
-        private bool sawStartOverride;
-        private float startTime;
-        private bool startLocked;
 
         void Awake()
         {
@@ -51,23 +46,13 @@ namespace SlimeJumping.UI
                 if (slime == null) return;
             }
 
-            if (!startLocked)
-            {
-                if (slime.HasOverride) sawStartOverride = true;
-                else if (sawStartOverride)
-                {
-                    startTime = Time.timeSinceLevelLoad;
-                    startLocked = true;
-                }
-            }
-
             if (!captureZone.OverlapPoint(slime.Position)) return;
-            Capture(Mathf.FloorToInt(Time.timeSinceLevelLoad - startTime));
+            Capture(RunClock.Capture());
         }
 
         private void Capture(int seconds)
         {
-            label.text = prefix + Format(seconds);
+            label.text = prefix + RunClock.Format(seconds);
             label.enabled = true;
             enabled = false;
         }
@@ -77,15 +62,7 @@ namespace SlimeJumping.UI
         private void CaptureNow()
         {
             if (label == null) return;
-            Capture(previewSeconds >= 0 ? previewSeconds : Mathf.FloorToInt(Time.timeSinceLevelLoad - startTime));
-        }
-
-        static string Format(int seconds)
-        {
-            if (seconds >= OverflowSeconds) return "99:99:99";
-            return seconds >= 3600
-                ? $"{seconds / 3600}:{seconds / 60 % 60:00}:{seconds % 60:00}"
-                : $"{seconds / 60:00}:{seconds % 60:00}";
+            Capture(previewSeconds >= 0 ? previewSeconds : RunClock.Capture());
         }
     }
 }

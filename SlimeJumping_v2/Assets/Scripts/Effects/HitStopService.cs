@@ -6,7 +6,9 @@ using UnityEngine;
 namespace SlimeJumping.Effects
 {
     /// Global hitstop. Overlapping Freeze calls extend to the latest end and keep the stronger
-    /// scale — never stack, never cut short. timeScale is restored on quit / play-mode exit.
+    /// ratio — never stack, never cut short. timeScale is restored on quit / play-mode exit.
+    /// Durations are game seconds and frozenScale is a ratio of the base speed, so a freeze
+    /// covers the same world distance at any game-speed setting.
     public static class HitStopService
     {
         private class Runner : MonoBehaviour
@@ -14,23 +16,32 @@ namespace SlimeJumping.Effects
             private Coroutine active;
             private float endRealtime;
             private float baseTimeScale = 1f;
+            private float activeRatio = 1f;
 
-            public void Request(float duration, float frozenScale)
+            public bool IsActive => active != null;
+            public float BaseTimeScale => baseTimeScale;
+
+            public void Request(float realtimeSeconds, float frozenRatio)
             {
-                float newEnd = Time.realtimeSinceStartup + duration;
+                float newEnd = Time.realtimeSinceStartup + realtimeSeconds;
 
                 if (active == null)
                 {
                     baseTimeScale = Time.timeScale;
-                    Time.timeScale = frozenScale;
+                    activeRatio = frozenRatio;
+                    Time.timeScale = baseTimeScale * frozenRatio;
                     endRealtime = newEnd;
                     active = StartCoroutine(Run());
                 }
                 else
                 {
                     if (newEnd > endRealtime) endRealtime = newEnd;
-                    // Stronger freeze (lower scale) wins for the remaining duration.
-                    if (frozenScale < Time.timeScale) Time.timeScale = frozenScale;
+                    // Stronger freeze (lower ratio) wins for the remaining duration.
+                    if (frozenRatio < activeRatio)
+                    {
+                        activeRatio = frozenRatio;
+                        Time.timeScale = baseTimeScale * frozenRatio;
+                    }
                 }
             }
 
@@ -82,20 +93,28 @@ namespace SlimeJumping.Effects
             if (guard != null) guards.Remove(guard);
         }
 
+        /// Unfrozen scale the world runs at — the game-speed setting, not a transient dip.
+        public static float BaseTimeScale =>
+            runner != null && runner.IsActive ? runner.BaseTimeScale : Time.timeScale;
+
+        // Events and the runner deadline are realtime; game seconds shrink by the game speed.
+        private static float ToRealtime(float duration) => duration / Mathf.Max(0.01f, BaseTimeScale);
+
         /// End any in-flight freeze now, restoring the base scale — callers about to own timeScale themselves.
         public static void CancelFreeze()
         {
             if (runner != null) runner.Cancel();
         }
 
-        /// Freeze timeScale for `duration` realtime seconds (typical 0.04-0.15s, frozenScale 0-0.05).
+        /// Freeze for `duration` game seconds (typical 0.04-0.15s); frozenScale is a ratio of the base speed.
         public static void Freeze(float duration, float frozenScale = 0f)
         {
             if (duration <= 0f) return;
             if (IsBlocked()) return;
-            RaiseFreezeStarted(duration);
+            float real = ToRealtime(duration);
+            RaiseFreezeStarted(real);
             EnsureRunner();
-            runner.Request(duration, Mathf.Max(0f, frozenScale));
+            runner.Request(real, Mathf.Max(0f, frozenScale));
         }
 
         /// Freeze plus camera impulse; the guard skips both together so shake and freeze stay in sync.
@@ -104,9 +123,10 @@ namespace SlimeJumping.Effects
             if (IsBlocked()) return;
             if (shakeEmitter != null && shakeForce > 0f) shakeEmitter.Emit(shakeForce);
             if (duration <= 0f) return;
-            RaiseFreezeStarted(duration);
+            float real = ToRealtime(duration);
+            RaiseFreezeStarted(real);
             EnsureRunner();
-            runner.Request(duration, Mathf.Max(0f, frozenScale));
+            runner.Request(real, Mathf.Max(0f, frozenScale));
         }
 
         /// B&amp;W impact-frame visual only, no timeScale change; same guards as Freeze.
@@ -114,7 +134,7 @@ namespace SlimeJumping.Effects
         {
             if (duration <= 0f) return;
             if (IsBlocked()) return;
-            RaiseImpactFrameStarted(duration);
+            RaiseImpactFrameStarted(ToRealtime(duration));
         }
 
         /// Hitstop + impact frame at the same duration; the guard blocks both atomically.
@@ -122,10 +142,11 @@ namespace SlimeJumping.Effects
         {
             if (duration <= 0f) return;
             if (IsBlocked()) return;
-            RaiseFreezeStarted(duration);
-            RaiseImpactFrameStarted(duration);
+            float real = ToRealtime(duration);
+            RaiseFreezeStarted(real);
+            RaiseImpactFrameStarted(real);
             EnsureRunner();
-            runner.Request(duration, Mathf.Max(0f, frozenScale));
+            runner.Request(real, Mathf.Max(0f, frozenScale));
         }
 
         private static void RaiseFreezeStarted(float duration) => Raise(OnFreezeStarted, duration);
@@ -144,6 +165,8 @@ namespace SlimeJumping.Effects
 
         private static bool IsBlocked()
         {
+            // base 로 봐야 한다 — Time.timeScale 은 풀 프리즈 중에도 0 이라 중첩 연장까지 막는다.
+            if (BaseTimeScale <= 0f) return true;
             for (int i = 0; i < guards.Count; i++)
             {
                 var g = guards[i];

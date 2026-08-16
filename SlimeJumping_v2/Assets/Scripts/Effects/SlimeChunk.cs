@@ -269,7 +269,7 @@ namespace SlimeJumping.Effects
         {
             if (faceDone || meshRenderer == null) return;
 
-            float sdt = Mathf.Min(dt, 0.05f);
+            float sdt = Mathf.Min(dt, 0.05f * Time.timeScale);
             float target = Mathf.Clamp01(roundUpProgress);
             faceWVel += (s.meniscusSpringK * (target - faceW)
                          - s.meniscusSpringDamping * faceWVel) * sdt;

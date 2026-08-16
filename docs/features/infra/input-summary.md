@@ -37,6 +37,8 @@
 ## 인터랙션
 - **E 키** (Interact 액션, Gamepad: buttonWest): `IInteractable` 발동. 침대/TV/신사 등.
 - **ESC**: 일시정지 (옵션 패널 토글 + `Time.timeScale = 0`). 메인메뉴 씬에서는 정지 없이 옵션창으로만 동작.
+  재개는 1.0 이 아니라 `GameOptions.GameSpeed` 로 되돌린다. 열려 있는 동안은 `OptionsPanel.Update` 백스톱이
+  매 프레임 0 으로 다시 눌러서, 배속 슬라이더를 끌어도 창 안에서는 미리보기가 안 된다.
 
 ## 관련
 - [../slime/crawling.md](../slime/crawling.md), [../slime/hop.md](../slime/hop.md), [../slime/ground-dash.md](../slime/ground-dash.md)

@@ -51,7 +51,7 @@ namespace SlimeJumping.Mechanisms
 
         private SlimeController drivenSlime;
         private Vector2 driveVelocity;
-        private float driveEndRealtime;
+        private float driveEndTime;
 
         private void Reset()
         {
@@ -119,7 +119,8 @@ namespace SlimeJumping.Mechanisms
             if (passThroughDuration > 0f)
             {
                 driveVelocity = v;
-                driveEndRealtime = Time.realtimeSinceStartup + passThroughDuration;
+                // Scaled clock — a realtime window would scale travel distance with game speed.
+                driveEndTime = Time.time + passThroughDuration;
                 drivenSlime = slime;
                 slime.SetOverride(this);
             }
@@ -140,7 +141,7 @@ namespace SlimeJumping.Mechanisms
 
         public void ExternalUpdate(SlimeController slime)
         {
-            if (Time.realtimeSinceStartup >= driveEndRealtime)
+            if (Time.time >= driveEndTime)
             {
                 ReleaseDrive();
             }
@@ -183,7 +184,7 @@ namespace SlimeJumping.Mechanisms
             float t = 0f;
             while (t < totalTime)
             {
-                t += Time.unscaledDeltaTime;
+                t += Time.deltaTime;
                 if (visualToShrink != null && shrinkDuration > 0f)
                 {
                     float k = shrinkCurve.Evaluate(Mathf.Clamp01(t / shrinkDuration));

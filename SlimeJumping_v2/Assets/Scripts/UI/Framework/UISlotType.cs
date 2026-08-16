@@ -43,6 +43,8 @@ namespace SlimeJumping.UI.Framework
         Row_Resolution = 106,
         Row_BackgroundCamera = 107,
         Row_VSync = 108,
+        Row_GameSpeed = 109,
+        Row_PlayTime = 110,
 
         // GramophonePanel anchors
         ScrollViewport = 200,

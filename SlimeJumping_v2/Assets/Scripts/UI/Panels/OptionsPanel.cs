@@ -35,6 +35,11 @@ namespace SlimeJumping.UI.Panels
         [SerializeField] private Slider uiVolumeSlider;
         [SerializeField] private BumpableLabel uiVolumeValueLabel;
 
+        [Header("Gameplay")]
+        [SerializeField] private Slider gameSpeedSlider;
+        [SerializeField] private BumpableLabel gameSpeedValueLabel;
+        [SerializeField] private BumpableLabel playTimeValueLabel;
+
         [Header("Display")]
         [SerializeField] private Button windowModePrevButton;
         [SerializeField] private Button windowModeNextButton;
@@ -84,6 +89,10 @@ namespace SlimeJumping.UI.Panels
             BindSlider(uiVolumeSlider, GameOptions.UiVolume, OnUiVolumeChanged);
             UpdatePercentLabel(uiVolumeValueLabel, GameOptions.UiVolume);
 
+            BindSlider(gameSpeedSlider, GameOptions.GameSpeed, OnGameSpeedChanged,
+                       GameOptions.MinGameSpeed, GameOptions.MaxGameSpeed);
+            UpdatePercentLabel(gameSpeedValueLabel, GameOptions.GameSpeed);
+
             windowModeIndex = IndexOfWindowMode(GameOptions.WindowMode);
             UpdateWindowModeLabel();
             if (windowModePrevButton != null) windowModePrevButton.onClick.AddListener(() => CycleWindowMode(-1));
@@ -112,6 +121,9 @@ namespace SlimeJumping.UI.Panels
             bool inMenuScene = SceneManager.GetActiveScene().name == GameFlow.MainMenuScene;
             pausesGame = !inMenuScene;
 
+            // 씬 로드는 timeScale 을 안 되돌리고 GameOptions 부트 훅은 Play 세션당 1회다.
+            if (pausesGame) Time.timeScale = GameOptions.GameSpeed;
+
             if (resumeButton != null) resumeButton.onClick.AddListener(HandleResume);
             if (quitButton != null)
             {
@@ -136,11 +148,16 @@ namespace SlimeJumping.UI.Panels
             // An in-flight hitstop would restore its own baseTimeScale mid-pause.
             HitStopService.CancelFreeze();
             Time.timeScale = 0f;
+            // 히트스톱도 timeScale 을 0 으로 두므로 시계는 timeScale 이 아니라 이 플래그로 세운다.
+            RunClock.Paused = true;
+            UpdatePlayTimeLabel();
         }
 
         protected override void OnAfterClose()
         {
-            if (pausesGame) Time.timeScale = 1f;
+            if (!pausesGame) return;
+            Time.timeScale = GameOptions.GameSpeed;
+            RunClock.Paused = false;
         }
 
         /// 패널이 열려 있는 동안만 도는 백스톱 — HitStopService 를 안 거치고 timeScale 을 되돌리는
@@ -158,8 +175,8 @@ namespace SlimeJumping.UI.Panels
 
         protected override void OnDestroy()
         {
-            // Quit / New Game load a scene straight from the paused menu, so the panel dies while timeScale is 0.
-            if (pausesGame) Time.timeScale = 1f;
+            // 정지 상태에서 씬이 갈리며 죽는 경로다. GameSpeed 가 아니라 1f — 메뉴 씬은 pausesGame=false 라 아무도 못 되돌린다.
+            if (pausesGame) { Time.timeScale = 1f; RunClock.Paused = false; }
             // OnAfterAwake listeners are never cleared elsewhere; leaving them retains `this`.
             if (frameLimitPrevButton != null) frameLimitPrevButton.onClick.RemoveAllListeners();
             if (frameLimitNextButton != null) frameLimitNextButton.onClick.RemoveAllListeners();
@@ -169,6 +186,7 @@ namespace SlimeJumping.UI.Panels
             if (worldSfxVolumeSlider != null) worldSfxVolumeSlider.onValueChanged.RemoveAllListeners();
             if (bgmVolumeSlider != null) bgmVolumeSlider.onValueChanged.RemoveAllListeners();
             if (uiVolumeSlider != null) uiVolumeSlider.onValueChanged.RemoveAllListeners();
+            if (gameSpeedSlider != null) gameSpeedSlider.onValueChanged.RemoveAllListeners();
             if (windowModePrevButton != null) windowModePrevButton.onClick.RemoveAllListeners();
             if (windowModeNextButton != null) windowModeNextButton.onClick.RemoveAllListeners();
             if (resolutionDropdown != null) resolutionDropdown.onValueChanged.RemoveAllListeners();
@@ -180,11 +198,13 @@ namespace SlimeJumping.UI.Panels
             base.OnDestroy();
         }
 
-        private static void BindSlider(Slider slider, float initial, UnityEngine.Events.UnityAction<float> onChanged)
+        // 범위부터 넓혀야 한다 — SetValueWithoutNotify 가 그 자리에서 클램프하고, 잘린 값은 못 되돌린다.
+        private static void BindSlider(Slider slider, float initial, UnityEngine.Events.UnityAction<float> onChanged,
+                                       float min = 0f, float max = 1f)
         {
             if (slider == null) return;
-            slider.minValue = 0f;
-            slider.maxValue = 1f;
+            slider.minValue = min;
+            slider.maxValue = max;
             slider.SetValueWithoutNotify(initial);
             slider.onValueChanged.AddListener(onChanged);
         }
@@ -211,6 +231,19 @@ namespace SlimeJumping.UI.Panels
         {
             GameOptions.SetUiVolume(v);
             UpdatePercentLabel(uiVolumeValueLabel, v);
+        }
+
+        private void OnGameSpeedChanged(float v)
+        {
+            GameOptions.SetGameSpeed(v);
+            UpdatePercentLabel(gameSpeedValueLabel, GameOptions.GameSpeed);
+        }
+
+        // 열려 있는 동안 시계는 멈춰 있으니 1회 기록으로 충분하다.
+        private void UpdatePlayTimeLabel()
+        {
+            if (playTimeValueLabel == null) return;
+            playTimeValueLabel.Set(RunClock.Format(Mathf.FloorToInt(RunClock.Elapsed)));
         }
 
         private void CycleFrameLimit(int dir)
