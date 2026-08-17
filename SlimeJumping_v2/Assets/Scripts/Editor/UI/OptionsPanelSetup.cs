@@ -408,8 +408,9 @@ namespace SlimeJumping.EditorTools.UI
             var faRT = fillArea.GetComponent<RectTransform>();
             faRT.anchorMin = new Vector2(0f, 0.25f);
             faRT.anchorMax = new Vector2(1f, 0.75f);
-            faRT.offsetMin = new Vector2(5f, 0f);
-            faRT.offsetMax = new Vector2(-15f, 0f);
+            // 채움이 트랙 좌우 끝까지 닿는다 — 유니티 기본 템플릿의 좌 5 / 우 15 패딩은 왼쪽 여백으로 보인다.
+            faRT.offsetMin = Vector2.zero;
+            faRT.offsetMax = Vector2.zero;
 
             var fill = UISetupCommon.CreateChild(fillArea.transform, "Fill",
                 typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));

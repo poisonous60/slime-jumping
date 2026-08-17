@@ -21,6 +21,7 @@ namespace SlimeJumping.EditorTools.UI
         private const float CameraZ = -10f;
         private const float VideoPlaneDistance = 20f;
         private const float SlimeDropMargin = 10f;
+        private const float SlimeDropX = -0.52f;
 
         [MenuItem("Tools/SlimeJumping/UI/Setup MainMenu Slime Arena")]
         public static void Setup()
@@ -106,7 +107,7 @@ namespace SlimeJumping.EditorTools.UI
                 var slime = Object.Instantiate(srcSlime);
                 slime.name = "Slime";
                 slime.transform.SetParent(root.transform, true);
-                slime.transform.position = new Vector3(0f, cam.orthographicSize + SlimeDropMargin, 0f);
+                slime.transform.position = new Vector3(SlimeDropX, cam.orthographicSize + SlimeDropMargin, 0f);
 
                 if (srcLight != null)
                 {
