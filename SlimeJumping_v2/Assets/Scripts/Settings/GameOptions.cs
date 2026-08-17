@@ -20,6 +20,7 @@ namespace SlimeJumping.Settings
         private const string KeyVSyncOn               = "opt.vsyncEnabled";
         private const string KeyChargeVisualOn        = "opt.chargeVisualEnabled";
         private const string KeyMouseTeleportDebugOn  = "opt.mouseTeleportDebugEnabled";
+        private const string KeySavepointOn           = "opt.savepointEnabled";
         private const string KeyGameSpeed             = "opt.gameSpeed";
         private const string KeyImplantOn             = "opt.implantEnabled";
 
@@ -35,7 +36,9 @@ namespace SlimeJumping.Settings
         public const bool       DefaultBackgroundCameraOn    = true;
         public const bool       DefaultVSyncOn               = true;
         public const bool       DefaultChargeVisualOn        = false;
-        public const bool       DefaultMouseTeleportDebugOn  = true;
+        // 디버그 도구라 기본 Off — 빌드를 처음 켠 기기에서 저절로 켜져 있으면 안 된다.
+        public const bool       DefaultMouseTeleportDebugOn  = false;
+        public const bool       DefaultSavepointOn           = false;
         public const float      DefaultGameSpeed             = 1f;
         public const float      MinGameSpeed                 = 0.5f;
         public const float      MaxGameSpeed                 = 2f;
@@ -65,6 +68,7 @@ namespace SlimeJumping.Settings
         public static bool       VSyncEnabled            { get; private set; } = DefaultVSyncOn;
         public static bool       ChargeVisualEnabled     { get; private set; } = DefaultChargeVisualOn;
         public static bool       MouseTeleportDebugEnabled { get; private set; } = DefaultMouseTeleportDebugOn;
+        public static bool       SavepointEnabled        { get; private set; } = DefaultSavepointOn;
         public static float      GameSpeed               { get; private set; } = DefaultGameSpeed;
         public static bool       ImplantEnabled          { get; private set; } = DefaultImplantOn;
 
@@ -107,6 +111,7 @@ namespace SlimeJumping.Settings
             VSyncEnabled            = PlayerPrefs.GetInt(KeyVSyncOn, DefaultVSyncOn ? 1 : 0) != 0;
             ChargeVisualEnabled     = PlayerPrefs.GetInt(KeyChargeVisualOn, DefaultChargeVisualOn ? 1 : 0) != 0;
             MouseTeleportDebugEnabled = PlayerPrefs.GetInt(KeyMouseTeleportDebugOn, DefaultMouseTeleportDebugOn ? 1 : 0) != 0;
+            SavepointEnabled        = PlayerPrefs.GetInt(KeySavepointOn, DefaultSavepointOn ? 1 : 0) != 0;
             // Clamp01 아니다 — 여기 다른 float 들과 달리 상한이 1 을 넘는다.
             GameSpeed              = Mathf.Clamp(PlayerPrefs.GetFloat(KeyGameSpeed, DefaultGameSpeed),
                                                  MinGameSpeed, MaxGameSpeed);
@@ -195,6 +200,14 @@ namespace SlimeJumping.Settings
             PlayerPrefs.Save();
             var handler = ImplantEnabledChanged;
             if (handler != null) handler(on);
+        }
+
+        /// TeleportDebugger 가 매 프레임 읽어가므로 이벤트가 없다.
+        public static void SetSavepointEnabled(bool on)
+        {
+            SavepointEnabled = on;
+            PlayerPrefs.SetInt(KeySavepointOn, on ? 1 : 0);
+            PlayerPrefs.Save();
         }
 
         public static void SetWindowMode(WindowMode mode)

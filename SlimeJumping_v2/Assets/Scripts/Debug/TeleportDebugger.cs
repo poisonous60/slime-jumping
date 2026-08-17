@@ -1,10 +1,12 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using SlimeJumping.Controller;
+using SlimeJumping.Settings;
 
 namespace SlimeJumping.Debugging
 {
-    /// <summary>Debug helper: hotkey saves the slime position, another teleports back with cleared physics state.</summary>
+    /// <summary>Debug helper: hotkey saves the slime position, another teleports back with cleared physics state.
+    /// 옵션창의 savepoint 체크박스로 끈다 — 끄면 단축키도 Retry 표시도 죽는다.</summary>
     public class TeleportDebugger : MonoBehaviour
     {
         [SerializeField] private SlimeController slimeController;
@@ -49,6 +51,8 @@ namespace SlimeJumping.Debugging
 
         private void Update()
         {
+            if (!GameOptions.SavepointEnabled) return;
+
             var keyboard = Keyboard.current;
             if (keyboard == null || slimeController == null) return;
 
@@ -72,7 +76,7 @@ namespace SlimeJumping.Debugging
 
         private void OnGUI()
         {
-            if (!showRetryUI) return;
+            if (!showRetryUI || !GameOptions.SavepointEnabled) return;
 
             if (labelStyle == null)
             {

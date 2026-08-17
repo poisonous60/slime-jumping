@@ -126,7 +126,8 @@ namespace SlimeJumping.EditorTools.UI
             var newGameBtn = CreateActionButton(actions.transform, "NewGameButton", "New Game", UISlotType.StartButton);
 
             BuildSidePanel(root.transform, out Slider gameSpeedSlider,
-                out TextMeshProUGUI gameSpeedValue, out Toggle implantToggle);
+                out TextMeshProUGUI gameSpeedValue, out Toggle implantToggle,
+                out Toggle mouseTeleportToggle, out Toggle savepointToggle);
 
             // Wire OptionsPanel's [SerializeField] fields
             var so = new SerializedObject(panel);
@@ -159,6 +160,8 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("gameSpeedValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(gameSpeedValue);
             so.FindProperty("playTimeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(playTimeValue);
             so.FindProperty("implantToggle").objectReferenceValue = implantToggle;
+            so.FindProperty("mouseTeleportToggle").objectReferenceValue = mouseTeleportToggle;
+            so.FindProperty("savepointToggle").objectReferenceValue = savepointToggle;
 
             so.FindProperty("windowModePrevButton").objectReferenceValue = windowModePrev;
             so.FindProperty("windowModeNextButton").objectReferenceValue = windowModeNext;
@@ -254,7 +257,8 @@ namespace SlimeJumping.EditorTools.UI
         /// 본판 오른쪽에 붙는 토글 모음. 라벨 컬럼이 없어 체크박스 옆이 곧 이름이고, 높이는
         /// ContentSizeFitter 가 잡으므로 <see cref="CreateCheckboxEntry"/> 를 더 부르기만 하면 늘어난다.
         private static GameObject BuildSidePanel(Transform root, out Slider gameSpeedSlider,
-            out TextMeshProUGUI gameSpeedValue, out Toggle implantToggle)
+            out TextMeshProUGUI gameSpeedValue, out Toggle implantToggle,
+            out Toggle mouseTeleportToggle, out Toggle savepointToggle)
         {
             var side = UISetupCommon.CreateChild(root, "SidePanel", typeof(RectTransform), typeof(CanvasRenderer));
             var img = side.AddComponent<TranslucentImage>();
@@ -302,6 +306,14 @@ namespace SlimeJumping.EditorTools.UI
             var implant = CreateCheckboxEntry(side.transform, "ImplantEntry",
                 "Use a rudimentary implant", out implantToggle);
             UISetupCommon.TagSlot(implant, UISlotType.Row_Implant);
+
+            var mouseTeleport = CreateCheckboxEntry(side.transform, "MouseTeleportEntry",
+                "Mouse click teleport", out mouseTeleportToggle);
+            UISetupCommon.TagSlot(mouseTeleport, UISlotType.Row_MouseTeleport);
+
+            var savepoint = CreateCheckboxEntry(side.transform, "SavepointEntry",
+                "Savepoint", out savepointToggle);
+            UISetupCommon.TagSlot(savepoint, UISlotType.Row_Savepoint);
 
             return side;
         }

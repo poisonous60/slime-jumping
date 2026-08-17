@@ -4,10 +4,11 @@ using SlimeJumping.Platforms;
 
 namespace SlimeJumping.Mechanisms
 {
-    /// <summary>Start / moving-loop / stop sounds for a WaypointPlatformV2 elevator. Polls the deck's
+    /// <summary>Start / moving-loop / stop sounds for any WaypointPlatformV2 deck. Polls the deck's
     /// IsMoving instead of taking events, so the platform stays unaware of audio and removing this
-    /// component removes the whole feature. A leg that begins with nobody aboard — the empty trip
-    /// home — runs silent end to end, rather than cutting out the moment the rider steps off.</summary>
+    /// component removes the whole feature. Under Require Rider On Top a leg that begins with nobody
+    /// aboard — the elevator's empty trip home — runs silent end to end, rather than cutting out the
+    /// moment the rider steps off; off, every leg sounds.</summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(WaypointPlatformV2))]
     public class ElevatorAudio : MonoBehaviour
@@ -18,6 +19,8 @@ namespace SlimeJumping.Mechanisms
         [Range(0f, 2f)] [SerializeField] float loopVolumeScale = 1f;
         [Tooltip("Ramp on the moving loop when the deck halts, so it does not cut off under the stop hit.")]
         [Min(0f)] [SerializeField] float loopFadeOutSeconds = 0.15f;
+        [Tooltip("ON = 태우고 출발한 구간만 소리 (엘레베이터). OFF = 빈 채로 움직여도 소리.")]
+        [SerializeField] bool requireRiderOnTop = true;
 
         WaypointPlatformV2 platform;
         SoundHandle loop;
@@ -42,7 +45,7 @@ namespace SlimeJumping.Mechanisms
 
             if (moving)
             {
-                if (!platform.HasRiderOnTop) return;
+                if (requireRiderOnTop && !platform.HasRiderOnTop) return;
                 ridden = true;
                 SoundService.Play(startSound, transform.position);
                 loop = SoundService.PlayLooping(movingLoopSound, transform, loopVolumeScale);

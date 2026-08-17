@@ -40,6 +40,12 @@
   재개는 1.0 이 아니라 `GameOptions.GameSpeed` 로 되돌린다. 열려 있는 동안은 `OptionsPanel.Update` 백스톱이
   매 프레임 0 으로 다시 눌러서, 배속 슬라이더를 끌어도 창 안에서는 미리보기가 안 된다.
 
+## 디버그 (옵션 사이드 패널에서 개별 토글)
+- **Savepoint** (`TeleportDebugger`): E 저장 / LeftShift 복귀 / Q 리트라이 카운터 리셋 + 화면 상단 `Retry: N`.
+  E 는 Interact 와 겹치므로, 이 토글을 끄면 E 가 인터랙션 전용으로 돌아온다.
+- **Mouse click teleport** (`MouseClickTeleportDebugger`): 좌클릭한 월드 좌표로 슬라임 순간이동.
+- 둘 다 **기본 Off** — 새 기기에서 빌드를 처음 켜면 꺼진 상태다. 켜야 단축키·클릭·표시가 산다.
+
 ## 관련
 - [../slime/crawling.md](../slime/crawling.md), [../slime/hop.md](../slime/hop.md), [../slime/ground-dash.md](../slime/ground-dash.md)
 - [../slime/charge-launch.md](../slime/charge-launch.md), [../slime/airborne.md](../slime/airborne.md)

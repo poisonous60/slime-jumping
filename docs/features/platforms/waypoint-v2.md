@@ -66,8 +66,8 @@
 ## 사운드 (`ElevatorAudio`, 별도 컴포넌트)
 `Assets/Scripts/Mechanisms/ElevatorAudio.cs`. 같은 GameObject 의 `WaypointPlatformV2.IsMoving`(= Departing/Returning)을 `Update` 에서 폴링해 전이만 잡는다 — 플랫폼은 오디오를 모르고, 컴포넌트를 떼면 기능이 통째로 사라진다.
 - 슬롯: `startSound`(출발 1회) / `movingLoopSound`(이동 중 루프, `SoundService.PlayLooping` + `loopVolumeScale`) / `stopSound`(정지 1회). 정지 시 루프는 `loopFadeOutSeconds`(0.15) 로 페이드.
-- **무탑승 구간 무음**: 이동 시작 순간 `HasRiderOnTop` 이 false 면 그 leg 은 끝까지 소리를 안 낸다(`ridden` 래치). 슬라임이 내린 뒤 빈 채로 복귀하는 왕복이 여기 해당. 래치라서 도중에 뛰어내려도 그 leg 의 소리는 도착까지 이어진다 — 움직이는 중에 정지음이 터지는 게 더 어색.
-- 에셋: `Settings/Sounds/Sound_ElevatorStart/Loop/Stop.asset` (clip 슬롯 비어 있음 — `Tools/Sound Inventory` 에서 지정). 후보 wav: `ThirdParty/Universal Sound FX/ELEVATORS_LIFTS/ELEVATOR_Sequence_0N_{Start,Movement_loop,Stop}`.
+- **무탑승 구간 무음** (`requireRiderOnTop`, 기본 ON): 이동 시작 순간 `HasRiderOnTop` 이 false 면 그 leg 은 끝까지 소리를 안 낸다(`ridden` 래치). 슬라임이 내린 뒤 빈 채로 복귀하는 왕복이 여기 해당. 래치라서 도중에 뛰어내려도 그 leg 의 소리는 도착까지 이어진다 — 움직이는 중에 정지음이 터지는 게 더 어색. **OFF 면 탑승 여부와 무관하게 모든 leg 이 운다** — 엘레베이터가 아닌 일반 이동 발판(stage2 A/B/C 데크)은 이 쪽.
+- 에셋: 엘레베이터는 `Settings/Sounds/Sound_ElevatorStart/Loop/Stop.asset` (clip 지정됨), 일반 이동 발판은 `Sound_PlatformStart/MoveLoop/Stop.asset` (clip 슬롯 비어 있음 — mp3 를 `clips` 에 넣으면 바로 난다).
 
 ## 기존 `WaypointPlatform` 과 차이
 | | v1 (`WaypointPlatform`) | v2 (`WaypointPlatformV2`) |

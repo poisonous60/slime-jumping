@@ -47,6 +47,8 @@ namespace SlimeJumping.UI.Framework
         PlayTimeReadout = 110,
         Row_Implant = 111,
         SidePanel = 112,
+        Row_MouseTeleport = 113,
+        Row_Savepoint = 114,
 
         // GramophonePanel anchors
         ScrollViewport = 200,

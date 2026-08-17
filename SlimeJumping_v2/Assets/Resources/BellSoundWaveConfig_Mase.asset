@@ -15,7 +15,7 @@ MonoBehaviour:
   waveSpeed: 10
   maxRadius: 60
   frontWidth: 1
-  holdSeconds: 20
+  holdSeconds: 5
   fadeSeconds: 2
   hiddenPlatformTrailStrength: 1
   hiddenPlatformTrailRadiusScale: 1

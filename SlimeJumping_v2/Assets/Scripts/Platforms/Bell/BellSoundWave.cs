@@ -50,6 +50,8 @@ namespace SlimeJumping.Platforms.Bell
         static readonly float[]   starts   = new float[MaxWaves];
         static readonly bool[]    active   = new bool[MaxWaves];
         static readonly float[]   groups   = new float[MaxWaves];
+        // Age the hold clock starts from; -1 = never held, so the wave fades in passing order.
+        static readonly float[]   released = new float[MaxWaves];
         // Kept per slot rather than snapshotted, so retuning a config still reshapes its live waves.
         static readonly BellSoundWaveConfig[] slotCfg = new BellSoundWaveConfig[MaxWaves];
         static int nextSlot;
@@ -64,10 +66,14 @@ namespace SlimeJumping.Platforms.Bell
 
         public BellSoundWaveConfig Config => cfg;
 
-        /// <summary>Holds every wave whose front has finished expanding at that moment, so revealed
-        /// platforms stop counting down to invisible. Shared like the slot pool. The caller must
-        /// clear it — left on, the reveal never fades.</summary>
-        public static bool PauseSettledWaves { get; set; }
+        /// <summary>Bundle whose waves hold: the front keeps expanding but nothing counts down to
+        /// invisible, and on release every platform the front has passed fades together rather than
+        /// in passing order. 0 = nothing held. Shared like the slot pool. The caller must clear it —
+        /// left set, that bundle's reveal never fades.</summary>
+        public static float PausedGroup { get; set; }
+
+        /// <summary>Bundle id — the pause is addressed by this, not by the component.</summary>
+        public float Group => group;
 
         void Awake()
         {
@@ -151,6 +157,7 @@ namespace SlimeJumping.Platforms.Bell
             starts[slot]  = Time.time;
             active[slot]  = true;
             groups[slot]  = group;
+            released[slot] = -1f;
             slotCfg[slot] = cfg;
 
             if (distortionQuads != null && distortionQuads.Length > 0)
@@ -178,14 +185,17 @@ namespace SlimeJumping.Platforms.Bell
                     if (!active[i]) continue;
                     var c = SlotConfig(i);
                     float speed = Mathf.Max(c.waveSpeed, 0.0001f);
-                    // Pushing the start forward by the frame keeps age fixed, so the reveal holds.
-                    if (PauseSettledWaves && Time.time - starts[i] >= (c.maxRadius + c.frontWidth) / speed)
+                    float age = Time.time - starts[i];
+                    // Held: the hold clock trails the age, so it reads zero and nothing fades yet.
+                    if (groups[i] == PausedGroup)
                     {
-                        starts[i] += Time.deltaTime;
+                        released[i] = age;
                         continue;
                     }
-                    if (Time.time - starts[i] > c.maxRadius / speed + c.frontWidth / speed + c.holdSeconds + c.fadeSeconds)
-                        active[i] = false;
+                    // The far edge fades maxRadius/speed after the near one, released or not.
+                    float death = Mathf.Max(released[i], 0f)
+                                + (c.maxRadius + c.frontWidth) / speed + c.holdSeconds + c.fadeSeconds;
+                    if (age > death) active[i] = false;
                 }
                 PushGlobals();
             }
@@ -268,7 +278,7 @@ namespace SlimeJumping.Platforms.Bell
                 waveData[i] = new Vector4(centers[i].x, centers[i].y, age, groups[i]);
                 var c = SlotConfig(i);
                 waveShape[i]  = new Vector4(c.waveSpeed, c.frontWidth, c.holdSeconds, c.fadeSeconds);
-                waveShape2[i] = new Vector4(c.maxRadius, 0f, 0f, 0f);
+                waveShape2[i] = new Vector4(c.maxRadius, active[i] ? released[i] : -1f, 0f, 0f);
             }
             Shader.SetGlobalVectorArray(IdWaveData, waveData);
             Shader.SetGlobalVectorArray(IdWaveShape, waveShape);

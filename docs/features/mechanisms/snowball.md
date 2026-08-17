@@ -81,7 +81,8 @@ Active        — 굴러감 / 날아감
 
 ## Audio
 
-세 채널:
+다섯 채널:
+- **슬라임 타격 one-shot** (`stompSound` / `sideHitSound`, SoundDef): `StompJump` / `KnockbackPush` 진입에서 각각 재생 — 윗면을 밟은 것과 옆에서 맞은 것이 다른 소리다. 같은 프레임에 `Break()` 도 걸리므로 break 소리와 겹쳐 난다. 에셋 `Settings/Sounds/Sound_SnowballStomp.asset` / `Sound_SnowballSideHit.asset` (clip 비어 있음), 두 Snowball prefab 에 배선됨 — 스포너 인스턴스는 prefab 값을 그대로 물려받는다.
 - **Loop AudioSource** (3D positional, 디자이너가 prefab 에 attach): Active phase 동안 mode 별 클립 (`rollingClip` / `flyingClip`) 재생. `EnterCrumbling`/`SilentCleanup` 에서 stop, `EnterActive`/`Initialize` 에서 다시 play.
 - **Break one-shot** (`breakClip`): `EnterCrumbling` 에서 `SoundService.PlayAt(breakClip, rb.position, SoundCategory.SFX_Object, sfxVolume)`.
 - **Spawn one-shot** (스포너의 `spawnClip`): SnowballSpawner.Spawn 에서 동일 SoundService 호출.

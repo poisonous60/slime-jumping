@@ -13,7 +13,7 @@ float4 _BellWaveData[BELL_WAVE_COUNT];   // xy = center world XY, z = age second
 // Shape travels per wave, not per frame: each bell keeps its own config, so two bells can hold
 // and fade for different durations even while their waves overlap.
 float4 _BellWaveShape[BELL_WAVE_COUNT];  // x = waveSpeed, y = frontWidth, z = holdSeconds, w = fadeSeconds
-float4 _BellWaveShape2[BELL_WAVE_COUNT]; // x = maxRadius
+float4 _BellWaveShape2[BELL_WAVE_COUNT]; // x = maxRadius, y = age the hold clock runs from (<0 = per-pixel)
 // Per-renderer, stamped by the bell sharing this platform's parent; 0 = no bell, never revealed.
 float  _BellWaveGroup;
 // Alpha floor for edit-mode authoring: BellRevealEditPreview holds it at the config's preview
@@ -39,7 +39,11 @@ float BellWaveReveal(float2 posXY)
         float d   = distance(posXY, _BellWaveData[i].xy);
         float t   = age - d / speed;
         float rise = saturate(t / max(riseTime, 1e-4));
-        float fall = 1.0 - saturate((t - riseTime - _BellWaveShape[i].z) / max(_BellWaveShape[i].w, 1e-4));
+        // Releasing restarts the fade clock from one shared moment, but each pixel still lags it by
+        // its own d/speed, so the vanish sweeps outward as a wave instead of switching off at once.
+        float release = _BellWaveShape2[i].y;
+        float fallT = t - (release < 0.0 ? riseTime : release);
+        float fall = 1.0 - saturate((fallT - _BellWaveShape[i].z) / max(_BellWaveShape[i].w, 1e-4));
         float grp = _BellWaveData[i].w;
         float mine = abs(grp - _BellWaveGroup) < 0.5 ? 1.0 : 0.0;
         float active = (age >= 0.0 && d <= _BellWaveShape2[i].x) ? 1.0 : 0.0;

@@ -40,6 +40,8 @@ namespace SlimeJumping.UI.Panels
         [SerializeField] private BumpableLabel gameSpeedValueLabel;
         [SerializeField] private BumpableLabel playTimeValueLabel;
         [SerializeField] private Toggle implantToggle;
+        [SerializeField] private Toggle mouseTeleportToggle;
+        [SerializeField] private Toggle savepointToggle;
 
         [Header("Display")]
         [SerializeField] private Button windowModePrevButton;
@@ -94,11 +96,9 @@ namespace SlimeJumping.UI.Panels
                        GameOptions.MinGameSpeed, GameOptions.MaxGameSpeed);
             UpdatePercentLabel(gameSpeedValueLabel, GameOptions.GameSpeed);
 
-            if (implantToggle != null)
-            {
-                implantToggle.SetIsOnWithoutNotify(GameOptions.ImplantEnabled);
-                implantToggle.onValueChanged.AddListener(GameOptions.SetImplantEnabled);
-            }
+            BindToggle(implantToggle, GameOptions.ImplantEnabled, GameOptions.SetImplantEnabled);
+            BindToggle(mouseTeleportToggle, GameOptions.MouseTeleportDebugEnabled, GameOptions.SetMouseTeleportDebugEnabled);
+            BindToggle(savepointToggle, GameOptions.SavepointEnabled, GameOptions.SetSavepointEnabled);
 
             windowModeIndex = IndexOfWindowMode(GameOptions.WindowMode);
             UpdateWindowModeLabel();
@@ -195,6 +195,8 @@ namespace SlimeJumping.UI.Panels
             if (uiVolumeSlider != null) uiVolumeSlider.onValueChanged.RemoveAllListeners();
             if (gameSpeedSlider != null) gameSpeedSlider.onValueChanged.RemoveAllListeners();
             if (implantToggle != null) implantToggle.onValueChanged.RemoveAllListeners();
+            if (mouseTeleportToggle != null) mouseTeleportToggle.onValueChanged.RemoveAllListeners();
+            if (savepointToggle != null) savepointToggle.onValueChanged.RemoveAllListeners();
             if (windowModePrevButton != null) windowModePrevButton.onClick.RemoveAllListeners();
             if (windowModeNextButton != null) windowModeNextButton.onClick.RemoveAllListeners();
             if (resolutionDropdown != null) resolutionDropdown.onValueChanged.RemoveAllListeners();
@@ -215,6 +217,13 @@ namespace SlimeJumping.UI.Panels
             slider.maxValue = max;
             slider.SetValueWithoutNotify(initial);
             slider.onValueChanged.AddListener(onChanged);
+        }
+
+        private static void BindToggle(Toggle toggle, bool initial, UnityEngine.Events.UnityAction<bool> onChanged)
+        {
+            if (toggle == null) return;
+            toggle.SetIsOnWithoutNotify(initial);
+            toggle.onValueChanged.AddListener(onChanged);
         }
 
         private void OnPlayerSfxVolumeChanged(float v)

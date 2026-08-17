@@ -113,6 +113,10 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] AudioClip breakClip;
         [Range(0f, 1f)]
         [SerializeField] float sfxVolume = 1f;
+        [Tooltip("슬라임이 윗면을 밟았을 때 (top stomp).")]
+        [SerializeField] SoundDef stompSound;
+        [Tooltip("슬라임이 옆면에 부딪혔을 때 (side knockback).")]
+        [SerializeField] SoundDef sideHitSound;
 
         [Header("Break VFX")]
         [Tooltip("부서질 때 spawn 할 작은 조각 prefab (Rigidbody2D + visual). spawn 시점에 fragmentLifetime 후 destroy.")]
@@ -479,6 +483,8 @@ namespace SlimeJumping.Mechanisms
 
         void StompJump(SlimeController slime)
         {
+            SoundService.Play(stompSound, rb.position);
+
             // 굴러가는 눈덩이는 회전 중이라 transform.up 이 흔들림 — 슬라임 기준을 쓴다.
             Vector2 jumpDir = slime.CurrentState == SlimeController.SlimeState.Airborne
                 ? Vector2.up
@@ -500,6 +506,8 @@ namespace SlimeJumping.Mechanisms
 
         void KnockbackPush(SlimeController slime, Vector2 toSlime)
         {
+            SoundService.Play(sideHitSound, rb.position);
+
             Vector2 dir = (toSlime + Vector2.up * knockbackUpBias).normalized;
             slime.ForceAirborneWithVelocity(dir * knockbackSpeed);
 
