@@ -21,6 +21,7 @@ namespace SlimeJumping.Settings
         private const string KeyChargeVisualOn        = "opt.chargeVisualEnabled";
         private const string KeyMouseTeleportDebugOn  = "opt.mouseTeleportDebugEnabled";
         private const string KeyGameSpeed             = "opt.gameSpeed";
+        private const string KeyImplantOn             = "opt.implantEnabled";
 
         // Pre-split combined SFX slider; seeds both SFX volumes on first load.
         private const string KeyLegacySfxVolume       = "opt.sfxVolume";
@@ -38,6 +39,7 @@ namespace SlimeJumping.Settings
         public const float      DefaultGameSpeed             = 1f;
         public const float      MinGameSpeed                 = 0.5f;
         public const float      MaxGameSpeed                 = 2f;
+        public const bool       DefaultImplantOn             = false;
 
         // -1 = Unlimited (Application.targetFrameRate = -1)
         public static readonly int[] FrameLimitOptions = { 30, 60, 120, -1 };
@@ -64,6 +66,7 @@ namespace SlimeJumping.Settings
         public static bool       ChargeVisualEnabled     { get; private set; } = DefaultChargeVisualOn;
         public static bool       MouseTeleportDebugEnabled { get; private set; } = DefaultMouseTeleportDebugOn;
         public static float      GameSpeed               { get; private set; } = DefaultGameSpeed;
+        public static bool       ImplantEnabled          { get; private set; } = DefaultImplantOn;
 
         public static Vector2Int Resolution => ResolutionOptions[ResolutionIndex];
 
@@ -78,6 +81,10 @@ namespace SlimeJumping.Settings
         /// Debug-only. Raised when MouseTeleportDebugEnabled changes so the
         /// MouseClickTeleportDebugger can enable/disable click-to-teleport.
         public static event Action<bool> MouseTeleportDebugEnabledChanged;
+
+        /// Raised when ImplantEnabled changes. SandevistanManager subscribes to fade its
+        /// look in and out; the setting is cosmetic only and never reaches gameplay.
+        public static event Action<bool> ImplantEnabledChanged;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void BootstrapLoadAndApplyFrame()
@@ -103,6 +110,7 @@ namespace SlimeJumping.Settings
             // Clamp01 아니다 — 여기 다른 float 들과 달리 상한이 1 을 넘는다.
             GameSpeed              = Mathf.Clamp(PlayerPrefs.GetFloat(KeyGameSpeed, DefaultGameSpeed),
                                                  MinGameSpeed, MaxGameSpeed);
+            ImplantEnabled         = PlayerPrefs.GetInt(KeyImplantOn, DefaultImplantOn ? 1 : 0) != 0;
             ApplyDisplayPacing();
             ApplyDisplay(ResolutionOptions[ResolutionIndex], WindowMode);
 
@@ -178,6 +186,15 @@ namespace SlimeJumping.Settings
             GameSpeed = Mathf.Clamp(speed, MinGameSpeed, MaxGameSpeed);
             PlayerPrefs.SetFloat(KeyGameSpeed, GameSpeed);
             PlayerPrefs.Save();
+        }
+
+        public static void SetImplantEnabled(bool on)
+        {
+            ImplantEnabled = on;
+            PlayerPrefs.SetInt(KeyImplantOn, on ? 1 : 0);
+            PlayerPrefs.Save();
+            var handler = ImplantEnabledChanged;
+            if (handler != null) handler(on);
         }
 
         public static void SetWindowMode(WindowMode mode)

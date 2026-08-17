@@ -15,8 +15,12 @@ namespace SlimeJumping.EditorTools.UI
         public const string PrefabPath = UISetupCommon.PanelPrefabRoot + "/OptionsPanel.prefab";
 
         private const float BoxWidth = 900f;
-        // 행 하나당 66(RowHeight + spacing). 9행 → 11행이라 132 를 더해야 아래 여백이 유지된다.
-        private const float BoxHeight = 1012f;
+        // 행당 66(RowHeight + spacing), 9행. 플레이 타임은 우측 상단 오버레이, 게임 속도와 임플란트는 사이드 패널.
+        private const float BoxHeight = 880f;
+        // 사이드 패널: 높이는 ContentSizeFitter 가 잡는다 — 체크박스를 늘려도 상수를 안 고쳐도 된다.
+        private const float SideWidth = 450f;
+        private const float SideGap = 20f;
+        private const float SideRowHeight = 40f;
         private const float RowHeight = 56f;
         // 가장 긴 라벨("Background Camera") 실측 221.6 + 여유. 더 넓히면 라벨 컬럼 왼쪽이 빈 채 남아 행 전체가 오른쪽으로 쏠려 보인다.
         private const float LabelWidth = 240f;
@@ -68,9 +72,7 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.AddLayoutElement(title.gameObject, minHeight: 88f, preferredHeight: 96f);
             UISetupCommon.TagSlot(title.gameObject, UISlotType.Title);
 
-            var playTimeRow = CreateReadoutRow(box.transform, "PlayTimeRow", "Play Time",
-                out TextMeshProUGUI playTimeValue);
-            UISetupCommon.TagSlot(playTimeRow, UISlotType.Row_PlayTime);
+            var playTimeValue = CreatePlayTimeReadout(box.transform);
 
             var resolutionRow = CreateDropdownRow(box.transform, "ResolutionRow", "Resolution",
                 out TMP_Dropdown resolutionDropdown);
@@ -108,10 +110,6 @@ namespace SlimeJumping.EditorTools.UI
                 out Slider uiSlider, out TextMeshProUGUI uiValue);
             UISetupCommon.TagSlot(uiRow, UISlotType.Row_Ui);
 
-            var gameSpeedRow = CreateSliderRow(box.transform, "GameSpeedRow", "Game Speed",
-                out Slider gameSpeedSlider, out TextMeshProUGUI gameSpeedValue);
-            UISetupCommon.TagSlot(gameSpeedRow, UISlotType.Row_GameSpeed);
-
             var spacer = UISetupCommon.CreateChild(box.transform, "Spacer", typeof(RectTransform));
             UISetupCommon.AddLayoutElement(spacer, minHeight: 12f, preferredHeight: 16f);
 
@@ -126,6 +124,9 @@ namespace SlimeJumping.EditorTools.UI
             var quitBtn = CreateActionButton(actions.transform, "QuitButton", "Quit", UISlotType.QuitButton);
             AddFlexibleSpacer(actions.transform);
             var newGameBtn = CreateActionButton(actions.transform, "NewGameButton", "New Game", UISlotType.StartButton);
+
+            BuildSidePanel(root.transform, out Slider gameSpeedSlider,
+                out TextMeshProUGUI gameSpeedValue, out Toggle implantToggle);
 
             // Wire OptionsPanel's [SerializeField] fields
             var so = new SerializedObject(panel);
@@ -157,6 +158,7 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("gameSpeedSlider").objectReferenceValue = gameSpeedSlider;
             so.FindProperty("gameSpeedValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(gameSpeedValue);
             so.FindProperty("playTimeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(playTimeValue);
+            so.FindProperty("implantToggle").objectReferenceValue = implantToggle;
 
             so.FindProperty("windowModePrevButton").objectReferenceValue = windowModePrev;
             so.FindProperty("windowModeNextButton").objectReferenceValue = windowModeNext;
@@ -249,19 +251,117 @@ namespace SlimeJumping.EditorTools.UI
             return row;
         }
 
-        // 컨트롤 없이 값만 있는 행. 슬라이더 행의 값 컬럼과 폭이 달라 왼쪽 정렬로 붙인다.
-        private static GameObject CreateReadoutRow(Transform parent, string name, string labelText,
-            out TextMeshProUGUI valueLabel)
+        /// 본판 오른쪽에 붙는 토글 모음. 라벨 컬럼이 없어 체크박스 옆이 곧 이름이고, 높이는
+        /// ContentSizeFitter 가 잡으므로 <see cref="CreateCheckboxEntry"/> 를 더 부르기만 하면 늘어난다.
+        private static GameObject BuildSidePanel(Transform root, out Slider gameSpeedSlider,
+            out TextMeshProUGUI gameSpeedValue, out Toggle implantToggle)
         {
-            var row = CreateRowShell(parent, name, labelText, out GameObject control);
+            var side = UISetupCommon.CreateChild(root, "SidePanel", typeof(RectTransform), typeof(CanvasRenderer));
+            var img = side.AddComponent<TranslucentImage>();
+            img.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+            img.type = Image.Type.Sliced;
+            img.color = new Color(0.04f, 0.11f, 0.09f, 0.75f);
+            img.foregroundOpacity = 0.5f;
+            img.vibrancy = 1f;
 
-            valueLabel = UISetupCommon.CreateText(control.transform, "Value", "--:--",
+            var rt = side.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            // 위 모서리를 본판과 맞춘다 — 항목이 늘면 아래로만 자란다.
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.sizeDelta = new Vector2(SideWidth, 0f);
+            rt.anchoredPosition = new Vector2((BoxWidth + SideWidth) * 0.5f + SideGap, BoxHeight * 0.5f);
+
+            UISetupCommon.AddVerticalLayout(side, padding: 24, spacing: 12, childAlign: TextAnchor.UpperLeft);
+            var fitter = side.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            UISetupCommon.TagSlot(side, UISlotType.SidePanel);
+
+            // 폭이 좁아 라벨·슬라이더·값을 한 줄에 못 넣는다 — 머리글 줄과 슬라이더 줄로 쪼갠다.
+            var header = UISetupCommon.CreateChild(side.transform, "GameSpeedHeader", typeof(RectTransform));
+            UISetupCommon.AddHorizontalLayout(header, padding: 0, spacing: 8, childAlign: TextAnchor.MiddleLeft);
+            UISetupCommon.AddLayoutElement(header, minHeight: 32f, preferredHeight: 32f);
+
+            var speedLabel = UISetupCommon.CreateText(header.transform, "Label", "Game Speed",
+                UISetupCommon.FontRowLabel, TextAlignmentOptions.MidlineLeft);
+            speedLabel.color = UISetupCommon.ColorRowLabel;
+            UISetupCommon.AddLayoutElement(speedLabel.gameObject, flexibleWidth: 1f);
+
+            gameSpeedValue = UISetupCommon.CreateText(header.transform, "Value", "100%",
+                UISetupCommon.FontRowValue, TextAlignmentOptions.MidlineRight);
+            gameSpeedValue.color = UISetupCommon.ColorSection;
+            UISetupCommon.AddLayoutElement(gameSpeedValue.gameObject, preferredWidth: 96f, flexibleWidth: 0f);
+
+            gameSpeedSlider = BuildSlider(side.transform, "GameSpeedSlider");
+            UISetupCommon.AddLayoutElement(gameSpeedSlider.gameObject, minHeight: 32f, preferredHeight: 32f);
+            UISetupCommon.TagSlot(gameSpeedSlider.gameObject, UISlotType.Row_GameSpeed);
+
+            var gap = UISetupCommon.CreateChild(side.transform, "Spacer", typeof(RectTransform));
+            UISetupCommon.AddLayoutElement(gap, minHeight: 8f, preferredHeight: 8f);
+
+            var implant = CreateCheckboxEntry(side.transform, "ImplantEntry",
+                "Use a rudimentary implant", out implantToggle);
+            UISetupCommon.TagSlot(implant, UISlotType.Row_Implant);
+
+            return side;
+        }
+
+        private static GameObject CreateCheckboxEntry(Transform parent, string name, string caption,
+            out Toggle toggle)
+        {
+            var row = UISetupCommon.CreateChild(parent, name, typeof(RectTransform));
+            UISetupCommon.AddHorizontalLayout(row, padding: 0, spacing: 12, childAlign: TextAnchor.MiddleLeft);
+            UISetupCommon.AddLayoutElement(row, minHeight: SideRowHeight, preferredHeight: SideRowHeight);
+
+            var box = UISetupCommon.CreateChild(row.transform, "Checkbox",
+                typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            UISetupCommon.AddLayoutElement(box, preferredWidth: 30f, preferredHeight: 30f, flexibleWidth: 0f);
+            var boxImg = box.GetComponent<Image>();
+            boxImg.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+            boxImg.type = Image.Type.Sliced;
+            boxImg.color = UISetupCommon.ColorSliderBG;
+
+            var check = UISetupCommon.CreateChild(box.transform, "Checkmark",
+                typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            var checkRT = check.GetComponent<RectTransform>();
+            checkRT.anchorMin = Vector2.zero;
+            checkRT.anchorMax = Vector2.one;
+            checkRT.offsetMin = new Vector2(4f, 4f);
+            checkRT.offsetMax = new Vector2(-4f, -4f);
+            var checkImg = check.GetComponent<Image>();
+            checkImg.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Checkmark.psd");
+            checkImg.color = UISetupCommon.ColorSection;
+
+            var captionText = UISetupCommon.CreateText(row.transform, "Caption", caption,
                 UISetupCommon.FontRowValue, TextAlignmentOptions.MidlineLeft);
-            valueLabel.color = UISetupCommon.ColorSection;
-            UISetupCommon.AddLayoutElement(valueLabel.gameObject, flexibleWidth: 1f);
-            UISetupCommon.TagSlot(valueLabel.gameObject, UISlotType.ValueLabel);
+            captionText.color = UISetupCommon.ColorBody;
+            captionText.textWrappingMode = TextWrappingModes.NoWrap;
+            UISetupCommon.AddLayoutElement(captionText.gameObject, flexibleWidth: 1f);
 
+            toggle = box.AddComponent<Toggle>();
+            toggle.targetGraphic = boxImg;
+            toggle.graphic = checkImg;
+            toggle.isOn = false;
             return row;
+        }
+
+        // 판 우측 상단 오버레이. ignoreLayout 이라 세로 스택 밖에 있고, 그래서 행 하나를 안 먹는다.
+        private static TextMeshProUGUI CreatePlayTimeReadout(Transform box)
+        {
+            var text = UISetupCommon.CreateText(box, "PlayTimeReadout", "--:--",
+                UISetupCommon.FontRowValue, TextAlignmentOptions.MidlineRight);
+            text.color = UISetupCommon.ColorSection;
+            text.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+
+            var rt = text.rectTransform;
+            rt.anchorMin = new Vector2(1f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(1f, 1f);
+            rt.sizeDelta = new Vector2(240f, 40f);
+            rt.anchoredPosition = new Vector2(-36f, -30f);
+
+            UISetupCommon.TagSlot(text.gameObject, UISlotType.PlayTimeReadout);
+            return text;
         }
 
         private static GameObject CreateDropdownRow(Transform parent, string name, string labelText,

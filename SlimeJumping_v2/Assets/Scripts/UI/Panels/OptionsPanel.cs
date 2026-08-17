@@ -39,6 +39,7 @@ namespace SlimeJumping.UI.Panels
         [SerializeField] private Slider gameSpeedSlider;
         [SerializeField] private BumpableLabel gameSpeedValueLabel;
         [SerializeField] private BumpableLabel playTimeValueLabel;
+        [SerializeField] private Toggle implantToggle;
 
         [Header("Display")]
         [SerializeField] private Button windowModePrevButton;
@@ -92,6 +93,12 @@ namespace SlimeJumping.UI.Panels
             BindSlider(gameSpeedSlider, GameOptions.GameSpeed, OnGameSpeedChanged,
                        GameOptions.MinGameSpeed, GameOptions.MaxGameSpeed);
             UpdatePercentLabel(gameSpeedValueLabel, GameOptions.GameSpeed);
+
+            if (implantToggle != null)
+            {
+                implantToggle.SetIsOnWithoutNotify(GameOptions.ImplantEnabled);
+                implantToggle.onValueChanged.AddListener(GameOptions.SetImplantEnabled);
+            }
 
             windowModeIndex = IndexOfWindowMode(GameOptions.WindowMode);
             UpdateWindowModeLabel();
@@ -187,6 +194,7 @@ namespace SlimeJumping.UI.Panels
             if (bgmVolumeSlider != null) bgmVolumeSlider.onValueChanged.RemoveAllListeners();
             if (uiVolumeSlider != null) uiVolumeSlider.onValueChanged.RemoveAllListeners();
             if (gameSpeedSlider != null) gameSpeedSlider.onValueChanged.RemoveAllListeners();
+            if (implantToggle != null) implantToggle.onValueChanged.RemoveAllListeners();
             if (windowModePrevButton != null) windowModePrevButton.onClick.RemoveAllListeners();
             if (windowModeNextButton != null) windowModeNextButton.onClick.RemoveAllListeners();
             if (resolutionDropdown != null) resolutionDropdown.onValueChanged.RemoveAllListeners();
