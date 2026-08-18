@@ -18,9 +18,9 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 8eabe8a971427a443a0474b675ac0fce, type: 3}
   clipOrder: 0
   category: 3
-  volumeRange: {x: 1, y: 1}
+  volumeRange: {x: 0.8, y: 0.8}
   pitchRange: {x: 0.6, y: 0.8}
   cooldownSeconds: 0
-  spatial3D: 1
+  spatial3D: 0
   minDistance: -1
   maxDistance: -1

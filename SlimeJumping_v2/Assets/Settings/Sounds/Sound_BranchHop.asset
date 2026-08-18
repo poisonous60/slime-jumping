@@ -18,6 +18,6 @@ MonoBehaviour:
   volumeRange: {x: 1, y: 1}
   pitchRange: {x: 1, y: 1.1}
   cooldownSeconds: 0
-  spatial3D: 1
+  spatial3D: 0
   minDistance: -1
   maxDistance: -1

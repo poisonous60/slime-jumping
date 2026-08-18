@@ -154,7 +154,7 @@ namespace SlimeJumping.EditorTools
             {
                 if (GUILayout.Button(new GUIContent("▶", $"volume {def.volumeRange.x:0.00} 로 재생"),
                                      GUILayout.Width(24)))
-                    PlayPreview(def.PickClip(), def.PickVolume());
+                    PlayPreview(def.PickClip(), def.PickVolume(), def.PickPitch());
             }
 
             EditorGUI.BeginChangeCheck();
@@ -326,13 +326,15 @@ namespace SlimeJumping.EditorTools
         // ---------- preview ----------
 
         /// Plays through a window-owned AudioSource, not AudioUtil.PlayPreviewClip — that API takes no
-        /// volume. Copied from IntuitiveAudioAdjust, which previews the same way.
-        void PlayPreview(AudioClip clip, float volume)
+        /// volume. Copied from IntuitiveAudioAdjust, which previews the same way. Pitch is applied too:
+        /// a sample dropped to 0.6× reads far weaker in game than an audition stuck at 1.0.
+        void PlayPreview(AudioClip clip, float volume, float pitch = 1f)
         {
             if (clip == null || previewSource == null) return;
             previewSource.Stop();
             previewSource.clip = clip;
             previewSource.volume = Mathf.Clamp01(volume);
+            previewSource.pitch = pitch;
             previewSource.Play();
             Repaint();
         }

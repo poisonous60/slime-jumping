@@ -192,7 +192,8 @@ namespace SlimeJumping.Audio
         {
             if (def == null || !ConsumeCooldown(def)) return;
             PlayAt(def.PickClip(), worldPos, def.category,
-                   def.PickVolume() * volumeScale, def.PickPitch() * pitchScale);
+                   def.PickVolume() * volumeScale, def.PickPitch() * pitchScale,
+                   def.spatial3D, def.minDistance, def.maxDistance);
         }
 
         public static void Play2D(SoundDef def, float volumeScale = 1f, float pitchScale = 1f)
@@ -222,9 +223,14 @@ namespace SlimeJumping.Audio
 
         // ---- Public API (raw clip; being migrated to SoundDef) ----
 
+        /// spatial3D false plays the one-shot flat, at exactly the authored volume — a sound that always
+        /// fires at the player has nothing to gain from falloff and only loses level to the camera's
+        /// standoff. minDistance/maxDistance below 0 keep the pool defaults; both are written every
+        /// call so a pooled source never inherits the previous borrower's falloff.
         public static void PlayAt(AudioClip clip, Vector3 worldPos,
                                   SoundCategory category = SoundCategory.SFX_Object,
-                                  float volume = 1f, float pitch = 1f)
+                                  float volume = 1f, float pitch = 1f, bool spatial3D = true,
+                                  float minDistance = -1f, float maxDistance = -1f)
         {
             if (clip == null) return;
             var svc = Instance;
@@ -235,7 +241,12 @@ namespace SlimeJumping.Audio
 
             var src = p.source;
             src.transform.position = worldPos;
-            src.spatialBlend = 1f;
+            src.spatialBlend = spatial3D ? 1f : 0f;
+            if (svc.settings != null)
+            {
+                src.minDistance = minDistance >= 0f ? minDistance : svc.settings.default3DMinDistance;
+                src.maxDistance = maxDistance >= 0f ? maxDistance : svc.settings.default3DMaxDistance;
+            }
             src.loop = false;
             src.volume = volume;
             src.pitch = pitch;

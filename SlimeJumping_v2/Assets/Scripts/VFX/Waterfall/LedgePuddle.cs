@@ -34,8 +34,13 @@ namespace SlimeJumping.VFX.Waterfall
 
         [SerializeField] WaterfallConfig configOverride;
 
-        [Tooltip("웅덩이 윤곽을 유도할 지형 메시. 비면 물이 안 생긴다.")]
+        [Tooltip("웅덩이 윤곽을 유도할 지형 메시. 비면 물이 안 생긴다. 에디터 전용 - 런타임은 구운 메시를 쓴다.")]
         [SerializeField] MeshFilter terrainSource;
+
+        [Tooltip("에디터에서 구운 웅덩이 메시. 지형 메시가 Read/Write 꺼져 있으면 빌드에서 정점을 못 읽어 물이 통째로 사라지므로 런타임은 이걸 쓴다.")]
+        [SerializeField] Mesh bakedMesh;
+        [SerializeField] [HideInInspector] int bakedTopVertCount;
+        [SerializeField] [HideInInspector] Bounds bakedWetBounds;
 
         [Tooltip("슬라임이 웅덩이에 세게 떨어질 때. 비우면 무음.")]
         [SerializeField] SlimeJumping.Audio.SoundDef landHardSound;
@@ -81,6 +86,44 @@ namespace SlimeJumping.VFX.Waterfall
 
         [ContextMenu("Rebuild")]
         public void Rebuild()
+        {
+            if (Application.isPlaying && bakedMesh != null) { LoadBaked(); return; }
+            Generate();
+        }
+
+        /// <summary>구운 메시를 그대로 올리고 파문에 필요한 것만 되살린다. 지형은 안 훑는다.</summary>
+        void LoadBaked()
+        {
+            EnsureMesh();
+            mesh.Clear();
+            mesh.indexFormat = bakedMesh.indexFormat;
+            mesh.vertices = bakedMesh.vertices;
+            mesh.uv = bakedMesh.uv;
+            mesh.colors = bakedMesh.colors;
+            mesh.triangles = bakedMesh.triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+
+            restVerts = mesh.vertices;
+            colors = mesh.colors;
+            int n = restVerts.Length;
+            verts = new Vector3[n];
+            restXZ = new Vector2[n];
+            restEdge = new float[n];
+            var l2w = transform.localToWorldMatrix;
+            for (int i = 0; i < n; i++)
+            {
+                var w = l2w.MultiplyPoint3x4(restVerts[i]);
+                restXZ[i] = new Vector2(w.x, w.z);
+                restEdge[i] = colors[i].a;
+            }
+            System.Array.Copy(restVerts, verts, n);
+            topVertCount = bakedTopVertCount;
+            wetBounds = bakedWetBounds;
+            FitTrigger(Cfg);
+        }
+
+        void Generate()
         {
             var cfg = Cfg;
             int nx = Mathf.Max(4, cfg.puddleGridX);
@@ -374,6 +417,36 @@ namespace SlimeJumping.VFX.Waterfall
             var splashPoint = new Vector3(p.x, cfg.puddleWaterY, splashZ);
             SlimeJumping.Audio.SoundService.Play(hard ? landHardSound : landSoftSound, splashPoint);
         }
+
+#if UNITY_EDITOR
+        [ContextMenu("Bake Mesh Asset")]
+        void BakeMeshAsset()
+        {
+            Generate();
+            const string dir = "Assets/Settings/Waterfall";
+            System.IO.Directory.CreateDirectory(dir);
+            string path = dir + "/LedgePuddleMesh.asset";
+
+            var baked = new Mesh { name = "LedgePuddleMesh", indexFormat = mesh.indexFormat };
+            baked.vertices = restVerts;
+            baked.uv = mesh.uv;
+            baked.colors = colors;
+            baked.triangles = mesh.triangles;
+            baked.RecalculateNormals();
+            baked.RecalculateBounds();
+
+            var existing = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (existing != null) { UnityEditor.EditorUtility.CopySerialized(baked, existing); baked = existing; }
+            else UnityEditor.AssetDatabase.CreateAsset(baked, path);
+
+            bakedMesh = baked;
+            bakedTopVertCount = topVertCount;
+            bakedWetBounds = wetBounds;
+            UnityEditor.EditorUtility.SetDirty(this);
+            UnityEditor.AssetDatabase.SaveAssets();
+            Debug.Log("[LedgePuddle] baked " + baked.vertexCount + "v -> " + path);
+        }
+#endif
 
         void EnsureMesh()
         {
