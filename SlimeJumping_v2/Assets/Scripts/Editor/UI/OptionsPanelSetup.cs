@@ -125,7 +125,7 @@ namespace SlimeJumping.EditorTools.UI
             AddFlexibleSpacer(actions.transform);
             var newGameBtn = CreateActionButton(actions.transform, "NewGameButton", "New Game", UISlotType.StartButton);
 
-            BuildSidePanel(root.transform, out Slider gameSpeedSlider,
+            var sidePanel = BuildSidePanel(root.transform, out Slider gameSpeedSlider,
                 out TextMeshProUGUI gameSpeedValue, out Toggle implantToggle,
                 out Toggle mouseTeleportToggle, out Toggle savepointToggle);
 
@@ -175,6 +175,7 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("quitButton").objectReferenceValue = quitBtn;
             so.FindProperty("newGameButton").objectReferenceValue = newGameBtn;
             so.FindProperty("boxGraphic").objectReferenceValue = boxImg;
+            so.FindProperty("sidePanel").objectReferenceValue = sidePanel;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             return UISetupCommon.SavePanelPrefab(root, "OptionsPanel");

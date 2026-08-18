@@ -168,6 +168,7 @@ namespace SlimeJumping.Interaction
 
             // 엔딩 진입 = 진행 종료. 세이브를 남기면 Load 가 신전 앞으로 복원한다.
             LoadSaveManager.DeleteSave();
+            LoadSaveManager.MarkCleared();
 
             Vector3 transitionCenter = wispInstance != null ? wispInstance.transform.position : startPos;
             SceneTransitionController.PlayReverse(endSceneName, transitionCenter);

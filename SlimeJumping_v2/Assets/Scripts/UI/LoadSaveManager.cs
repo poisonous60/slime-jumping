@@ -23,6 +23,12 @@ namespace SlimeJumping.UI
             public float elapsed;
         }
 
+        [Serializable]
+        private class ProgressData
+        {
+            public bool cleared;
+        }
+
         [Tooltip("비워두면 런타임에 씬에서 찾는다.")]
         [SerializeField] private SlimeController slime;
 
@@ -34,8 +40,40 @@ namespace SlimeJumping.UI
 
         private static string SavePath => Path.Combine(Application.persistentDataPath, "slimesave.json");
         private static string TrailRoot => Path.Combine(Application.persistentDataPath, "trail");
+        private static string ProgressPath => Path.Combine(Application.persistentDataPath, "progress.json");
 
         public static bool HasSave => File.Exists(SavePath);
+
+        /// 1회 클리어 여부. 세이브와 달리 New Game·엔딩 삭제 대상이 아니라 계정에 영구히 남는다.
+        public static bool HasCleared
+        {
+            get
+            {
+                try
+                {
+                    if (!File.Exists(ProgressPath)) return false;
+                    var data = JsonUtility.FromJson<ProgressData>(File.ReadAllText(ProgressPath));
+                    return data != null && data.cleared;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("[LoadSave] Progress unreadable: " + e.Message);
+                    return false;
+                }
+            }
+        }
+
+        public static void MarkCleared()
+        {
+            try
+            {
+                File.WriteAllText(ProgressPath, JsonUtility.ToJson(new ProgressData { cleared = true }, true));
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[LoadSave] Progress save failed: " + e.Message);
+            }
+        }
 
         public static void SaveNow()
         {

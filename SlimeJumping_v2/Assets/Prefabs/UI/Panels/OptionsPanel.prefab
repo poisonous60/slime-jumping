@@ -13935,6 +13935,7 @@ MonoBehaviour:
   quitButton: {fileID: 3728809134504585218}
   newGameButton: {fileID: 1000450631994141930}
   boxGraphic: {fileID: 1761091136571054264}
+  sidePanel: {fileID: 5368249925358017131}
 --- !u!1 &9055761234245559023
 GameObject:
   m_ObjectHideFlags: 0

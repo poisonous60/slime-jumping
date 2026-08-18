@@ -60,6 +60,9 @@ namespace SlimeJumping.UI.Panels
         [Header("Backdrop")]
         [SerializeField] private Graphic boxGraphic;
 
+        [Header("Side Panel")]
+        [SerializeField] private GameObject sidePanel;
+
         private int frameLimitIndex;
         private int windowModeIndex;
         private int backgroundCameraIndex;
@@ -70,6 +73,9 @@ namespace SlimeJumping.UI.Panels
 
         protected override void OnAfterAwake()
         {
+            // 사이드 패널은 클리어 보상 — 안 켜져 있으면 안쪽 컨트롤 바인딩도 의미가 없다.
+            if (sidePanel != null) sidePanel.SetActive(LoadSaveManager.HasCleared);
+
             frameLimitIndex = IndexOfFrameLimit(GameOptions.FrameLimit);
             UpdateFrameLimitLabel();
             if (frameLimitPrevButton != null) frameLimitPrevButton.onClick.AddListener(() => CycleFrameLimit(-1));
