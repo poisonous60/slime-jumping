@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 181321c34a6f4e74ebb6bf4440466282, type: 3}
+  m_Name: WaterfallConfig
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.VFX.Waterfall.WaterfallConfig
+  ledgeY: 35.38
+  ledgeXMin: 6.75
+  ledgeXMax: 11
+  ledgeZNear: -0.68
+  ledgeZFar: 1.12
+  puddleAreaXMin: 6.75
+  puddleAreaXMax: 11
+  puddleAreaZMin: -0.68
+  puddleAreaZMax: 1.12
+  puddleWaterY: 35.33
+  puddleGridX: 64
+  puddleGridZ: 32
+  puddleShoreFeather: 0.055
+  puddleSurfaceLift: 0.008
+  rippleWavelength: 0.55
+  rippleSpeed: 1.4
+  rippleDecay: 2
+  rippleLife: 1.6
+  rippleAlpha: 0.45
+  slimeAmplitude: 0.16
+  slimeAmplitudeHard: 1
+  slimeSplashCooldown: 0.25
+  puddleTriggerZMargin: 0.6
+  maxRipples: 20

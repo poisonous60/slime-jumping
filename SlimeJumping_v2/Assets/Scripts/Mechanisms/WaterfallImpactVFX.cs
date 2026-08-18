@@ -5,7 +5,7 @@ using UnityEngine.Serialization;
 namespace SlimeJumping.Mechanisms
 {
     /// LineRenderer through local-space path points; from the LAST point a ray chains through every
-    /// targetColliders hit (distance-sorted, max maxHits), each becoming a vertex + its own splash PS.
+    /// targetColliders hit (distance-sorted), each becoming a vertex + its own splash PS.
     /// Scene handles: shift-click an edge to insert a point, ctrl-click a point to delete.
     [DisallowMultipleComponent]
     [AddComponentMenu("SlimeJumping/Mechanisms/Waterfall Impact VFX")]
@@ -24,7 +24,6 @@ namespace SlimeJumping.Mechanisms
         [SerializeField] Vector2 rayDirection = Vector2.down;
         [Min(0.01f)] [SerializeField] float maxDistance = 25f;
         [SerializeField] LayerMask hitLayers = ~0;
-        [Range(1, 8)] [SerializeField] int maxHits = 4;
 
         // Hidden legacy field; MigrateLegacyTarget folds old scenes into targetColliders once.
         [HideInInspector]
@@ -55,7 +54,7 @@ namespace SlimeJumping.Mechanisms
                  "(wheel 스프라이트 앞에 튀김).")]
         [SerializeField] float splashZOffset = -0.5f;
 
-        static readonly RaycastHit2D[] rayBuffer = new RaycastHit2D[16];
+        static readonly RaycastHit2D[] rayBuffer = new RaycastHit2D[64];
         static ContactFilter2D rayFilter;
         MaterialPropertyBlock mpb;
         int cachedColorId;
@@ -110,7 +109,7 @@ namespace SlimeJumping.Mechanisms
 
             hitPoints.Clear();
             hitNormals.Clear();
-            for (int i = 0; i < n && hitPoints.Count < maxHits; i++)
+            for (int i = 0; i < n; i++)
             {
                 var c = rayBuffer[i].collider;
                 // `Contains` uses Equals, so a destroyed collider in the list won't spuriously match.

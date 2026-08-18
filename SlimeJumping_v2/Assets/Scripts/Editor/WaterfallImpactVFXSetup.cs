@@ -51,7 +51,6 @@ namespace SlimeJumping.Editor
             }
             so.FindProperty("rayDirection").vector2Value  = Vector2.down;
             so.FindProperty("maxDistance").floatValue     = 25f;
-            so.FindProperty("maxHits").intValue           = 4;
             so.FindProperty("streamColor").colorValue     = new Color(0.45f, 0.85f, 1f, 1f);
             so.FindProperty("splashColor").colorValue     = new Color(0.45f, 0.85f, 1f, 1f);
             so.FindProperty("streamZOffset").floatValue   = 0.5f;
