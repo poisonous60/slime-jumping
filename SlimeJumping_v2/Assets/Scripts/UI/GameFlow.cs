@@ -5,8 +5,16 @@ namespace SlimeJumping.UI
 {
     public static class GameFlow
     {
-        public const string MainMenuScene = "MainMenuScene";
-        public const string GameplayScene = "MainScene";
+        // 심볼로 판정해야 에디터 Play 도 활성 빌드 타깃을 따라간다 — Application.platform 은 에디터에서 늘 데스크톱이다.
+#if UNITY_WEBGL
+        public const bool IsWeb = true;
+#else
+        public const bool IsWeb = false;
+#endif
+
+        public static string MainMenuScene => IsWeb ? "MainMenuScene_Web" : "MainMenuScene";
+        public static string GameplayScene => IsWeb ? "MainScene_Web" : "MainScene";
+        public static string EndScene => IsWeb ? "EndScene_Web" : "EndScene";
 
         // SlimeStartStateManager gate: false on direct editor play → start interaction skipped.
         public static bool WasStartedFromMenu { get; private set; }

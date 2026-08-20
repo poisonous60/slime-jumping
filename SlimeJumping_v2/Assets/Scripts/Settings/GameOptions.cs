@@ -258,6 +258,13 @@ namespace SlimeJumping.Settings
         // When vsync is off, targetFrameRate is the soft cap.
         private static void ApplyDisplayPacing()
         {
+            // Unity cannot query the browser refresh rate, so Web must leave pacing to requestAnimationFrame.
+            if (SlimeJumping.UI.GameFlow.IsWeb)
+            {
+                Application.targetFrameRate = -1;
+                return;
+            }
+
             if (VSyncEnabled)
             {
                 QualitySettings.vSyncCount = 1;
@@ -298,6 +305,9 @@ namespace SlimeJumping.Settings
 
         private static void ApplyDisplay(Vector2Int res, WindowMode mode)
         {
+            // The browser canvas owns the render size on Web; SetResolution fights it and letterboxes.
+            if (SlimeJumping.UI.GameFlow.IsWeb) return;
+
             FullScreenMode fsMode;
             switch (mode)
             {

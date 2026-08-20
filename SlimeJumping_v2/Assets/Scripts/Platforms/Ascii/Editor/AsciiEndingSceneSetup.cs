@@ -18,6 +18,10 @@ namespace SlimeJumping.Editor
         const string MainScenePath = "Assets/Scenes/MainScene.unity";
 
         static readonly string[] WordsBottomUp = { "PLAYING", "FOR", "THANKS" };
+
+        // Web 데모는 1스테이지에서 끝나므로 완주 문구를 쓰지 않는다.
+        const string WebSceneName = "EndScene_Web";
+        static readonly string[] DemoWordsBottomUp = { "ENDING", "DEMO" };
         const float LetterGap = 0.6f;
         const float RowClearance = 1.6f;
         const float ButtonMargin = 1.2f;
@@ -34,12 +38,17 @@ namespace SlimeJumping.Editor
         static readonly Color CameraBackground = new Color(0.02f, 0.06f, 0.045f);
 
         [MenuItem("SlimeJumping/Platform/Setup Ascii Ending (EndScene)")]
-        public static void Setup()
+        public static void Setup() => Build(SceneName, WordsBottomUp);
+
+        [MenuItem("SlimeJumping/Platform/Setup Ascii Ending (Web Demo)")]
+        public static void SetupWebDemo() => Build(WebSceneName, DemoWordsBottomUp);
+
+        static void Build(string targetScene, string[] wordsBottomUp)
         {
             var scene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
-            if (scene.name != SceneName)
+            if (scene.name != targetScene)
             {
-                Debug.LogError($"[AsciiEnding] 활성 씬이 {SceneName} 이 아니다 ('{scene.name}'). EndScene 을 열고 다시 실행.");
+                Debug.LogError($"[AsciiEnding] 활성 씬이 {targetScene} 이 아니다 ('{scene.name}'). {targetScene} 을 열고 다시 실행.");
                 return;
             }
             if (GameObject.Find(RootName) != null)
@@ -61,7 +70,7 @@ namespace SlimeJumping.Editor
             float baseY = groundTop + RowClearance;
             float maxRowHalf = 0f;
             float topY = groundTop;
-            foreach (var word in WordsBottomUp)
+            foreach (var word in wordsBottomUp)
             {
                 var row = new GameObject("Row_" + word);
                 row.transform.SetParent(root.transform, false);
