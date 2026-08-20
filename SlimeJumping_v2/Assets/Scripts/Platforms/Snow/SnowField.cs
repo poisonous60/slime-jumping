@@ -589,6 +589,8 @@ namespace SlimeJumping.Platforms.Snow
 
                 var mf = go.AddComponent<MeshFilter>();
                 var mr = go.AddComponent<MeshRenderer>();
+                // The host terrain already casts; strips only add shadow-pass draws.
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 if (runtimeMaterial != null) mr.sharedMaterial = runtimeMaterial;
 
                 var ss = go.AddComponent<SnowStrip>();

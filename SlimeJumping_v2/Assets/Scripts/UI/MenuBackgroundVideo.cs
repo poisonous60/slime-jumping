@@ -17,6 +17,9 @@ namespace SlimeJumping.UI
                  "Assets/Resources/MenuBackgroundVideoConfig.asset.")]
         [SerializeField] private MenuBackgroundVideoConfig configOverride;
 
+        /// StreamingAssets subfolder holding the same mp4 files, used by Web URL playback.
+        private const string StreamingFolder = "MenuVideo";
+
         private VideoPlayer player;
         private RenderTexture texture;
         private static Texture2D vignetteTexture;
@@ -38,21 +41,28 @@ namespace SlimeJumping.UI
                 enabled = false;
                 return;
             }
-            texture = new RenderTexture((int)clip.width, (int)clip.height, 0);
-
             player = GetComponent<VideoPlayer>();
             player.playOnAwake = false;
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // Browsers cannot decode embedded VideoClips, so stream the same file by URL.
+            player.source = VideoSource.Url;
+            player.url = System.IO.Path.Combine(Application.streamingAssetsPath, StreamingFolder, clip.name + ".mp4");
+#else
+            texture = new RenderTexture((int)clip.width, (int)clip.height, 0);
             player.source = VideoSource.VideoClip;
             player.clip = clip;
+#endif
             player.isLooping = true;
             player.skipOnDrop = false;
             player.timeUpdateMode = VideoTimeUpdateMode.UnscaledGameTime;
             player.audioOutputMode = VideoAudioOutputMode.None;
             player.renderMode = VideoRenderMode.RenderTexture;
-            player.targetTexture = texture;
             player.playbackSpeed = config.playbackSpeed;
-
-            target.texture = texture;
+            if (texture != null)
+            {
+                player.targetTexture = texture;
+                target.texture = texture;
+            }
             target.color = config.tint;
             ApplyVignette(config);
             player.prepareCompleted += HandlePrepared;
@@ -101,6 +111,13 @@ namespace SlimeJumping.UI
 
         private void HandlePrepared(VideoPlayer source)
         {
+            // URL playback only reports its dimensions once prepared.
+            if (texture == null)
+            {
+                texture = new RenderTexture((int)source.width, (int)source.height, 0);
+                source.targetTexture = texture;
+                target.texture = texture;
+            }
             target.enabled = true;
             source.Play();
         }
