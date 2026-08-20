@@ -3222,7 +3222,7 @@ MonoBehaviour:
         glissMaxNotes: 5
         glissStepSeconds: 0.035
         glissVolume: 0.4
-    - enabled: 1
+    - enabled: 0
       label: DarkChopinEsque
       clip: {fileID: 8300000, guid: 55bad6d0255ae02469598d0beaba4622, type: 3}
       volume: 1

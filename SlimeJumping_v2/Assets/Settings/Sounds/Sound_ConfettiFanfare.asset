@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: Sound_ConfettiFanfare
   m_EditorClassIdentifier: Assembly-CSharp::SlimeJumping.Audio.SoundDef
   clips:
-  - {fileID: 8300000, guid: 3175a4fcc349be244a2c936e33589f82, type: 3}
+  - {fileID: 8300000, guid: a8d2424043338764e9d660aea6a41ded, type: 3}
   clipOrder: 0
   category: 3
-  volumeRange: {x: 0.5, y: 0.5}
+  volumeRange: {x: 0.66, y: 0.66}
   pitchRange: {x: 1, y: 1}
   cooldownSeconds: 0
   spatial3D: 1
