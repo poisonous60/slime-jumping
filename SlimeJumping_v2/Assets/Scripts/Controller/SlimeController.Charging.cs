@@ -22,7 +22,9 @@ namespace SlimeJumping.Controller
             else
                 aimOffset += driftDirection * activeDriftSpeed * dt;
 
+            // 조준은 발사 반대쪽으로 쌓이므로, 뛸 방향으로 누르는 기본 조작은 입력을 뒤집어 넣는다.
             Vector2 input = inputReader.AimInput;
+            if (!GameOptions.AimInverseEnabled) input = -input;
             Vector2 prevAim = aimOffset;
             aimOffset += input * settings.inputAcceleration * dt;
 

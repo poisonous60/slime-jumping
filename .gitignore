@@ -85,3 +85,4 @@ plans/
 *.unitypackage
 *.app
 **/FR2_Cache.asset*
+tmp

@@ -49,6 +49,7 @@ namespace SlimeJumping.UI.Framework
         SidePanel = 112,
         Row_MouseTeleport = 113,
         Row_Savepoint = 114,
+        Row_AimInverse = 115,
 
         // GramophonePanel anchors
         ScrollViewport = 200,

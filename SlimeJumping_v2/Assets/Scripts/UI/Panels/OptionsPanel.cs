@@ -39,6 +39,7 @@ namespace SlimeJumping.UI.Panels
         [SerializeField] private Slider gameSpeedSlider;
         [SerializeField] private BumpableLabel gameSpeedValueLabel;
         [SerializeField] private BumpableLabel playTimeValueLabel;
+        [SerializeField] private Toggle aimInverseToggle;
         [SerializeField] private Toggle implantToggle;
         [SerializeField] private Toggle mouseTeleportToggle;
         [SerializeField] private Toggle savepointToggle;
@@ -102,6 +103,7 @@ namespace SlimeJumping.UI.Panels
                        GameOptions.MinGameSpeed, GameOptions.MaxGameSpeed);
             UpdatePercentLabel(gameSpeedValueLabel, GameOptions.GameSpeed);
 
+            BindToggle(aimInverseToggle, GameOptions.AimInverseEnabled, GameOptions.SetAimInverseEnabled);
             BindToggle(implantToggle, GameOptions.ImplantEnabled, GameOptions.SetImplantEnabled);
             BindToggle(mouseTeleportToggle, GameOptions.MouseTeleportDebugEnabled, GameOptions.SetMouseTeleportDebugEnabled);
             BindToggle(savepointToggle, GameOptions.SavepointEnabled, GameOptions.SetSavepointEnabled);
@@ -200,6 +202,7 @@ namespace SlimeJumping.UI.Panels
             if (bgmVolumeSlider != null) bgmVolumeSlider.onValueChanged.RemoveAllListeners();
             if (uiVolumeSlider != null) uiVolumeSlider.onValueChanged.RemoveAllListeners();
             if (gameSpeedSlider != null) gameSpeedSlider.onValueChanged.RemoveAllListeners();
+            if (aimInverseToggle != null) aimInverseToggle.onValueChanged.RemoveAllListeners();
             if (implantToggle != null) implantToggle.onValueChanged.RemoveAllListeners();
             if (mouseTeleportToggle != null) mouseTeleportToggle.onValueChanged.RemoveAllListeners();
             if (savepointToggle != null) savepointToggle.onValueChanged.RemoveAllListeners();

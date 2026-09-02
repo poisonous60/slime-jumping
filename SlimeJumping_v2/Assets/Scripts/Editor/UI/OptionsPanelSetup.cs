@@ -15,8 +15,8 @@ namespace SlimeJumping.EditorTools.UI
         public const string PrefabPath = UISetupCommon.PanelPrefabRoot + "/OptionsPanel.prefab";
 
         private const float BoxWidth = 900f;
-        // 행당 66(RowHeight + spacing), 9행. 플레이 타임은 우측 상단 오버레이, 게임 속도와 임플란트는 사이드 패널.
-        private const float BoxHeight = 880f;
+        // 행당 66(RowHeight + spacing), 10행. 플레이 타임은 우측 상단 오버레이, 게임 속도와 임플란트는 사이드 패널.
+        private const float BoxHeight = 946f;
         // 사이드 패널: 높이는 ContentSizeFitter 가 잡는다 — 체크박스를 늘려도 상수를 안 고쳐도 된다.
         private const float SideWidth = 450f;
         private const float SideGap = 20f;
@@ -110,6 +110,10 @@ namespace SlimeJumping.EditorTools.UI
                 out Slider uiSlider, out TextMeshProUGUI uiValue);
             UISetupCommon.TagSlot(uiRow, UISlotType.Row_Ui);
 
+            var aimInverseRow = CreateCheckboxRow(box.transform, "AimInverseRow", "Aim Inverse",
+                out Toggle aimInverseToggle);
+            UISetupCommon.TagSlot(aimInverseRow, UISlotType.Row_AimInverse);
+
             var spacer = UISetupCommon.CreateChild(box.transform, "Spacer", typeof(RectTransform));
             UISetupCommon.AddLayoutElement(spacer, minHeight: 12f, preferredHeight: 16f);
 
@@ -159,6 +163,7 @@ namespace SlimeJumping.EditorTools.UI
             so.FindProperty("gameSpeedSlider").objectReferenceValue = gameSpeedSlider;
             so.FindProperty("gameSpeedValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(gameSpeedValue);
             so.FindProperty("playTimeValueLabel").objectReferenceValue = UISetupCommon.MakeBumpable(playTimeValue);
+            so.FindProperty("aimInverseToggle").objectReferenceValue = aimInverseToggle;
             so.FindProperty("implantToggle").objectReferenceValue = implantToggle;
             so.FindProperty("mouseTeleportToggle").objectReferenceValue = mouseTeleportToggle;
             so.FindProperty("savepointToggle").objectReferenceValue = savepointToggle;
@@ -326,7 +331,29 @@ namespace SlimeJumping.EditorTools.UI
             UISetupCommon.AddHorizontalLayout(row, padding: 0, spacing: 12, childAlign: TextAnchor.MiddleLeft);
             UISetupCommon.AddLayoutElement(row, minHeight: SideRowHeight, preferredHeight: SideRowHeight);
 
-            var box = UISetupCommon.CreateChild(row.transform, "Checkbox",
+            toggle = CreateCheckbox(row.transform);
+
+            var captionText = UISetupCommon.CreateText(row.transform, "Caption", caption,
+                UISetupCommon.FontRowValue, TextAlignmentOptions.MidlineLeft);
+            captionText.color = UISetupCommon.ColorBody;
+            captionText.textWrappingMode = TextWrappingModes.NoWrap;
+            UISetupCommon.AddLayoutElement(captionText.gameObject, flexibleWidth: 1f);
+
+            return row;
+        }
+
+        /// 라벨 컬럼을 쓰는 본판 행 — 캡션은 왼쪽 라벨이 맡고 컨트롤 칸에는 상자만 선다.
+        private static GameObject CreateCheckboxRow(Transform parent, string name, string labelText,
+            out Toggle toggle)
+        {
+            var row = CreateRowShell(parent, name, labelText, out GameObject control);
+            toggle = CreateCheckbox(control.transform);
+            return row;
+        }
+
+        private static Toggle CreateCheckbox(Transform parent)
+        {
+            var box = UISetupCommon.CreateChild(parent, "Checkbox",
                 typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
             UISetupCommon.AddLayoutElement(box, preferredWidth: 30f, preferredHeight: 30f, flexibleWidth: 0f);
             var boxImg = box.GetComponent<Image>();
@@ -345,17 +372,11 @@ namespace SlimeJumping.EditorTools.UI
             checkImg.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Checkmark.psd");
             checkImg.color = UISetupCommon.ColorSection;
 
-            var captionText = UISetupCommon.CreateText(row.transform, "Caption", caption,
-                UISetupCommon.FontRowValue, TextAlignmentOptions.MidlineLeft);
-            captionText.color = UISetupCommon.ColorBody;
-            captionText.textWrappingMode = TextWrappingModes.NoWrap;
-            UISetupCommon.AddLayoutElement(captionText.gameObject, flexibleWidth: 1f);
-
-            toggle = box.AddComponent<Toggle>();
+            var toggle = box.AddComponent<Toggle>();
             toggle.targetGraphic = boxImg;
             toggle.graphic = checkImg;
             toggle.isOn = false;
-            return row;
+            return toggle;
         }
 
         // 판 우측 상단 오버레이. ignoreLayout 이라 세로 스택 밖에 있고, 그래서 행 하나를 안 먹는다.

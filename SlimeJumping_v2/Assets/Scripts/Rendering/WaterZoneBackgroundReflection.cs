@@ -20,11 +20,6 @@ namespace SlimeJumping.Rendering
         [Tooltip("Multiplicative tint applied via MaterialPropertyBlock _Color.")]
         [SerializeField] Color ghostTint = new Color(1f, 1f, 1f, 1f);
 
-        [Tooltip("Local-space offset of the ghost relative to this water zone. " +
-                 "Usually Z-only; the BackgroundCamera is orthographic so XY " +
-                 "must match for the reflection to line up behind the scene.")]
-        [SerializeField] Vector3 localOffset = new Vector3(0f, 0f, 0.5f);
-
         [SerializeField, HideInInspector] MeshFilter sourceFilter;
         [SerializeField, HideInInspector] MeshRenderer sourceRenderer;
         [SerializeField, HideInInspector] GameObject ghost;
@@ -104,7 +99,8 @@ namespace SlimeJumping.Rendering
             }
 
             ghost.layer = bgLayer;
-            ghost.transform.localPosition = localOffset;
+            // BackgroundCamera is perspective: any Z gap parallaxes the ghost off the source outline.
+            ghost.transform.localPosition = Vector3.zero;
             ghost.transform.localRotation = Quaternion.identity;
             ghost.transform.localScale = Vector3.one;
 
@@ -134,9 +130,6 @@ namespace SlimeJumping.Rendering
             ghostRenderer.GetPropertyBlock(mpb);
             mpb.SetColor(ID_Color, ghostTint);
             ghostRenderer.SetPropertyBlock(mpb);
-
-            if (ghost.transform.localPosition != localOffset)
-                ghost.transform.localPosition = localOffset;
         }
     }
 }

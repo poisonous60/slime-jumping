@@ -23,6 +23,7 @@ namespace SlimeJumping.Settings
         private const string KeySavepointOn           = "opt.savepointEnabled";
         private const string KeyGameSpeed             = "opt.gameSpeed";
         private const string KeyImplantOn             = "opt.implantEnabled";
+        private const string KeyAimInverseOn          = "opt.aimInverseEnabled";
 
         // Pre-split combined SFX slider; seeds both SFX volumes on first load.
         private const string KeyLegacySfxVolume       = "opt.sfxVolume";
@@ -43,6 +44,8 @@ namespace SlimeJumping.Settings
         public const float      MinGameSpeed                 = 0.5f;
         public const float      MaxGameSpeed                 = 2f;
         public const bool       DefaultImplantOn             = false;
+        // 기본 조작은 뛰고 싶은 방향으로 누르는 것 — 반대로 당기는 슬링샷 조작이 옵션이다.
+        public const bool       DefaultAimInverseOn          = false;
 
         // -1 = Unlimited (Application.targetFrameRate = -1)
         public static readonly int[] FrameLimitOptions = { 30, 60, 120, -1 };
@@ -71,6 +74,7 @@ namespace SlimeJumping.Settings
         public static bool       SavepointEnabled        { get; private set; } = DefaultSavepointOn;
         public static float      GameSpeed               { get; private set; } = DefaultGameSpeed;
         public static bool       ImplantEnabled          { get; private set; } = DefaultImplantOn;
+        public static bool       AimInverseEnabled       { get; private set; } = DefaultAimInverseOn;
 
         public static Vector2Int Resolution => ResolutionOptions[ResolutionIndex];
 
@@ -116,6 +120,7 @@ namespace SlimeJumping.Settings
             GameSpeed              = Mathf.Clamp(PlayerPrefs.GetFloat(KeyGameSpeed, DefaultGameSpeed),
                                                  MinGameSpeed, MaxGameSpeed);
             ImplantEnabled         = PlayerPrefs.GetInt(KeyImplantOn, DefaultImplantOn ? 1 : 0) != 0;
+            AimInverseEnabled      = PlayerPrefs.GetInt(KeyAimInverseOn, DefaultAimInverseOn ? 1 : 0) != 0;
             ApplyDisplayPacing();
             ApplyDisplay(ResolutionOptions[ResolutionIndex], WindowMode);
 
@@ -200,6 +205,14 @@ namespace SlimeJumping.Settings
             PlayerPrefs.Save();
             var handler = ImplantEnabledChanged;
             if (handler != null) handler(on);
+        }
+
+        /// 차징 상태가 매 FixedUpdate 읽어가므로 이벤트가 없다.
+        public static void SetAimInverseEnabled(bool on)
+        {
+            AimInverseEnabled = on;
+            PlayerPrefs.SetInt(KeyAimInverseOn, on ? 1 : 0);
+            PlayerPrefs.Save();
         }
 
         /// TeleportDebugger 가 매 프레임 읽어가므로 이벤트가 없다.
